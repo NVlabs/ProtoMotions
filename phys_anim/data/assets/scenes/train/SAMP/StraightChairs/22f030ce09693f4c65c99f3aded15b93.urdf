@@ -1,0 +1,27 @@
+
+    <?xml version="1.0"?>
+    <robot name="object">
+      <link name="object">
+        <visual>
+          <origin rpy="0 0 0" xyz="0 0 0"/>
+         <geometry>
+            <mesh filename="22f030ce09693f4c65c99f3aded15b93.obj" scale="1.0 1.0 1.0"/>
+          </geometry>
+          <material name="slider_mat">
+            <color rgba="0.5318681629668085 0.25882110573553474 0.4509472780920616 1"/>
+          </material>
+        </visual>
+
+         <collision>
+          <origin rpy="0 0 0" xyz="0 0 0"/>
+         <geometry>
+            <mesh filename="22f030ce09693f4c65c99f3aded15b93.obj" scale="1.0 1.0 1.0"/>
+          </geometry>
+        </collision>
+
+        <inertial>
+          <density value="0.0"/>
+        </inertial>
+      </link>
+    </robot>
+    

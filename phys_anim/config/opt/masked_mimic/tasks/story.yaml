@@ -1,0 +1,4 @@
+# @package _global_
+
+env:
+  _target_: phys_anim.envs.masked_mimic.tasks.story.${backbone}.MaskedMimicStoryHumanoid

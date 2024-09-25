@@ -1,0 +1,7 @@
+# @package _global_
+
+defaults:
+  - /algo: amp
+  - /env: amp
+
+experiment_name: amp

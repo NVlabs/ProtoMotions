@@ -1,0 +1,40 @@
+# First we define the global structures that will be used by all the configs.
+defaults:
+  - base/fabric
+  - base/hydra
+
+algo: ???
+
+env: ???
+
+robot: ???
+
+motion_lib: ???  # This is defined in the robot configs
+motion_file: ???  # This must be provided by the user
+
+scene_lib: null
+scene_file: ???  # This must be provided by the user
+terrain: ???  # This is defined in the terrain configs
+
+# These are global variables that all levels of the config can access.
+## Experiment setup
+seed: 0
+training_max_steps: 10000000000
+codebase_version: 1.0  # this is recorded to enable auto-conversion of models between different versions of the codebase
+headless: True
+num_envs: 4096
+
+### Checkpoint logic
+auto_load_latest: False
+checkpoint: null
+
+### Naming and dir structure
+experiment_name: ???
+base_dir: results
+save_dir: ${base_dir}/${experiment_name}
+force_flat_terrain: False
+
+eval_overrides:
+  headless: False
+  num_envs: 1
+  auto_load_latest: False

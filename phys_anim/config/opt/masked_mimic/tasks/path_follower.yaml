@@ -1,0 +1,24 @@
+# @package _global_
+
+env:
+  _target_: phys_anim.envs.masked_mimic.tasks.path_following.${backbone}.MaskedMimicPathFollowingHumanoid
+  config:
+    path_follower_params:
+      num_traj_samples: ${eval:${env.config.mimic_target_pose.num_future_steps}+1}
+      traj_sample_timestep: 0.5
+      path_generator:
+        num_verts: 101
+        dtheta_max: 1.
+        sharp_turn_prob: 0.02
+        accel_max: 0.5
+        speed_max: 1.5
+        speed_min: 0.
+        fixed_path: False
+        slow: False
+        height_conditioned: ${..height_conditioned}
+        start_speed_max: 0.5
+        head_change_max: 0.05
+        head_height_max: 1.5
+        head_height_min: 0.5
+        use_naive_path_generator: False
+      height_conditioned: True

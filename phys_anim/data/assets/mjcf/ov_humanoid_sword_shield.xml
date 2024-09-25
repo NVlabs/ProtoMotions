@@ -1,0 +1,190 @@
+<mujoco model="ov_humanoid">
+
+  <statistic extent="2" center="0 0 1"/>
+
+  <option timestep="0.00555"/>
+
+  <default>
+    <motor ctrlrange="-1 1" ctrllimited="true"/>
+    <default class="body">
+      <geom type="capsule" condim="1" friction="1.0 0.05 0.05" solimp=".9 .99 .003" solref=".015 1"/>
+      <joint type="hinge" damping="0.1" stiffness="5" armature=".007" limited="true" solimplimit="0 .99 .01"/>
+      <site size=".04" group="3"/>
+      <default class="force-torque">
+        <site type="box" size=".01 .01 .02" rgba="1 0 0 1" />
+      </default>
+      <default class="touch">
+        <site type="capsule" rgba="0 0 1 .3"/>
+      </default>
+    </default>
+  </default>
+
+  <worldbody>
+    <geom name="floor" type="plane" conaffinity="1" size="100 100 .2" material="grid"/>
+    <body name="pelvis" pos="0 0 1" childclass="body">
+      <freejoint name="root"/>
+      <geom name="pelvis" type="sphere" pos="0 0 0.07" size=".09" density="2226"/>
+      
+      <body name="spine" pos="0 0 0.15111490">
+        <joint name="spine_x" pos="0 0 0" axis="1 0 0" range="-60 60" stiffness="1000" damping="100" armature=".02"/>
+        <joint name="spine_y" pos="0 0 0" axis="0 1 0" range="-60 90" stiffness="1000" damping="100" armature=".02"/>
+        <joint name="spine_z" pos="0 0 0" axis="0 0 1" range="-50 50" stiffness="1000" damping="100" armature=".02"/>
+        <geom name="upper_waist" type="sphere" pos="0 0 0.05" size="0.07" density="2226"/>
+        
+        <body name="chest" pos="0 0 0.15111490">
+          <joint name="chest_x" pos="0 0 0" axis="1 0 0" range="-60 60" stiffness="1000" damping="100" armature=".02"/>
+          <joint name="chest_y" pos="0 0 0" axis="0 1 0" range="-60 90" stiffness="1000" damping="100" armature=".02"/>
+          <joint name="chest_z" pos="0 0 0" axis="0 0 1" range="-50 50" stiffness="1000" damping="100" armature=".02"/>
+          <geom name="chest" type="sphere" pos="0 0 0.05" size="0.11" density="1794"/>
+          
+          <body name="head" pos="0 0 0.197710724">
+            <joint name="neck_x" axis="1 0 0" range="-50 50" stiffness="100" damping="10" armature=".01"/>
+            <joint name="neck_y" axis="0 1 0" range="-40 60" stiffness="100" damping="10" armature=".01"/>
+            <joint name="neck_z" axis="0 0 1" range="-45 45" stiffness="100" damping="10" armature=".01"/>
+            <geom name="head" type="sphere" pos="0 0 0.17" size="0.095" density="1081"/>
+          </body>
+
+          <body name="right_clavicle" pos="-0.039151225 -0.02140143 0.19640717">
+            <joint name="right_clavicle_x" axis="1 0 0" range="-45 45" stiffness="800" damping="80" armature=".02"/>
+            <joint name="right_clavicle_y" axis="0 1 0" range="-20 20" stiffness="800" damping="80" armature=".02"/>
+            <joint name="right_clavicle_z" axis="0 0 1"  range="-30 30" stiffness="800" damping="80" armature=".02"/>
+            <geom name="right_clavicle" fromto="0 -0.03 0 0 -0.12 0" size=".045" density="982"/>
+
+            <body name="right_upper_arm" pos="0 -0.16549997 0">
+              <joint name="right_shoulder_x" axis="1 0 0" range="-180 45" stiffness="400" damping="40" armature=".02"/>
+              <joint name="right_shoulder_y" axis="0 1 0" range="-180 60" stiffness="400" damping="40" armature=".02"/>
+              <joint name="right_shoulder_z" axis="0 0 1"  range="-90 90" stiffness="400" damping="40" armature=".02"/>
+              <geom name="right_upper_arm" fromto="0 0-0.05 0 0 -0.23" size=".045" density="982"/>
+
+              <body name="right_lower_arm" pos="0 0 -0.2559692">
+                <joint name="right_elbow" axis="0 1 0" range="-160 0" stiffness="300" damping="30" armature=".01"/>
+                <geom name="right_lower_arm" fromto="0 0 -0.0525 0 0 -0.1875" size="0.04" density="1056"/>
+
+                <body name="right_hand" pos="0 0 -0.25835157">
+                  <joint name="right_hand_x" axis="1 0 0" range="-90 90" stiffness="100" damping="10" armature=".01"/>
+                  <joint name="right_hand_y" axis="0 1 0" range="-90 90" stiffness="100" damping="10" armature=".003"/>
+                  <joint name="right_hand_z" axis="0 0 1"  range="-90 90" stiffness="100" damping="10" armature=".003"/>
+                  <geom name="right_hand" type="sphere" size=".04" density="1865"/>
+                
+                  <body name="sword" pos="0.74 0 0">
+                    <geom name="sword_hilt" fromto="-0.87 0 0 -0.64 0 0" size="0.023" density="300"/>
+                    <geom name="sword_blade" type="box" pos="-0.34 0 0" size="0.34 0.01 0.035" density="600"/>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+
+          <body name="left_clavicle" pos="-0.039151225 0.02140143 0.19640717">
+            <joint name="left_clavicle_x" axis="1 0 0" range="-45 45" stiffness="800" damping="80" armature=".02"/>
+            <joint name="left_clavicle_y" axis="0 1 0" range="-20 20" stiffness="800" damping="80" armature=".02"/>
+            <joint name="left_clavicle_z" axis="0 0 1"  range="-30 30" stiffness="800" damping="80" armature=".02"/>
+            <geom name="left_clavicle" fromto="0 0.03 0 0 0.12 0" size=".045" density="982"/>
+
+            <body name="left_upper_arm" pos="0 0.16549997 0">
+              <joint name="left_shoulder_x" axis="1 0 0" range="-45 180" stiffness="400" damping="40" armature=".02"/>
+              <joint name="left_shoulder_y" axis="0 1 0" range="-180 60" stiffness="400" damping="40" armature=".02"/>
+              <joint name="left_shoulder_z" axis="0 0 1"  range="-90 90" stiffness="400" damping="40" armature=".02"/>
+              <geom name="left_upper_arm" fromto="0 0 -0.05 0 0 -0.23" size=".045" density="982"/>
+
+              <body name="left_lower_arm" pos="0 0 -0.2559692">
+                <joint name="left_elbow" axis="0 1 0" range="-160 0" stiffness="300" damping="30" armature=".01"/>
+                <geom name="left_lower_arm" fromto="0 0 -0.0525 0 0 -0.1875" size="0.04" density="1056"/>
+
+                <body name="shield" pos="0 0.07 -0.12">
+                  <geom name="shield" type="cylinder" fromto="0 0 0 0 0.03 0" size="0.3" density="250"/>
+                </body>
+
+                <body name="left_hand" pos="0 0 -0.25835157">
+                  <geom name="left_hand" type="sphere" size=".04" density="1865"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <body name="right_thigh" pos="0 -0.09256147 0">
+        <joint name="right_hip_x" axis="1 0 0" range="-60 15" stiffness="500" damping="50" armature=".02"/>
+        <joint name="right_hip_y" axis="0 1 0" range="-140 60" stiffness="500" damping="50" armature=".02"/>
+        <joint name="right_hip_z" axis="0 0 1" range="-60 35" stiffness="500" damping="50" armature=".02"/>
+        <geom name="right_thigh" fromto="0 0 -0.04 0 0 -0.38" size="0.055" density="1269"/>
+        
+        <body name="right_shin" pos="0 0 -0.45236092">
+          <joint name="right_knee" pos="0 0 0" axis="0 1 0" range="0 160" stiffness="500" damping="50" armature=".02"/>
+          <geom name="right_shin" fromto="0 0 -0.03 0 0 -0.37"  size=".05" density="1014"/>
+          
+          <body name="right_foot" pos="0 0 -0.41935993">
+            <joint name="right_ankle_x" pos="0 0 0" axis="1 0 0" range="-30 30" stiffness="400" damping="40" armature=".01"/>
+            <joint name="right_ankle_y" pos="0 0 0" axis="0 1 0" range="-55 55" stiffness="400" damping="40" armature=".01"/>
+            <joint name="right_ankle_z" pos="0 0 0" axis="0 0 1" range="-40 40" stiffness="400" damping="40" armature=".01"/>
+            <geom name="right_foot" type="box" pos="0.045 0 -0.0225" size="0.0885 0.045 0.0275" density="1141"/>
+          </body>
+        </body>
+      </body>
+
+      <body name="left_thigh" pos="0 0.09256147 0">
+        <joint name="left_hip_x" axis="1 0 0" range="-15 60" stiffness="500" damping="50" armature=".02"/>
+        <joint name="left_hip_y" axis="0 1 0" range="-140 60" stiffness="500" damping="50" armature=".02"/>
+        <joint name="left_hip_z" axis="0 0 1" range="-35 60" stiffness="500" damping="50" armature=".02"/>
+        <geom name="left_thigh" fromto="0 0 -0.04 0 0 -0.38" size="0.055" density="1269"/>
+
+        <body name="left_shin" pos="0 0 -0.45236092">
+          <joint name="left_knee" pos="0 0 0" axis="0 1 0" range="0 160" stiffness="500" damping="50" armature=".02"/>
+          <geom name="left_shin" fromto="0 0 -0.03 0 0 -0.37"  size=".05" density="1014"/>
+
+          <body name="left_foot" pos="0 0 -0.41935993">
+            <joint name="left_ankle_x" pos="0 0 0" axis="1 0 0" range="-30 30" stiffness="400" damping="40" armature=".01"/>
+            <joint name="left_ankle_y" pos="0 0 0" axis="0 1 0" range="-55 55" stiffness="400" damping="40" armature=".01"/>
+            <joint name="left_ankle_z" pos="0 0 0" axis="0 0 1" range="-40 40" stiffness="400" damping="40" armature=".01"/>
+            <geom name="left_foot" type="box" pos="0.045 0 -0.0225" size="0.0885 0.045 0.0275" density="1141"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <motor name='spine_x'       	  gear='200' 	joint='spine_x'/>
+    <motor name='spine_y'       	  gear='200' 	joint='spine_y'/>
+    <motor name='spine_z'       	  gear='200' 	joint='spine_z'/>
+    <motor name='chest_x'       	  gear='200' 	joint='chest_x'/>
+    <motor name='chest_y'       	  gear='200' 	joint='chest_y'/>
+    <motor name='chest_z'       	  gear='200' 	joint='chest_z'/>
+    <motor name='neck_x'          	gear='50' 	joint='neck_x'/>
+    <motor name='neck_y'            gear='50' 	joint='neck_y'/>
+    <motor name='neck_z'           	gear='50' 	joint='neck_z'/>
+    <motor name='right_clavicle_x' 	gear='150' 	joint='right_clavicle_x'/>
+    <motor name='right_clavicle_y' 	gear='150' 	joint='right_clavicle_y'/>
+    <motor name='right_clavicle_z' 	gear='150' 	joint='right_clavicle_z'/>
+    <motor name='right_shoulder_x' 	gear='100' 	joint='right_shoulder_x'/>
+    <motor name='right_shoulder_y' 	gear='100' 	joint='right_shoulder_y'/>
+    <motor name='right_shoulder_z' 	gear='100' 	joint='right_shoulder_z'/>
+    <motor name='right_elbow'     	gear='70' 	joint='right_elbow'/>
+    <motor name='right_hand_x' 	  	gear='50' 	joint='right_hand_x'/>
+    <motor name='right_hand_y'    	gear='50' 	joint='right_hand_y'/>
+    <motor name='right_hand_z'    	gear='50' 	joint='right_hand_z'/>
+    <motor name='left_clavicle_x' 	gear='150' 	joint='left_clavicle_x'/>
+    <motor name='left_clavicle_y' 	gear='150' 	joint='left_clavicle_y'/>
+    <motor name='left_clavicle_z' 	gear='150' 	joint='left_clavicle_z'/>
+    <motor name='left_shoulder_x' 	gear='100' 	joint='left_shoulder_x'/>
+    <motor name='left_shoulder_y' 	gear='100' 	joint='left_shoulder_y'/>
+    <motor name='left_shoulder_z' 	gear='100' 	joint='left_shoulder_z'/>
+    <motor name='left_elbow'      	gear='70' 	joint='left_elbow'/>
+    <motor name='right_hip_x'     	gear='200' 	joint='right_hip_x'/>
+    <motor name='right_hip_z'     	gear='200' 	joint='right_hip_z'/>
+    <motor name='right_hip_y'     	gear='200' 	joint='right_hip_y'/>
+    <motor name='right_knee'      	gear='150' 	joint='right_knee'/>
+    <motor name='right_ankle_x'   	gear='90' 	joint='right_ankle_x'/>
+    <motor name='right_ankle_y'   	gear='90' 	joint='right_ankle_y'/>
+    <motor name='right_ankle_z'   	gear='90' 	joint='right_ankle_z'/>
+    <motor name='left_hip_x'      	gear='200' 	joint='left_hip_x'/>
+    <motor name='left_hip_z'      	gear='200' 	joint='left_hip_z'/>
+    <motor name='left_hip_y'      	gear='200' 	joint='left_hip_y'/>
+    <motor name='left_knee'       	gear='150' 	joint='left_knee'/>
+    <motor name='left_ankle_x'    	gear='90' 	joint='left_ankle_x'/>
+    <motor name='left_ankle_y'    	gear='90' 	joint='left_ankle_y'/>
+    <motor name='left_ankle_z'    	gear='90' 	joint='left_ankle_z'/>
+  </actuator>
+  
+</mujoco>

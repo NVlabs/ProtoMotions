@@ -1,0 +1,30 @@
+# @package _global_
+
+defaults:
+  - base
+
+robot:
+  # Observation parameters
+  num_bodies: 15
+  dof_obs_size: 72
+  number_of_actions: 36
+  self_obs_max_coords: 223  # ${eval:1+15*(3+6+3+3)-3}
+
+  # Control parameters
+  dof_body_ids: [1, 2, 3, 4, 6, 7, 9, 10, 11, 12, 13, 14]
+  dof_offsets: [0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36]
+
+  key_bodies:
+    - "right_hand"
+    - "left_hand"
+    - "right_foot"
+    - "left_foot"
+  contact_bodies:
+    - "right_foot"
+    - "left_foot"
+
+  right_foot_name: "right_foot"
+  left_foot_name: "left_foot"
+
+  asset:
+    robot_type: amp_humanoid_3d

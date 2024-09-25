@@ -1,0 +1,28 @@
+# @package _global_
+
+algo:
+  config:
+    models:
+      mimic_phase_model:
+        _target_: phys_anim.agents.models.common.Flatten
+        config:
+          normalize_obs: False
+          obs_clamp_value: ${algo.config.obs_clamp_value}
+        num_in: 2
+        num_out: 2
+
+    actor:
+      config:
+        mlp_extra_inputs:
+          mimic_phase: ${algo.config.models.mimic_phase_model}
+
+    critic:
+      config:
+        extra_inputs:
+          mimic_phase: ${algo.config.models.mimic_phase_model}
+
+    extra_inputs:
+      mimic_phase:
+        retrieve_from_env: True
+        dtype: float
+        size: ${algo.config.models.mimic_phase_model.num_in}

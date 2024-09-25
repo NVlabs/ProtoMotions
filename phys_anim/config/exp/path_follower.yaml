@@ -1,0 +1,44 @@
+# @package _global_
+
+defaults:
+  - /algo: amp
+  - /env: path_follower
+  - /terrain/terrain_obs
+  - /terrain/complex
+
+experiment_name: path_follower
+
+algo:
+  config:
+    task_reward_w: 0.5
+    discriminator_reward_w: 0.5
+
+    models:
+      path_model:
+        _target_: phys_anim.agents.models.common.Flatten
+        config:
+          normalize_obs: False
+          obs_clamp_value: ${algo.config.obs_clamp_value}
+        # Input and output size are the same due to flattening
+        num_in: ${env.config.path_follower_params.path_obs_size}
+        num_out: ${.num_in}
+
+    # Append the direction obs to the actor and critic inputs
+    actor:
+      config:
+        mu_model:
+          config:
+            extra_inputs:
+              path: ${algo.config.models.path_model}
+
+    critic:
+      config:
+        extra_inputs:
+          path: ${algo.config.models.path_model}
+
+    extra_inputs:
+      path:
+        retrieve_from_env: True
+        dtype: float
+        size: ${algo.config.models.path_model.num_in}
+        env_obs_name: path_obs

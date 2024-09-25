@@ -1,0 +1,11 @@
+# @package _global_
+
+env:
+  _target_: phys_anim.envs.masked_mimic.tasks.speed.${backbone}.MaskedMimicSpeedHumanoid
+  config:
+    speed_params:
+      tar_speed_min: 0
+      tar_speed_max: 5
+      change_steps_min: 199
+      change_steps_max: 200
+      enable_rand_heading: True

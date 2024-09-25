@@ -1,0 +1,48 @@
+# @package _global_
+
+# Typically this file is loaded by a higher level config file.
+# We support terrains without providing the robot any terrain information.
+
+algo:
+  config:
+    models:
+      terrain_models:
+        mlp:
+          _target_: phys_anim.agents.models.common.Flatten
+          config:
+            normalize_obs: False
+            obs_clamp_value: ${algo.config.obs_clamp_value}
+          num_in: ${terrain.config.terrain_obs_num_samples}
+          num_out: ${.num_in}
+
+        transformer:
+          _target_: phys_anim.agents.models.mlp.MLP_WithNorm
+          config:
+            initializer: ${algo.config.actor.config.initializer}
+            units: ${oc.select:algo.config.models.transformer_obs_units,???}
+            activation: ${algo.config.actor.config.activation}
+            use_layer_norm: ${algo.config.actor.config.use_layer_norm}
+            normalize_obs: ${algo.config.normalize_obs}
+            obs_clamp_value: ${algo.config.obs_clamp_value}
+            encoder_input_dim: ${terrain.config.terrain_obs_num_samples}
+            operations:
+              - type: encode
+              - type: reshape
+                new_shape:
+                  - batch_size
+                  - 1
+                  - ${algo.config.models.terrain_models.transformer.num_out}
+          num_in: ${terrain.config.terrain_obs_num_samples}
+          num_out: ${oc.select:algo.config.actor.config.mu_model.config.transformer_token_size,???}
+
+    critic:
+      config:
+        extra_inputs:
+          terrain: ${algo.config.models.terrain_models.mlp}
+
+    extra_inputs:
+      terrain:
+        retrieve_from_env: True
+        dtype: float
+        size: ${terrain.config.terrain_obs_num_samples}
+        env_obs_name: terrain_obs

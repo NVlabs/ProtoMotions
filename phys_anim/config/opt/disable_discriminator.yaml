@@ -1,0 +1,18 @@
+# @package _global_
+
+algo:
+  config:
+    # By default, disable discriminator (for AMP + Mimic, bring this back)
+    discriminator:
+      config:
+        units: [1]
+        
+    discriminator_optimizer:
+      _target_: torch.optim.Adam
+      _recursive_: False
+      lr: 0
+
+env:
+  config:
+    disable_discriminator: True
+    discriminator_obs_historical_steps: 1

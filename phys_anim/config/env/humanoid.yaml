@@ -1,0 +1,102 @@
+# @package _global_
+
+defaults:
+  - /terrain/flat
+
+# Env structure
+env:
+  _target_: phys_anim.envs.humanoid.${backbone}.Humanoid
+  _recursive_: False
+  config:
+    experiment_name: ${experiment_name}
+    num_envs: ${num_envs}
+    headless: ${headless}
+    # We should remove this. Common class should not be aware of the simulator in use.
+    # Simulator-specific code should be accessed via a shared API function call instead.
+    backbone: ${backbone}
+
+    # Simulation params
+    max_episode_length: 300
+    robot: ${robot}
+
+    ## Observations
+    use_max_coords_obs: True
+    local_root_obs: True
+    root_height_obs: True
+
+    ## Termination
+    termination_height: 0.15
+    head_termination_height: 0.3
+    shield_termination_height: 0.32
+    enable_height_termination: True
+
+    ## Motion-related params
+    motion_lib: ${motion_lib}
+    motion_index_offset: null
+    fixed_motion_id: null
+
+    ### Respawn related params
+    hybrid_init_prob: 0.0
+    state_init: Default
+    ref_respawn_offset: ${ref_respawn_offset}
+
+    ## World-related params
+    simulator:
+      plane:
+        static_friction: 1.0
+        dynamic_friction: 1.0
+        restitution: 0.0
+      sim:
+        fps: 60
+        control_freq_inv: 2
+        substeps: 2
+        physx:
+          num_threads: 4
+          solver_type: 1 # 0: pgs, 1: tgs
+          num_position_iterations: 4
+          num_velocity_iterations: 0
+          contact_offset: 0.02
+          rest_offset: 0.0
+          bounce_threshold_velocity: 0.2
+          max_depenetration_velocity: 10.0
+          default_buffer_size_multiplier: 10.0
+        flex:
+          num_inner_iterations: 10
+          warm_start: 0.25
+
+    terrain: ${terrain}
+    force_flat_terrain: ${force_flat_terrain}
+
+    scene_lib: ${scene_lib}
+    # CT hack: This is kept here for compatibility with MaskedMimic release.
+    #   will be removed in future releases when we add support better objects representations.
+    object_types:
+      - Armchairs
+      - StraightChairs
+      - HighStools
+      - LowStools
+      - Sofas
+      - Tables
+      - LargeSofas
+    
+    object_ref_respawn_offset: 0.05
+
+    # Evaluation params
+    visualize_markers: True
+    sync_motion: False
+    output_motion: False
+    camera: null
+
+    export_video: False
+    export_motion: False
+    record_viewer: False
+    viewer_record_dir: "output/recordings/viewer"
+
+# Globally accessible parameters
+ref_respawn_offset: 0.25
+
+eval_overrides:
+  env:
+    config:
+      max_episode_length: 10000
+      enable_height_termination: False

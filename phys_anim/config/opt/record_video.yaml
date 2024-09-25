@@ -1,0 +1,35 @@
+# @package _global_
+
+algo:
+  config:
+    eval_callbacks:
+      export_video_cb:
+        _target_: phys_anim.agents.callbacks.export_video.ExportVideo
+        config:
+          record_dir: output/recordings
+          index_offset: ${motion_index_offset}
+          record_fps: 30
+          # For webm recordings
+          fourcc: vp80
+          suffix: webm
+          # For mp4 recordings
+          # fourcc: MP4V
+          # suffix: mp4
+
+          record_viewer: ${env.config.record_viewer}
+          only_record_viewer: False
+          viewer_record_dir: "output/recordings/viewer"
+
+          store_raw: False
+
+env:
+  config:
+    camera:
+      pos: [1.75, -1.75, 1]
+      pitch_deg: 20
+      roll_deg: 0
+      yaw_deg: 135
+      rotate_with_agent: False
+      width: 852
+      height: 480
+    export_video: True

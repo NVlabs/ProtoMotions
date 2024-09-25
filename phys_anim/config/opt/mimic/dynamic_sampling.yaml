@@ -1,0 +1,18 @@
+# @package _global_
+
+env:
+  config:
+    ### Respawn related params
+    mimic_motion_sampling:
+      init_start_prob: 0.1
+      init_random_prob: 0.1
+
+    mimic_dynamic_sampling:
+      enabled: True
+
+# At evaluation, disable dynamic sampling
+eval_overrides:
+  env:
+    config:
+      mimic_dynamic_sampling:
+        enabled: False

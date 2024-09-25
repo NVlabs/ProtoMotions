@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<robot name="object">
+  <link name="object">
+    <visual>
+      <origin xyz="0 0 0"/>
+     <geometry>
+        <mesh filename="table.obj" scale="1.0 1.0 1.0"/>
+      </geometry>
+      <material name="slider_mat">
+        <color rgba="0.9 0.6 0.2 1"/>
+      </material>
+    </visual>
+
+     <collision>
+      <origin xyz="0 0 0"/>
+     <geometry>
+        <mesh filename="table.obj" scale="1.0 1.0 1.0"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <density value="567.0"/>
+    </inertial>
+  </link>
+</robot>

@@ -1,0 +1,73 @@
+# @package _global_
+
+defaults:
+  - mimic
+
+# Env structure
+env:
+  _target_: phys_anim.envs.masked_mimic.${backbone}.MaskedMimicHumanoid
+  config:
+    masked_mimic_masking:
+      joint_masking:
+        masked_mimic_time_mask: True
+        masked_mimic_time_gap_probability: 0.1
+        
+        time_gap_mask_min_steps: 1
+        time_gap_mask_max_steps: ${eval:${env.config.mimic_target_pose.num_future_steps}+1}
+        
+        with_conditioning_time_gap_mask_max_steps: ${eval:${.time_gap_mask_max_steps}*4}
+        with_conditioning_max_gap_probability: 0.2
+        
+        masked_mimic_repeat_mask_probability: 0.98
+        masked_mimic_fixed_conditioning: null
+        
+        force_max_conditioned_bodies_prob: 0.1
+        force_small_num_conditioned_bodies_prob: 0.1
+        
+      # Target pose is a single long-term condition on a random subset of joints
+      target_pose_visible_prob: 0
+      target_pose_joint_probs: 0
+      
+      # Text conditioning
+      motion_text_embeddings_visible_prob: 0
+      
+      # Scene conditioning
+      object_bounding_box_visible_prob: 0
+
+      # Historical info
+      start_without_history_prob: 0
+
+    mimic_target_pose:
+      type: max-coords-future-rel
+      with_time: False
+      num_obs_per_target_pose: ${.base_num_obs_per_target_pose}
+      num_future_steps: 10
+
+    masked_mimic_obs:
+      num_obs_per_sparse_target_pose: ${eval:${.num_obs_per_target_pose}*${len:${..masked_mimic_conditionable_bodies}}//${robot.num_bodies}}
+      num_future_steps: 10
+      num_obs_per_joint: 24
+      num_obs_per_target_pose: ${eval:${.num_obs_per_joint}*${robot.num_bodies}}
+
+      text_embedding_dim: 512
+
+      num_historical_stored_steps: 1  # How much history do we remember
+      num_historical_conditioned_steps: 1  # We subsample from the history to condition on
+      historical_obs_size_per_pose: ${eval:${robot.num_bodies}*9+1}  # 3 for position, 6 for rotation, +1 for time
+
+      masked_mimic_report_full_body_metrics: ${masked_mimic_report_full_body_metrics}
+
+    masked_mimic_conditionable_bodies: [L_Ankle, R_Ankle, Pelvis, Head, L_Hand, R_Hand]
+
+    mimic_dynamic_sampling:
+      enabled: False
+
+# Globally accessible parameters
+masked_mimic_report_full_body_metrics: True
+
+eval_overrides:
+  masked_mimic_report_full_body_metrics: False
+  env:
+    config:
+      masked_mimic_masking:
+        start_without_history_prob: 0

@@ -1,0 +1,22 @@
+# @package _global_
+
+defaults:
+ - amp
+
+robot:
+ # Observation parameters
+ num_bodies: 17
+ dof_obs_size: 78
+ number_of_actions: 31
+ self_obs_max_coords: 253  # ${eval:1+17*(3+6+3+3)-3}
+
+ # Control parameters
+ dof_body_ids: [ 1, 2, 3, 4, 5, 7, 8, 11, 12, 13, 14, 15, 16 ]
+ dof_offsets: [ 0, 3, 6, 9, 10, 13, 16, 17, 20, 21, 24, 27, 28, 31 ]
+
+ key_bodies:
+   - "sword"
+   - "shield"
+
+ asset:
+  robot_type: amp_humanoid_sword_shield

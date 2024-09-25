@@ -1,0 +1,21 @@
+# @package _global_
+
+defaults:
+  - amp
+
+algo:
+  _target_: phys_anim.agents.mimic.Mimic
+  config:
+    # Mimic parameters
+    task_reward_w: 1.0
+    use_rand_action_masks: False
+    gradient_clip_val: 50.0
+    clip_critic_loss: True
+    eval_metric_keys: ["cartesian_err", "gt_err", "dv_rew", "kb_rew", "lr_rew", "rv_rew", "rav_rew", "gr_err", "gr_err_degrees"]
+    eval_length: null
+    eval_num_episodes: 1
+
+    # Early termination
+    training_early_termination:
+      early_terminate_cart_err: null
+      early_terminate_reward_too_bad_prob: null

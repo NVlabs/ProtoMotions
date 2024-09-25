@@ -1,0 +1,9 @@
+# @package _global_
+
+defaults:
+    - base
+
+scene_file: 'data/yaml_files/samp_scenes_train.yaml'
+
+eval_overrides:
+    scene_file: 'data/yaml_files/samp_scenes_test.yaml'

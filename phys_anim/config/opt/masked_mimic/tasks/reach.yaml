@@ -1,0 +1,14 @@
+# @package _global_
+
+env:
+  _target_: phys_anim.envs.masked_mimic.tasks.reach.${backbone}.MaskedMimicReachHumanoid
+  config:
+    reach_params:
+      reach_body_name: R_Hand
+      change_steps_min: 90
+      change_steps_max: 120
+      tar_dist_max: 1.0
+      tar_height_min: 0.05
+      tar_height_max: 1.6
+      reach_steps_min: 60
+      reach_steps_max: 61

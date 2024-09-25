@@ -1,0 +1,9 @@
+# @package _global_
+defaults:
+  - target_pose_obs
+
+env:
+  config:
+    mimic_target_pose:
+      with_time: True
+      num_obs_per_target_pose: ${eval:${.base_num_obs_per_target_pose}+1}
