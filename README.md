@@ -1,4 +1,5 @@
-# Physics-based Character Animation
+# ProtoMotions: Physics-based Character Animation
+*“Primitive or fundamental types of movement that serve as a basis for more complex motions.”*
 
 - [What is this?](#what-is-this)
 - [Installation guide](#installation)
