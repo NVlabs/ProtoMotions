@@ -142,7 +142,7 @@ class BaseHumanoid(Humanoid):
             self.env_id_to_object_ids = (
                 torch.zeros(
                     self.num_envs,
-                    self.scene_lib.max_objects_per_scene,
+                    self.scene_lib.config.max_objects_per_scene,
                     dtype=torch.long,
                     device=self.device,
                 )
@@ -763,7 +763,7 @@ class BaseHumanoid(Humanoid):
         )
 
         if self.scene_lib is not None:
-            max_objects_per_scene = self.scene_lib.max_objects_per_scene
+            max_objects_per_scene = self.scene_lib.config.max_objects_per_scene
         else:
             max_objects_per_scene = 1
 

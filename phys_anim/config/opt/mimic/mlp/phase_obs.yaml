@@ -13,8 +13,10 @@ algo:
 
     actor:
       config:
-        mlp_extra_inputs:
-          mimic_phase: ${algo.config.models.mimic_phase_model}
+        mu_model:
+          config:
+            extra_inputs:
+              mimic_phase: ${algo.config.models.mimic_phase_model}
 
     critic:
       config:

@@ -27,9 +27,6 @@ algo:
             extra_inputs:
               terrain: ${..terrain_model}
 
-        mlp_extra_inputs: null
-        transformer_extra_inputs: null
-
         init_logstd: -2.9
         learnable_sigma: False
         sigma_schedule: null

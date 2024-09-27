@@ -1,6 +1,0 @@
-# @package _global_
-
-defaults:
-    - base
-
-scene_file: 'data/yaml_files/grab_scenes.yaml'

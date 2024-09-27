@@ -89,11 +89,11 @@ class SceneLib:
         self.terrain = terrain
         self.create_scene_spawn_list()
 
-        self.max_objects_per_scene = max(
+        assert self.config.max_objects_per_scene >= max(
             [len(scene["objects"]) for scene in self.scenes]
         )
         self.scene_to_object_ids = torch.full(
-            (len(self.scenes), self.max_objects_per_scene),
+            (len(self.scenes), self.config.max_objects_per_scene),
             -1,
             dtype=torch.long,
             device=self._device,

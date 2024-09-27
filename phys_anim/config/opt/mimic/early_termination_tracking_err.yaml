@@ -9,11 +9,6 @@ env:
         from_other: True
         less_than: False
 
-    mimic_dynamic_sampling:
-      dynamic_weight_max: null
-      sampling_criteria: mimic_early_termination
-      bucket_width: 2.0
-
 # At evaluation, disable early termination
 eval_overrides:
   env:

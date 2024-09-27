@@ -3,6 +3,9 @@
 defaults:
     - base
 
+scene_lib:
+    max_objects_per_scene: 1
+
 scene_file: 'data/yaml_files/samp_scenes_train.yaml'
 
 eval_overrides:

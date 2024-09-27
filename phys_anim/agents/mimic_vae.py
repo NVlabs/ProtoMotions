@@ -111,19 +111,18 @@ class MimicVAE(Mimic):
             batch_idx, batch_dict
         )
 
-        if self.config.get("vae_kld_schedule", None) is not None:
+        vae_kld_schedule = self.config.vae.vae_kld_schedule
+        if vae_kld_schedule is not None:
             vae_kld_loss = self.actor.kl_loss(batch_dict)
             vae_kld_loss = torch.mean(torch.sum(vae_kld_loss, dim=-1))
 
             extra_actor_log_dict["actor/vae_kld_loss"] = vae_kld_loss.detach()
 
-            schedule = self.config.vae_kld_schedule
-
-            kld_coeff = schedule.init_kld_coeff + min(
-                max(0, self.current_epoch - schedule.get("start_epoch", 0))
-                / schedule.end_epoch,
+            kld_coeff = vae_kld_schedule.init_kld_coeff + min(
+                max(0, self.current_epoch - vae_kld_schedule.start_epoch)
+                / vae_kld_schedule.end_epoch,
                 1,
-            ) * (schedule.end_kld_coeff - schedule.init_kld_coeff)
+            ) * (vae_kld_schedule.end_kld_coeff - vae_kld_schedule.init_kld_coeff)
 
             extra_actor_log_dict["actor/kld_coeff"] = kld_coeff
 
