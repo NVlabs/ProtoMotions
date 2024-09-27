@@ -33,7 +33,7 @@ import os
 def main(
     motion_file: str, backbone: str, robot: str, num_envs: int = 1, extra_args: str = ""
 ):
-    command = f"python phys_anim/eval_agent.py +base=fabric +exp=mimic +opt=disable_discriminator +backbone={backbone} +robot={robot} +checkpoint=null +training_max_steps=1 +motion_file={motion_file} env.config.sync_motion=True ref_respawn_offset=0 +headless=False +num_envs={num_envs} {extra_args}"
+    command = f"python phys_anim/eval_agent.py +base=[fabric,structure] +exp=mimic +opt=disable_discriminator +backbone={backbone} +robot={robot} +checkpoint=null +training_max_steps=1 +motion_file={motion_file} env.config.sync_motion=True ref_respawn_offset=0 +headless=False +num_envs={num_envs} {extra_args}"
     os.system(command)
 
 

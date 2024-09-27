@@ -2,19 +2,7 @@
 defaults:
   - base/fabric
   - base/hydra
-
-algo: ???
-
-env: ???
-
-robot: ???
-
-motion_lib: ???  # This is defined in the robot configs
-motion_file: ???  # This must be provided by the user
-
-scene_lib: null
-scene_file: ???  # This must be provided by the user
-terrain: ???  # This is defined in the terrain configs
+  - base/structure
 
 # These are global variables that all levels of the config can access.
 ## Experiment setup
