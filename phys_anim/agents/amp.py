@@ -33,9 +33,11 @@ import math
 
 from lightning.fabric import Fabric
 
-from phys_anim.agents.utils.data_utils import swap_and_flatten01
-from phys_anim.agents.ppo import PPO
 from hydra.utils import instantiate
+from isaac_utils import torch_utils
+
+from phys_anim.agents.utils.data_utils import swap_and_flatten01
+from phys_anim.agents.ppo import PPO, get_params
 from phys_anim.utils.replay_buffer import ReplayBuffer
 from phys_anim.utils.dataset import GeneralizedDataset
 from phys_anim.agents.models.discriminator import JointDiscMLP
@@ -162,17 +164,71 @@ class AMP(PPO):
                     self.fabric.backward(scaled_discriminator_loss)
 
                 if not is_accumulating:
-                    if self.config.gradient_clip_val > 0:
-                        self.fabric.clip_gradients(
-                            self.discriminator,
-                            self.discriminator_optimizer,
-                            max_norm=self.config.gradient_clip_val,
-                            error_if_nonfinite=False,
-                        )
-                        self.discriminator_optimizer.step()
-                        self.discriminator_optimizer.zero_grad()
+                    discriminator_grad_clip_dict = (
+                        self.handle_discriminator_grad_clipping()
+                    )
+                    extra_opt_steps_dict.update(discriminator_grad_clip_dict)
+                    self.discriminator_optimizer.step()
+                    self.discriminator_optimizer.zero_grad()
 
         return extra_opt_steps_dict
+
+    def handle_discriminator_grad_clipping(self):
+        discriminator_params = get_params(list(self.discriminator.parameters()))
+        discriminator_grad_norm_before_clip = torch_utils.grad_norm(
+            discriminator_params
+        )
+
+        if self.config.check_grad_mag:
+            bad_grads = (
+                torch.isnan(discriminator_grad_norm_before_clip)
+                or discriminator_grad_norm_before_clip > 1000000.0
+            )
+        else:
+            bad_grads = torch.isnan(discriminator_grad_norm_before_clip)
+
+        # sanity check
+        discriminator_bad_grads_count = 0
+        if bad_grads:
+
+            if self.config.fail_on_bad_grads:
+                all_params = torch.cat(
+                    [
+                        p.grad.view(-1)
+                        for p in discriminator_params
+                        if p.grad is not None
+                    ],
+                    dim=0,
+                )
+                raise ValueError(
+                    f"NaN gradient"
+                    + f" {all_params.isfinite().logical_not().float().mean().item()}"
+                    + f" {all_params.abs().min().item()}"
+                    + f" {all_params.abs().max().item()}"
+                    + f" {discriminator_grad_norm_before_clip.item()}"
+                )
+            else:
+                discriminator_bad_grads_count = 1
+                for p in discriminator_params:
+                    if p.grad is not None:
+                        p.grad.zero_()
+
+        if self.config.gradient_clip_val > 0:
+            self.fabric.clip_gradients(
+                self.discriminator,
+                self.discriminator_optimizer,
+                max_norm=self.config.gradient_clip_val,
+                error_if_nonfinite=False,
+            )
+        discriminator_grad_norm_after_clip = torch_utils.grad_norm(discriminator_params)
+
+        clip_dict = {
+            "jd/grad_norm_before_clip": discriminator_grad_norm_before_clip.detach(),
+            "jd/grad_norm_after_clip": discriminator_grad_norm_after_clip.detach(),
+            "jd/bad_grads_count": discriminator_bad_grads_count,
+        }
+
+        return clip_dict
 
     def handle_reset(self, actor_state):
         actor_state = super().handle_reset(actor_state)

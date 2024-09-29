@@ -246,6 +246,7 @@ class PPO:
         self.time_report.add_timer("algorithm")
         self.time_report.add_timer("epoch")
         self.time_report.start_timer("algorithm")
+        self.fabric.call("on_fit_start", self)
 
         while self.current_epoch < self.config.max_epochs:
             self.epoch_start_time = time.time()
@@ -320,6 +321,7 @@ class PPO:
         self.time_report.end_timer("algorithm")
         self.time_report.report()
         self.save()
+        self.fabric.call("on_fit_end", self)
 
     @torch.no_grad()
     def play_steps(self):
@@ -723,8 +725,6 @@ class PPO:
         state_dict = self.get_state_dict({})
         self.fabric.save(save_dir / name, state_dict)
 
-        print(f"Saved model to {save_dir / name}.")
-
         if self.fabric.global_rank == 0:
             if root_dir != save_dir:
                 if (root_dir / "last.ckpt").is_symlink():
@@ -799,9 +799,9 @@ class PPO:
         actor_grad_norm_after_clip = torch_utils.grad_norm(actor_params)
 
         clip_dict = {
-            "grad_norm_before_clip": actor_grad_norm_before_clip.detach(),
-            "grad_norm_after_clip": actor_grad_norm_after_clip.detach(),
-            "bad_grads_count": actor_bad_grads_count,
+            "actor/grad_norm_before_clip": actor_grad_norm_before_clip.detach(),
+            "actor/grad_norm_after_clip": actor_grad_norm_after_clip.detach(),
+            "actor/bad_grads_count": actor_bad_grads_count,
         }
 
         return clip_dict
@@ -850,9 +850,9 @@ class PPO:
         critic_grad_norm_after_clip = torch_utils.grad_norm(critic_params)
 
         clip_dict = {
-            "grad_norm_before_clip": critic_grad_norm_before_clip.detach(),
-            "grad_norm_after_clip": critic_grad_norm_after_clip.detach(),
-            "bad_grads_count": critic_bad_grads_count,
+            "critic/grad_norm_before_clip": critic_grad_norm_before_clip.detach(),
+            "critic/grad_norm_after_clip": critic_grad_norm_after_clip.detach(),
+            "critic/bad_grads_count": critic_bad_grads_count,
         }
         return clip_dict
 
