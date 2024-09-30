@@ -50,8 +50,8 @@ class MaskedMimicTaskHumanoid(BaseMaskedMimicTask, MaskedMimicHumanoid):  # type
     ###############################################################
     # Handle reset
     ###############################################################
-    def reset_env_tensors(self, env_ids):
-        super().reset_env_tensors(env_ids)
+    def reset_env_tensors(self, env_ids, object_ids=None):
+        super().reset_env_tensors(env_ids, object_ids)
 
         env_ids_int32 = self.get_task_actor_ids_for_reset(env_ids)
         if env_ids_int32 is not None:

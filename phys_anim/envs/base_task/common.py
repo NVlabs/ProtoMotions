@@ -27,6 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 from typing import TYPE_CHECKING
+import torch
 
 if TYPE_CHECKING:
     from phys_anim.envs.base_task.isaacgym import TaskHumanoid

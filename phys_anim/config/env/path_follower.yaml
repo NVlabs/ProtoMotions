@@ -8,6 +8,7 @@ env:
   _target_: phys_anim.envs.path_following.${backbone}.PathFollowingHumanoid
   config:
     enable_height_termination: False
+    max_episode_length: 300
 
     path_follower_params:
       num_traj_samples: 10
@@ -33,3 +34,8 @@ env:
       enable_path_termination: False
       height_conditioned: True
       num_path_obs_per_point: ${eval:${.height_conditioned}*1+2}
+
+eval_overrides:
+  env:
+    config:
+      max_episode_length: 300

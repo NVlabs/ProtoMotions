@@ -82,7 +82,7 @@ class PathFollowingHumanoid(BasePathFollowing, TaskHumanoid):  # type: ignore[mi
     def _build_marker(self, env_id, env_ptr):
         default_pose = gymapi.Transform()
 
-        for i in range(self._num_traj_samples):
+        for i in range(self.config.path_follower_params.num_traj_samples):
             marker_handle = self.gym.create_actor(
                 env_ptr,
                 self._marker_asset,
@@ -105,7 +105,7 @@ class PathFollowingHumanoid(BasePathFollowing, TaskHumanoid):  # type: ignore[mi
         num_actors = self.root_states.shape[0] // self.num_envs
         self._marker_states = self.root_states.view(
             self.num_envs, num_actors, self.root_states.shape[-1]
-        )[..., 1 : (1 + self._num_traj_samples), :]
+        )[..., 1 : (1 + self.config.path_follower_params.num_traj_samples), :]
         self._marker_pos = self._marker_states[..., :3]
 
         self._marker_actor_ids = self.humanoid_actor_ids.unsqueeze(
@@ -147,7 +147,9 @@ class PathFollowingHumanoid(BasePathFollowing, TaskHumanoid):  # type: ignore[mi
             if not self.config.path_follower_params.height_conditioned:
                 verts[..., 2] = self.humanoid_root_states[i, 2]  # ZL Hack
             else:
-                verts[..., 2] += self.get_ground_heights(bodies_positions)[i]
+                verts[..., 2] += self.get_ground_heights(
+                    self.humanoid_root_states[i, :2].view(1, 2)
+                ).view(-1)
             lines = torch.cat([verts[:-1], verts[1:]], dim=-1).cpu().numpy()
             curr_cols = np.broadcast_to(cols, [lines.shape[0], cols.shape[-1]])
             self.gym.add_lines(self.viewer, env_ptr, lines.shape[0], lines, curr_cols)

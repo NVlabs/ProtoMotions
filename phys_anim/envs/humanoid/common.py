@@ -534,7 +534,7 @@ class BaseHumanoid(Humanoid):
         self.reset_ref_env_ids = []
         self.reset_ref_object_ids = []
 
-    def reset_env_tensors(self, env_ids):
+    def reset_env_tensors(self, env_ids, object_ids=None):
         self.progress_buf[env_ids] = 0
         self.reset_buf[env_ids] = 0
         self.terminate_buf[env_ids] = 0

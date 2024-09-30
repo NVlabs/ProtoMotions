@@ -32,7 +32,7 @@ import torch
 from torch import Tensor
 
 from phys_anim.envs.env_utils.path_generator import PathGenerator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Tuple
 
 if TYPE_CHECKING:
     from phys_anim.envs.path_following.isaacgym import PathFollowingHumanoid
@@ -62,7 +62,9 @@ class BasePathFollowing(PathFollowingHumanoid):  # type: ignore[misc]
         self._fail_height_dist = 0.5
 
         self.build_path_generator()
-        self.reset_path_ids = None
+        self.reset_path_ids = torch.arange(
+            self.num_envs, dtype=torch.long, device=self.device
+        )
 
     ###############################################################
     # Handle resets
@@ -275,7 +277,7 @@ def compute_path_reward(head_pos, tar_pos, height_conditioned):
     return reward
 
 
-@torch.jit.script
+# @torch.jit.script
 def compute_humanoid_reset(
     reset_buf,
     progress_buf,
@@ -293,6 +295,10 @@ def compute_humanoid_reset(
     head_body_id,
 ):
     # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, float, float, float, bool, bool, bool, Tensor, int) -> Tuple[Tensor, Tensor]
+    print(enable_early_termination)
+    print(enable_path_termination)
+    print(enable_height_termination)
+    exit(0)
     terminated = torch.zeros_like(reset_buf)
 
     if enable_early_termination:
