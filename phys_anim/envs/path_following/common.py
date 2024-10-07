@@ -277,7 +277,7 @@ def compute_path_reward(head_pos, tar_pos, height_conditioned):
     return reward
 
 
-# @torch.jit.script
+@torch.jit.script
 def compute_humanoid_reset(
     reset_buf,
     progress_buf,
@@ -295,10 +295,6 @@ def compute_humanoid_reset(
     head_body_id,
 ):
     # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, float, float, float, bool, bool, bool, Tensor, int) -> Tuple[Tensor, Tensor]
-    print(enable_early_termination)
-    print(enable_path_termination)
-    print(enable_height_termination)
-    exit(0)
     terminated = torch.zeros_like(reset_buf)
 
     if enable_early_termination:

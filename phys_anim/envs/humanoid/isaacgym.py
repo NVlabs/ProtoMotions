@@ -1040,7 +1040,7 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
             self.compute_observations(env_ids)
 
     def reset_env_tensors(self, env_ids, object_ids=None):
-        super().reset_env_tensors(env_ids)
+        super().reset_env_tensors(env_ids, object_ids)
 
         actor_ids = self.humanoid_actor_ids[env_ids]
         set_root_state_ids = actor_ids
