@@ -31,7 +31,7 @@ env:
         head_height_min: 0.4
         use_naive_path_generator: False
       path_obs_size: ${eval:${.num_path_obs_per_point}*${.num_traj_samples}}
-      enable_path_termination: False
+      enable_path_termination: True
       height_conditioned: True
       num_path_obs_per_point: ${eval:${.height_conditioned}*1+2}
 
@@ -39,3 +39,5 @@ eval_overrides:
   env:
     config:
       max_episode_length: 300
+      path_follower_params:
+        enable_path_termination: False
