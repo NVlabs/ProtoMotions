@@ -109,7 +109,7 @@ def sloped_subterrain(subterrain: SubTerrain, slope=1):
     Generate a sloped terrain
 
     Parameters:
-        subterrain (phys_anim.envs.env_utils.terrains.subterrain.SubTerrain): the terrain
+        subterrain (phys_anim.envs.env_utils.terrains.route_subterrain.RouteSubTerrain): the terrain
         slope (float): positive or negative slope
     Returns:
         terrain (SubTerrain): update terrain

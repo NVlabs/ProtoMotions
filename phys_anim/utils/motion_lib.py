@@ -44,11 +44,6 @@ from poselib.core.rotation3d import quat_angle_axis, quat_inverse, quat_mul_norm
 from poselib.skeleton.skeleton3d import SkeletonMotion, SkeletonState
 
 
-def quat_w_first(rot):
-    rot = torch.cat([rot[..., [-1]], rot[..., :-1]], -1)
-    return rot
-
-
 @dataclass
 class MotionState:
     root_pos: Tensor
@@ -66,26 +61,6 @@ class MotionState:
 
 
 class LoadedMotions(nn.Module):
-    """
-    Tuples here needed so the class can hash, which is
-    needed so the module can be iterated over in a parent
-    module's children.
-    """
-
-    motions: Tuple[SkeletonMotion]
-    motion_lengths: Tensor
-    motion_weights: Tensor
-    motion_timings: Tensor
-    motion_fps: Tensor
-    motion_dt: Tensor
-    motion_num_frames: Tensor
-    motion_files: Tuple[str]
-    sub_motion_to_motion: Tensor
-    ref_respawn_offsets: Tensor
-    text_embeddings: Tensor
-    has_text_embeddings: Tensor
-    supported_scene_ids: List[List[str]]
-
     def __init__(
         self,
         motions: Tuple[SkeletonMotion],
@@ -98,9 +73,10 @@ class LoadedMotions(nn.Module):
         motion_files: Tuple[str],
         sub_motion_to_motion: Tensor,
         ref_respawn_offsets: Tensor,
-        text_embeddings: Tensor,
-        has_text_embeddings: Tensor,
-        supported_scene_ids: List[List[str]],
+        text_embeddings: Tensor = None,
+        has_text_embeddings: Tensor = None,
+        supported_scene_ids: List[List[str]] = None,
+        **kwargs,  # Catch some nn.Module arguments that aren't needed
     ):
         super().__init__()
         self.motions = motions
@@ -117,10 +93,15 @@ class LoadedMotions(nn.Module):
         self.register_buffer(
             "ref_respawn_offsets", ref_respawn_offsets, persistent=False
         )
+        if text_embeddings is None:
+            text_embeddings = torch.zeros(len(motions), 3, 512, dtype=torch.float32)
+            has_text_embeddings = torch.zeros(len(motions), dtype=torch.bool)
         self.register_buffer("text_embeddings", text_embeddings, persistent=False)
         self.register_buffer(
             "has_text_embeddings", has_text_embeddings, persistent=False
         )
+        if supported_scene_ids is None:
+            supported_scene_ids = [None for _ in range(len(motions))]
         self.supported_scene_ids = supported_scene_ids
 
 
@@ -146,11 +127,14 @@ class MotionLib(DeviceDtypeModuleMixin):
         device="cpu",
         ref_height_adjust: float = 0,
         target_frame_rate: int = 30,
-        w_last: bool = True,
         create_text_embeddings: bool = False,
         spawned_scene_ids: List[str] = None,
         fix_motion_heights: bool = True,
         skeleton_tree: Any = None,
+        rb_conversion: Tensor = None,
+        dof_conversion: Tensor = None,
+        local_rot_conversion: Tensor = None,
+        w_last: bool = True,
     ):
         super().__init__()
         self.w_last = w_last
@@ -161,6 +145,10 @@ class MotionLib(DeviceDtypeModuleMixin):
         self.dof_offsets = dof_offsets
         self.num_dof = dof_offsets[-1]
         self.ref_height_adjust = ref_height_adjust
+        self.rb_conversion = rb_conversion
+        self.dof_conversion = dof_conversion
+        self.local_rot_conversion = local_rot_conversion
+
         self.register_buffer(
             "key_body_ids",
             torch.tensor(key_body_ids, dtype=torch.long, device=device),
@@ -179,7 +167,15 @@ class MotionLib(DeviceDtypeModuleMixin):
             print(f"Loading motions from state file: {motion_file}")
 
             with open(motion_file, "rb") as file:
-                self.state: LoadedMotions = torch.load(file, map_location="cpu")
+                state: LoadedMotions = torch.load(file, map_location="cpu")
+
+            # Create LoadedMotions instance with loaded state dict
+            # We re-create to enable backwards compatibility. This allows LoadedMotions class to accept "None" values and set defaults if needed.
+            state_dict = {
+                **vars(state),
+                **{k: v for k, v in state._buffers.items() if v is not None},
+            }
+            self.state = LoadedMotions(**state_dict)
 
         motions = self.state.motions
         self.register_buffer(
@@ -358,13 +354,19 @@ class MotionLib(DeviceDtypeModuleMixin):
             return self.state.text_embeddings[sub_motion_ids, indices]
         return 0
 
-    def sample_time(self, sub_motion_ids, truncate_time=None):
+    def sample_time(self, sub_motion_ids, max_time=None, truncate_time=None):
         phase = torch.rand(sub_motion_ids.shape, device=self.device)
 
         motion_len = (
             self.state.motion_timings[sub_motion_ids, 1]
             - self.state.motion_timings[sub_motion_ids, 0]
         )
+        if max_time is not None:
+            motion_len = torch.clamp(
+                motion_len,
+                max=max_time,
+            )
+
         if truncate_time is not None:
             assert truncate_time >= 0.0
             motion_len -= truncate_time
@@ -451,8 +453,19 @@ class MotionLib(DeviceDtypeModuleMixin):
         global_translation[:, :, 2] += self.ref_height_adjust
 
         if not self.w_last:
-            global_rotation = quat_w_first(global_rotation)
-            local_rotation = quat_w_first(local_rotation)
+            global_rotation = rotations.xyzw_to_wxyz(global_rotation)
+            local_rotation = rotations.xyzw_to_wxyz(local_rotation)
+
+        if self.rb_conversion is not None:
+            global_translation = global_translation[:, self.rb_conversion]
+            global_rotation = global_rotation[:, self.rb_conversion]
+            global_vel = global_vel[:, self.rb_conversion]
+            global_ang_vel = global_ang_vel[:, self.rb_conversion]
+        if self.dof_conversion is not None:
+            dof_pos = dof_pos[:, self.dof_conversion]
+            dof_vel = dof_vel[:, self.dof_conversion]
+        if self.local_rot_conversion is not None:
+            local_rotation = local_rotation[:, self.local_rot_conversion]
 
         motion_state = MotionState(
             root_pos=None,
@@ -579,10 +592,21 @@ class MotionLib(DeviceDtypeModuleMixin):
         global_ang_vel = (
             1.0 - blend_exp
         ) * global_ang_vel0 + blend_exp * global_ang_vel1
-
         if not self.w_last:
-            root_rot = quat_w_first(root_rot)
-            rb_rot = quat_w_first(rb_rot)
+            root_rot = rotations.xyzw_to_wxyz(root_rot)
+            rb_rot = rotations.xyzw_to_wxyz(rb_rot)
+            local_rot = rotations.xyzw_to_wxyz(local_rot)
+
+        if self.rb_conversion is not None:
+            rb_pos = rb_pos[:, self.rb_conversion]
+            rb_rot = rb_rot[:, self.rb_conversion]
+            global_vel = global_vel[:, self.rb_conversion]
+            global_ang_vel = global_ang_vel[:, self.rb_conversion]
+        if self.dof_conversion is not None:
+            dof_pos = dof_pos[:, self.dof_conversion]
+            dof_vel = dof_vel[:, self.dof_conversion]
+        if self.local_rot_conversion is not None:
+            local_rot = local_rot[:, self.local_rot_conversion]
 
         motion_state = MotionState(
             root_pos=root_pos,
@@ -618,7 +642,6 @@ class MotionLib(DeviceDtypeModuleMixin):
         motion_num_frames = []
         text_embeddings = []
         has_text_embeddings = []
-
         (
             motion_files,
             motion_weights,
@@ -1119,11 +1142,11 @@ def fix_heights(motion, skeleton_tree):
             skeleton_tree = motion.skeleton_tree
     body_heights = motion.global_translation[..., 2]
     min_height = body_heights.min()
-    
+
     if skeleton_tree is None:
         motion.global_translation[..., 2] -= min_height
         return motion
-    
+
     root_translation = motion.root_translation
     root_translation[:, 2] -= min_height
 

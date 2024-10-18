@@ -27,7 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import os
-from typing import Any, Type
+from typing import Type
 
 
 # This is useful for autocomplete. Import is ignored at runtime.
@@ -69,9 +69,10 @@ class SlurmAutoResume(EmptyCallBack):
         self._autoresume_sent = False
 
     def _request_autoresume(self, save_path) -> None:
-        self.details["checkpoint"] = save_path
-        AutoResume.request_resume(user_dict=self.details)
-        print("Finished requesting autoresume, should now exit gracefully.")
+        if not self._autoresume_sent:
+            self.details["checkpoint"] = save_path
+            AutoResume.request_resume(user_dict=self.details)
+            print("Finished requesting autoresume.")
 
     @property
     def terminate(self) -> bool:
@@ -79,7 +80,7 @@ class SlurmAutoResume(EmptyCallBack):
 
     def _check_autoresume(self, agent: PPO) -> None:
         # Only rank 0 should check and request auto-resume. It should then update the rest.
-        if self.terminate and not self._autoresume_sent:
+        if self.terminate:
             print("Should autoresume!")
             agent.save()
             if agent.fabric.global_rank == 0:
@@ -89,5 +90,14 @@ class SlurmAutoResume(EmptyCallBack):
             agent._should_stop = True
             self._autoresume_sent = True
 
+    def on_fit_start(self, agent: PPO) -> None:
+        if agent.fabric.global_rank == 0:
+            self._request_autoresume(f"{agent.fabric.loggers[0].root_dir}/last.ckpt")
+        self._autoresume_sent = True
+
     def before_play_steps(self, agent: PPO) -> None:
         self._check_autoresume(agent)
+
+    def on_fit_end(self, agent: PPO) -> None:
+        if agent.fabric.global_rank == 0:
+            AutoResume.stop_resuming()

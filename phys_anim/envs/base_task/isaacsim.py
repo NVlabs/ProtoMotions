@@ -31,7 +31,8 @@ from phys_anim.envs.amp.isaacsim import DiscHumanoid
 
 
 class TaskHumanoid(BaseTask, DiscHumanoid):
-    def compute_observations(self, env_ids=None):
-        if self._env._render:
+    def render(self):
+        super().render()
+
+        if not self.headless:
             self.draw_task()
-        super().compute_observations(env_ids)

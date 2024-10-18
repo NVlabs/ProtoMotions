@@ -70,7 +70,7 @@ env:
       enabled: False
       sampling_criteria: reward
       bucket_width: 1.0
-      min_bucket_weight: 0.0
+      min_bucket_weight: 1e-6
       dynamic_weight_pow: 1.0
       dynamic_weight_max: 40
       update_dynamic_weight_epochs: 5

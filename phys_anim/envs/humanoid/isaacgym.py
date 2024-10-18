@@ -39,7 +39,7 @@ from rich.progress import Progress
 
 from isaac_utils import rotations, torch_utils
 from phys_anim.envs.humanoid.common import BaseHumanoid
-from phys_anim.envs.base_interface.utils import build_pd_action_offset_scale
+from phys_anim.envs.humanoid.humanoid_utils import build_pd_action_offset_scale
 from phys_anim.envs.base_interface.isaacgym import GymBaseInterface
 from phys_anim.utils.file_utils import load_yaml
 from phys_anim.utils.motion_lib import MotionLib
@@ -154,17 +154,23 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
         self.initial_rigid_body_vel = self.rigid_body_vel.clone()
         self.initial_rigid_body_ang_vel = self.rigid_body_ang_vel.clone()
 
+        contact_force_tensor = gymtorch.wrap_tensor(contact_force_tensor)
+
         if self.total_num_objects == 0:
-            contact_force_tensor = gymtorch.wrap_tensor(contact_force_tensor)
+            self.contact_forces = contact_force_tensor.view(
+                self.num_envs, bodies_per_env, 3
+            )[..., : self.num_bodies, :]
+            self.object_contact_forces = None
         else:
-            contact_force_tensor = gymtorch.wrap_tensor(contact_force_tensor)[
-                : -self.total_num_objects
-            ]
-        self.contact_forces = contact_force_tensor.view(
-            self.num_envs, bodies_per_env, 3
-        )[..., : self.num_bodies, :]
+            self.contact_forces = contact_force_tensor[: -self.total_num_objects].view(
+                self.num_envs, bodies_per_env, 3
+            )[..., : self.num_bodies, :]
+            self.object_contact_forces = contact_force_tensor[-self.total_num_objects :]
 
         self.key_body_ids = self.build_body_ids_tensor(self.config.robot.key_bodies)
+        self.non_termination_contact_body_ids = self.build_body_ids_tensor(
+            self.config.robot.non_termination_contact_bodies
+        )
         self.contact_body_ids = self.build_body_ids_tensor(
             self.config.robot.contact_bodies
         )
@@ -173,7 +179,7 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
         self.process_dof_props(props)
         self.create_legged_robot_tensors()
 
-        if self.viewer is not None:
+        if not self.headless:
             self.init_camera()
 
         self.export_video: bool = self.config.export_video
@@ -315,12 +321,6 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
         self.num_dof = self.gym.get_asset_dof_count(humanoid_asset)
         self.num_joints = self.gym.get_asset_joint_count(humanoid_asset)
 
-        if "h1" in asset_file:
-            motor_efforts = [360] * self.num_act
-        else:
-            actuator_props = self.gym.get_asset_actuator_properties(humanoid_asset)
-            motor_efforts = [prop.motor_effort for prop in actuator_props]
-
         # create force sensors at the feet
         right_foot_idx = self.gym.find_asset_rigid_body_index(
             humanoid_asset, self.config.robot.right_foot_name
@@ -332,9 +332,6 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
 
         self.gym.create_asset_force_sensor(humanoid_asset, right_foot_idx, sensor_pose)
         self.gym.create_asset_force_sensor(humanoid_asset, left_foot_idx, sensor_pose)
-
-        self.max_motor_effort = max(motor_efforts)
-        self.motor_efforts = torch_utils.to_torch(motor_efforts, device=self.device)
 
         self.humanoid_handles = []
         self.object_handles = []
@@ -390,7 +387,6 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
                     self.dof_limits_lower,
                     self.dof_limits_upper,
                     self.device,
-                    self.gym.get_asset_dof_names(humanoid_asset),
                 )
             )
 
@@ -694,8 +690,6 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
                             mesh_path = ply_path
                         mesh = as_mesh(trimesh.load_mesh(mesh_path))
                         w_x, w_y, w_z, m_x, m_y, m_z = compute_bounding_box(mesh)
-                        # Sample points evenly from the mesh surface
-
                     elif object_spawn_info.object_path.endswith(".urdf"):
                         import xml.etree.ElementTree as ET
 
@@ -918,6 +912,9 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
     def get_humanoid_root_states(self):
         return self.humanoid_root_states[..., :7].clone()
 
+    def get_object_root_states(self):
+        return self.object_root_states.clone()
+
     def get_num_actors_per_env(self):
         num_actors = (
             self.root_states.shape[0] - self.total_num_objects
@@ -935,9 +932,6 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
     def get_bodies_contact_buf(self):
         return self.contact_forces.clone()
 
-    def get_dof_offsets(self):
-        return self.dof_offsets
-
     def get_bodies_state(self):
         body_pos = self.rigid_body_pos.clone()
         body_rot = self.rigid_body_rot.clone()
@@ -954,11 +948,11 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
         )
         return return_dict
 
+    def get_dof_forces(self):
+        return self.dof_force_tensor
+
     def get_dof_state(self):
         return self.dof_pos.clone(), self.dof_vel.clone()
-
-    def get_humanoid_root_velocities(self):
-        return self.humanoid_root_states[:, 7:10].clone()
 
     ###############################################################
     # Environment step logic
@@ -1040,6 +1034,27 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
             self.compute_observations(env_ids)
 
     def reset_env_tensors(self, env_ids, object_ids=None):
+        if object_ids is None:
+            if torch.any(self.scene_ids >= 0):
+                # Get active objects states
+                active_scenes = self.scene_ids[self.scene_ids >= 0]
+                active_object_mask = torch.isin(
+                    self.object_id_to_scene_id, active_scenes
+                )
+                active_object_ids = torch.arange(
+                    len(self.object_id_to_scene_id), device=self.device
+                )[active_object_mask]
+
+                # Filter out static objects
+                non_static_mask = ~torch.tensor(
+                    [obj["is_static"] for obj in self.scene_lib.object_spawn_list],
+                    device=self.device,
+                )[active_object_ids]
+                non_static_active_object_ids = active_object_ids[non_static_mask]
+
+                if len(non_static_active_object_ids) > 0:
+                    object_ids = non_static_active_object_ids
+
         super().reset_env_tensors(env_ids, object_ids)
 
         actor_ids = self.humanoid_actor_ids[env_ids]
@@ -1231,14 +1246,19 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
                 )
 
     def setup_character_props(self):
-        self.dof_body_ids = self.config.robot.dof_body_ids
-        self.dof_offsets = self.config.robot.dof_offsets
+        self.dof_body_ids = self.config.robot.dfs_dof_body_ids
+        self.dof_offsets = []
+        previous_dof_name = "null"
+        for dof_offset, dof_name in enumerate(self.config.robot.dfs_dof_names):
+            if dof_name[:-2] != previous_dof_name:  # remove the "_x/y/z"
+                previous_dof_name = dof_name[:-2]
+                self.dof_offsets.append(dof_offset)
+        self.dof_offsets.append(len(self.config.robot.dfs_dof_names))
         self.dof_obs_size = self.config.robot.dof_obs_size
-        self.num_obs = self.config.robot.self_obs_max_coords
         self.num_act = self.config.robot.number_of_actions
 
     def render(self):
-        if self.viewer:
+        if not self.headless:
             self.update_camera()
             self.gym.clear_lines(self.viewer)
             self.draw_object_bounding_boxes()
@@ -1356,22 +1376,6 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
         env_ptr = self.envs[0]
         vertices = vertices.reshape(-1, 6)
         self.gym.add_lines(self.viewer, env_ptr, vertices.shape[0], vertices, color)
-
-    def build_body_ids_tensor(self, body_names):
-        body_ids = []
-
-        for body_name in body_names:
-            body_id = self.body_name_to_index(body_name)
-            assert body_id != -1
-            body_ids.append(body_id)
-
-        body_ids = torch_utils.to_torch(body_ids, device=self.device, dtype=torch.long)
-        return body_ids
-
-    def body_name_to_index(self, body_name):
-        return self.gym.find_actor_rigid_body_handle(
-            self.envs[0], self.humanoid_handles[0], body_name
-        )
 
     ###############################################################
     # Camera logic

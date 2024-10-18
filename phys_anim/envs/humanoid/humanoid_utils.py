@@ -46,7 +46,6 @@ def dof_to_obs(
     assert pose.shape[-1] == dof_offsets[-1]
     dof_obs_shape = pose.shape[:-1] + (dof_obs_size,)
     dof_obs = torch.zeros(dof_obs_shape, device=pose.device)
-    dof_obs_offset = 0
 
     for j in range(num_joints):
         dof_offset = dof_offsets[j]
@@ -82,7 +81,7 @@ def compute_humanoid_reward(obs_buf: Tensor) -> Tensor:
 
 
 def build_pd_action_offset_scale(
-    dof_offsets, dof_limits_lower, dof_limits_upper, device, dof_names=None
+    dof_offsets, dof_limits_lower, dof_limits_upper, device
 ):
     num_joints = len(dof_offsets) - 1
 
@@ -285,7 +284,7 @@ def compute_humanoid_reset(
     reset_buf: Tensor,
     progress_buf: Tensor,
     contact_buf: Tensor,
-    contact_body_ids: Tensor,
+    non_termination_contact_body_ids: Tensor,
     rigid_body_pos: Tensor,
     max_episode_length: float,
     enable_early_termination: bool,
@@ -295,13 +294,13 @@ def compute_humanoid_reset(
 
     if enable_early_termination:
         masked_contact_buf = contact_buf.clone()
-        masked_contact_buf[:, contact_body_ids, :] = 0
+        masked_contact_buf[:, non_termination_contact_body_ids, :] = 0
         fall_contact = torch.any(torch.abs(masked_contact_buf) > 0.1, dim=-1)
         fall_contact = torch.any(fall_contact, dim=-1)
 
         body_height = rigid_body_pos[..., 2]
         fall_height = body_height < termination_heights
-        fall_height[:, contact_body_ids] = False
+        fall_height[:, non_termination_contact_body_ids] = False
         fall_height = torch.any(fall_height, dim=-1)
 
         has_fallen = torch.logical_and(fall_contact, fall_height)
@@ -421,23 +420,20 @@ def quat_diff_norm(quat1: Tensor, quat2: Tensor, w_last: bool):
 def get_heights(
     root_states: Tensor,
     height_samples: Tensor,
-    has_terrain: bool,
     horizontal_scale: float,
 ):
     num_envs = root_states.shape[0]
-    heights = torch.zeros(num_envs, device=root_states.device)
 
-    if has_terrain:
-        points = root_states[..., :2].clone().reshape(num_envs, 1, 2)
-        points = (points / horizontal_scale).long()
-        px = points[:, :, 0].view(-1)
-        py = points[:, :, 1].view(-1)
-        px = torch.clip(px, 0, height_samples.shape[0] - 2)
-        py = torch.clip(py, 0, height_samples.shape[1] - 2)
+    points = root_states[..., :2].clone().reshape(num_envs, 1, 2)
+    points = (points / horizontal_scale).long()
+    px = points[:, :, 0].view(-1)
+    py = points[:, :, 1].view(-1)
+    px = torch.clip(px, 0, height_samples.shape[0] - 2)
+    py = torch.clip(py, 0, height_samples.shape[1] - 2)
 
-        heights1 = height_samples[px, py]
-        heights2 = height_samples[px + 1, py + 1]
-        heights = torch.max(heights1, heights2)
+    heights1 = height_samples[px, py]
+    heights2 = height_samples[px + 1, py + 1]
+    heights = torch.max(heights1, heights2)
 
     return heights.view(num_envs, -1)
 

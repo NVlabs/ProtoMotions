@@ -20,9 +20,10 @@ env:
     robot: ${robot}
 
     ## Observations
-    use_max_coords_obs: True
-    local_root_obs: True
-    root_height_obs: True
+    humanoid_obs:
+      use_max_coords_obs: True
+      local_root_obs: True
+      root_height_obs: True
 
     ## Termination
     termination_height: 0.15
@@ -78,8 +79,8 @@ env:
       - Sofas
       - Tables
       - LargeSofas
-    
-    object_ref_respawn_offset: 0.05
+
+    object_ref_respawn_offset: 0.1
 
     # Evaluation params
     visualize_markers: True

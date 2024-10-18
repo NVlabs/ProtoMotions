@@ -39,17 +39,15 @@ class BaseInterface(object):
         self.device = device
         self.headless = config.headless
 
-        # double check!
-        self.graphics_device_id = self.device.index
-        if self.headless is True:
-            self.graphics_device_id = -1
-
         self.num_envs = config.num_envs
 
         self.control_freq_inv = config.simulator.sim.control_freq_inv
 
     def get_obs_size(self):
         raise NotImplementedError
+
+    def on_environment_ready(self):
+        pass
 
     def step(self, actions):
         raise NotImplementedError

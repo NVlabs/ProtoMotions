@@ -27,36 +27,29 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import os
-from typing import Optional
+import sys
+from pathlib import Path
 
-import numpy as np
-from omni.isaac.core.robots.robot import Robot
-from omni.isaac.core.utils.stage import add_reference_to_stage
+import hydra
+from hydra.utils import instantiate
+from omegaconf import OmegaConf
+
+from utils.config_utils import *  # noqa: E402, F403
 
 
-class HumanoidRobot(Robot):
-    def __init__(
-        self,
-        prim_path: str,
-        name: Optional[str] = "Humanoid",
-        asset_path: Optional[str] = None,
-        translation: Optional[np.ndarray] = None,
-        orientation: Optional[np.ndarray] = None,
-    ) -> None:
-        self._asset_path = asset_path
-        self._name = name
+@hydra.main(config_path="config", config_name="base")
+def main(config: OmegaConf):
+    # resolve=False is important otherwise overrides
+    # at inference time won't work properly
+    # also, I believe this must be done before instantiation
 
-        if self._asset_path is None:
-            self._asset_path = os.path.join(
-                "phys_anim/data/assets", "usd/amp_humanoid.usd"
-            )
+    unresolved_conf = OmegaConf.to_container(config, resolve=False)
+    os.chdir(hydra.utils.get_original_cwd())
 
-        add_reference_to_stage(self._asset_path, prim_path)
+    print(f"Saving config file to main dir")
+    with open("config.yaml", "w") as file:
+        OmegaConf.save(unresolved_conf, file)
 
-        super().__init__(
-            prim_path=prim_path,
-            name=name,
-            translation=translation,
-            orientation=orientation,
-            articulation_controller=None,
-        )
+
+if __name__ == "__main__":
+    main()

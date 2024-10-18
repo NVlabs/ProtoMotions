@@ -46,10 +46,10 @@ class PathFollowingHumanoid(BasePathFollowing, TaskHumanoid):
     # Set up IsaacSim environment
     ###############################################################
     def set_up_scene(self, scene) -> None:
-        if self._env._render:
+        if not self.headless:
             self._load_marker_asset(scene)
         super().set_up_scene(scene)
-        if self._env._render:
+        if not self.headless:
             self.post_set_up_scene()
 
     def post_set_up_scene(self):

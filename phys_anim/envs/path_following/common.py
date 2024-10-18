@@ -151,13 +151,13 @@ class BasePathFollowing(PathFollowingHumanoid):  # type: ignore[misc]
             self.reset_buf,
             self.progress_buf,
             bodies_contact_buf,
-            self.contact_body_ids,
+            self.non_termination_contact_body_ids,
             bodies_positions,
             tar_pos,
-            self.max_episode_length,
+            self.config.max_episode_length,
             self._fail_dist,
             self._fail_height_dist,
-            self.enable_height_termination,
+            self.config.enable_height_termination,
             self.config.path_follower_params.enable_path_termination,
             self.config.path_follower_params.height_conditioned,
             self.termination_heights
@@ -169,7 +169,7 @@ class BasePathFollowing(PathFollowingHumanoid):  # type: ignore[misc]
     # Helpers
     ###############################################################
     def build_path_generator(self):
-        episode_dur = self.max_episode_length * self.dt
+        episode_dur = self.config.max_episode_length * self.dt
         self.path_generator = PathGenerator(
             self.config.path_follower_params.path_generator,
             self.device,
@@ -282,7 +282,7 @@ def compute_humanoid_reset(
     reset_buf,
     progress_buf,
     contact_buf,
-    contact_body_ids,
+    non_termination_contact_body_ids,
     rigid_body_pos,
     tar_pos,
     max_episode_length,
@@ -299,13 +299,13 @@ def compute_humanoid_reset(
 
     if enable_early_termination:
         masked_contact_buf = contact_buf.clone()
-        masked_contact_buf[:, contact_body_ids, :] = 0
+        masked_contact_buf[:, non_termination_contact_body_ids, :] = 0
         fall_contact = torch.any(torch.abs(masked_contact_buf) > 0.1, dim=-1)
         fall_contact = torch.any(fall_contact, dim=-1)
 
         body_height = rigid_body_pos[..., 2]
         fall_height = body_height < termination_heights
-        fall_height[:, contact_body_ids] = False
+        fall_height[:, non_termination_contact_body_ids] = False
         fall_height = torch.any(fall_height, dim=-1)
 
         has_fallen = torch.logical_and(fall_contact, fall_height)

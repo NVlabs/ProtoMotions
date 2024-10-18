@@ -4,15 +4,22 @@ robot:
   # Observation parameters
   dof_obs_size: ???
   number_of_actions: ???
-  self_obs_max_coords: ???
-  num_bodies: ???
+  self_obs_size: ${eval:${.self_obs_max_coords_size}+${len:${.contact_bodies}}*3*${env.config.humanoid_obs.observe_contacts}}
+  self_obs_max_coords_size: ???
+  num_bodies: ${len:${.bfs_body_names}}
+  contact_bodies: ${.bfs_body_names}
 
   # Control parameters
+  bfs_body_names: ???  # IsaacSim
+  dfs_body_names: ???  # IsaacGym
+
+  dfs_dof_names: ???
+  bfs_dof_names: ???
+
   dof_body_ids: ???
-  dof_offsets: ???
 
   key_bodies: null
-  contact_bodies: null
+  non_termination_contact_bodies: null
 
   foot_name: null
 

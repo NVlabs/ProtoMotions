@@ -164,9 +164,7 @@ class AMP(PPO):
                     self.fabric.backward(scaled_discriminator_loss)
 
                 if not is_accumulating:
-                    discriminator_grad_clip_dict = (
-                        self.handle_discriminator_grad_clipping()
-                    )
+                    discriminator_grad_clip_dict = self.handle_discriminator_grad_clipping()
                     extra_opt_steps_dict.update(discriminator_grad_clip_dict)
                     self.discriminator_optimizer.step()
                     self.discriminator_optimizer.zero_grad()
@@ -175,9 +173,7 @@ class AMP(PPO):
 
     def handle_discriminator_grad_clipping(self):
         discriminator_params = get_params(list(self.discriminator.parameters()))
-        discriminator_grad_norm_before_clip = torch_utils.grad_norm(
-            discriminator_params
-        )
+        discriminator_grad_norm_before_clip = torch_utils.grad_norm(discriminator_params)
 
         if self.config.check_grad_mag:
             bad_grads = (
@@ -193,11 +189,7 @@ class AMP(PPO):
 
             if self.config.fail_on_bad_grads:
                 all_params = torch.cat(
-                    [
-                        p.grad.view(-1)
-                        for p in discriminator_params
-                        if p.grad is not None
-                    ],
+                    [p.grad.view(-1) for p in discriminator_params if p.grad is not None],
                     dim=0,
                 )
                 raise ValueError(

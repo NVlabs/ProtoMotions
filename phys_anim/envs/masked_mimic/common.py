@@ -39,7 +39,7 @@ from phys_anim.envs.masked_mimic.masked_mimic_utils import (
     get_object_bounding_box_obs,
 )
 from phys_anim.envs.mimic.mimic_utils import dof_to_local, exp_tracking_reward
-from phys_anim.envs.base_interface.utils import quat_diff_norm
+from phys_anim.envs.humanoid.humanoid_utils import quat_diff_norm
 from phys_anim.envs.env_utils.general import HistoryBuffer, StepTracker
 
 if TYPE_CHECKING:
@@ -809,7 +809,7 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
         forces_delta = torch.clip(
             self.prev_contact_forces - current_contact_forces, min=0
         )[
-            :, self.contact_body_ids, 2
+            :, self.non_termination_contact_body_ids, 2
         ]  # get the Z axis
         kbf_rew = (
             forces_delta.sum(-1)
@@ -819,14 +819,16 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
 
         rew_dict["kbf_rew"] = kbf_rew
 
-        if self.config.backbone == "isaacgym":
-            # TODO: support power reward for IsaacSim
-            power = torch.abs(torch.multiply(self.dof_force_tensor, self.dof_vel)).sum(
-                dim=-1
-            )
-            pow_rew = -power
+        dof_forces = self.get_dof_forces()
+        power = torch.abs(torch.multiply(dof_forces, dv)).sum(dim=-1)
+        pow_rew = -power
 
-            rew_dict["pow_rew"] = pow_rew
+        has_reset_grace = (
+            self.reset_track_steps.steps <= self.config.mimic_reset_track.grace_period
+        )
+        pow_rew[has_reset_grace] = 0
+
+        rew_dict["pow_rew"] = pow_rew
 
         self.last_scaled_rewards: Dict[str, Tensor] = {
             k: v * getattr(self.config.mimic_reward_config.component_weights, f"{k}_w")
@@ -1155,7 +1157,7 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
         root_pos[:, -1] -= self.get_ground_heights(root_pos[:, :2]).view(-1)
         root_quat = root_states[:, 3:7]
 
-        object_root_states = self.object_root_states.clone()
+        object_root_states = self.get_object_root_states()
 
         return get_object_bounding_box_obs(
             object_ids=object_ids,

@@ -86,6 +86,7 @@ class MimicHumanoid(BaseMimic, DiscHumanoid):  # type: ignore[misc]
 
         num_mimic_tracking_points = self.num_bodies
 
+        # Mimic markers
         for i in range(num_mimic_tracking_points):
             if (
                 self.config.robot.mimic_small_marker_bodies is not None
@@ -116,22 +117,22 @@ class MimicHumanoid(BaseMimic, DiscHumanoid):  # type: ignore[misc]
             )
             self._marker_handles[env_id].append(marker_handle)
 
-        if self.terrain is not None:
-            for i in range(self.num_height_points):
-                marker_handle = self.gym.create_actor(
-                    env_ptr,
-                    self._marker_asset_small,
-                    default_pose,
-                    "marker",
-                    self.num_envs + 10,
-                    0,
-                    0,
-                )
-                color = gymapi.Vec3(0.0, 0.8, 0.0)
-                self.gym.set_rigid_body_color(
-                    env_ptr, marker_handle, 0, gymapi.MESH_VISUAL, color
-                )
-                self._marker_handles[env_id].append(marker_handle)
+        # Terrain markers
+        for i in range(self.num_height_points):
+            marker_handle = self.gym.create_actor(
+                env_ptr,
+                self._marker_asset_small,
+                default_pose,
+                "marker",
+                self.num_envs + 10,
+                0,
+                0,
+            )
+            color = gymapi.Vec3(0.0, 0.8, 0.0)
+            self.gym.set_rigid_body_color(
+                env_ptr, marker_handle, 0, gymapi.MESH_VISUAL, color
+            )
+            self._marker_handles[env_id].append(marker_handle)
 
     def _build_marker_state_tensors(self):
         num_markers_per_env = self.num_bodies
@@ -160,6 +161,7 @@ class MimicHumanoid(BaseMimic, DiscHumanoid):  # type: ignore[misc]
     # Helpers
     ###############################################################
     def _update_marker(self):
+        # Update mimic markers
         ref_state = self.motion_lib.get_mimic_motion_state(
             self.motion_ids, self.motion_times
         )
@@ -177,14 +179,14 @@ class MimicHumanoid(BaseMimic, DiscHumanoid):  # type: ignore[misc]
 
         markers_offset = self.num_bodies
 
-        if self.terrain is not None:
-            num_terrain_markers = self.num_height_points
-            height_maps = self.get_height_maps(None, return_all_dims=True)
-            height_maps = height_maps.view(self.num_envs, -1, 3)
-            self._marker_pos[
-                :, markers_offset : markers_offset + num_terrain_markers
-            ] = height_maps
-            markers_offset += num_terrain_markers
+        # Update terrain markers
+        num_terrain_markers = self.num_height_points
+        height_maps = self.get_height_maps(None, return_all_dims=True)
+        height_maps = height_maps.view(self.num_envs, -1, 3)
+        self._marker_pos[:, markers_offset : markers_offset + num_terrain_markers] = (
+            height_maps
+        )
+        markers_offset += num_terrain_markers
 
         self.gym.set_actor_root_state_tensor_indexed(
             self.sim,
@@ -199,5 +201,5 @@ class MimicHumanoid(BaseMimic, DiscHumanoid):  # type: ignore[misc]
     def render(self):
         super().render()
 
-        if self.viewer and self.config.visualize_markers:
+        if not self.headless and self.config.visualize_markers:
             self.draw_mimic_markers()

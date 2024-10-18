@@ -26,15 +26,12 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import torch
+from phys_anim.envs.masked_mimic.tasks.user_control.common import (
+    BaseMaskedMimicUserControl,
+)
+from phys_anim.envs.masked_mimic.isaacsim import MaskedMimicHumanoid
 
 
-def convert_dof_to_isaac_sim_format(
-    dof_pos, dof_vel, dof_offset_indices_isaac_gym_to_sim
-):
-    if dof_pos is not None:
-        dof_pos = dof_pos[:, dof_offset_indices_isaac_gym_to_sim]
-    if dof_vel is not None:
-        dof_vel = dof_vel[:, dof_offset_indices_isaac_gym_to_sim]
-
-    return dof_pos, dof_vel
+class MaskedMimicUserControlHumanoid(BaseMaskedMimicUserControl, MaskedMimicHumanoid):  # type: ignore[misc]
+    def __init__(self, config, device):
+        super().__init__(config=config, device=device)

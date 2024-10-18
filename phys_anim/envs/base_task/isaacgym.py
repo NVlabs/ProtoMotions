@@ -70,5 +70,5 @@ class TaskHumanoid(BaseTask, DiscHumanoid):  # type: ignore[misc]
     def render(self):
         super().render()
 
-        if self.viewer:
+        if not self.headless:
             self.draw_task()

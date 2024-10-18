@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING
 import torch
 from torch import Tensor
 
-from phys_anim.envs.base_interface.utils import build_disc_observations
+from phys_anim.envs.humanoid.humanoid_utils import build_disc_observations
 from phys_anim.envs.env_utils.general import HistoryBuffer
 
 if TYPE_CHECKING:
@@ -142,11 +142,6 @@ class BaseDisc(DiscHumanoid):  # type: ignore[misc]
 
         ref_state = self.motion_lib.get_motion_state(motion_ids, motion_times)
 
-        # Conversion
-        ref_state.dof_pos, ref_state.dof_vel = self.convert_dof(
-            ref_state.dof_pos, ref_state.dof_vel
-        )
-
         disc_obs_demo = build_disc_observations(
             ref_state.root_pos,
             ref_state.root_rot,
@@ -156,8 +151,8 @@ class BaseDisc(DiscHumanoid):  # type: ignore[misc]
             ref_state.dof_vel,
             ref_state.key_body_pos,
             torch.zeros(len(motion_ids), 1, device=self.device),
-            self.local_root_obs,
-            self.root_height_obs,
+            self.config.humanoid_obs.local_root_obs,
+            self.config.humanoid_obs.root_height_obs,
             self.dof_obs_size,
             self.get_dof_offsets(),
             False,
@@ -201,10 +196,6 @@ class BaseDisc(DiscHumanoid):  # type: ignore[misc]
 
         ref_state = self.motion_lib.get_motion_state(motion_ids, motion_times)
 
-        ref_state.dof_pos, ref_state.dof_vel = self.convert_dof(
-            ref_state.dof_pos, ref_state.dof_vel
-        )
-
         disc_obs_demo = build_disc_observations(
             ref_state.root_pos,
             ref_state.root_rot,
@@ -214,8 +205,8 @@ class BaseDisc(DiscHumanoid):  # type: ignore[misc]
             ref_state.dof_vel,
             ref_state.key_body_pos,
             torch.zeros(len(motion_ids), 1, device=self.device),
-            self.local_root_obs,
-            self.root_height_obs,
+            self.config.humanoid_obs.local_root_obs,
+            self.config.humanoid_obs.root_height_obs,
             self.dof_obs_size,
             self.get_dof_offsets(),
             False,
@@ -239,8 +230,8 @@ class BaseDisc(DiscHumanoid):  # type: ignore[misc]
                 dof_vel,
                 key_body_pos,
                 self.get_ground_heights(current_state.body_pos[:, 0, :2]),
-                self.local_root_obs,
-                self.root_height_obs,
+                self.config.humanoid_obs.local_root_obs,
+                self.config.humanoid_obs.root_height_obs,
                 self.dof_obs_size,
                 self.get_dof_offsets(),
                 False,
@@ -257,8 +248,8 @@ class BaseDisc(DiscHumanoid):  # type: ignore[misc]
                 dof_vel[env_ids],
                 key_body_pos[env_ids],
                 self.get_ground_heights(current_state.body_pos[:, 0, :2])[env_ids],
-                self.local_root_obs,
-                self.root_height_obs,
+                self.config.humanoid_obs.local_root_obs,
+                self.config.humanoid_obs.root_height_obs,
                 self.dof_obs_size,
                 self.get_dof_offsets(),
                 False,

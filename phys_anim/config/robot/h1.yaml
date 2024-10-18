@@ -4,18 +4,22 @@ defaults:
   - base
 
 robot:
+  bfs_body_names: ['pelvis', 'left_hip_yaw_link', 'right_hip_yaw_link', 'torso_link', 'left_hip_roll_link', 'right_hip_roll_link', 'left_shoulder_pitch_link', 'right_shoulder_pitch_link', 'left_hip_pitch_link', 'right_hip_pitch_link', 'left_shoulder_roll_link', 'right_shoulder_roll_link', 'left_knee_link', 'right_knee_link', 'left_shoulder_yaw_link', 'right_shoulder_yaw_link', 'left_ankle_link', 'right_ankle_link', 'left_elbow_link', 'right_elbow_link']
+  dfs_body_names: ['pelvis', 'left_hip_yaw_link', 'left_hip_roll_link', 'left_hip_pitch_link', 'left_knee_link', 'left_ankle_link', 'right_hip_yaw_link', 'right_hip_roll_link', 'right_hip_pitch_link', 'right_knee_link', 'right_ankle_link', 'torso_link', 'left_shoulder_pitch_link', 'left_shoulder_roll_link', 'left_shoulder_yaw_link', 'left_elbow_link', 'right_shoulder_pitch_link', 'right_shoulder_roll_link', 'right_shoulder_yaw_link', 'right_elbow_link']
+
+  bfs_dof_names: ['left_hip_yaw_joint', 'right_hip_yaw_joint', 'torso_joint', 'left_hip_roll_joint', 'right_hip_roll_joint', 'left_shoulder_pitch_joint', 'right_shoulder_pitch_joint', 'left_hip_pitch_joint', 'right_hip_pitch_joint', 'left_shoulder_roll_joint', 'right_shoulder_roll_joint', 'left_knee_joint', 'right_knee_joint', 'left_shoulder_yaw_joint', 'right_shoulder_yaw_joint', 'left_ankle_joint', 'right_ankle_joint', 'left_elbow_joint', 'right_elbow_joint']
+  dfs_dof_names: ['left_hip_yaw_joint', 'left_hip_roll_joint', 'left_hip_pitch_joint', 'left_knee_joint', 'left_ankle_joint', 'right_hip_yaw_joint', 'right_hip_roll_joint', 'right_hip_pitch_joint', 'right_knee_joint', 'right_ankle_joint', 'torso_joint', 'left_shoulder_pitch_joint', 'left_shoulder_roll_joint', 'left_shoulder_yaw_joint', 'left_elbow_joint', 'right_shoulder_pitch_joint', 'right_shoulder_roll_joint', 'right_shoulder_yaw_joint', 'right_elbow_joint']
+
   # Observation parameters
-  num_bodies: 20
   dof_obs_size: 19
   number_of_actions: 19
-  self_obs_max_coords: 298  # ${eval:1+20*(3+6+3+3)-3}
+  self_obs_max_coords_size: 298  # ${eval:1+20*(3+6+3+3)-3}
 
   # Control parameters
-  dof_body_ids: [ 1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 ]
-  dof_offsets: [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 ]
+  dfs_dof_body_ids: [ 1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 ]
 
   key_bodies: [ "left_ankle_link", "right_ankle_link", "left_elbow_link",  "right_elbow_link" ]
-  contact_bodies: [ "left_ankle_link", "right_ankle_link" ]
+  non_termination_contact_bodies: [ "left_ankle_link", "right_ankle_link" ]
   right_foot_name: "right_ankle_link"
   left_foot_name: "left_ankle_link"
 
@@ -64,7 +68,7 @@ robot:
       shoulder: 2
       elbow: 2
     # action scale: target angle = actionScale * action + defaultAngle
-    action_scale: 0.25
+    action_scale: 1.
     clamp_actions: 100.0
 
   asset:
@@ -96,3 +100,6 @@ env:
         fps: 200 # 1/dt , dt = 0.005
         control_freq_inv: 4  # decimation
         substeps: 1
+
+    mimic_reset_track:
+      grace_period: 10

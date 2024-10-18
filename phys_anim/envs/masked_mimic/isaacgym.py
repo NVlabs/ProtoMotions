@@ -80,15 +80,30 @@ class MaskedMimicHumanoid(BaseMaskedMimic, MimicHumanoid):  # type: ignore[misc]
             self._marker_handles[env_id].append(marker_handle)
 
         for i in range(num_masked_mimic_tracking_points):
-            marker_handle = self.gym.create_actor(
-                env_ptr,
-                self._marker_asset,
-                default_pose,
-                "marker",
-                self.num_envs + 10,
-                0,
-                0,
-            )
+            if (
+                self.config.robot.mimic_small_marker_bodies is not None
+                and self.config.masked_mimic_conditionable_bodies[i]
+                in self.config.robot.mimic_small_marker_bodies
+            ):
+                marker_handle = self.gym.create_actor(
+                    env_ptr,
+                    self._marker_asset_small,
+                    default_pose,
+                    "marker",
+                    self.num_envs + 10,
+                    0,
+                    0,
+                )
+            else:
+                marker_handle = self.gym.create_actor(
+                    env_ptr,
+                    self._marker_asset,
+                    default_pose,
+                    "marker",
+                    self.num_envs + 10,
+                    0,
+                    0,
+                )
             color = gymapi.Vec3(1.0, 1.0, 0.0)
             self.gym.set_rigid_body_color(
                 env_ptr, marker_handle, 0, gymapi.MESH_VISUAL, color

@@ -30,6 +30,7 @@ import math
 from typing import TYPE_CHECKING, Dict, Optional
 
 import torch
+import torch.nn.functional as F
 from torch import Tensor
 
 from isaac_utils import rotations, torch_utils
@@ -41,7 +42,7 @@ from phys_anim.envs.mimic.mimic_utils import (
     dof_to_local,
     exp_tracking_reward,
 )
-from phys_anim.envs.base_interface.utils import quat_diff_norm
+from phys_anim.envs.humanoid.humanoid_utils import quat_diff_norm
 from phys_anim.envs.env_utils.general import StepTracker
 
 if TYPE_CHECKING:
@@ -207,13 +208,10 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
         # Typically, SLURM jobs are restarted every few hours, which takes care of this.
         self._min_bucket_weight = torch.ones(
             total_num_buckets, dtype=torch.float, device=self.device
-        ) * max(
-            1.0 / total_num_buckets,
-            (
-                self.config.mimic_dynamic_sampling.min_bucket_weight
-                if self.config.mimic_dynamic_sampling.min_bucket_weight is not None
-                else 1e-6
-            ),
+        ) * (
+            self.config.mimic_dynamic_sampling.min_bucket_weight
+            if self.config.mimic_dynamic_sampling.min_bucket_weight is not None
+            else 1e-6
         )
         self.bucket_weights = torch.zeros(
             total_num_buckets, dtype=torch.float, device=self.device
@@ -304,7 +302,9 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
                 )
                 motion_ids[valid_samples:] = fallback_motion_ids
                 motion_times[valid_samples:] = self.motion_lib.sample_time(
-                    fallback_motion_ids, truncate_time=self.dt
+                    fallback_motion_ids,
+                    self.motion_lib.state.first_contact_time[fallback_motion_ids],
+                    truncate_time=self.dt,
                 )
                 new_scenes[valid_samples:] = fallback_scenes
                 valid_samples += remaining
@@ -344,9 +344,10 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
                         self.scene_lib.mark_scene_in_use(sampled_scenes[valid_mask])
 
                 # Iterate through invalid motion IDs and mark their corresponding buckets
-                for invalid_motion_id in sampled_motion_ids[~valid_mask]:
-                    invalid_buckets = self.bucket_motion_ids == invalid_motion_id
-                    norm_weight[invalid_buckets] = 0
+                if ~valid_mask.any():
+                    for invalid_motion_id in sampled_motion_ids[~valid_mask]:
+                        invalid_buckets = self.bucket_motion_ids == invalid_motion_id
+                        norm_weight[invalid_buckets] = 0
 
         return motion_ids, motion_times, new_scenes
 
@@ -511,7 +512,8 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
             )
 
             new_times = self.motion_lib.sample_time(
-                new_motion_ids, truncate_time=self.dt
+                new_motion_ids,
+                truncate_time=self.dt,
             )
 
         if self.config.mimic_motion_sampling.init_start_prob > 0:
@@ -526,7 +528,10 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
             init_random = torch.bernoulli(self.init_random_probs[: len(env_ids)])
             new_times = torch.where(
                 init_random == 1,
-                self.motion_lib.sample_time(new_motion_ids, truncate_time=self.dt),
+                self.motion_lib.sample_time(
+                    new_motion_ids,
+                    truncate_time=self.dt,
+                ),
                 new_times,
             )
 
@@ -640,17 +645,17 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
                         > entry.mimic_early_termination_thresh_on_flat
                     )
 
-                # no_scene_interaction = self.scene_ids[:] < 0
-                # tight_tracking_threshold = torch.logical_and(
-                #     no_scene_interaction, self.respawned_on_flat
-                # )
+                no_scene_interaction = self.scene_ids[:] < 0
+                tight_tracking_threshold = torch.logical_and(
+                    no_scene_interaction, self.respawned_on_flat
+                )
 
-                # entry_too_bad[tight_tracking_threshold] = entry_on_flat_too_bad[
-                #     tight_tracking_threshold
-                # ]
-                entry_too_bad[self.respawned_on_flat] = entry_on_flat_too_bad[
-                    self.respawned_on_flat
+                entry_too_bad[tight_tracking_threshold] = entry_on_flat_too_bad[
+                    tight_tracking_threshold
                 ]
+                # entry_too_bad[self.respawned_on_flat] = entry_on_flat_too_bad[
+                #     self.respawned_on_flat
+                # ]
 
                 reward_too_bad = torch.logical_or(reward_too_bad, entry_too_bad)
 
@@ -859,7 +864,7 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
         forces_delta = torch.clip(
             self.prev_contact_forces - current_contact_forces, min=0
         )[
-            :, self.contact_body_ids, 2
+            :, self.non_termination_contact_body_ids, 2
         ]  # get the Z axis
         kbf_rew = (
             forces_delta.sum(-1)
@@ -869,20 +874,16 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
 
         rew_dict["kbf_rew"] = kbf_rew
 
-        if self.config.backbone == "isaacgym":
-            # TODO: support power reward for IsaacSim
-            power = torch.abs(torch.multiply(self.dof_force_tensor, self.dof_vel)).sum(
-                dim=-1
-            )
-            pow_rew = -power
+        dof_forces = self.get_dof_forces()
+        power = torch.abs(torch.multiply(dof_forces, dv)).sum(dim=-1)
+        pow_rew = -power
 
-            has_reset_grace = (
-                self.reset_track_steps.steps
-                <= self.config.mimic_reset_track.grace_period
-            )
-            pow_rew[has_reset_grace] = 0
+        has_reset_grace = (
+            self.reset_track_steps.steps <= self.config.mimic_reset_track.grace_period
+        )
+        pow_rew[has_reset_grace] = 0
 
-            rew_dict["pow_rew"] = pow_rew
+        rew_dict["pow_rew"] = pow_rew
 
         self.last_scaled_rewards: Dict[str, Tensor] = {
             k: v * getattr(self.config.mimic_reward_config.component_weights, f"{k}_w")
@@ -1073,7 +1074,7 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
 
         times = torch.minimum(raw_future_times.view(-1), lengths).view(
             num_envs, num_future_steps, 1
-        ) - self.motion_times.view(num_envs, 1, 1)
+        ) - self.motion_times[env_ids].view(num_envs, 1, 1)
 
         obs = torch.cat([target_pose_obs, times], dim=-1).view(num_envs, -1)
 
@@ -1101,10 +1102,8 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
 
         ref_state = self.motion_lib.get_motion_state(target_ids, target_times)
 
-        target_dof_pos, _ = self.convert_dof(ref_state.dof_pos, None)
-
         target_local_rot = dof_to_local(
-            target_dof_pos, self.get_dof_offsets(), self.w_last
+            ref_state.dof_pos, self.get_dof_offsets(), self.w_last
         )
         residual_actions_as_quats = dof_to_local(
             residual_actions, self.get_dof_offsets(), self.w_last

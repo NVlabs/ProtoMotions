@@ -36,6 +36,7 @@ import tempfile
 
 from phys_anim.data.assets.skeleton_configs import isaacgym_asset_file_to_stats
 from phys_anim.utils.motion_lib import MotionLib
+from phys_anim.utils.motion_lib_h1 import H1_MotionLib
 
 
 def main(
@@ -46,29 +47,34 @@ def main(
     create_text_embeddings: bool = False,
     num_data_splits: int = None,
 ):
-    if humanoid_type is not None:
-        if humanoid_type == "amp_3d":
-            # ['right_hand', 'left_hand', 'right_foot', 'left_foot']
-            key_body_ids = [5, 8, 11, 14]
-            asset_file = "mjcf/amp_humanoid_3d.xml"
-        elif humanoid_type == "amp":
-            # ['right_hand', 'left_hand', 'right_foot', 'left_foot']
-            key_body_ids = [5, 8, 11, 14]
-            asset_file = "mjcf/amp_humanoid.xml"
-        elif humanoid_type == "amp_sword":
-            # ["right_hand", "left_hand", "right_foot", "left_foot", "sword", "shield"]
-            key_body_ids = [5, 10, 13, 16, 6, 9]
-            asset_file = "mjcf/amp_humanoid_sword_shield.xml"
-        elif humanoid_type == "smpl":
-            # ["right_hand", "left_hand", "right_foot", "left_foot"]
-            key_body_ids = [7, 3, 18, 23]
-            asset_file = "mjcf/smpl_humanoid.xml"
-        elif humanoid_type == "smplx":
-            # ["right_hand", "left_hand", "right_foot", "left_foot"]
-            key_body_ids = [7, 3, 17, 36]
-            asset_file = "mjcf/smplx_box_humanoid.xml"
-        else:
-            raise ValueError(f"Unknown humanoid type '{humanoid_type}'")
+    motion_lib = MotionLib
+    if humanoid_type == "amp_3d":
+        # ['right_hand', 'left_hand', 'right_foot', 'left_foot']
+        key_body_ids = [5, 8, 11, 14]
+        asset_file = "mjcf/amp_humanoid_3d.xml"
+    elif humanoid_type == "amp":
+        # ['right_hand', 'left_hand', 'right_foot', 'left_foot']
+        key_body_ids = [5, 8, 11, 14]
+        asset_file = "mjcf/amp_humanoid.xml"
+    elif humanoid_type == "amp_sword":
+        # ["right_hand", "left_hand", "right_foot", "left_foot", "sword", "shield"]
+        key_body_ids = [5, 10, 13, 16, 6, 9]
+        asset_file = "mjcf/amp_humanoid_sword_shield.xml"
+    elif humanoid_type == "smpl":
+        # ["right_hand", "left_hand", "right_foot", "left_foot"]
+        key_body_ids = [7, 3, 18, 23]
+        asset_file = "mjcf/smpl_humanoid.xml"
+    elif humanoid_type == "smplx":
+        # ["right_hand", "left_hand", "right_foot", "left_foot"]
+        key_body_ids = [7, 3, 17, 36]
+        asset_file = "mjcf/smplx_box_humanoid.xml"
+    elif humanoid_type == "h1_extended_hands":
+        # ["left_ankle_link", "right_ankle_link", "left_arm_end_effector",  "right_arm_end_effector"]
+        key_body_ids = [5, 10, 16, 21]
+        asset_file = "mjcf/h1_extended_hands.xml"
+        motion_lib = H1_MotionLib
+    else:
+        raise ValueError(f"Unknown humanoid type '{humanoid_type}'")
 
     (
         _dof_body_ids,
@@ -121,20 +127,22 @@ def main(
 
     for motion_file, outpath in motion_files:
         # Open and edit the motion file
-        with open(motion_file, 'r') as f:
+        with open(motion_file, "r") as f:
             motion_data = yaml.safe_load(f)
-        
+
         # Edit file paths
-        for motion in motion_data['motions']:
-            motion['file'] = str(amass_data_path.resolve() / motion['file'])
-        
+        for motion in motion_data["motions"]:
+            motion["file"] = str(amass_data_path.resolve() / motion["file"])
+
         # Save to a temporary file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as temp_file:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False
+        ) as temp_file:
             yaml.dump(motion_data, temp_file)
             temp_file_path = temp_file.name
 
         # Use the temporary file for MotionLib
-        mlib = MotionLib(
+        mlib = motion_lib(
             temp_file_path,
             dof_body_ids=_dof_body_ids,
             dof_offsets=_dof_offsets,

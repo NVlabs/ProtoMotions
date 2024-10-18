@@ -37,6 +37,8 @@ Public release!
 This codebase supports both IsaacGym and IsaacSim. You can install one or both and
 the simulation backend is selected via the configuration file.
 
+First run `git lfs fetch --all` to fetch all files stored in git-lfs.
+
 <details>
 <summary>IsaacGym</summary>
 
@@ -68,13 +70,12 @@ If you run into memory issues -- try reducing the number of environments by addi
 <summary>IsaacSim</summary>
 
 > **Important:**</br>
-> IsaacSim code is outdated. The code is provided as reference for how it can be used.</br>
-> We intend to release an updated version with fixed IsaacSim support in the near future.
+> IsaacSim integration on-going. Some features may not work yet.
 
-1. Install [IsaacSim](https://docs.omniverse.nvidia.com/app_isaacsim/app_isaacsim/install_basic.html)
+1. Install [IsaacSim](https://docs.omniverse.nvidia.com/isaacsim/latest/installation/install_workstation.html)
 2. Set `PYTHON_PATH`
 ```
-For Linux: alias PYTHON_PATH=~/.local/share/ov/pkg/isaac_sim-*/python.sh
+For Linux: alias PYTHON_PATH=~/.local/share/ov/pkg/isaac-sim-*/python.sh
 For Windows: doskey PYTHON_PATH=C:\Users\user\AppData\Local\ov\pkg\isaac_sim-*\python.bat $*
 For IsaacSim Docker: alias PYTHON_PATH=/isaac-sim/python.sh
 ```

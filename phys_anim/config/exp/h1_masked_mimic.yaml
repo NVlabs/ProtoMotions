@@ -1,0 +1,28 @@
+# @package _global_
+
+defaults:
+  - /algo: mimic_vae_dagger
+  - /env: masked_mimic
+  - /opt/disable_discriminator  # Default mimic experiments don't use the discriminator
+  - /terrain/terrain_obs
+  - /terrain/complex
+  - /opt/masked_mimic/transformer
+  - /opt/masked_mimic/text_conditioning
+  - /opt/masked_mimic/historical_pose_obs
+  - /opt/mimic/global_tracking
+  - /opt/mimic/early_termination_tracking_err
+  - /opt/mimic/dynamic_sampling
+  - /opt/legged_robot
+
+experiment_name: h1_masked_mimic
+
+# MaskedMimic has unused parameters.
+# We need to investigate why this is the case.
+# For now this flag helps avoid issues in multi-gpu/multi-node training.
+fabric:
+  strategy:
+    find_unused_parameters: true
+
+env:
+  config:
+    masked_mimic_conditionable_bodies: [pelvis, left_ankle_link, right_ankle_link, left_arm_end_effector, right_arm_end_effector]

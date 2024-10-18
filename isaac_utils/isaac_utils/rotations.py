@@ -144,20 +144,24 @@ def quat_apply(a: Tensor, b: Tensor, w_last: bool) -> Tensor:
 @torch.jit.script
 def quat_rotate(q: Tensor, v: Tensor, w_last: bool) -> Tensor:
     shape = q.shape
+    flat_q = q.reshape(-1, shape[-1])
+    flat_v = v.reshape(-1, v.shape[-1])
     if w_last:
-        q_w = q[:, -1]
-        q_vec = q[:, :3]
+        q_w = flat_q[:, -1]
+        q_vec = flat_q[:, :3]
     else:
-        q_w = q[:, 0]
-        q_vec = q[:, 1:]
-    a = v * (2.0 * q_w**2 - 1.0).unsqueeze(-1)
-    b = torch.cross(q_vec, v, dim=-1) * q_w.unsqueeze(-1) * 2.0
+        q_w = flat_q[:, 0]
+        q_vec = flat_q[:, 1:]
+    a = flat_v * (2.0 * q_w**2 - 1.0).unsqueeze(-1)
+    b = torch.cross(q_vec, flat_v, dim=-1) * q_w.unsqueeze(-1) * 2.0
     c = (
         q_vec
-        * torch.bmm(q_vec.view(shape[0], 1, 3), v.view(shape[0], 3, 1)).squeeze(-1)
+        * torch.bmm(
+            q_vec.reshape(flat_q.shape[0], 1, 3), flat_v.reshape(flat_q.shape[0], 3, 1)
+        ).squeeze(-1)
         * 2.0
     )
-    return a + b + c
+    return (a + b + c).reshape(v.shape)
 
 
 @torch.jit.script

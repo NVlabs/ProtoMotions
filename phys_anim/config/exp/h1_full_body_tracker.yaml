@@ -4,16 +4,12 @@ defaults:
   - /algo: mimic
   - /env: mimic
   - /opt/disable_discriminator  # Default mimic experiments don't use the discriminator
-  - /opt/mimic/mlp/target_pose_obs
+  - /terrain/terrain_obs
+  - /terrain/complex
+  - /opt/mimic/transformer/target_pose_with_time_obs
   - /opt/mimic/global_tracking
   - /opt/mimic/early_termination_tracking_err
   - /opt/mimic/dynamic_sampling
   - /opt/legged_robot
 
 experiment_name: h1_full_body_tracker
-ref_respawn_offset: 0.05
-
-env:
-  config:
-    mimic_reset_track:
-      steps_min: 200

@@ -17,7 +17,7 @@ if __name__ == "__main__":
             "hydra-core>=1.2.0",
             "matplotlib",
             "scikit-image",
-            "opencv-python",
+            "opencv-python==4.5.5.64",
             "trimesh",
             "rtree==1.2.0",
             "setuptools==69.5.1",

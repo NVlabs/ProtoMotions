@@ -28,10 +28,15 @@
 
 
 import numpy as np
+import os
+from pathlib import Path
+
+import omni
 from omni.isaac.core.prims import XFormPrim
 from omni.isaac.core.utils.prims import get_prim_at_path
 from omni.isaac.core.utils.stage import get_current_stage
-from pxr import Gf, PhysxSchema, Sdf, UsdLux, UsdPhysics
+import carb
+from pxr import Gf, PhysxSchema, Sdf, UsdLux, UsdPhysics, UsdShade, UsdGeom
 
 
 def set_drive_type(prim_path, drive_type):
@@ -96,16 +101,8 @@ def set_drive(
 def create_sphere_light(prim_path="/World/sphereLight", intensity=6000, radius=20):
     stage = get_current_stage()
     light = UsdLux.SphereLight.Define(stage, prim_path)
-    if intensity is not None:
-        if "isaac_sim-2023.1.1" in UsdLux.__path__[0]:
-            light.GetIntensityAttr().Set(intensity)
-        else:
-            light.GetPrim().GetAttribute("intensity").Set(intensity)
-    if "isaac_sim-2023.1.1" in UsdLux.__path__[0]:
-        light.GetRadiusAttr().Set(radius)
-    else:
-        light.GetPrim().GetAttribute("radius").Set(radius)
-    from pxr import UsdGeom
+    light.CreateIntensityAttr(intensity)
+    light.CreateRadiusAttr(radius)
 
     prim_at_path = stage.GetPrimAtPath(prim_path)
     xformable = UsdGeom.Xformable(prim_at_path)
@@ -115,7 +112,7 @@ def create_sphere_light(prim_path="/World/sphereLight", intensity=6000, radius=2
 def create_distant_light(prim_path="/World/defaultDistantLight", intensity=3000):
     stage = get_current_stage()
     light = UsdLux.DistantLight.Define(stage, prim_path)
-    light.GetPrim().GetAttribute("intensity").Set(intensity)
+    light.CreateIntensityAttr(intensity)
 
 
 def add_terrain_to_stage(stage, vertices, triangles, position=None, orientation=None):
@@ -124,6 +121,23 @@ def add_terrain_to_stage(stage, vertices, triangles, position=None, orientation=
     terrain_mesh.GetAttribute("points").Set(vertices)
     terrain_mesh.GetAttribute("faceVertexIndices").Set(triangles.flatten())
     terrain_mesh.GetAttribute("faceVertexCounts").Set(np.asarray([3] * num_faces))
+
+    # Create a reference to your material USD
+    material_prim = stage.DefinePrim("/World/Materials/terrain_material", "Material")
+
+    path = Path(os.path.dirname(os.path.abspath(__file__))).parents[2]
+    material_usd = path / "data" / "assets" / "usd" / "terrain_material.usda"
+
+    material_prim.GetReferences().AddReference(str(material_usd))
+    # Get the existing material
+    material_prim = stage.GetPrimAtPath(
+        "/World/Materials/terrain_material/solid_white_grid"
+    )
+    # Get the material
+    material = UsdShade.Material(material_prim)
+
+    # Assign material to mesh
+    UsdShade.MaterialBindingAPI(terrain_mesh).Bind(material)
 
     terrain = XFormPrim(
         prim_path="/World/terrain",

@@ -73,10 +73,6 @@ class ExportMotion(RL_EvalCallback):
                 curr_root_pos = torch.stack(
                     [root_pos[idx] for root_pos in trajectory_data["root_pos"]]
                 )
-                curr_root_pos[..., :2] = self.env.convert_to_global_coords(
-                    curr_root_pos[..., :2],
-                    self.env.env_offsets[idx, :2].view(1, 1, 2).cpu(),
-                )
                 curr_body_rot = torch.stack(
                     [global_rot[idx] for global_rot in trajectory_data["global_rot"]]
                 )
@@ -97,11 +93,6 @@ class ExportMotion(RL_EvalCallback):
                             ]
                         )
                     )
-                    if not hasattr(self.env, "export_motion_dont_convert_to_global"):
-                        target_poses[..., :2] = self.env.convert_to_global_coords(
-                            target_poses[..., :2],
-                            self.env.env_offsets[idx, :2].view(1, 1, 2).cpu(),
-                        )
                     np.save(
                         str(save_dir / f"target_poses_{idx}.npy"),
                         target_poses.cpu().numpy(),

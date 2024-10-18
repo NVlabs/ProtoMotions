@@ -28,10 +28,10 @@
 
 import torch
 from torch import Tensor
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Tuple
 from omegaconf.dictconfig import DictConfig
 
-from phys_anim.envs.base_interface.utils import quat_diff_norm
+from phys_anim.envs.humanoid.humanoid_utils import quat_diff_norm
 from isaac_utils import torch_utils, rotations
 
 

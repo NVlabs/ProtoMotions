@@ -182,14 +182,7 @@ class Terrain:
 
     def compute_walkable_coords(self):
         self.walkable_field_raw[: self.border, :] = 1
-        self.walkable_field_raw[
-            :,
-            -(
-                self.border
-                + self.object_playground_cols
-                + self.object_playground_buffer_size
-            ) :,
-        ] = 1
+        self.walkable_field_raw[:, -(self.border + self.object_playground_cols + self.object_playground_buffer_size) :] = 1
         self.walkable_field_raw[:, : self.border] = 1
         self.walkable_field_raw[-self.border :, :] = 1
 

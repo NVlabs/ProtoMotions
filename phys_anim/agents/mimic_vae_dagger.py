@@ -39,6 +39,7 @@ from torch import Tensor
 from lightning.fabric import Fabric
 
 from hydra.utils import instantiate
+from pathlib import Path
 
 
 class MimicVAEDagger(MimicVAE):
@@ -50,9 +51,12 @@ class MimicVAEDagger(MimicVAE):
                 "Loading pre-trained full-body tracker from:",
                 self.config.dagger.gt_actor_path,
             )
-            pre_trained_expert = torch.load(
-                self.config.dagger.gt_actor_path + "/last.ckpt"
-            )
+
+            # "score_based.ckpt" is the name of the file that is saved when a new high score is achieved
+            checkpoint_path = self.config.dagger.gt_actor_path + "/score_based.ckpt"
+            if not Path(checkpoint_path).exists():
+                checkpoint_path = self.config.dagger.gt_actor_path + "/last.ckpt"
+            pre_trained_expert = torch.load(checkpoint_path)
 
             self.gt_actor_config = OmegaConf.load(
                 self.config.dagger.gt_actor_path + "/config.yaml"

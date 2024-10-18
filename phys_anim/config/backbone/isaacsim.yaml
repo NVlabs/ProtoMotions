@@ -3,105 +3,79 @@
 # Robot
 backbone: isaacsim
 
-asset_file_name: "usd/${robot.asset.robot_type}.usda"
+robot:
+  asset:
+    asset_file_name: "usd/${robot.asset.robot_type}.usda"
 
 # Environment config
 env:
   config:
     simulator:
+      headless: ${headless}
+      test: False
+
       sim:
-        fps: 120
-        control_freq_inv: 4 # 30 Hz
-        substeps: ??? # Sim doesn't use substeps!
+        use_gpu_pipeline: True
+        gravity: [0.0, 0.0, -9.81]
+        enable_scene_query_support: False
+        use_fabric: True
+        disable_contact_processing: True
 
-env_target: phys_anim.envs.isaacsim.base_interface.SimBaseInterface
-task_target: ${env_path}
+        light_type: distant # Supported: 'sphere', 'distant'
 
-env_params:
-  physics_engine: 'physx'
-  robot_type: ${robot_type}
-  cameras: ${cameras}
+        # set to True if you use camera sensors in the environment
+        enable_cameras: False
 
-  test: False
+        default_physics_material: ${..plane}
 
-  sim:
-    dt: ${eval:1./${sim_fps}}
-    use_gpu_pipeline: True # make this adaptive using run-time validation
-    gravity: [ 0.0, 0.0, -9.81 ]
-    add_ground_plane: ${eval:True if ${terrain} is None else False}
-    light_type: 'sphere' # Supported: 'sphere', 'distant'
-    use_flatcache: True
-    enable_scene_query_support: False
-    enable_cameras: False
-    disable_contact_processing: True
+        physx:
+          worker_thread_count: ${.num_threads}
+          use_gpu: True
+          solver_position_iteration_count: ${.num_position_iterations}
+          solver_velocity_iteration_count: ${.num_velocity_iterations}
+          friction_offset_threshold: 0.04
+          friction_correlation_distance: 0.025
+          enable_sleeping: True
+          enable_stabilization: True
 
-    default_physics_material: ${env_params.plane}
+          # GPU buffers
+          gpu_max_rigid_contact_count: 524288
+          gpu_max_rigid_patch_count: 81920
+          gpu_found_lost_pairs_capacity: 8192
+          gpu_found_lost_aggregate_pairs_capacity: 262144
+          gpu_total_aggregate_pairs_capacity: 8192
+          gpu_max_soft_body_contacts: 1048576
+          gpu_max_particle_contacts: 1048576
+          gpu_heap_capacity: 67108864
+          gpu_temp_buffer_capacity: 16777216
+          gpu_max_num_partitions: 8
 
-    physx:
-      use_gpu: True # make this adaptive using run-time validation
-      friction_offset_threshold: 0.04
-      friction_correlation_distance: 0.025
-      enable_sleeping: True
-      enable_stabilization: True
+        Humanoid:
+          # -1 to use default values
+          override_usd_defaults: False
+          enable_self_collisions: True
+          enable_gyroscopic_forces: True
+          # also in stage params
+          # per-actor
+          solver_position_iteration_count: 4
+          solver_velocity_iteration_count: 0
+          sleep_threshold: 0.005
+          stabilization_threshold: 0.001
+          # per-body
+          density: -1
+          max_depenetration_velocity: 10.0
 
-      # GPU buffers
-      gpu_max_rigid_contact_count: 524288
-      gpu_max_rigid_patch_count: 81920
-      gpu_found_lost_pairs_capacity: 8192
-      gpu_found_lost_aggregate_pairs_capacity: 262144
-      gpu_total_aggregate_pairs_capacity: 8192
-      gpu_max_soft_body_contacts: 1048576
-      gpu_max_particle_contacts: 1048576
-      gpu_heap_capacity: 67108864
-      gpu_temp_buffer_capacity: 16777216
-      gpu_max_num_partitions: 8
-
-    Humanoid:
-      # -1 to use default values
-      override_usd_defaults: False
-      enable_self_collisions: True
-      enable_gyroscopic_forces: True
-      # also in stage params
-      # per-actor
-      solver_position_iteration_count: 4
-      solver_velocity_iteration_count: 0
-      sleep_threshold: 0.005
-      stabilization_threshold: 0.001
-      # per-body
-      density: -1
-      max_depenetration_velocity: 10.0
-
-cameras:
-  - name: birds_eye_view
-    position:
-      - 10.0
-      - 10.0
-      - 100.0
-    frequency: 15
-    resolution:
-      - 256
-      - 256
-    orientation: # degrees
-      - 270.0
-      - 90.0
-      - 0.0
-
-
-env_config:
-  headless: ${headless}
-  num_envs: ${num_envs}
-  control_freq_inv: ${control_freq_inv}
-  asset: ${env_params.asset}
-  use_max_coords_obs: ${use_max_coords_obs}
-  task_name: ${task_name}
-  contact_bodies: ${contact_bodies}
-  key_bodies: ${key_bodies}
-  terrain: ${terrain}
-  env_target: ${env_target}
-  cameras: ${cameras}
-
-  task:
-    _target_: ${task_target}
-    _recursive_: False
-    config: ${env_params}
-
+    cameras:
+      - name: birds_eye_view
+        position:
+          - 10.0
+          - 10.0
+          - 100.0
+        frequency: 15
+        resolution:
+          - 256
+          - 256
+        orientation: # degrees
+          - 270.0
+          - 90.0
+          - 0.0

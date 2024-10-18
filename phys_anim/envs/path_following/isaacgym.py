@@ -147,9 +147,7 @@ class PathFollowingHumanoid(BasePathFollowing, TaskHumanoid):  # type: ignore[mi
             if not self.config.path_follower_params.height_conditioned:
                 verts[..., 2] = self.humanoid_root_states[i, 2]  # ZL Hack
             else:
-                verts[..., 2] += self.get_ground_heights(
-                    self.humanoid_root_states[i, :2].view(1, 2)
-                ).view(-1)
+                verts[..., 2] += self.get_ground_heights(self.humanoid_root_states[i, :2].view(1, 2)).view(-1)
             lines = torch.cat([verts[:-1], verts[1:]], dim=-1).cpu().numpy()
             curr_cols = np.broadcast_to(cols, [lines.shape[0], cols.shape[-1]])
             self.gym.add_lines(self.viewer, env_ptr, lines.shape[0], lines, curr_cols)

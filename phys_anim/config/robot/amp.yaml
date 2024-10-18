@@ -4,22 +4,26 @@ defaults:
   - base
 
 robot:
+  bfs_body_names: ['pelvis', 'torso', 'right_thigh', 'left_thigh', 'head', 'right_upper_arm', 'left_upper_arm', 'right_shin', 'left_shin', 'right_lower_arm', 'left_lower_arm', 'right_foot', 'left_foot', 'right_hand', 'left_hand']
+  dfs_body_names: ['pelvis', 'torso', 'head', 'right_upper_arm', 'right_lower_arm', 'right_hand', 'left_upper_arm', 'left_lower_arm', 'left_hand', 'right_thigh', 'right_shin', 'right_foot', 'left_thigh', 'left_shin', 'left_foot']
+
+  bfs_dof_names: ['abdomen_x', 'abdomen_y', 'abdomen_z', 'right_hip_x', 'right_hip_y', 'right_hip_z', 'left_hip_x', 'left_hip_y', 'left_hip_z', 'neck_x', 'neck_y', 'neck_z', 'right_shoulder_x', 'right_shoulder_y', 'right_shoulder_z', 'left_shoulder_x', 'left_shoulder_y', 'left_shoulder_z', 'right_knee_x', 'right_knee_y', 'right_knee_z', 'left_knee_x', 'left_knee_y', 'left_knee_z', 'right_elbow_x', 'right_elbow_y', 'right_elbow_z', 'left_elbow_x', 'left_elbow_y', 'left_elbow_z', 'right_ankle_x', 'right_ankle_y', 'right_ankle_z', 'left_ankle_x', 'left_ankle_y', 'left_ankle_z']
+  dfs_dof_names: ['abdomen_x', 'abdomen_y', 'abdomen_z', 'neck_x', 'neck_y', 'neck_z', 'right_shoulder_x', 'right_shoulder_y', 'right_shoulder_z', 'right_elbow_x', 'right_elbow_y', 'right_elbow_z', 'left_shoulder_x', 'left_shoulder_y', 'left_shoulder_z', 'left_elbow_x', 'left_elbow_y', 'left_elbow_z', 'right_hip_x', 'right_hip_y', 'right_hip_z', 'right_knee_x', 'right_knee_y', 'right_knee_z', 'right_ankle_x', 'right_ankle_y', 'right_ankle_z', 'left_hip_x', 'left_hip_y', 'left_hip_z', 'left_knee_x', 'left_knee_y', 'left_knee_z', 'left_ankle_x', 'left_ankle_y', 'left_ankle_z']
+
   # Observation parameters
-  num_bodies: 15
   dof_obs_size: 72
   number_of_actions: 36
-  self_obs_max_coords: 223  # ${eval:1+15*(3+6+3+3)-3}
+  self_obs_max_coords_size: 223  # ${eval:1+15*(3+6+3+3)-3}
 
   # Control parameters
-  dof_body_ids: [1, 2, 3, 4, 6, 7, 9, 10, 11, 12, 13, 14]
-  dof_offsets: [0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36]
+  dfs_dof_body_ids: [1, 2, 3, 4, 6, 7, 9, 10, 11, 12, 13, 14]
 
   key_bodies:
     - "right_hand"
     - "left_hand"
     - "right_foot"
     - "left_foot"
-  contact_bodies:
+  non_termination_contact_bodies:
     - "right_foot"
     - "left_foot"
 

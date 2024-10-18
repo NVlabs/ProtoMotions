@@ -232,8 +232,8 @@ class BaseMaskedMimicSteering(MaskedMimicSteeringHumanoid):  # type: ignore[misc
         # -10 just to make it reach the orientation slightly before we start measuring.
         time_left_to_turn = (self._heading_turn_steps - self.progress_buf - 10).clamp(2)
 
-        # target_body_index = self.config.masked_mimic_conditionable_bodies.index("Head")
-        target_body_index = self.config.masked_mimic_conditionable_bodies.index(
+        head_body_index = self.config.masked_mimic_conditionable_bodies.index("Head")
+        pelvis_body_index = self.config.masked_mimic_conditionable_bodies.index(
             "Pelvis"
         )
 
@@ -245,9 +245,9 @@ class BaseMaskedMimicSteering(MaskedMimicSteeringHumanoid):  # type: ignore[misc
         )  # .5 second
         # self.target_pose_obs_mask[:] = True
         self.target_pose_joints[:] = False
-        self.target_pose_joints[turned_envs, target_body_index * 2] = True
-        self.target_pose_joints[:, target_body_index * 2 + 1] = True
-        self.target_pose_joints[turned_envs, -2:] = True  # heading and speed
+        self.target_pose_joints[turned_envs, head_body_index * 2] = True
+        self.target_pose_joints[:, head_body_index * 2 + 1] = True
+        # self.target_pose_joints[turned_envs, -2:] = True  # heading and speed
 
         single_step_mask_size = self.num_conditionable_bodies * 2
         new_mask = torch.zeros(
@@ -263,8 +263,8 @@ class BaseMaskedMimicSteering(MaskedMimicSteeringHumanoid):  # type: ignore[misc
         new_mask = new_mask.view(
             self.num_envs, 1, self.num_conditionable_bodies, 2
         ).expand(-1, self.config.masked_mimic_obs.num_future_steps, -1, -1)
-        new_mask[:, -1, target_body_index, 1] = True  # rotation
-        new_mask[turned_envs, -1, target_body_index, 0] = True  # translation
+        new_mask[:, -1, pelvis_body_index, 1] = True  # rotation
+        new_mask[turned_envs, -1, pelvis_body_index, 0] = True  # translation
         new_mask = new_mask.reshape(self.num_envs, -1)
 
         self.masked_mimic_target_bodies_masks[:] = new_mask
@@ -275,7 +275,7 @@ class BaseMaskedMimicSteering(MaskedMimicSteeringHumanoid):  # type: ignore[misc
         self.masked_mimic_target_poses[:] = sparse_target_poses
 
         self.masked_mimic_target_poses_masks[:] = False
-        self.masked_mimic_target_poses_masks[turned_envs, -3:] = True
+        self.masked_mimic_target_poses_masks[turned_envs, 4:] = True
         # self.masked_mimic_target_poses_masks[turned_envs, -2] = True
 
         if self._use_text:
@@ -333,7 +333,7 @@ class BaseMaskedMimicSteering(MaskedMimicSteeringHumanoid):  # type: ignore[misc
         turning_envs = self._heading_turn_steps < 0
         turned_envs = ~turning_envs
 
-        reshaped_target_pos[:, :, 0, :2] = cur_gt[:, 0, :2].unsqueeze(1).clone()
+        reshaped_target_pos[:, :, :, :2] = cur_gt[:, :, :2].unsqueeze(1).clone()
         for frame_idx in range(num_future_steps):
             reshaped_target_pos[:, frame_idx, :, :2] += (
                 self._tar_dir[:]

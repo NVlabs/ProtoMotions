@@ -33,9 +33,10 @@ import numpy as np
 import torch
 from hydra.utils import instantiate
 from torch import Tensor
+import torch.nn.functional as F
 
 from isaac_utils import torch_utils
-from phys_anim.envs.base_interface.utils import (
+from phys_anim.envs.humanoid.humanoid_utils import (
     compute_humanoid_observations,
     compute_humanoid_observations_max,
     compute_humanoid_reset,
@@ -67,6 +68,8 @@ class BaseHumanoid(Humanoid):
         self.init_done = False
         self.scene_lib = None
 
+        self.num_obs = self.config.robot.self_obs_size
+
         if self.config.sync_motion:
             control_freq_inv = self.config.simulator.sim.control_freq_inv
             self.config.simulator.sim.control_freq_inv = 1
@@ -90,10 +93,6 @@ class BaseHumanoid(Humanoid):
 
         # General configurations
         self.isaac_pd = self.config.robot.control.control_type == "isaac_pd"
-        self.local_root_obs = self.config.local_root_obs
-        self.root_height_obs = self.config.root_height_obs
-        self.enable_height_termination = self.config.enable_height_termination
-        self.max_episode_length = self.config.max_episode_length
         self.control_freq_inv = self.config.simulator.sim.control_freq_inv
 
         self.setup_character_props()
@@ -334,6 +333,8 @@ class BaseHumanoid(Humanoid):
                 self.num_envs, device=self.device, dtype=torch.bool
             )
 
+        super().on_environment_ready()
+
     def pre_physics_step(self, actions):
         if self.config.sync_motion:
             actions *= 0
@@ -432,7 +433,7 @@ class BaseHumanoid(Humanoid):
             self.get_humanoid_root_states()[..., :2]
         )
 
-        if self.config.use_max_coords_obs:
+        if self.config.humanoid_obs.use_max_coords_obs:
             if env_ids is not None:
                 body_pos = body_pos[env_ids]
                 body_rot = body_rot[env_ids]
@@ -446,8 +447,8 @@ class BaseHumanoid(Humanoid):
                 body_vel,
                 body_ang_vel,
                 ground_heights,
-                self.local_root_obs,
-                self.root_height_obs,
+                self.config.humanoid_obs.local_root_obs,
+                self.config.humanoid_obs.root_height_obs,
                 self.w_last,
             )
 
@@ -480,7 +481,7 @@ class BaseHumanoid(Humanoid):
                 dof_vel,
                 key_body_pos,
                 ground_heights,
-                self.local_root_obs,
+                self.config.humanoid_obs.local_root_obs,
                 self.dof_obs_size,
                 self.get_dof_offsets(),
                 self.w_last,
@@ -495,10 +496,10 @@ class BaseHumanoid(Humanoid):
             self.reset_buf,
             self.progress_buf,
             bodies_contact_buf,
-            self.contact_body_ids,
+            self.non_termination_contact_body_ids,
             bodies_positions,
-            self.max_episode_length,
-            self.enable_height_termination,
+            self.config.max_episode_length,
+            self.config.enable_height_termination,
             self.termination_heights
             + self.get_ground_heights(self.get_humanoid_root_states()[..., :2]),
         )
@@ -574,7 +575,7 @@ class BaseHumanoid(Humanoid):
                 self.scene_lib.mark_scene_not_in_use(self.scene_ids[env_ids])
                 available_scenes = self.scene_lib.get_available_scenes_mask()
                 motion_ids, scene_ids = self.motion_lib.sample_motions_scene_aware(
-                    self.sync_motion_just_reset.sum(),
+                    num_envs,
                     available_scenes,
                     self.scene_lib.single_robot_in_scene,
                     with_replacement=True,
@@ -618,10 +619,6 @@ class BaseHumanoid(Humanoid):
             env_ids, rb_pos=ref_state.rb_pos, offset=root_offset, scene_ids=scene_ids
         )
 
-        ref_state.dof_pos, ref_state.dof_vel = self.convert_dof(
-            ref_state.dof_pos, ref_state.dof_vel
-        )
-
         ref_state.rb_pos[:, :, :3] -= ref_state.rb_pos[:, 0, :3].unsqueeze(1).clone()
         ref_state.rb_pos[:, :, :3] += ref_state.root_pos.unsqueeze(1)
 
@@ -654,8 +651,8 @@ class BaseHumanoid(Humanoid):
 
         # Reset objects associated with the scene
         if scene_ids is not None and self.scene_lib is not None:
-            has_scene = self.scene_ids > -1
-            active_scenes = self.scene_ids[has_scene]
+            has_scene = self.scene_ids[env_ids] > -1
+            active_scenes = self.scene_ids[env_ids][has_scene]
             active_object_mask = torch.isin(self.object_id_to_scene_id, active_scenes)
             active_object_ids = torch.arange(
                 len(self.object_id_to_scene_id), device=self.device
@@ -669,11 +666,11 @@ class BaseHumanoid(Humanoid):
             non_static_object_ids = active_object_ids[non_static_mask]
 
             if len(non_static_object_ids) > 0:
-                # Create a mapping from scene_id to sync_motion_time
+                # Create a mapping from scene_id to motion_time
                 scene_to_time = {
                     scene_id.item(): time.item()
                     for scene_id, time in zip(
-                        active_scenes, self.sync_motion_times[has_scene]
+                        active_scenes, self.motion_times[env_ids][has_scene]
                     )
                 }
 
@@ -691,10 +688,12 @@ class BaseHumanoid(Humanoid):
                 )
 
                 # Update object states in the simulation
+                non_static_object_states.translations[
+                    :, 2
+                ] += self.config.object_ref_respawn_offset
                 self.set_object_state(
                     object_ids=non_static_object_ids,
-                    positions=non_static_object_states.translations
-                    + self.config.object_ref_respawn_offset,
+                    positions=non_static_object_states.translations,
                     rotations=non_static_object_states.rotations,
                 )
                 if append_to_lists and len(self.reset_ref_object_ids) > 0:
@@ -762,30 +761,18 @@ class BaseHumanoid(Humanoid):
             dtype=torch.float,
         )
 
-        if self.scene_lib is not None:
-            max_objects_per_scene = self.scene_lib.config.max_objects_per_scene
-        else:
-            max_objects_per_scene = 1
-
     def get_ground_heights(self, root_states):
         """
         This provides the height of the ground beneath the character.
         Not to confuse with the height-map projection that a sensor would see.
         Use this function for alignment between mocap and new terrains.
         """
-        if self.terrain is None:
-            has_terrain = False
-            height_samples = root_states
-            horizontal_scale = 0
-        else:
-            has_terrain = True
-            height_samples = self.only_terrain_height_samples
-            horizontal_scale = self.terrain.horizontal_scale
+        height_samples = self.only_terrain_height_samples
+        horizontal_scale = self.terrain.horizontal_scale
 
         return get_heights(
             root_states=root_states,
             height_samples=height_samples,
-            has_terrain=has_terrain,
             horizontal_scale=horizontal_scale,
         )
 
@@ -795,19 +782,12 @@ class BaseHumanoid(Humanoid):
         This takes into account objects in the scene, such as chairs, tables, etc...
         Use this function to provide a heightmap representation for the character.
         """
-        if self.terrain is None:
-            has_terrain = False
-            height_samples = root_states
-            horizontal_scale = 0
-        else:
-            has_terrain = True
-            height_samples = self.height_samples
-            horizontal_scale = self.terrain.horizontal_scale
+        height_samples = self.height_samples
+        horizontal_scale = self.terrain.horizontal_scale
 
         return get_heights(
             root_states=root_states,
             height_samples=height_samples,
-            has_terrain=has_terrain,
             horizontal_scale=horizontal_scale,
         )
 
@@ -935,8 +915,18 @@ class BaseHumanoid(Humanoid):
     def set_char_color(self, rand_col, env_ids):
         raise NotImplementedError
 
-    def convert_dof(self, dof_pos, dof_vel):
-        return dof_pos, dof_vel
+    def build_body_ids_tensor(self, body_names):
+        body_ids = []
+
+        for body_name in body_names:
+            body_id = self.body_names.index(body_name)
+            assert (
+                body_id != -1
+            ), f"Body part {body_name} not found in {self.body_names}"
+            body_ids.append(body_id)
+
+        body_ids = torch_utils.to_torch(body_ids, device=self.device, dtype=torch.long)
+        return body_ids
 
     def sample_time_without_negatives(self, motion_ids: Tensor, earliest_time: float):
         """
@@ -1031,10 +1021,6 @@ class BaseHumanoid(Humanoid):
                 scene_ids=self.scene_ids[has_scene],
             )
             ref_state.root_pos[has_scene, :3] += scene_position
-
-            ref_state.dof_pos, ref_state.dof_vel = self.convert_dof(
-                ref_state.dof_pos, ref_state.dof_vel
-            )
 
             ref_state.rb_pos[has_scene, :, :3] -= (
                 ref_state.rb_pos[has_scene, 0, :3].unsqueeze(1).clone()
@@ -1168,7 +1154,7 @@ class BaseHumanoid(Humanoid):
             object_id = torch.arange(self.object_dims.shape[0], device=self.device)
         object_dims = self.object_dims[object_id]
 
-        object_root_states = self.object_root_states[object_id]
+        object_root_states = self.get_object_root_states()[object_id]
 
         object_pos = object_root_states[:, 0:3]
         object_rot = object_root_states[..., 3:7]
@@ -1209,3 +1195,6 @@ class BaseHumanoid(Humanoid):
         rotated_bounding_box = rotated_centered_box + object_pos.unsqueeze(1)
 
         return rotated_bounding_box
+
+    def get_dof_offsets(self):
+        return self.dof_offsets

@@ -1,4 +1,4 @@
-# This file is adapted from https://github.com/TairanHe/human2humanoid/
+# This file is adapted from https://github.com/LeCAR-Lab/human2humanoid/
 
 import torch
 import numpy as np
@@ -10,41 +10,41 @@ from isaac_utils import rotations
 from phys_anim.envs.mimic.common import dof_to_local
 import copy
 
-H1_ROTATION_AXIS = torch.tensor(
-    [
-        [
-            [0, 0, 1],  # l_hip_yaw
-            [1, 0, 0],  # l_hip_roll
-            [0, 1, 0],  # l_hip_pitch
-            [0, 1, 0],  # kneel
-            [0, 1, 0],  # ankle
-            [0, 0, 1],  # r_hip_yaw
-            [1, 0, 0],  # r_hip_roll
-            [0, 1, 0],  # r_hip_pitch
-            [0, 1, 0],  # kneel
-            [0, 1, 0],  # ankle
-            [0, 0, 1],  # torso
-            [0, 1, 0],  # l_shoulder_pitch
-            [1, 0, 0],  # l_roll_pitch
-            [0, 0, 1],  # l_yaw_pitch
-            [0, 1, 0],  # l_elbow
-            [0, 1, 0],  # r_shoulder_pitch
-            [1, 0, 0],  # r_roll_pitch
-            [0, 0, 1],  # r_yaw_pitch
-            [0, 1, 0],  # r_elbow
-        ]
-    ]
-)
-
 
 class Humanoid_Batch_H1:
     def __init__(
         self,
-        mjcf_file=f"resources/robots/h1/h1.xml",
+        mjcf_file="phys_anim/data/assets/mjcf/h1.xml",
         extend_hand=True,
         extend_head=False,
         device=torch.device("cpu"),
     ):
+        self.rotation_axis = torch.tensor(
+            [
+                [
+                    [0, 0, 1],  # l_hip_yaw
+                    [1, 0, 0],  # l_hip_roll
+                    [0, 1, 0],  # l_hip_pitch
+                    [0, 1, 0],  # kneel
+                    [0, 1, 0],  # ankle
+                    [0, 0, 1],  # r_hip_yaw
+                    [1, 0, 0],  # r_hip_roll
+                    [0, 1, 0],  # r_hip_pitch
+                    [0, 1, 0],  # kneel
+                    [0, 1, 0],  # ankle
+                    [0, 0, 1],  # torso
+                    [0, 1, 0],  # l_shoulder_pitch
+                    [1, 0, 0],  # l_roll_pitch
+                    [0, 0, 1],  # l_yaw_pitch
+                    [0, 1, 0],  # l_elbow
+                    [0, 1, 0],  # r_shoulder_pitch
+                    [1, 0, 0],  # r_roll_pitch
+                    [0, 0, 1],  # r_yaw_pitch
+                    [0, 1, 0],  # r_elbow
+                ]
+            ], device=device
+        )
+        
         self.original_body_names = [
             "pelvis",
             "left_hip_yaw_link",
@@ -79,9 +79,8 @@ class Humanoid_Batch_H1:
                 "left_arm_end_effector",
                 "right_arm_end_effector",
             ]
-            original_parent_ids = [15, 19]
-            for i, parent_id in enumerate(original_parent_ids):
-                parent_name = self.original_body_names[parent_id]
+            original_parent_names = ["left_elbow_link", "right_elbow_link"]
+            for i, parent_name in enumerate(original_parent_names):
                 current_id = self.target_new_body_names.index(parent_name)
                 self.target_new_body_names.insert(
                     current_id + 1, self.model_names[-2 + i]
@@ -123,10 +122,7 @@ class Humanoid_Batch_H1:
 
         if extend_head:
             self.model_names = self.model_names + ["head"]
-            original_parent_ids = [0]
-
-            parent_name = self.original_body_names[parent_id]
-            current_id = self.target_new_body_names.index(parent_name)
+            current_id = self.target_new_body_names.index("pelvis")
             self.target_new_body_names.insert(current_id + 1, self.model_names[-1])
             self.new_body_names.append(self.model_names[-1])
 
@@ -162,8 +158,6 @@ class Humanoid_Batch_H1:
         if xml_body_root is None:
             raise ValueError("MJCF parsed incorrectly please verify it.")
 
-        xml_joint_root = xml_body_root.find("joint")
-
         node_names = []
         parent_indices = []
         local_translation = []
@@ -188,7 +182,7 @@ class Humanoid_Batch_H1:
             node_index += 1
             all_joints = xml_node.findall("joint")
             for joint in all_joints:
-                if not joint.attrib.get("range") is None:
+                if joint.attrib.get("range") is not None:
                     joints_range.append(
                         np.fromstring(joint.attrib.get("range"), dtype=float, sep=" ")
                     )
@@ -212,7 +206,7 @@ class Humanoid_Batch_H1:
             "joints_range": torch.from_numpy(np.array(joints_range)),
         }
 
-    def fk_batch(self, pose, trans, convert_to_mat=True, return_full=False, dt=1 / 30):
+    def fk_batch(self, pose, trans, convert_to_mat=True, dt=1 / 30):
         pose = pose.to(self.device)
         trans = trans.to(self.device)
         dtype = pose.dtype
@@ -368,7 +362,7 @@ class Humanoid_Batch_H1:
 
     @staticmethod
     def _compute_velocity(p, time_delta, guassian_filter=True):
-        velocity = np.gradient(p.numpy(), axis=-3) / time_delta
+        velocity = np.gradient(p.detach().cpu().numpy(), axis=-3) / time_delta
         if guassian_filter:
             velocity = torch.from_numpy(
                 filters.gaussian_filter1d(velocity, 2, axis=-3, mode="nearest")
@@ -390,7 +384,7 @@ class Humanoid_Batch_H1:
         if guassian_filter:
             angular_velocity = torch.from_numpy(
                 filters.gaussian_filter1d(
-                    angular_velocity.numpy(), 2, axis=-3, mode="nearest"
+                    angular_velocity.detach().cpu().numpy(), 2, axis=-3, mode="nearest"
                 ),
             )
         return angular_velocity

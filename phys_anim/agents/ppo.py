@@ -77,7 +77,7 @@ class PPO:
         self.lr_schedulers = []
 
         self.num_envs: int = self.env.config.num_envs
-        self.num_obs = self.env.config.robot.self_obs_max_coords
+        self.num_obs = self.env.config.robot.self_obs_size
         self.num_act = self.env.config.robot.number_of_actions
         self.num_steps: int = config.num_steps
         self.gamma: float = config.gamma
@@ -217,6 +217,7 @@ class PPO:
 
     def load(self, checkpoint: Path):
         if checkpoint is not None:
+            checkpoint = Path(checkpoint).resolve()
             print(f"Loading model from checkpoint: {checkpoint}")
             state_dict = torch.load(checkpoint, map_location=self.device)
             self.load_parameters(state_dict)

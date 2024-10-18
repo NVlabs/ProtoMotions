@@ -26,11 +26,26 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import numpy as np
 import torch
 from torch import nn
 import torch.nn.functional as F
 
 from phys_anim.utils.running_mean_std import RunningMeanStd
+from phys_anim.utils import model_utils
+
+
+def default_init(m: nn.Linear):
+    m.bias.data.zero_()
+    return m
+
+
+INIT_DICT = {
+    "orthogonal": lambda m: model_utils.init(
+        m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0), np.sqrt(2)
+    ),
+    "default": default_init,
+}
 
 
 class NormObsBase(nn.Module):

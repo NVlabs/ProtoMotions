@@ -274,7 +274,7 @@ class BaseMaskedMimicPathFollowing(MaskedMimicPathFollowingHumanoid):  # type: i
     # Helpers
     ###############################################################
     def build_path_generator(self):
-        episode_dur = self.max_episode_length * self.dt
+        episode_dur = self.config.max_episode_length * self.dt
         self.path_generator = PathGenerator(
             self.config.path_follower_params.path_generator,
             self.device,

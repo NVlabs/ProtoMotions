@@ -54,17 +54,16 @@ class GymBaseInterface(BaseInterface, Humanoid):  # type: ignore[misc]
         device: torch.device,
     ):
         super().__init__(config, device)
+        # double check!
+        self.graphics_device_id = self.device.index
+        if self.headless is True:
+            self.graphics_device_id = -1
+
         self.gym = gymapi.acquire_gym()
 
         # optimization flags for pytorch JIT
         torch._C._jit_set_profiling_mode(False)
         torch._C._jit_set_profiling_executor(False)
-
-        self.original_props = {}
-        self.actor_params_generator = None
-        self.extern_actor_params = {}
-        for env_id in range(self.num_envs):
-            self.extern_actor_params[env_id] = None
 
         # create envs, sim and viewer
         self.create_sim()
@@ -160,7 +159,7 @@ class GymBaseInterface(BaseInterface, Humanoid):  # type: ignore[misc]
         return self.obs_buf, self.rew_buf, self.reset_buf, self.extras
 
     def render(self):
-        if self.viewer:
+        if not self.headless:
             # check for window closed
             if self.gym.query_viewer_has_closed(self.viewer):
                 sys.exit()

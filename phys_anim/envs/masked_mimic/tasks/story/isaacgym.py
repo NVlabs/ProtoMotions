@@ -175,7 +175,7 @@ class MaskedMimicStoryHumanoid(BaseMaskedMimicStory, MaskedMimicTaskHumanoid):  
 
         objects_bounding_box = self.object_id_to_object_bounding_box[object_ids].clone()
 
-        object_root_states = self.object_root_states[object_ids].clone()
+        object_root_states = self.get_object_root_states()[object_ids]
         height_below_object = self.get_ground_heights(object_root_states[..., :2]).view(
             -1, 1
         )

@@ -34,11 +34,27 @@ import hydra
 from hydra.utils import instantiate
 from omegaconf import OmegaConf
 
+has_robot_arg = False
+backbone = None
 for arg in sys.argv:
     # This hack ensures that isaacgym is imported before any torch modules.
     # The reason it is here (and not in the main func) is due to pytorch lightning multi-gpu behavior.
-    if "backbone" in arg and "isaacgym" in arg.split("=")[-1]:
-        import isaacgym  # noqa: F401
+    if "robot" in arg:
+        has_robot_arg = True
+    if "backbone" in arg:
+        if not has_robot_arg:
+            raise ValueError("+robot argument should be provided before +backbone")
+        if "isaacgym" in arg.split("=")[-1]:
+            import isaacgym  # noqa: F401
+
+            backbone = "isaacgym"
+        elif "isaacsim" in arg.split("=")[-1]:
+            from isaacsim import SimulationApp
+            from phys_anim.envs.base_interface.isaacsim_utils.experiences import (
+                get_experience,
+            )
+
+            backbone = "isaacsim"
 
 import torch  # noqa: E402
 from lightning.fabric import Fabric  # noqa: E402
@@ -82,12 +98,13 @@ def main(config: OmegaConf):
         fabric.seed_everything(config.seed + rank)
         seeding(config.seed + rank, torch_deterministic=config.torch_deterministic)
 
+    if backbone == "isaacsim":
+        experience = get_experience(config.headless, False)
+        simulation_app = SimulationApp(
+            {"headless": config.headless}, experience=experience
+        )
+
     env = instantiate(config.env, device=fabric.device)
-    if config.backbone == "isaacsim":
-        task = instantiate(config.env.config.task, device=fabric.device)
-        task.set_env(env)
-        sim_config = task.sim_config.get_physics_params()
-        env.set_task(task, sim_config)
 
     algo: PPO = instantiate(config.algo, env=env, fabric=fabric)
     algo.setup()
