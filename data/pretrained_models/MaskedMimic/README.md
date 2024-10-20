@@ -6,7 +6,7 @@ The model maps multi-modal user commands to actions for a simulated robot in Isa
 This model is for research and development only.
 
 ## License/Terms of Use:
-See [LICENSE](model_license.md).
+See [LICENSE](LICENSE).
 
 ## References:
 1. [MaskedMimic: Unified Physics-Based Character Control Through Masked Motion Inptaining](https://research.nvidia.com/labs/par/maskedmimic/assets/SIGGRAPHAsia2024_MaskedMimic.pdf)
