@@ -10,7 +10,7 @@
 # What is this?
 
 This codebase contains our efforts in building interactive physically-simulated virtual agents.
-It supports both IsaacGym and <small>(soon)</small> IsaacSim.
+It supports both IsaacGym and IsaacSim.
 
 <div float="center">
     <img src="assets/sofa.gif" width="300"/>
@@ -111,12 +111,13 @@ Then select the robot you are training. For example, the SMPL humanoid robot is 
 In the first stage, you need to train a general motion tracker. At each step, this model receives the next K future poses.
 The second phase trains the masked mimic model to reconstruct the actions of the expert tracker trained in the first stage.
 
-1. **Train full body tracker:** Run `PYTHON_PATH phys_anim/train_agent.py +exp=full_body_tracker +backbone=isaacgym +robot=smpl motion_file=<motion file path>`
+1. **Train full body tracker:** Run `PYTHON_PATH phys_anim/train_agent.py +exp=full_body_tracker +robot=smpl +backbone=isaacgym motion_file=<motion file path>`
 2. Find the checkpoint of the first phase. The next training should point to that folder and not the checkpoint.
-3. **Train MaskedMimic:** Run `PYTHON_PATH phys_anim/train_agent.py +exp=masked_mimic +backbone=isaacgym +robot=smpl motion_file=<motion file path> gt_actor_path=<path to phase 1 folder>`
-4. **Inference:** For an example of user-control, run `PYTHON_PATH phys_anim/eval_agent.py +exp=masked_mimic +backbone=isaacgym +robot=smpl +opt=[masked_mimic/tasks/user_control] motion_file=<motion file path> checkpoint=<path to maskedmimic checkpoint>`
+3. **Train MaskedMimic:** Run `PYTHON_PATH phys_anim/train_agent.py +exp=masked_mimic +robot=smpl +backbone=isaacgym motion_file=<motion file path> gt_actor_path=<path to phase 1 folder>`
+4. **Inference:** For an example of user-control, run `PYTHON_PATH phys_anim/eval_agent.py +robot=smpl +backbone=isaacgym +opt=[masked_mimic/tasks/user_control] motion_file=<motion file path> checkpoint=<path to maskedmimic checkpoint>`
 
 add `force_flat_terrain=True` to use a default flat terrain (this reduces loading time).
+
 </details>
 
 <details>
@@ -133,8 +134,9 @@ an agent to produce motions with similar distributional characteristics to a giv
 motion dataset. AMP can be combined with a task, encouraging the agent to solve the
 task with the provided motions.
 
-1. Run `PYTHON_PATH phys_anim/train_agent.py +exp=amp motion_file=<path to motion file>`, with `+backbone=isaacgym` or `+backbone=isaacsim` to choose the backbone
+1. Run `PYTHON_PATH phys_anim/train_agent.py +exp=amp motion_file=<path to motion file>`.
 2. Choose your robot, for example `+robot=amp`.
+3. Set `+backbone=isaacgym` or `+backbone=isaacsim` to choose the backbone.
 
 ### Path Following
 
@@ -188,7 +190,7 @@ By default, all experiments are logged using tensorboard. You can also log using
 To evaluate the trained agent
 
 1. Find the checkpoint. `results/<experiment name>/lightning_logs/version_<number>`
-2. Evaluate using `PYTHON_PATH phys_anim/eval_agent.py +exp=<exp> +backbone=<backend> motion_file=<path to motion file> checkpoint=results/<experiment name>/lightning_logs/version_<number>/last.ckpt`.
+2. Evaluate using `PYTHON_PATH phys_anim/eval_agent.py +robot=<robot> +backbone=<backend> motion_file=<path to motion file> checkpoint=results/<experiment name>/lightning_logs/version_<number>/last.ckpt`.
 3. By setting `headless=False` it will also render (live visualization) the evaluation.
 
 We provide a set of pre-defined keyboard controls.
