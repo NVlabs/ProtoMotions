@@ -303,7 +303,6 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
                 motion_ids[valid_samples:] = fallback_motion_ids
                 motion_times[valid_samples:] = self.motion_lib.sample_time(
                     fallback_motion_ids,
-                    self.motion_lib.state.first_contact_time[fallback_motion_ids],
                     truncate_time=self.dt,
                 )
                 new_scenes[valid_samples:] = fallback_scenes
