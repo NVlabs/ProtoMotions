@@ -24,6 +24,7 @@ env:
       use_max_coords_obs: True
       local_root_obs: True
       root_height_obs: True
+      observe_contacts: 0
 
     ## Termination
     termination_height: 0.15
