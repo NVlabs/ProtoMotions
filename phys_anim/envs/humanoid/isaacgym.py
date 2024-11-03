@@ -29,6 +29,7 @@
 import os
 import os.path as osp
 
+import easydict
 import numpy as np
 from isaacgym import gymapi, gymtorch, gymutil  # type: ignore[misc]
 import torch
@@ -69,18 +70,14 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self.gym.refresh_rigid_body_state_tensor(self.sim)
         self.gym.refresh_net_contact_force_tensor(self.sim)
+        self.gym.refresh_force_sensor_tensor(self.sim)
 
         # get gym GPU state tensors
         actor_root_state = self.gym.acquire_actor_root_state_tensor(self.sim)
         dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
-        sensor_tensor = self.gym.acquire_force_sensor_tensor(self.sim)
+        force_tensor = self.gym.acquire_force_sensor_tensor(self.sim)
         rigid_body_state = self.gym.acquire_rigid_body_state_tensor(self.sim)
         contact_force_tensor = self.gym.acquire_net_contact_force_tensor(self.sim)
-
-        sensors_per_env = 2
-        self.vec_sensor_tensor: Tensor = gymtorch.wrap_tensor(sensor_tensor).view(
-            self.num_envs, sensors_per_env * 6
-        )
 
         dof_force_tensor = self.gym.acquire_dof_force_tensor(self.sim)
         self.dof_force_tensor: Tensor = gymtorch.wrap_tensor(dof_force_tensor).view(
@@ -91,6 +88,7 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self.gym.refresh_rigid_body_state_tensor(self.sim)
         self.gym.refresh_net_contact_force_tensor(self.sim)
+        self.gym.refresh_force_sensor_tensor(self.sim)
 
         self.root_states: Tensor = gymtorch.wrap_tensor(actor_root_state)
 
@@ -155,17 +153,28 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
         self.initial_rigid_body_ang_vel = self.rigid_body_ang_vel.clone()
 
         contact_force_tensor = gymtorch.wrap_tensor(contact_force_tensor)
+        force_tensor = gymtorch.wrap_tensor(force_tensor)
 
         if self.total_num_objects == 0:
             self.contact_forces = contact_force_tensor.view(
                 self.num_envs, bodies_per_env, 3
             )[..., : self.num_bodies, :]
             self.object_contact_forces = None
+
+            self.forces = force_tensor.view(
+                self.num_envs, len(self.config.robot.contact_bodies), 6
+            )
+            self.object_forces = None
         else:
             self.contact_forces = contact_force_tensor[: -self.total_num_objects].view(
                 self.num_envs, bodies_per_env, 3
             )[..., : self.num_bodies, :]
             self.object_contact_forces = contact_force_tensor[-self.total_num_objects :]
+
+            self.forces = force_tensor[: -self.total_num_objects].view(
+                self.num_envs, len(self.config.robot.contact_bodies), 6
+            )
+            self.object_forces = force_tensor[-self.total_num_objects :]
 
         self.key_body_ids = self.build_body_ids_tensor(self.config.robot.key_bodies)
         self.non_termination_contact_body_ids = self.build_body_ids_tensor(
@@ -321,17 +330,21 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
         self.num_dof = self.gym.get_asset_dof_count(humanoid_asset)
         self.num_joints = self.gym.get_asset_joint_count(humanoid_asset)
 
-        # create force sensors at the feet
-        right_foot_idx = self.gym.find_asset_rigid_body_index(
-            humanoid_asset, self.config.robot.right_foot_name
-        )
-        left_foot_idx = self.gym.find_asset_rigid_body_index(
-            humanoid_asset, self.config.robot.left_foot_name
-        )
+        # create force sensors
         sensor_pose = gymapi.Transform()
-
-        self.gym.create_asset_force_sensor(humanoid_asset, right_foot_idx, sensor_pose)
-        self.gym.create_asset_force_sensor(humanoid_asset, left_foot_idx, sensor_pose)
+        for contact_body_name in self.config.robot.contact_bodies:
+            sensor_options = gymapi.ForceSensorProperties()
+            sensor_options.enable_forward_dynamics_forces = False  # for example gravity
+            sensor_options.enable_constraint_solver_forces = (
+                True  # for example contacts
+            )
+            sensor_options.use_world_frame = False  # report forces in local frame
+            index = self.gym.find_asset_rigid_body_index(
+                humanoid_asset, contact_body_name
+            )
+            self.gym.create_asset_force_sensor(
+                humanoid_asset, index, sensor_pose, sensor_options
+            )
 
         self.humanoid_handles = []
         self.object_handles = []
@@ -407,17 +420,34 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
                     )[0]
 
                     object_asset_options = gymapi.AssetOptions()
+                    if object_info.get("vhacd_enabled", False):
+                        object_asset_options.vhacd_params = gymapi.VhacdParams()
                     for key, value in object_info.object_options.items():
-                        if isinstance(value, dict):
-                            for sub_key, sub_value in value.items():
-                                setattr(
-                                    getattr(object_asset_options, key),
-                                    sub_key,
-                                    sub_value,
+                        if type(value) == easydict.EasyDict:
+                            if hasattr(object_asset_options, key):
+                                object_asset_sub_options = getattr(
+                                    object_asset_options, key
+                                )
+                                for sub_key, sub_value in value.items():
+                                    if hasattr(object_asset_sub_options, sub_key):
+                                        setattr(
+                                            object_asset_sub_options,
+                                            sub_key,
+                                            sub_value,
+                                        )
+                            else:
+                                print(
+                                    f"Warning: {key} is not a valid option for object asset"
                                 )
                         else:
-                            setattr(object_asset_options, key, value)
-
+                            if hasattr(object_asset_options, key):
+                                if key == "default_dof_drive_mode":
+                                    value = getattr(gymapi, value)
+                                setattr(object_asset_options, key, value)
+                            else:
+                                print(
+                                    f"Warning: {key} is not a valid option for object asset"
+                                )
                     # Load Asset
                     object_asset = self.gym.load_asset(
                         self.sim,
@@ -425,6 +455,21 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
                         f"{object_name}.urdf",
                         object_asset_options,
                     )
+
+                    # create force sensors
+                    sensor_pose = gymapi.Transform()
+                    sensor_options = gymapi.ForceSensorProperties()
+                    sensor_options.enable_forward_dynamics_forces = (
+                        False  # for example gravity
+                    )
+                    sensor_options.enable_constraint_solver_forces = (
+                        True  # for example contacts
+                    )
+                    sensor_options.use_world_frame = True  # report forces in world frame (easier to get vertical components)
+                    self.gym.create_asset_force_sensor(
+                        object_asset, 0, sensor_pose, sensor_options
+                    )
+
                     self.object_assets.append(object_asset)
 
                     # Load Joint Target Positions
@@ -931,6 +976,15 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
 
     def get_bodies_contact_buf(self):
         return self.contact_forces.clone()
+
+    def get_object_contact_buf(self):
+        return self.object_contact_forces.clone()
+
+    def get_bodies_forces_buf(self):
+        return self.forces[..., :3].clone()
+
+    def get_object_forces_buf(self):
+        return self.object_forces[..., :3].clone()
 
     def get_bodies_state(self):
         body_pos = self.rigid_body_pos.clone()
