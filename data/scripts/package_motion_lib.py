@@ -33,10 +33,9 @@ import torch
 import typer
 import yaml
 import tempfile
-
-from phys_anim.data.assets.skeleton_configs import isaacgym_asset_file_to_stats
-from phys_anim.utils.motion_lib import MotionLib
-from phys_anim.utils.motion_lib_h1 import H1_MotionLib
+from omegaconf import OmegaConf
+from hydra.utils import instantiate
+from hydra import compose, initialize
 
 
 def main(
@@ -47,42 +46,25 @@ def main(
     create_text_embeddings: bool = False,
     num_data_splits: int = None,
 ):
-    motion_lib = MotionLib
-    if humanoid_type == "amp_3d":
-        # ['right_hand', 'left_hand', 'right_foot', 'left_foot']
-        key_body_ids = [5, 8, 11, 14]
-        asset_file = "mjcf/amp_humanoid_3d.xml"
-    elif humanoid_type == "amp":
-        # ['right_hand', 'left_hand', 'right_foot', 'left_foot']
-        key_body_ids = [5, 8, 11, 14]
-        asset_file = "mjcf/amp_humanoid.xml"
-    elif humanoid_type == "amp_sword":
-        # ["right_hand", "left_hand", "right_foot", "left_foot", "sword", "shield"]
-        key_body_ids = [5, 10, 13, 16, 6, 9]
-        asset_file = "mjcf/amp_humanoid_sword_shield.xml"
-    elif humanoid_type == "smpl":
-        # ["right_hand", "left_hand", "right_foot", "left_foot"]
-        key_body_ids = [7, 3, 18, 23]
-        asset_file = "mjcf/smpl_humanoid.xml"
-    elif humanoid_type == "smplx":
-        # ["right_hand", "left_hand", "right_foot", "left_foot"]
-        key_body_ids = [7, 3, 17, 36]
-        asset_file = "mjcf/smplx_box_humanoid.xml"
-    elif humanoid_type == "h1_extended_hands":
-        # ["left_ankle_link", "right_ankle_link", "left_arm_end_effector",  "right_arm_end_effector"]
-        key_body_ids = [5, 10, 16, 21]
-        asset_file = "mjcf/h1_extended_hands.xml"
-        motion_lib = H1_MotionLib
-    else:
-        raise ValueError(f"Unknown humanoid type '{humanoid_type}'")
+    config_path = "../../phys_anim/config/robot"
 
-    (
-        _dof_body_ids,
-        _dof_offsets,
-        _dof_obs_size,
-        _num_obs,
-        _num_actions,
-    ) = isaacgym_asset_file_to_stats(asset_file, len(key_body_ids), True)
+    with initialize(version_base=None, config_path=config_path, job_name="test_app"):
+        cfg = compose(config_name=humanoid_type)
+
+    key_body_ids = torch.tensor(
+        [
+            cfg.robot.dfs_body_names.index(key_body_name)
+            for key_body_name in cfg.robot.key_bodies
+        ],
+        dtype=torch.long,
+    )
+    dof_offsets = []
+    previous_dof_name = "null"
+    for dof_offset, dof_name in enumerate(cfg.robot.dfs_dof_names):
+        if dof_name[:-2] != previous_dof_name:  # remove the "_x/y/z"
+            previous_dof_name = dof_name[:-2]
+            dof_offsets.append(dof_offset)
+    dof_offsets.append(len(cfg.robot.dfs_dof_names))
 
     print("Creating motion state")
     motion_files = []
@@ -142,13 +124,15 @@ def main(
             temp_file_path = temp_file.name
 
         # Use the temporary file for MotionLib
-        mlib = motion_lib(
-            temp_file_path,
-            dof_body_ids=_dof_body_ids,
-            dof_offsets=_dof_offsets,
+        cfg.motion_lib.motion_file = temp_file_path
+        mlib = instantiate(
+            cfg.motion_lib,
+            dof_body_ids=cfg.robot.dfs_dof_body_ids,
+            dof_offsets=dof_offsets,
             key_body_ids=key_body_ids,
             device="cpu",
             create_text_embeddings=create_text_embeddings,
+            skeleton_tree=None,
         )
 
         print("Saving motion state")
