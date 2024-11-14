@@ -55,6 +55,7 @@ class InfoMax(AMP):
         )
 
         self.experience_buffer.register_key("mi_rewards")  # mi = mutual information
+        self.experience_buffer.register_key("latents", shape=(sum(self.config.infomax_parameters.latent_dim),))
 
     def update_latents(self):
         self.latent_reset_steps.advance()
@@ -128,6 +129,7 @@ class InfoMax(AMP):
         actor_state = super().post_env_step(actor_state)
         self.update_latents()
         actor_state["latents"] = self.latents
+        self.experience_buffer.update_data("latents", actor_state["step"],actor_state["latents"])
         return actor_state
 
     def post_eval_env_step(self, actor_state):
@@ -135,6 +137,16 @@ class InfoMax(AMP):
         actor_state["latents"] = self.latents
         actor_state = super().post_eval_env_step(actor_state)
         return actor_state
+
+    def create_actor_args(self, actor_state):
+        actor_args = super().create_actor_args(actor_state)
+        actor_args['latents'] = actor_state['latents']
+        return actor_args
+
+    def create_critic_args(self, actor_state):
+        critic_args = super().create_critic_args(actor_state)
+        critic_args['latents'] = actor_state['latents']
+        return critic_args
 
     def calculate_extra_reward(self):
         rew = super().calculate_extra_reward()
