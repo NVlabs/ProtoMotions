@@ -84,3 +84,15 @@ class H1_MotionLib(MotionLib):
     def _compute_motion_dof_vels(self, motion):
         # We pre-compute the dof vels in h1_humanoid_batch fk.
         return motion.dof_vels
+
+    def fix_motion_heights(self, motion, skeleton_tree):
+        body_heights = motion.global_translation[..., 2].clone()
+        # TODO: this is a bit hacky and hardcoded for the current defined key body ids
+        # left ankle: self.key_body_ids[0]
+        # right ankle: self.key_body_ids[1]
+        body_heights[:, self.key_body_ids[0]] -= 0.08
+        body_heights[:, self.key_body_ids[1]] -= 0.08
+        min_height = body_heights.min()
+
+        motion.global_translation[..., 2] -= min_height
+        return motion

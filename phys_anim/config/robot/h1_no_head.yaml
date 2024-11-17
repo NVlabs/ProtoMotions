@@ -1,0 +1,22 @@
+# @package _global_
+
+defaults:
+  - h1_no_head_no_hands
+
+robot:
+  bfs_body_names: ???
+  dfs_body_names: ['pelvis', 'left_hip_yaw_link', 'left_hip_roll_link', 'left_hip_pitch_link', 'left_knee_link', 'left_ankle_link', 'right_hip_yaw_link', 'right_hip_roll_link', 'right_hip_pitch_link', 'right_knee_link', 'right_ankle_link', 'torso_link', 'left_shoulder_pitch_link', 'left_shoulder_roll_link', 'left_shoulder_yaw_link', 'left_elbow_link', 'right_shoulder_pitch_link', 'right_shoulder_roll_link', 'right_shoulder_yaw_link', 'right_elbow_link']
+
+  # Observation parameters
+  self_obs_max_coords_size: 328  # ${eval:1+22*(3+6+3+3)-3}
+
+  key_bodies: [ "left_ankle_link", "right_ankle_link", "left_arm_end_effector",  "right_arm_end_effector" ]
+
+  init_state:
+    default_joint_angles: # = target angles [rad] when action = 0.0
+      left_arm_end_effector_joint: 0.
+      right_arm_end_effector_joint: 0.
+
+  asset:
+    collapse_fixed_joints: False # merge bodies connected by fixed joints. Specific fixed joints can be kept by adding " <... dont_collapse="true">
+    robot_type: h1_no_head

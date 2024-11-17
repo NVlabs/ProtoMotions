@@ -1150,46 +1150,5 @@ Stephen Brawner (brawner@gmail.com)
       effort="18"
       velocity="20" />
   </joint>
-
-  <link name="head">
-    <visual>
-      <geometry>
-        <sphere radius="0.0001"/>
-      </geometry>
-    </visual>
-  </link>
-
-  <joint name="head" type="fixed">
-    <parent link="pelvis"/>
-    <child link="head"/>
-    <origin xyz="0 0 0.6" rpy="0 0 0"/>
-  </joint>
-
-  <link name="left_arm_end_effector">
-    <visual>
-      <geometry>
-        <sphere radius="0.0001"/>
-      </geometry>
-    </visual>
-  </link>
-
-  <joint name="left_arm_end_effector_joint" type="fixed">
-    <parent link="left_elbow_link"/>
-    <child link="left_arm_end_effector"/>
-    <origin xyz="0.3 0 0" rpy="0 0 0"/>
-  </joint>
-
-  <link name="right_arm_end_effector">
-    <visual>
-      <geometry>
-        <sphere radius="0.0001"/>
-      </geometry>
-    </visual>
-  </link>
-
-  <joint name="right_arm_end_effector_joint" type="fixed">
-    <parent link="right_elbow_link"/>
-    <child link="right_arm_end_effector"/>
-    <origin xyz="0.3 0 0" rpy="0 0 0"/>
-  </joint>
+  
 </robot>

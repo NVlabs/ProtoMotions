@@ -32,9 +32,6 @@
       <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.1 0.1 0.1 1"
         mesh="pelvis" />
       <geom type="mesh" rgba="0.1 0.1 0.1 1" mesh="pelvis" />
-      <body name="head" pos="0 0 0.6">
-        <geom name="head" type="sphere" size=".0001" density="0"/>
-      </body>
       <body name="left_hip_yaw_link" pos="0 0.0875 -0.1742">
         <inertial pos="-0.04923 0.0001 0.0072" quat="0.69699 0.219193 0.233287 0.641667"
           mass="2.244" diaginertia="0.00304494 0.00296885 0.00189201" />
@@ -162,9 +159,6 @@
                 <geom type="mesh" contype="0" conaffinity="0" group="1" density="0"
                   rgba="0.1 0.1 0.1 1" mesh="left_elbow_link" />
                 <geom type="mesh" rgba="0.1 0.1 0.1 1" mesh="left_elbow_link" />
-                <body name="left_arm_end_effector" pos="0.3 0 0">
-                  <geom name="left_arm_end_effector" type="sphere" size=".0001" density="0"/>
-                </body>
               </body>
             </body>
           </body>
@@ -201,10 +195,6 @@
                 <geom type="mesh" contype="0" conaffinity="0" group="1" density="0"
                   rgba="0.1 0.1 0.1 1" mesh="right_elbow_link" />
                 <geom type="mesh" rgba="0.1 0.1 0.1 1" mesh="right_elbow_link" />
-
-                <body name="right_arm_end_effector" pos="0.3 0 0">
-                  <geom name="right_arm_end_effector" type="sphere" size=".0001" density="0"/>
-                </body>
               </body>
             </body>
           </body>
