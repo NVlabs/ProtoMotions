@@ -95,13 +95,13 @@ PYTHON_PATH -m pip install -e poselib
 If you are using IsaacGym use the flag `+backbone=isaacgym`. For IsaacSim use `+backbone=isaacsim`.
 Then select the robot you are training. For example, the SMPL humanoid robot is `+robot=smpl`. The code currently supports:
 
-| Robot | Description |
-| --- | --- |
-| smpl | SMPL humanoid |
-| smplx | SMPL-X humanoid |
-| amp | Adversarial Motion Priors humanoid |
-| sword_and_shield | ASE sword and shield character |
-| h1_extended_hands | Unitree H1 humanoid with end-effector joints made visible |
+| Robot            | Description                                                        |
+|------------------|--------------------------------------------------------------------|
+| smpl             | SMPL humanoid                                                      |
+| smplx            | SMPL-X humanoid                                                    |
+| amp              | Adversarial Motion Priors humanoid                                 |
+| sword_and_shield | ASE sword and shield character                                     |
+| h1               | Unitree H1 humanoid with end-effector and head joints made visible |
 
 ## Provided Algorithms
 
@@ -240,7 +240,7 @@ We provide 4 example motions to get you started:
 - AMP + sword and shield humanoid: `phys_anim/data/motions/amp_sword_and_shield_humanoid_walk.npy`
 - SMPL humanoid: `phys_anim/data/motions/smpl_humanoid_walk.npy`
 - SMPL-X humanoid: `phys_anim/data/motions/smplx_humanoid_walk.npy`
-- H1 (extended hands version): `phys_anim/data/motions/h1_extended_hands_punch.npy`
+- H1 (with head and hands): `phys_anim/data/motions/h1_punch.npy`
 
 The data processing pipeline follows the following procedure:
 1. Download the data.
@@ -355,7 +355,7 @@ This project repository builds upon the shoulders of giants.
 * [PADL/SuperPADL](https://github.com/nv-tlabs/PADL2) for initial code structure with PyTorch lightning
 * [PHC](https://github.com/ZhengyiLuo/PHC) for AMASS preprocessing and conversion to Isaac (PoseLib) and reference on working with SMPL robotic humanoid.
 * [SMPLSim](https://github.com/ZhengyiLuo/SMPLSim) for SMPL and SMPL-X simulated humanoid.
-* [OmniH2O](https://omni.human2humanoid.com/) for AMASS to Isaac H1 conversion script.
+* [OmniH2O](https://omni.human2humanoid.com/) and [PHC-H1](https://github.com/ZhengyiLuo/PHC/tree/h1_phc) for AMASS to Isaac H1 conversion script.
 * [rl_games](https://github.com/Denys88/rl_games) for reference PPO code.
 
 Also special thanks to
