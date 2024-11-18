@@ -10,6 +10,7 @@ robot:
   # Observation parameters
   self_obs_max_coords_size: 328  # ${eval:1+22*(3+6+3+3)-3}
 
+  dfs_dof_body_ids: [ 1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 17, 18, 19, 20 ]
   key_bodies: [ "left_ankle_link", "right_ankle_link", "left_arm_end_effector",  "right_arm_end_effector" ]
 
   init_state:
