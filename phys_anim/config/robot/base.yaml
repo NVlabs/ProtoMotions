@@ -6,8 +6,8 @@ robot:
   number_of_actions: ???
   self_obs_size: ${.self_obs_max_coords_size}
   self_obs_max_coords_size: ???
-  num_bodies: ${len:${.bfs_body_names}}
-  contact_bodies: ${.bfs_body_names}
+  num_bodies: ${len:${.dfs_body_names}}
+  contact_bodies: ${.dfs_body_names}
 
   # Control parameters
   bfs_body_names: ???  # IsaacSim
