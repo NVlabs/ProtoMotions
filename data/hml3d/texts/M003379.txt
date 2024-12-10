@@ -1,0 +1,3 @@
+the character scratches his head with his left arm#the/DET character/NOUN scratch/VERB his/DET head/NOUN with/ADP his/DET left/ADJ arm/NOUN#0.0#0.0
+person scratching their head with left hand.#person/NOUN scratch/VERB their/DET head/NOUN with/ADP left/ADJ hand/NOUN#0.0#0.0
+a man is standing on the ground ,lifting his left arm up and then down.#a/DET man/NOUN is/AUX stand/VERB on/ADP the/DET ground/NOUN lift/VERB his/DET left/ADJ arm/NOUN up/ADP and/CCONJ then/ADV down/ADV#0.0#0.0

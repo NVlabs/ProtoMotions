@@ -1,0 +1,3 @@
+a person lifts his right and left arm into the air.#a/DET person/NOUN lift/VERB his/DET right/NOUN and/CCONJ left/ADJ arm/NOUN into/ADP the/DET air/NOUN#0.0#0.0
+a man moves his right arm up in a dancing motion and moves the left.#a/DET man/NOUN move/VERB his/DET right/ADJ arm/NOUN up/ADP in/ADP a/DET dancing/NOUN motion/NOUN and/CCONJ move/VERB the/DET left/NOUN#0.0#0.0
+a person waves their right arm, then waves their left arm.#a/DET person/NOUN wave/VERB their/DET right/ADJ arm/NOUN then/ADV wave/VERB their/DET left/ADJ arm/NOUN#0.0#0.0

@@ -131,8 +131,6 @@ class MotionLib(DeviceDtypeModuleMixin):
         spawned_scene_ids: List[str] = None,
         fix_motion_heights: bool = True,
         skeleton_tree: Any = None,
-        rb_conversion: Tensor = None,
-        dof_conversion: Tensor = None,
         local_rot_conversion: Tensor = None,
         w_last: bool = True,
     ):
@@ -145,8 +143,6 @@ class MotionLib(DeviceDtypeModuleMixin):
         self.dof_offsets = dof_offsets
         self.num_dof = dof_offsets[-1]
         self.ref_height_adjust = ref_height_adjust
-        self.rb_conversion = rb_conversion
-        self.dof_conversion = dof_conversion
         self.local_rot_conversion = local_rot_conversion
 
         self.register_buffer(
@@ -452,21 +448,6 @@ class MotionLib(DeviceDtypeModuleMixin):
 
         global_translation[:, :, 2] += self.ref_height_adjust
 
-        if not self.w_last:
-            global_rotation = rotations.xyzw_to_wxyz(global_rotation)
-            local_rotation = rotations.xyzw_to_wxyz(local_rotation)
-
-        if self.rb_conversion is not None:
-            global_translation = global_translation[:, self.rb_conversion]
-            global_rotation = global_rotation[:, self.rb_conversion]
-            global_vel = global_vel[:, self.rb_conversion]
-            global_ang_vel = global_ang_vel[:, self.rb_conversion]
-        if self.dof_conversion is not None:
-            dof_pos = dof_pos[:, self.dof_conversion]
-            dof_vel = dof_vel[:, self.dof_conversion]
-        if self.local_rot_conversion is not None:
-            local_rotation = local_rotation[:, self.local_rot_conversion]
-
         motion_state = MotionState(
             root_pos=None,
             root_rot=None,
@@ -592,21 +573,6 @@ class MotionLib(DeviceDtypeModuleMixin):
         global_ang_vel = (
             1.0 - blend_exp
         ) * global_ang_vel0 + blend_exp * global_ang_vel1
-        if not self.w_last:
-            root_rot = rotations.xyzw_to_wxyz(root_rot)
-            rb_rot = rotations.xyzw_to_wxyz(rb_rot)
-            local_rot = rotations.xyzw_to_wxyz(local_rot)
-
-        if self.rb_conversion is not None:
-            rb_pos = rb_pos[:, self.rb_conversion]
-            rb_rot = rb_rot[:, self.rb_conversion]
-            global_vel = global_vel[:, self.rb_conversion]
-            global_ang_vel = global_ang_vel[:, self.rb_conversion]
-        if self.dof_conversion is not None:
-            dof_pos = dof_pos[:, self.dof_conversion]
-            dof_vel = dof_vel[:, self.dof_conversion]
-        if self.local_rot_conversion is not None:
-            local_rot = local_rot[:, self.local_rot_conversion]
 
         motion_state = MotionState(
             root_pos=root_pos,
@@ -664,13 +630,17 @@ class MotionLib(DeviceDtypeModuleMixin):
                 )
             )
             curr_motion = self._load_motion_file(curr_file)
+
             curr_motion = fix_motion_fps(
-                curr_motion, motion_fpses[f], target_frame_rate, self.skeleton_tree
+                curr_motion,
+                motion_fpses[f],
+                target_frame_rate,
+                self.skeleton_tree,
             )
             motion_fpses[f] = float(curr_motion.fps)
 
             if self.fix_heights:
-                curr_motion = fix_heights(curr_motion, self.skeleton_tree)
+                curr_motion = self.fix_motion_heights(curr_motion, self.skeleton_tree)
 
             curr_dt = 1.0 / motion_fpses[f]
 
@@ -798,7 +768,6 @@ class MotionLib(DeviceDtypeModuleMixin):
             motion_fpses = []
             motion_labels = []
             supported_scene_ids = []
-
             with open(os.path.join(os.getcwd(), motion_file), "r") as f:
                 motion_config = EasyDict(yaml.load(f, Loader=yaml.SafeLoader))
 
@@ -813,7 +782,6 @@ class MotionLib(DeviceDtypeModuleMixin):
                 curr_file = motion_entry.file
                 curr_file = os.path.join(dir_name, curr_file)
                 motion_files.append(curr_file)
-
                 motion_fpses.append(motion_entry.get("fps", None))
 
                 if "sub_motions" not in motion_entry:
@@ -880,7 +848,6 @@ class MotionLib(DeviceDtypeModuleMixin):
             ref_respawn_offsets = [0]
             motion_labels = [["", "", ""]]
             supported_scene_ids = [None]
-
         return (
             motion_files,
             motion_weights,
@@ -1109,8 +1076,39 @@ class MotionLib(DeviceDtypeModuleMixin):
             sampled_motions, device=self.device, dtype=torch.long
         ), torch.tensor(occupied_scenes, device=self.device, dtype=torch.long)
 
+    @staticmethod
+    def fix_motion_heights(motion, skeleton_tree):
+        if skeleton_tree is None:
+            if hasattr(motion, "skeleton_tree"):
+                skeleton_tree = motion.skeleton_tree
+        body_heights = motion.global_translation[..., 2]
+        min_height = body_heights.min()
 
-def fix_motion_fps(motion, orig_fps, target_frame_rate, skeleton_tree):
+        if skeleton_tree is None:
+            motion.global_translation[..., 2] -= min_height
+            return motion
+
+        root_translation = motion.root_translation
+        root_translation[:, 2] -= min_height
+
+        new_sk_state = SkeletonState.from_rotation_and_root_translation(
+            skeleton_tree,
+            motion.global_rotation,
+            root_translation,
+            is_local=False,
+        )
+
+        new_motion = SkeletonMotion.from_skeleton_state(new_sk_state, fps=motion.fps)
+
+        return new_motion
+
+
+def fix_motion_fps(
+    motion,
+    orig_fps,
+    target_frame_rate,
+    skeleton_tree,
+):
     if skeleton_tree is None:
         if hasattr(motion, "skeleton_tree"):
             skeleton_tree = motion.skeleton_tree
@@ -1132,31 +1130,5 @@ def fix_motion_fps(motion, orig_fps, target_frame_rate, skeleton_tree):
         is_local=True,
     )
     new_motion = SkeletonMotion.from_skeleton_state(new_sk_state, fps=target_frame_rate)
-
-    return new_motion
-
-
-def fix_heights(motion, skeleton_tree):
-    if skeleton_tree is None:
-        if hasattr(motion, "skeleton_tree"):
-            skeleton_tree = motion.skeleton_tree
-    body_heights = motion.global_translation[..., 2]
-    min_height = body_heights.min()
-
-    if skeleton_tree is None:
-        motion.global_translation[..., 2] -= min_height
-        return motion
-
-    root_translation = motion.root_translation
-    root_translation[:, 2] -= min_height
-
-    new_sk_state = SkeletonState.from_rotation_and_root_translation(
-        skeleton_tree,
-        motion.global_rotation,
-        root_translation,
-        is_local=False,
-    )
-
-    new_motion = SkeletonMotion.from_skeleton_state(new_sk_state, fps=motion.fps)
 
     return new_motion

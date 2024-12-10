@@ -1,0 +1,3 @@
+a person gets pushed from his left side, stumbles to his right, and then he regains his balance as he looks back to see who pushed him.#a/DET person/NOUN get/VERB push/VERB from/ADP his/DET left/ADJ side/NOUN stumble/NOUN to/ADP his/DET right/NOUN and/CCONJ then/ADV he/PRON regain/VERB his/DET balance/NOUN as/SCONJ he/PRON look/VERB back/ADV to/PART see/VERB who/PRON push/VERB him/PRON#0.0#0.0
+he gets pushed to the left#he/PRON get/VERB push/VERB to/ADP the/DET left/NOUN#0.0#0.0
+a person appears to be pushed and stumbles to the left.#a/DET person/NOUN appear/VERB to/PART be/AUX push/VERB and/CCONJ stumble/NOUN to/ADP the/DET left/NOUN#0.0#0.0

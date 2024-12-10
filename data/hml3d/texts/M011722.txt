@@ -1,0 +1,3 @@
+a person walks forward but also slightly to the right at the same time.#a/DET person/NOUN walk/VERB forward/ADV but/CCONJ also/ADV slightly/ADV to/ADP the/DET right/NOUN at/ADP the/DET same/ADJ time/NOUN#0.0#0.0
+a person takes a few steps forward, slightly dragging their right foot.#a/DET person/NOUN take/VERB a/DET few/ADJ step/NOUN forward/ADV slightly/ADV drag/VERB their/DET right/ADJ foot/NOUN#0.0#0.0
+a person takes some large steps forward.#a/DET person/NOUN take/VERB some/DET large/ADJ step/NOUN forward/ADV#0.0#0.0

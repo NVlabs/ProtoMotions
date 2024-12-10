@@ -1,0 +1,3 @@
+a person side skips to their right, then they side skip a few steps to their left and back again to their right.#a/DET person/NOUN side/NOUN skip/VERB to/ADP their/DET right/NOUN then/ADV they/PRON side/VERB skip/VERB a/DET few/ADJ step/NOUN to/ADP their/DET left/NOUN and/CCONJ back/ADV again/ADV to/ADP their/DET right/NOUN#0.0#0.0
+a person side steps right to left and then right before returning to their starting position.#a/DET person/NOUN side/NOUN step/VERB right/ADV to/ADP left/VERB and/CCONJ then/ADV right/ADV before/ADP return/VERB to/ADP their/DET start/VERB position/NOUN#0.0#0.0
+a person sidesteps back and forth in a line#a/DET person/NOUN sidestep/VERB back/ADV and/CCONJ forth/ADV in/ADP a/DET line/NOUN#0.0#0.0

@@ -1,0 +1,3 @@
+someone takes several steps from left to right, then side steps halfway back to the left.#someone/PRON take/VERB several/ADJ step/NOUN from/ADP left/VERB to/ADP right/NOUN then/ADV side/NOUN step/NOUN halfway/ADV back/ADV to/ADP the/DET left/NOUN#0.0#0.0
+a person walks sideways to the right, and then back to left#a/DET person/NOUN walk/VERB sideways/ADV to/ADP the/DET right/NOUN and/CCONJ then/ADV back/ADV to/ADP left/ADV#0.0#0.0
+a person is side stepping to the right and then to the left#a/DET person/NOUN is/AUX side/NOUN step/VERB to/ADP the/DET right/NOUN and/CCONJ then/ADV to/ADP the/DET left/NOUN#0.0#0.0

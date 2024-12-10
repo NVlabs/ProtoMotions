@@ -25,4 +25,4 @@ fabric:
 
 env:
   config:
-    masked_mimic_conditionable_bodies: [pelvis, left_ankle_link, right_ankle_link, left_arm_end_effector, right_arm_end_effector]
+    masked_mimic_conditionable_bodies: [pelvis, head, left_ankle_link, right_ankle_link, left_arm_end_effector, right_arm_end_effector]

@@ -172,18 +172,9 @@ class SceneLib:
 
         self.raw_scenes = data["scenes"]
 
+    @property
     def total_num_objects(self):
-        total_objects = sum(
-            len(scene.get("objects", []))
-            * scene.get("replications", 1)
-            * self.config.scene_replications
-            for scene in self.raw_scenes
-        )
-
-        if self.config.max_num_objects is not None:
-            total_objects = min(total_objects, self.config.max_num_objects)
-
-        return total_objects
+        return len(self.object_spawn_list)
 
     @property
     def total_spawned_scenes(self):
@@ -196,18 +187,26 @@ class SceneLib:
         This method processes the raw scenes loaded from the YAML file, randomly selects scenes based on their replication weights,
         and populates the scenes list. It respects the max_num_objects configuration if set.
 
-        The method also initializes the self.scenes list with the selected scenes and keeps track of how many times each scene
-        has been replicated.
+        The method also tracks the first instance of each unique object to enable asset reuse.
 
         Side effects:
             - Populates self.scenes with selected scene configurations.
             - Updates the 'replications' count for each scene in self.raw_scenes.
+            - Tracks first instance of each unique object path.
 
         Prints:
             - The total number of objects to be spawned.
             - The number of scenes to be spawned.
         """
-        total_objects = self.total_num_objects()
+        total_objects = sum(
+            len(scene.get("objects", []))
+            * scene.get("replications", 1)
+            * self.config.scene_replications
+            for scene in self.raw_scenes
+        )
+
+        if self.config.max_num_objects is not None:
+            total_objects = min(total_objects, self.config.max_num_objects)
 
         print(f"Will spawn a total of {total_objects} objects.")
         total_spawned_objects = 0
@@ -221,6 +220,9 @@ class SceneLib:
 
         object_id = 0
         scene_count = 0
+        # Dictionary to track first instance of each unique object path
+        first_instance_map = {}  # Maps object path to first object_id that used it
+
         while total_spawned_objects < total_objects and weighted_scenes:
             scene_index, (scene, _) = random.choices(
                 list(enumerate(weighted_scenes)),
@@ -253,6 +255,16 @@ class SceneLib:
             for obj in scene_objects:
                 obj_copy = obj.copy()
                 obj_copy["id"] = object_id
+
+                # Track first instance of each unique object path
+                if obj_copy["path"] not in first_instance_map:
+                    first_instance_map[obj_copy["path"]] = object_id
+                    obj_copy["is_first_instance"] = True
+                    obj_copy["first_instance_id"] = object_id
+                else:
+                    obj_copy["is_first_instance"] = False
+                    obj_copy["first_instance_id"] = first_instance_map[obj_copy["path"]]
+
                 scene_copy["objects"].append(obj_copy)
                 if not obj_copy["is_static"]:
                     scene_copy["single_robot_in_scene"] = (
@@ -316,11 +328,12 @@ class SceneLib:
 
                 if motion_path:
                     object_motion_data = self._load_motion(motion_path)
+                    fps = object_motion_data.get("fps", 30.0)
+                    dt = 1.0 / fps
+
                     motion_length = object_motion_data["translation"].shape[0]
                     total_motion_length += motion_length
                     motion_data.append((object_id, object_motion_data))
-                    fps = object_motion_data.get("fps", 30.0)
-                    dt = 1.0 / fps
                     motion_lengths_list.append(motion_length * dt)
                     motion_dts_list.append(dt)
                     motion_num_frames_list.append(motion_length)
@@ -529,6 +542,8 @@ class SceneLib:
                             "object_id": object_id,
                             "is_static": obj["is_static"],
                             "object_options": obj.get("object_options", {}),
+                            "is_first_instance": obj["is_first_instance"],
+                            "first_instance_id": obj["first_instance_id"],
                         }
                     )
                 )
@@ -768,7 +783,6 @@ if __name__ == "__main__":
         {
             "max_num_objects": config.max_num_objects,
             "scene_yaml_path": temp_file_path,
-            "num_object_types": 7,
             "force_single_robot_per_scene": True,
             "scene_replications": 1024,
         }

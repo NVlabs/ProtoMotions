@@ -1,0 +1,3 @@
+a standing person raises their hands to touch the back of the right wrist with the left hand and then lowers their hands again.#a/DET stand/VERB person/NOUN raise/VERB their/DET hand/NOUN to/PART touch/VERB the/DET back/NOUN of/ADP the/DET right/ADJ wrist/NOUN with/ADP the/DET left/ADJ hand/NOUN and/CCONJ then/ADV lower/VERB their/DET hand/NOUN again/ADV#0.0#0.0
+a person stands and touches their right hand with theor left hand.#a/DET person/NOUN stand/VERB and/CCONJ touch/VERB their/DET right/ADJ hand/NOUN with/ADP theor/PROPN left/ADJ hand/NOUN#0.0#0.0
+a person uses their left hand to scratch their right wrist.#a/DET person/NOUN use/VERB their/DET left/ADJ hand/NOUN to/PART scratch/VERB their/DET right/ADJ wrist/NOUN#0.0#0.0

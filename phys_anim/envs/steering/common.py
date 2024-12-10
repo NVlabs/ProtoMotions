@@ -41,8 +41,8 @@ else:
 
 
 class BaseSteering(SteeringHumanoid):  # type: ignore[misc]
-    def __init__(self, config, device: torch.device):
-        super().__init__(config=config, device=device)
+    def __init__(self, config, device: torch.device, *args, **kwargs):
+        super().__init__(config=config, device=device, *args, **kwargs)
 
         self._tar_speed_min = self.config.steering_params.tar_speed_min
         self._tar_speed_max = self.config.steering_params.tar_speed_max

@@ -1,0 +1,3 @@
+the person was pushed from the right but did not fall.#the/DET person/NOUN was/AUX push/VERB from/ADP the/DET right/NOUN but/CCONJ did/AUX not/PART fall/VERB#0.0#0.0
+person walks forward a few steps, stagers to the left then  walks forward and ends up inline with the right side.#person/NOUN walk/VERB forward/ADV a/DET few/ADJ step/NOUN stager/NOUN to/ADP the/DET left/NOUN then/ADV walk/VERB forward/ADV and/CCONJ end/VERB up/ADP inline/NOUN with/ADP the/DET right/ADJ side/NOUN#0.0#0.0
+a person attempts to walk in astraight line but stubles to the left before stumbling back in line.#a/DET person/NOUN attempt/VERB to/PART walk/VERB in/ADP astraight/NOUN line/NOUN but/CCONJ stuble/NOUN to/ADP the/DET left/NOUN before/ADP stumble/VERB back/ADV in/ADP line/NOUN#0.0#0.0

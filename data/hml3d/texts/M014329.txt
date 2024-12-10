@@ -1,0 +1,3 @@
+person steps out with large step to there right with right leg#person/NOUN step/VERB out/ADP with/ADP large/ADJ step/NOUN to/ADP there/ADV right/ADJ with/ADP right/ADJ leg/NOUN#0.0#0.0
+a figure safely steps to the right avoiding something.#a/DET figure/NOUN safely/ADV step/VERB to/ADP the/DET right/ADJ avoid/VERB something/PRON#0.0#4.0
+a person takes a big step sideways to the right#a/DET person/NOUN take/VERB a/DET big/ADJ step/NOUN sideways/ADV to/ADP the/DET right/NOUN#0.0#0.0

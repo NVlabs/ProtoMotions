@@ -1,0 +1,3 @@
+person steps onto the right leg and straightens right arm into the air#person/NOUN step/VERB onto/ADP the/DET right/ADJ leg/NOUN and/CCONJ straighten/VERB right/ADJ arm/NOUN into/ADP the/DET air/NOUN#0.0#0.0
+a person punches with an upper cut with right hand#a/DET person/NOUN punch/VERB with/ADP an/DET upper/ADJ cut/NOUN with/ADP right/ADJ hand/NOUN#0.0#0.0
+this person reaches with the left arm above the head then with the right.#this/DET person/NOUN reach/VERB with/ADP the/DET left/ADJ arm/NOUN above/ADP the/DET head/NOUN then/ADV with/ADP the/DET right/NOUN#0.0#0.0

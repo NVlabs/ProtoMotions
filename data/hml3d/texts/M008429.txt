@@ -1,0 +1,3 @@
+a man right steps, then left steps, turns counterclockwise, right steps, then left steps back full circle.#a/DET man/NOUN right/ADJ step/NOUN then/ADV left/VERB step/NOUN turn/VERB counterclockwise/NOUN right/ADJ step/NOUN then/ADV left/VERB step/NOUN back/ADP full/ADJ circle/NOUN#0.0#0.0
+walking forward and then back.#walk/VERB forward/ADV and/CCONJ then/ADV back/ADV#0.0#0.0
+taking two steps forward before making a left hand turn.#take/VERB two/NUM step/NOUN forward/ADV before/ADP make/VERB a/DET left/ADJ hand/NOUN turn/NOUN#0.0#0.0

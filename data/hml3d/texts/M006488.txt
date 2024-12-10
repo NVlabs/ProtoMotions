@@ -1,0 +1,3 @@
+the man is walking forward but then gives someone a low five as he passes them.#the/DET man/NOUN is/AUX walk/VERB forward/ADV but/CCONJ then/ADV give/VERB someone/PRON a/DET low/ADJ five/NUM as/SCONJ he/PRON pass/VERB them/PRON#0.0#0.0
+a person walking slightly from right to left briefly puts out their left hand and then pulls it back.#a/DET person/NOUN walk/VERB slightly/ADV from/ADP right/NOUN to/ADP left/NOUN briefly/ADV put/VERB out/ADP their/DET left/ADJ hand/NOUN and/CCONJ then/ADV pull/VERB it/PRON back/ADV#0.0#0.0
+walking in a diagonal line.#walk/VERB in/ADP a/DET diagonal/ADJ line/NOUN#0.0#0.0

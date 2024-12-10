@@ -1,0 +1,3 @@
+a person takes a step to the right then swings their left arm#a/DET person/NOUN take/VERB a/DET step/NOUN to/ADP the/DET right/NOUN then/ADV swing/VERB their/DET left/ADJ arm/NOUN#0.0#0.0
+a person makes a throwing motion with their left arm.#a/DET person/NOUN make/VERB a/DET throwing/NOUN motion/NOUN with/ADP their/DET left/ADJ arm/NOUN#0.0#0.0
+a person throws something with his left hand.#a/DET person/NOUN throw/VERB something/PRON with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0

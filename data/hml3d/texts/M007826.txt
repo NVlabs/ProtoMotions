@@ -1,0 +1,3 @@
+a person leans left diagonal, with left leg out and left arm out#a/DET person/NOUN lean/VERB left/VERB diagonal/ADJ with/ADP left/ADJ leg/NOUN out/ADP and/CCONJ left/VERB arm/NOUN out/ADP#0.0#0.0
+a man makes three forward lunges while moving his left hand, first in front then to shoulder level.#a/DET man/NOUN make/VERB three/NUM forward/ADV lunge/NOUN while/SCONJ move/VERB his/DET left/ADJ hand/NOUN first/ADV in/ADP front/NOUN then/ADV to/ADP shoulder/NOUN level/NOUN#0.0#0.0
+a man lunges forward with his left foot while moving his left arm back and forth.#a/DET man/NOUN lunge/VERB forward/ADV with/ADP his/DET left/ADJ foot/NOUN while/SCONJ move/VERB his/DET left/ADJ arm/NOUN back/ADV and/CCONJ forth/ADV#0.0#0.0

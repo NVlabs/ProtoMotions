@@ -1,0 +1,3 @@
+a person lifts up their right leg while shifting on their left.#a/DET person/NOUN lift/VERB up/ADP their/DET right/ADJ leg/NOUN while/SCONJ shift/VERB on/ADP their/DET left/NOUN#0.0#0.0
+someone settles to sit on something, their left foot propped up and right foot on the floor, then stands up again.#someone/PRON settle/VERB to/PART sit/VERB on/ADP something/PRON their/DET left/ADJ foot/NOUN prop/VERB up/ADP and/CCONJ right/ADJ foot/NOUN on/ADP the/DET floor/NOUN then/ADV stand/VERB up/ADP again/ADV#0.0#0.0
+the person is getting up on a stool to sit.#the/DET person/NOUN is/AUX get/VERB up/ADP on/ADP a/DET stool/NOUN to/PART sit/VERB#0.0#0.0

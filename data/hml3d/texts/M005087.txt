@@ -1,0 +1,2 @@
+a man walks towards the left.#a/DET man/NOUN walk/VERB towards/ADP the/DET left/NOUN#0.0#0.0
+a person walks curved to their right.#a/DET person/NOUN walk/VERB curved/ADJ to/ADP their/DET right/NOUN#0.0#0.0

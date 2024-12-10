@@ -1,0 +1,3 @@
+a man waves with his left arm.#a/DET man/NOUN wave/VERB with/ADP his/DET left/ADJ arm/NOUN#0.0#0.0
+a man standing takes his left arm and seems to tap his head several times with it.#a/DET man/NOUN stand/VERB take/VERB his/DET left/ADJ arm/NOUN and/CCONJ seem/VERB to/PART tap/VERB his/DET head/NOUN several/ADJ time/NOUN with/ADP it/PRON#0.0#0.0
+a person raises his left hand and motions to come to him.#a/DET person/NOUN raise/VERB his/DET left/ADJ hand/NOUN and/CCONJ motion/NOUN to/PART come/VERB to/ADP him/PRON#0.0#0.0

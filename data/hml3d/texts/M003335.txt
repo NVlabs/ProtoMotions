@@ -1,0 +1,3 @@
+a person throws something with their left hand.#a/DET person/NOUN throw/VERB something/PRON with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
+a person raising, then slaming down left arm/ hand.#a/DET person/NOUN raise/VERB then/ADV slam/VERB down/ADV left/ADV hand/NOUN#0.0#0.0
+a person throws an object using their left hand.#a/DET person/NOUN throw/VERB an/DET object/NOUN use/VERB their/DET left/ADJ hand/NOUN#0.0#0.0

@@ -1,0 +1,3 @@
+the man walked forward, spun right on one foot and walked back to his original position.#the/DET man/NOUN walk/VERB forward/ADV spin/VERB right/ADV on/ADP one/NUM foot/NOUN and/CCONJ walk/VERB back/ADV to/ADP his/DET original/ADJ position/NOUN#0.0#0.0
+person walks forward and turns right to walk back to starting point.#person/NOUN walk/VERB forward/ADV and/CCONJ turn/VERB right/ADJ to/PART walk/VERB back/ADV to/ADP starting/NOUN point/NOUN#0.0#0.0
+the person is walking and making a right turn.#the/DET person/NOUN is/AUX walk/VERB and/CCONJ make/VERB a/DET right/ADJ turn/NOUN#0.0#0.0

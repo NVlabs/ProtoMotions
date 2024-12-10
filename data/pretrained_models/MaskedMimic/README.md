@@ -29,7 +29,7 @@ Input Type(s): [text, target poses, target objects]
 **Other Properties Related to Input:**
 Text is represented as X-CLIP embeddings.
 We support the SMPL character. A target pose consists of 69 joints. A target pose can contain target positions and rotations. Multiple target poses can be provided in parallel.
-A target object is represented by its bounding box, orientation, and 1-hot class indicator. We support 7 object classes. Straight Chairs, Armchairs, Tables, High Stools, Low Stools, Sofas, and Large Sofas.
+A target object is represented by its bounding box, orientation, and point cloud.
 
 ## Output: 
 Output Type(s): Continuous vector 

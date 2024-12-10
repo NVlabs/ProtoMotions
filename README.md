@@ -10,7 +10,7 @@
 # What is this?
 
 This codebase contains our efforts in building interactive physically-simulated virtual agents.
-It supports both IsaacGym and IsaacSim.
+It supports both IsaacGym and IsaacLab.
 
 <div float="center">
     <img src="assets/sofa.gif" width="300"/>
@@ -34,7 +34,7 @@ Public release!
 
 # Installation
 
-This codebase supports both IsaacGym and IsaacSim. You can install one or both and
+This codebase supports both IsaacGym and IsaacLab. You can install one or both and
 the simulation backend is selected via the configuration file.
 
 First run `git lfs fetch --all` to fetch all files stored in git-lfs.
@@ -67,19 +67,18 @@ If you run into memory issues -- try reducing the number of environments by addi
 </details>
 
 <details>
-<summary>IsaacSim</summary>
+<summary>IsaacLab</summary>
 
 > **Important:**</br>
-> IsaacSim integration on-going. Some features may not work yet.
+> IsaacLab integration on-going. Some features may not work yet.
 
-1. Install [IsaacSim](https://docs.omniverse.nvidia.com/isaacsim/latest/installation/install_workstation.html)
-2. Set `PYTHON_PATH`
+1. Install [IsaacLab](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html)
+2. Set `PYTHON_PATH` to point at the `isaaclab.sh` script
 ```
-For Linux: alias PYTHON_PATH=~/.local/share/ov/pkg/isaac-sim-*/python.sh
-For Windows: doskey PYTHON_PATH=C:\Users\user\AppData\Local\ov\pkg\isaac_sim-*\python.bat $*
-For IsaacSim Docker: alias PYTHON_PATH=/isaac-sim/python.sh
+For Linux: alias PYTHON_PATH="<isaac_lab_path> -p"
+# For example: alias PYTHON_PATH="/home/USERNAME/IsaacLab/isaaclab.sh -p"
 ```
-3. Once IsaacSim is installed - from the repository root install the Physical Animation package and its dependencies with:
+3. Once IsaacLab is installed, from the protomotions repository root, install the Physical Animation package and its dependencies with:
 ```
 PYTHON_PATH -m pip install -e .
 PYTHON_PATH -m pip install -e isaac_utils
@@ -92,7 +91,7 @@ PYTHON_PATH -m pip install -e poselib
 
 ## Backbone and Robot selection
 
-If you are using IsaacGym use the flag `+backbone=isaacgym`. For IsaacSim use `+backbone=isaacsim`.
+If you are using IsaacGym use the flag `+backbone=isaacgym`. For IsaacLab use `+backbone=isaaclab`.
 Then select the robot you are training. For example, the SMPL humanoid robot is `+robot=smpl`. The code currently supports:
 
 | Robot            | Description                                                        |
@@ -136,7 +135,7 @@ task with the provided motions.
 
 1. Run `PYTHON_PATH phys_anim/train_agent.py +exp=amp motion_file=<path to motion file>`.
 2. Choose your robot, for example `+robot=amp`.
-3. Set `+backbone=isaacgym` or `+backbone=isaacsim` to choose the backbone.
+3. Set `+backbone=isaacgym` or `+backbone=isaaclab` to choose the backbone.
 
 ### Path Following
 
@@ -183,7 +182,7 @@ For more information, refer to the example `YAML` files in the `data/yaml_files`
 
 ## Logging
 
-By default, all experiments are logged using tensorboard. You can also log using Weights and Biases by adding the flag `+opt=wdb`.
+By default, all experiments are logged using tensorboard. You can also log using Weights and Biases by adding the flag `+opt=wandb`.
 
 # Evaluation/Visualization
 
@@ -218,13 +217,13 @@ The agent training code is agnostic to the backbone simulative environment. This
 environment.
 
 The environment code is located in `phys_anim/envs`. The first folder defines the environment type, for example `amp`.
-Within each environment folder we have `common.py` which contains all the core logic for the environment, and `isaacgym.py`, `isaacsim.py`, etc... which contain the simulator specific code (e.g., IsaacGym API calls).
+Within each environment folder we have `common.py` which contains all the core logic for the environment, and `isaacgym.py`, `isaaclab.py`, etc... which contain the simulator specific code (e.g., IsaacGym API calls).
 
 ## Configurations
 
 This repo is aimed to be versatile and fast to work with. Everything should be configurable, and elements should be composable by combining configs.
 For example, the `opt` folder contains a collection of config options. Some of them are:
-- `wdb`: Log using Weights and Biases.
+- `wandb`: Log using Weights and Biases.
 - `disable_discriminator`: Disabling AMP discriminator for classes inheriting from AMP.
 - `legged-robot`: Configurations for legged robots (e.g., Unitree H1).
 - `record_motion`: Record motions (states) to a file.
@@ -248,7 +247,7 @@ The data processing pipeline follows the following procedure:
 3. Create a YAML file with the data information (filename, FPS, textual labels, etc...).
 4. Package (pre-process) the data for faster loading.
 
-Motions can be visualized via kinematic replay by running `PYTHON_PATH phys_anim/scripts/play_motion.py <motion file> <backbone isaacgym/isaacsim> <robot type>`.
+Motions can be visualized via kinematic replay by running `PYTHON_PATH phys_anim/scripts/play_motion.py <motion file> <backbone isaacgym/isaaclab> <robot type>`.
 
 
 ## Download Data
@@ -368,4 +367,5 @@ This project uses the following packages:
 * PyTorch Lightning, [LICENSE](https://github.com/Lightning-AI/pytorch-lightning/blob/master/LICENSE)
 * IsaacGym, [LICENSE](https://developer.download.nvidia.com/isaac/NVIDIA_Isaac_Gym_Pre-Release_Evaluation_EULA_19Oct2020.pdf)
 * IsaacSim, [LICENSE](https://docs.omniverse.nvidia.com/isaacsim/latest/common/NVIDIA_Omniverse_License_Agreement.html)
+* IsaacLab, [LICENSE](https://isaac-sim.github.io/IsaacLab/main/source/refs/license.html)
 * SMPLSim, [LICENSE](https://github.com/ZhengyiLuo/SMPLSim/blob/0ec11c8dd3115792b8cf0bfeaef64e8c81be592a/LICENSE)

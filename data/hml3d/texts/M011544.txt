@@ -1,0 +1,3 @@
+a man steps around, walking in a counter counterclockwise circle, while twirling his body in a counterclockwise circle.#a/DET man/NOUN step/VERB around/ADV walk/VERB in/ADP a/DET counter/ADJ counterclockwise/PROPN circle/NOUN while/SCONJ twirl/VERB his/DET body/NOUN in/ADP a/DET counterclockwise/ADJ circle/NOUN#0.0#0.0
+the person is walking backwards in a square shape.#the/DET person/NOUN is/AUX walk/VERB backwards/ADV in/ADP a/DET square/ADJ shape/NOUN#0.0#0.0
+a person is moving around in a circle.#a/DET person/NOUN is/AUX move/VERB around/ADV in/ADP a/DET circle/NOUN#0.0#0.0

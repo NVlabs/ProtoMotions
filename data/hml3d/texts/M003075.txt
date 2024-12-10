@@ -1,0 +1,3 @@
+a person turns left then walks forward#a/DET person/NOUN turn/VERB left/VERB then/ADV walk/VERB forward/ADV#0.0#0.0
+this person is slowly taking a right turn. then walks straight a little, also moving slowly.#this/DET person/NOUN is/AUX slowly/ADV take/VERB a/DET right/ADJ turn/NOUN then/ADV walk/VERB straight/ADV a/DET little/ADJ also/ADV move/VERB slowly/ADV#0.0#0.0
+a person walks forward, turns right, then walks forward again.#a/DET person/NOUN walk/VERB forward/ADV turn/VERB right/ADJ then/ADV walk/VERB forward/ADV again/ADV#0.0#0.0

@@ -1,0 +1,3 @@
+a person lifts something with two hands, then tilts one side of it upwards#a/DET person/NOUN lift/VERB something/PRON with/ADP two/NUM hand/NOUN then/ADV tilt/VERB one/NUM side/NOUN of/ADP it/PRON upwards/ADV#0.0#0.0
+a person holds left arm in pain#a/DET person/NOUN hold/VERB left/ADJ arm/NOUN in/ADP pain/NOUN#0.0#0.0
+the figure is leaning to the left, straigtens and folds his left arm over his right, leans right again, and then straightens#the/DET figure/NOUN is/AUX lean/VERB to/ADP the/DET left/NOUN straigtens/PROPN and/CCONJ fold/VERB his/DET left/ADJ arm/NOUN over/ADP his/DET right/NOUN lean/VERB right/ADV again/ADV and/CCONJ then/ADV straighten/VERB#0.0#0.0

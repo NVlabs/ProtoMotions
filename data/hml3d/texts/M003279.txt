@@ -1,0 +1,3 @@
+a person lifts their right arm to rub their stomach in a circular motion.#a/DET person/NOUN lift/VERB their/DET right/ADJ arm/NOUN to/PART rub/VERB their/DET stomach/NOUN in/ADP a/DET circular/ADJ motion/NOUN#0.0#0.0
+person is running themselves in a circles.#person/NOUN is/AUX run/VERB themselves/PRON in/ADP a/DET circle/NOUN#0.0#0.0
+a person uses their right hand to do counter counterclockwise motions across their chest.#a/DET person/NOUN use/VERB their/DET right/ADJ hand/NOUN to/PART do/AUX counter/VERB counterclockwise/VERB motion/NOUN across/ADP their/DET chest/NOUN#0.0#0.0

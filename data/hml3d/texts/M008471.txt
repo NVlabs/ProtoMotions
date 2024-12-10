@@ -1,0 +1,3 @@
+a person walks to his left.#a/DET person/NOUN walk/VERB to/ADP his/DET left/NOUN#0.0#0.0
+the person walks in a quarter-circle to their right.#the/DET person/NOUN walk/VERB in/ADP a/DET quartercircle/NOUN to/ADP their/DET right/NOUN#0.0#0.0
+a person takes a turn to the left.#a/DET person/NOUN take/VERB a/DET turn/NOUN to/ADP the/DET left/NOUN#0.0#0.0

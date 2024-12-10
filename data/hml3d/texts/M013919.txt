@@ -1,0 +1,3 @@
+a person standing still, waves with its left hand#a/DET person/NOUN stand/VERB still/ADV wave/NOUN with/ADP its/DET left/ADJ hand/NOUN#0.0#0.0
+the person holds their hands at their hips and then waves with their left hand.#the/DET person/NOUN hold/VERB their/DET hand/NOUN at/ADP their/DET hip/NOUN and/CCONJ then/ADV wave/VERB with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
+a man stands with his hands on his hips and then waves with left hand.#a/DET man/NOUN stand/VERB with/ADP his/DET hand/NOUN on/ADP his/DET hip/NOUN and/CCONJ then/ADV wave/VERB with/ADP left/ADJ hand/NOUN#0.0#0.0

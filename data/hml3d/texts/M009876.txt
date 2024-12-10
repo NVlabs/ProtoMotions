@@ -1,0 +1,3 @@
+a person walks in a counterclockwise quarter circle.#a/DET person/NOUN walk/VERB in/ADP a/DET counterclockwise/ADJ quarter/NOUN circle/NOUN#0.0#0.0
+a figure walks forward jauntily and to the left#a/DET figure/NOUN walk/VERB forward/ADV jauntily/ADV and/CCONJ to/ADP the/DET left/NOUN#0.0#0.0
+person walks forward and they veer left#person/NOUN walk/VERB forward/ADV and/CCONJ they/PRON veer/VERB left/ADV#0.0#0.0

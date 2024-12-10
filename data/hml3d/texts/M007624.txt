@@ -1,0 +1,3 @@
+a figure is boxing upercuts with is right blue arm and his left red arm stays at a 90 degree angle.#a/DET figure/NOUN is/AUX box/VERB upercut/NOUN with/ADP is/AUX right/ADJ blue/ADJ arm/NOUN and/CCONJ his/DET left/ADJ red/ADJ arm/NOUN stay/VERB at/ADP a/DET degree/NOUN angle/NOUN#0.0#0.0
+a person is throwing an object with his left hand.#a/DET person/NOUN is/AUX throw/VERB an/DET object/NOUN with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
+a person holds a disc in their left hand and then turns to throw it.#a/DET person/NOUN hold/VERB a/DET disc/NOUN in/ADP their/DET left/ADJ hand/NOUN and/CCONJ then/ADV turn/VERB to/PART throw/VERB it/PRON#0.0#0.0

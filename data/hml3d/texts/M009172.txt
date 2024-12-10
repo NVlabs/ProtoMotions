@@ -1,0 +1,3 @@
+person walks forward and stumbles#person/NOUN walk/VERB forward/ADV and/CCONJ stumble/NOUN#0.0#0.0
+a person walking forward staggers to the left and then corrects their gait.#a/DET person/NOUN walk/VERB forward/ADV stagger/NOUN to/ADP the/DET left/NOUN and/CCONJ then/ADV correct/VERB their/DET gait/NOUN#0.0#0.0
+a person stumbles to the right while walking.#a/DET person/NOUN stumble/VERB to/ADP the/DET right/NOUN while/SCONJ walk/VERB#0.0#0.0

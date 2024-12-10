@@ -1,0 +1,3 @@
+someone is holding something to their ear#someone/PRON is/AUX hold/VERB something/PRON to/ADP their/DET ear/NOUN#0.0#0.0
+a person bringing their right hand up as if holding a cup.#a/DET person/NOUN bring/VERB their/DET right/ADJ hand/NOUN up/ADP as/SCONJ if/SCONJ hold/VERB a/DET cup/NOUN#0.0#0.0
+a standing person bends his right arm and looks at his right hand.#a/DET stand/VERB person/NOUN bend/VERB his/DET right/ADJ arm/NOUN and/CCONJ look/VERB at/ADP his/DET right/ADJ hand/NOUN#0.0#0.0

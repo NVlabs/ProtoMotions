@@ -2,231 +2,252 @@ scenes:
 - id: 42141aae-0489-4b50-a778-8546ce060f10
   objects:
   - is_static: true
-    motion: phys_anim/data/assets/scenes/test/SAMP/Tables/b08dc9e0fd675e6664adc666ed4e2ec1.npy
-    path: phys_anim/data/assets/scenes/test/SAMP/Tables/b08dc9e0fd675e6664adc666ed4e2ec1.urdf
+    motion: data/assets/scenes/test/SAMP/Tables/b08dc9e0fd675e6664adc666ed4e2ec1.npy
+    path: data/assets/scenes/test/SAMP/Tables/b08dc9e0fd675e6664adc666ed4e2ec1.urdf
     object_options:
       vhacd_enabled: True
       vhacd_params:
         resolution: 1000000
       fix_base_link: True
+      participates_in_heightmap: True
   replications: 1
 - id: 0693825d-5bb3-4958-af35-46214847ddee
   objects:
   - is_static: true
-    motion: phys_anim/data/assets/scenes/test/SAMP/Tables/a4e5a85d21a6b36ba60a29091f2ab01f.npy
-    path: phys_anim/data/assets/scenes/test/SAMP/Tables/a4e5a85d21a6b36ba60a29091f2ab01f.urdf
+    motion: data/assets/scenes/test/SAMP/Tables/a4e5a85d21a6b36ba60a29091f2ab01f.npy
+    path: data/assets/scenes/test/SAMP/Tables/a4e5a85d21a6b36ba60a29091f2ab01f.urdf
     object_options:
       vhacd_enabled: True
       vhacd_params:
         resolution: 1000000
       fix_base_link: True
+      participates_in_heightmap: True
   replications: 1
 - id: d7fb0590-00fd-4262-9ecf-c3488cfedfeb
   objects:
   - is_static: true
-    motion: phys_anim/data/assets/scenes/test/SAMP/Tables/614b46cfcbe04994d91158b2b7873a40.npy
-    path: phys_anim/data/assets/scenes/test/SAMP/Tables/614b46cfcbe04994d91158b2b7873a40.urdf
+    motion: data/assets/scenes/test/SAMP/Tables/614b46cfcbe04994d91158b2b7873a40.npy
+    path: data/assets/scenes/test/SAMP/Tables/614b46cfcbe04994d91158b2b7873a40.urdf
     object_options:
       vhacd_enabled: True
       vhacd_params:
         resolution: 1000000
       fix_base_link: True
+      participates_in_heightmap: True
   replications: 1
 - id: e217b979-aca3-4482-86a2-a7bd1dd6e779
   objects:
   - is_static: true
-    motion: phys_anim/data/assets/scenes/test/SAMP/Sofas/8918d572cff6b15df36ecf951968a8b0.npy
-    path: phys_anim/data/assets/scenes/test/SAMP/Sofas/8918d572cff6b15df36ecf951968a8b0.urdf
+    motion: data/assets/scenes/test/SAMP/Sofas/8918d572cff6b15df36ecf951968a8b0.npy
+    path: data/assets/scenes/test/SAMP/Sofas/8918d572cff6b15df36ecf951968a8b0.urdf
     object_options:
       vhacd_enabled: True
       vhacd_params:
         resolution: 1000000
       fix_base_link: True
+      participates_in_heightmap: True
   replications: 1
 - id: 6ccaa157-0665-43ba-aa7e-bf31bcc124ad
   objects:
   - is_static: true
-    motion: phys_anim/data/assets/scenes/test/SAMP/Sofas/341ef2d97f0f9091183903d8843a24ef.npy
-    path: phys_anim/data/assets/scenes/test/SAMP/Sofas/341ef2d97f0f9091183903d8843a24ef.urdf
+    motion: data/assets/scenes/test/SAMP/Sofas/341ef2d97f0f9091183903d8843a24ef.npy
+    path: data/assets/scenes/test/SAMP/Sofas/341ef2d97f0f9091183903d8843a24ef.urdf
     object_options:
       vhacd_enabled: True
       vhacd_params:
         resolution: 1000000
       fix_base_link: True
+      participates_in_heightmap: True
   replications: 1
 - id: 16a21abd-c51e-444c-9d5c-cf0e0bc7fba9
   objects:
   - is_static: true
-    motion: phys_anim/data/assets/scenes/test/SAMP/Sofas/277231dcb7261ae4a9fe1734a6086750.npy
-    path: phys_anim/data/assets/scenes/test/SAMP/Sofas/277231dcb7261ae4a9fe1734a6086750.urdf
+    motion: data/assets/scenes/test/SAMP/Sofas/277231dcb7261ae4a9fe1734a6086750.npy
+    path: data/assets/scenes/test/SAMP/Sofas/277231dcb7261ae4a9fe1734a6086750.urdf
     object_options:
       vhacd_enabled: True
       vhacd_params:
         resolution: 1000000
       fix_base_link: True
+      participates_in_heightmap: True
   replications: 1
 - id: 61ff2b8d-b9a6-4c57-8938-d6005d7f1e6d
   objects:
   - is_static: true
-    motion: phys_anim/data/assets/scenes/test/SAMP/Armchairs/11040f463a3895019fb4103277a6b93.npy
-    path: phys_anim/data/assets/scenes/test/SAMP/Armchairs/11040f463a3895019fb4103277a6b93.urdf
+    motion: data/assets/scenes/test/SAMP/Armchairs/11040f463a3895019fb4103277a6b93.npy
+    path: data/assets/scenes/test/SAMP/Armchairs/11040f463a3895019fb4103277a6b93.urdf
     object_options:
       vhacd_enabled: True
       vhacd_params:
         resolution: 1000000
       fix_base_link: True
+      participates_in_heightmap: True
   replications: 1
 - id: 93925c19-acd5-4f72-b011-8905644592f0
   objects:
   - is_static: true
-    motion: phys_anim/data/assets/scenes/test/SAMP/Armchairs/49a60133d6b05b8d19fb4103277a6b93.npy
-    path: phys_anim/data/assets/scenes/test/SAMP/Armchairs/49a60133d6b05b8d19fb4103277a6b93.urdf
+    motion: data/assets/scenes/test/SAMP/Armchairs/49a60133d6b05b8d19fb4103277a6b93.npy
+    path: data/assets/scenes/test/SAMP/Armchairs/49a60133d6b05b8d19fb4103277a6b93.urdf
     object_options:
       vhacd_enabled: True
       vhacd_params:
         resolution: 1000000
       fix_base_link: True
+      participates_in_heightmap: True
   replications: 1
 - id: 3ab611d4-e55c-404e-aa77-942cb42efa3c
   objects:
   - is_static: true
-    motion: phys_anim/data/assets/scenes/test/SAMP/Armchairs/cacb9133bc0ef01f7628281ecb18112.npy
-    path: phys_anim/data/assets/scenes/test/SAMP/Armchairs/cacb9133bc0ef01f7628281ecb18112.urdf
+    motion: data/assets/scenes/test/SAMP/Armchairs/cacb9133bc0ef01f7628281ecb18112.npy
+    path: data/assets/scenes/test/SAMP/Armchairs/cacb9133bc0ef01f7628281ecb18112.urdf
     object_options:
       vhacd_enabled: True
       vhacd_params:
         resolution: 1000000
       fix_base_link: True
+      participates_in_heightmap: True
   replications: 1
 - id: c0c9764a-c79c-4226-900f-75cd24ee67ed
   objects:
   - is_static: true
-    motion: phys_anim/data/assets/scenes/test/SAMP/LowStools/b08dc9e0fd675e6664adc666ed4e2ec1.npy
-    path: phys_anim/data/assets/scenes/test/SAMP/LowStools/b08dc9e0fd675e6664adc666ed4e2ec1.urdf
+    motion: data/assets/scenes/test/SAMP/LowStools/b08dc9e0fd675e6664adc666ed4e2ec1.npy
+    path: data/assets/scenes/test/SAMP/LowStools/b08dc9e0fd675e6664adc666ed4e2ec1.urdf
     object_options:
       vhacd_enabled: True
       vhacd_params:
         resolution: 1000000
       fix_base_link: True
+      participates_in_heightmap: True
   replications: 1
 - id: 8738a3c9-7b12-41e0-a79f-07de0ce3101c
   objects:
   - is_static: true
-    motion: phys_anim/data/assets/scenes/test/SAMP/LowStools/a4e5a85d21a6b36ba60a29091f2ab01f.npy
-    path: phys_anim/data/assets/scenes/test/SAMP/LowStools/a4e5a85d21a6b36ba60a29091f2ab01f.urdf
+    motion: data/assets/scenes/test/SAMP/LowStools/a4e5a85d21a6b36ba60a29091f2ab01f.npy
+    path: data/assets/scenes/test/SAMP/LowStools/a4e5a85d21a6b36ba60a29091f2ab01f.urdf
     object_options:
       vhacd_enabled: True
       vhacd_params:
         resolution: 1000000
       fix_base_link: True
+      participates_in_heightmap: True
   replications: 1
 - id: 69e25e1f-9d19-4a09-b781-37691ef34edb
   objects:
   - is_static: true
-    motion: phys_anim/data/assets/scenes/test/SAMP/LowStools/614b46cfcbe04994d91158b2b7873a40.npy
-    path: phys_anim/data/assets/scenes/test/SAMP/LowStools/614b46cfcbe04994d91158b2b7873a40.urdf
+    motion: data/assets/scenes/test/SAMP/LowStools/614b46cfcbe04994d91158b2b7873a40.npy
+    path: data/assets/scenes/test/SAMP/LowStools/614b46cfcbe04994d91158b2b7873a40.urdf
     object_options:
       vhacd_enabled: True
       vhacd_params:
         resolution: 1000000
       fix_base_link: True
+      participates_in_heightmap: True
   replications: 1
 - id: 308cae21-8f6c-4456-aa5c-8dcb440dac48
   objects:
   - is_static: true
-    motion: phys_anim/data/assets/scenes/test/SAMP/StraightChairs/243ab0d808fae5b76f1d1c49624bcfed.npy
-    path: phys_anim/data/assets/scenes/test/SAMP/StraightChairs/243ab0d808fae5b76f1d1c49624bcfed.urdf
+    motion: data/assets/scenes/test/SAMP/StraightChairs/243ab0d808fae5b76f1d1c49624bcfed.npy
+    path: data/assets/scenes/test/SAMP/StraightChairs/243ab0d808fae5b76f1d1c49624bcfed.urdf
     object_options:
       vhacd_enabled: True
       vhacd_params:
         resolution: 1000000
       fix_base_link: True
+      participates_in_heightmap: True
   replications: 1
 - id: f2203b79-ed46-4162-9b48-1b8a2e600fc6
   objects:
   - is_static: true
-    motion: phys_anim/data/assets/scenes/test/SAMP/StraightChairs/52d41eb69bb764e784aeb682b234df80.npy
-    path: phys_anim/data/assets/scenes/test/SAMP/StraightChairs/52d41eb69bb764e784aeb682b234df80.urdf
+    motion: data/assets/scenes/test/SAMP/StraightChairs/52d41eb69bb764e784aeb682b234df80.npy
+    path: data/assets/scenes/test/SAMP/StraightChairs/52d41eb69bb764e784aeb682b234df80.urdf
     object_options:
       vhacd_enabled: True
       vhacd_params:
         resolution: 1000000
       fix_base_link: True
+      participates_in_heightmap: True
   replications: 1
 - id: a2593bd1-3a36-42b8-8081-949f8fc3e744
   objects:
   - is_static: true
-    motion: phys_anim/data/assets/scenes/test/SAMP/HighStools/d06b3f46fd5a901d4854921d37f7e048.npy
-    path: phys_anim/data/assets/scenes/test/SAMP/HighStools/d06b3f46fd5a901d4854921d37f7e048.urdf
+    motion: data/assets/scenes/test/SAMP/HighStools/d06b3f46fd5a901d4854921d37f7e048.npy
+    path: data/assets/scenes/test/SAMP/HighStools/d06b3f46fd5a901d4854921d37f7e048.urdf
     object_options:
       vhacd_enabled: True
       vhacd_params:
         resolution: 1000000
       fix_base_link: True
+      participates_in_heightmap: True
   replications: 1
 - id: d9c4bbde-daeb-4262-9274-8cd853600c84
   objects:
   - is_static: true
-    motion: phys_anim/data/assets/scenes/test/SAMP/HighStools/758649ba384b28856dc24db120ad1ab9.npy
-    path: phys_anim/data/assets/scenes/test/SAMP/HighStools/758649ba384b28856dc24db120ad1ab9.urdf
+    motion: data/assets/scenes/test/SAMP/HighStools/758649ba384b28856dc24db120ad1ab9.npy
+    path: data/assets/scenes/test/SAMP/HighStools/758649ba384b28856dc24db120ad1ab9.urdf
     object_options:
       vhacd_enabled: True
       vhacd_params:
         resolution: 1000000
       fix_base_link: True
+      participates_in_heightmap: True
   replications: 1
 - id: 41b383ea-2137-4350-a7ea-86cc56a7f700
   objects:
   - is_static: true
-    motion: phys_anim/data/assets/scenes/test/SAMP/LargeSofas/8918d572cff6b15df36ecf951968a8b0.npy
-    path: phys_anim/data/assets/scenes/test/SAMP/LargeSofas/8918d572cff6b15df36ecf951968a8b0.urdf
+    motion: data/assets/scenes/test/SAMP/LargeSofas/8918d572cff6b15df36ecf951968a8b0.npy
+    path: data/assets/scenes/test/SAMP/LargeSofas/8918d572cff6b15df36ecf951968a8b0.urdf
     object_options:
       vhacd_enabled: True
       vhacd_params:
         resolution: 1000000
       fix_base_link: True
+      participates_in_heightmap: True
   replications: 1
 - id: 3f13272c-1211-43ba-83e1-72102cc0ee4a
   objects:
   - is_static: true
-    motion: phys_anim/data/assets/scenes/test/SAMP/LargeSofas/341ef2d97f0f9091183903d8843a24ef.npy
-    path: phys_anim/data/assets/scenes/test/SAMP/LargeSofas/341ef2d97f0f9091183903d8843a24ef.urdf
+    motion: data/assets/scenes/test/SAMP/LargeSofas/341ef2d97f0f9091183903d8843a24ef.npy
+    path: data/assets/scenes/test/SAMP/LargeSofas/341ef2d97f0f9091183903d8843a24ef.urdf
     object_options:
       vhacd_enabled: True
       vhacd_params:
         resolution: 1000000
       fix_base_link: True
+      participates_in_heightmap: True
   replications: 1
 - id: b70ed830-4cbf-4033-a766-e74e7f6f91b3
   objects:
   - is_static: true
-    motion: phys_anim/data/assets/scenes/test/SAMP/LargeSofas/277231dcb7261ae4a9fe1734a6086750.npy
-    path: phys_anim/data/assets/scenes/test/SAMP/LargeSofas/277231dcb7261ae4a9fe1734a6086750.urdf
+    motion: data/assets/scenes/test/SAMP/LargeSofas/277231dcb7261ae4a9fe1734a6086750.npy
+    path: data/assets/scenes/test/SAMP/LargeSofas/277231dcb7261ae4a9fe1734a6086750.urdf
     object_options:
       vhacd_enabled: True
       vhacd_params:
         resolution: 1000000
       fix_base_link: True
+      participates_in_heightmap: True
   replications: 1
 - id: 26fa8378-35b6-4910-b021-a82e4a4e73e3
   objects:
   - is_static: true
-    motion: phys_anim/data/assets/scenes/test/SAMP/LargeSofas/e7d0920ba8d4b1be71424c004dd7ab2f.npy
-    path: phys_anim/data/assets/scenes/test/SAMP/LargeSofas/e7d0920ba8d4b1be71424c004dd7ab2f.urdf
+    motion: data/assets/scenes/test/SAMP/LargeSofas/e7d0920ba8d4b1be71424c004dd7ab2f.npy
+    path: data/assets/scenes/test/SAMP/LargeSofas/e7d0920ba8d4b1be71424c004dd7ab2f.urdf
     object_options:
       vhacd_enabled: True
       vhacd_params:
         resolution: 1000000
       fix_base_link: True
+      participates_in_heightmap: True
   replications: 1
 - id: 5397ea19-42d7-4e48-93f4-daa24728451d
   objects:
   - is_static: true
-    motion: phys_anim/data/assets/scenes/test/SAMP/LargeSofas/c2b65540d51fada22bfa21768064df9c.npy
-    path: phys_anim/data/assets/scenes/test/SAMP/LargeSofas/c2b65540d51fada22bfa21768064df9c.urdf
+    motion: data/assets/scenes/test/SAMP/LargeSofas/c2b65540d51fada22bfa21768064df9c.npy
+    path: data/assets/scenes/test/SAMP/LargeSofas/c2b65540d51fada22bfa21768064df9c.urdf
     object_options:
       vhacd_enabled: True
       vhacd_params:
         resolution: 1000000
       fix_base_link: True
+      participates_in_heightmap: True
   replications: 1

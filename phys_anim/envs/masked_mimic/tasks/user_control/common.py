@@ -44,8 +44,8 @@ else:
 
 
 class BaseMaskedMimicUserControl(MaskedMimicUserControlHumanoid):  # type: ignore[misc]
-    def __init__(self, config, device):
-        super().__init__(config, device)
+    def __init__(self, config, device, *args, **kwargs):
+        super().__init__(config, device, *args, **kwargs)
         self.text_command = None
 
     ###############################################################
@@ -142,9 +142,6 @@ class BaseMaskedMimicUserControl(MaskedMimicUserControlHumanoid):  # type: ignor
             self.config.masked_mimic_masking.joint_masking.with_conditioning_max_gap_probability = inference_parameters[
                 "with_conditioning_max_gap_probability"
             ]
-            self.config.masked_mimic_masking.object_bounding_box_visible_prob = (
-                1.0 if inference_parameters["object_conditioning"] else 0.0
-            )
             self.config.masked_mimic_masking.motion_text_embeddings_visible_prob = (
                 1.0 if inference_parameters["text_conditioned"] else 0.0
             )
@@ -161,10 +158,6 @@ class BaseMaskedMimicUserControl(MaskedMimicUserControlHumanoid):  # type: ignor
             self.long_term_gap_probs = (
                 torch.ones(self.config.num_envs, dtype=torch.float, device=self.device)
                 * self.config.masked_mimic_masking.joint_masking.with_conditioning_max_gap_probability
-            )
-            self.visible_object_bounding_box_probs = (
-                torch.ones(self.config.num_envs, dtype=torch.float, device=self.device)
-                * self.config.masked_mimic_masking.object_bounding_box_visible_prob
             )
             self.visible_text_embeddings_probs = (
                 torch.ones(self.config.num_envs, dtype=torch.float, device=self.device)

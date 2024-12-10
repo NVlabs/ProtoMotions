@@ -1,0 +1,3 @@
+a person looks at his right wrist then puts his hand down again#a/DET person/NOUN look/VERB at/ADP his/DET right/ADJ wrist/NOUN then/ADV put/VERB his/DET hand/NOUN down/ADP again/ADV#0.0#0.0
+a person rasied the right hand#a/DET person/NOUN rasie/VERB the/DET right/ADJ hand/NOUN#0.0#0.0
+a man lifts his right arm as though to look at his wrist, then returns it to near his side.#a/DET man/NOUN lift/VERB his/DET right/ADJ arm/NOUN as/SCONJ though/ADV to/PART look/VERB at/ADP his/DET wrist/NOUN then/ADV return/VERB it/PRON to/ADP near/SCONJ his/DET side/NOUN#0.0#0.0

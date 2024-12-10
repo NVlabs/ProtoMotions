@@ -1,0 +1,3 @@
+the person is handing soemthing.#the/DET person/NOUN is/AUX hand/VERB soemthing/NOUN#0.0#0.0
+the man moves left side of body back#the/DET man/NOUN move/VERB left/VERB side/NOUN of/ADP body/NOUN back/ADV#0.0#0.0
+a man stading and leaning towards left and right#a/DET man/NOUN stade/VERB and/CCONJ lean/VERB towards/ADP left/ADJ and/CCONJ right/ADJ#0.0#0.0

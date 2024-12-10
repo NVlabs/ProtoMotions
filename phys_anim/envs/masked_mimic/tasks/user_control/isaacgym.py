@@ -33,5 +33,5 @@ from phys_anim.envs.masked_mimic.isaacgym import MaskedMimicHumanoid
 
 
 class MaskedMimicUserControlHumanoid(BaseMaskedMimicUserControl, MaskedMimicHumanoid):  # type: ignore[misc]
-    def __init__(self, config, device):
-        super().__init__(config=config, device=device)
+    def __init__(self, config, device, *args, **kwargs):
+        super().__init__(config=config, device=device, *args, **kwargs)

@@ -1,0 +1,3 @@
+someone getting into position to start catching and tossing an object.#someone/PRON get/VERB into/ADP position/NOUN to/PART start/VERB catch/VERB and/CCONJ toss/VERB an/DET object/NOUN#0.0#0.0
+person raises left arm to side and lifts right hand and grabs hands together#person/NOUN raise/VERB left/VERB arm/NOUN to/PART side/NOUN and/CCONJ lift/VERB right/ADJ hand/NOUN and/CCONJ grab/NOUN hand/NOUN together/ADV#0.0#0.0
+person bounces a ball to their left hand side#person/NOUN bounce/VERB a/DET ball/NOUN to/ADP their/DET left/ADJ hand/NOUN side/NOUN#0.0#0.0

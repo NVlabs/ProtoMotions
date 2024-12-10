@@ -1,0 +1,3 @@
+the person rotates both of their wrists#the/DET person/NOUN rotate/VERB both/DET of/ADP their/DET wrist/NOUN#0.0#0.0
+a person seems to be shaking their hands quickly while then leaning forward and lifting their right leg slightly off the ground.#a/DET person/NOUN seem/VERB to/PART be/AUX shake/VERB their/DET hand/NOUN quickly/ADV while/SCONJ then/ADV lean/VERB forward/ADV and/CCONJ lift/VERB their/DET right/ADJ leg/NOUN slightly/ADV off/ADP the/DET ground/NOUN#0.0#0.0
+the man wrings his hands and twists his right ankle.#the/DET man/NOUN wring/VERB his/DET hand/NOUN and/CCONJ twist/VERB his/DET right/ADJ ankle/NOUN#0.0#0.0

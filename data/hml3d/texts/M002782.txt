@@ -1,0 +1,3 @@
+person is walking to the other end.#person/NOUN is/AUX walk/VERB to/ADP the/DET other/ADJ end/NOUN#0.0#0.0
+a person walks forward and to the left.#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ to/ADP the/DET left/NOUN#0.0#0.0
+a person walks from right to left swinging his/her arms back and forth.#a/DET person/NOUN walk/VERB from/ADP right/NOUN to/ADP left/VERB swinge/VERB his/DET her/DET arm/NOUN back/ADV and/CCONJ forth/ADV#0.0#0.0

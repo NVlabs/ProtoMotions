@@ -59,16 +59,14 @@ class BaseTask(TaskHumanoid):  # type: ignore[misc]
     ###############################################################
     # Environment step logic
     ###############################################################
-    def compute_humanoid_obs(self, env_ids=None):
-        humanoid_obs = super().compute_humanoid_obs(env_ids)
+    def compute_observations(self, env_ids=None):
+        super().compute_observations(env_ids)
 
         # After the humanoid obs is called, we compute the task obs.
         # A task obs will have its own unique tensor.
         # We do not append the task obs to the humanoid obs, rather we allow the user to define the network structure
         # and how the task obs is used in the network.
         self.compute_task_obs()
-
-        return humanoid_obs
 
     def compute_task_obs(self, env_ids=None):
         pass

@@ -33,9 +33,9 @@ from phys_anim.envs.masked_mimic.isaacgym import MaskedMimicHumanoid
 
 
 class MaskedMimicTaskHumanoid(BaseMaskedMimicTask, MaskedMimicHumanoid):  # type: ignore[misc]
-    def __init__(self, config, device):
+    def __init__(self, config, device, *args, **kwargs):
         config.visualize_markers = False
-        super().__init__(config=config, device=device)
+        super().__init__(config=config, device=device, *args, **kwargs)
 
     ###############################################################
     # Set up IsaacGym environment

@@ -1,0 +1,3 @@
+a person is dancing with right hand holding someone.#a/DET person/NOUN is/AUX dance/VERB with/ADP right/ADJ hand/NOUN hold/VERB someone/PRON#0.0#0.0
+holding a partner, a person dances a waltz.#hold/VERB a/DET partner/NOUN a/DET person/NOUN dance/VERB a/DET waltz/NOUN#0.0#0.0
+a person steps in a circle while holding out their right arm and holding their left arm in front of their body#a/DET person/NOUN step/VERB in/ADP a/DET circle/NOUN while/SCONJ hold/VERB out/ADP their/DET right/ADJ arm/NOUN and/CCONJ hold/VERB their/DET left/ADJ arm/NOUN in/ADP front/NOUN of/ADP their/DET body/NOUN#0.0#0.0

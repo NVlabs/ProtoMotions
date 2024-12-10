@@ -1,0 +1,3 @@
+a person curves to the right while walking.#a/DET person/NOUN curve/VERB to/ADP the/DET right/NOUN while/SCONJ walk/VERB#0.0#0.0
+figure moves right to left stands facing wall#figure/NOUN move/VERB right/ADV to/ADP left/VERB stand/NOUN face/VERB wall/NOUN#0.0#0.0
+a person walking towards the right in a curved path.#a/DET person/NOUN walk/VERB towards/ADP the/DET right/NOUN in/ADP a/DET curved/ADJ path/NOUN#0.0#0.0

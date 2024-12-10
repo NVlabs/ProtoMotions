@@ -1,0 +1,3 @@
+person is doing a huge stretch  to the left#person/NOUN is/AUX do/VERB a/DET huge/ADJ stretch/NOUN to/ADP the/DET left/NOUN#0.0#0.0
+a person's body leans to the left while simultaneously, both arms are raised above the head leaning left.#a/DET person/NOUN body/NOUN lean/VERB to/ADP the/DET left/ADJ while/SCONJ simultaneously/ADV both/DET arm/NOUN are/AUX raise/VERB above/ADP the/DET head/NOUN lean/VERB left/VERB#0.0#0.0
+a person raises both arms and leans to the left.#a/DET person/NOUN raise/VERB both/DET arm/NOUN and/CCONJ lean/NOUN to/ADP the/DET left/NOUN#0.0#0.0

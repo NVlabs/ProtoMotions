@@ -1,0 +1,3 @@
+this person waves with a circular motion using his left hand.#this/DET person/NOUN wave/VERB with/ADP a/DET circular/ADJ motion/NOUN use/VERB his/DET left/ADJ hand/NOUN#0.0#0.0
+person is sitting and then makes a few circles with the left hand to turn something#person/NOUN is/AUX sit/VERB and/CCONJ then/ADV make/VERB a/DET few/ADJ circle/NOUN with/ADP the/DET left/ADJ hand/NOUN to/PART turn/VERB something/PRON#0.0#0.0
+a person swings their left arm from their elbow down.#a/DET person/NOUN swing/VERB their/DET left/ADJ arm/NOUN from/ADP their/DET elbow/NOUN down/ADP#0.0#0.0

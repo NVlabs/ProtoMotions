@@ -1,0 +1,3 @@
+a person walks in a clock wise circle and stops were he began.#a/DET person/NOUN walk/VERB in/ADP a/DET clock/ADJ wise/ADJ circle/NOUN and/CCONJ stop/NOUN were/AUX he/PRON begin/VERB#0.0#6.0
+a person walks in a counterclockwise circle#a/DET person/NOUN walk/VERB in/ADP a/DET counterclockwise/ADJ circle/NOUN#0.0#0.0
+a figure moves in a circle counterclockwise.#a/DET figure/NOUN move/VERB in/ADP a/DET circle/NOUN counterclockwise/NOUN#0.0#0.0

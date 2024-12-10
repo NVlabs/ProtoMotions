@@ -1,0 +1,3 @@
+a man walks forward limping on his right foot. he walks slightly to the right.#a/DET man/NOUN walk/VERB forward/ADV limp/VERB on/ADP his/DET right/ADJ foot/NOUN he/PRON walk/VERB slightly/ADV to/ADP the/DET right/NOUN#0.0#0.0
+his right leg hurts so walks with left#his/DET right/ADJ leg/NOUN hurt/VERB so/ADV walk/VERB with/ADP left/ADJ#0.0#0.0
+a person walking with the left leg hurt.#a/DET person/NOUN walk/VERB with/ADP the/DET left/ADJ leg/NOUN hurt/NOUN#0.0#0.0

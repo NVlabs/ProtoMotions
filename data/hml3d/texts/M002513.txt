@@ -1,0 +1,3 @@
+a man raises his right arm in front of him.#a/DET man/NOUN raise/VERB his/DET right/ADJ arm/NOUN in/ADP front/NOUN of/ADP him/PRON#0.0#0.0
+person takes bottle in right hand and drinks from it#person/NOUN take/VERB bottle/NOUN in/ADP right/ADJ hand/NOUN and/CCONJ drink/VERB from/ADP it/PRON#0.0#0.0
+the man opens a bottle and takes a drink with his right hand.#the/DET man/NOUN open/VERB a/DET bottle/NOUN and/CCONJ take/VERB a/DET drink/NOUN with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0

@@ -27,6 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import time
+from operator import itemgetter
 
 from phys_anim.utils.common import print_info
 
@@ -53,11 +54,12 @@ class Timer:
         self.start_time = None
 
     def report(self):
-        print_info(
-            "Time report [{}]: {:.2f} {:.4f} seconds".format(
-                self.name, self.time_total, self.time_total / self.num_ons
+        if self.num_ons > 0:
+            print_info(
+                "Time report [{}]: {:.2f} {:.4f} seconds".format(
+                    self.name, self.time_total, self.time_total / self.num_ons
+                )
             )
-        )
 
     def clear(self):
         self.start_time = None
@@ -86,8 +88,16 @@ class TimeReport:
             self.timers[name].report()
         else:
             print_info("------------Time Report------------")
+
+            timer_with_times = []
             for timer_name in self.timers.keys():
-                self.timers[timer_name].report()
+                timer_with_times.append(
+                    (self.timers[timer_name].time_total, self.timers[timer_name])
+                )
+            timer_with_times.sort(key=itemgetter(0))
+
+            for _, timer in timer_with_times:
+                timer.report()
             print_info("-----------------------------------")
 
     def clear_timer(self, name=None):

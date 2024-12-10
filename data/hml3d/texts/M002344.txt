@@ -1,0 +1,3 @@
+a person is standing still with their arms out like they have big muscles.#a/DET person/NOUN is/AUX stand/VERB still/ADV with/ADP their/DET arm/NOUN out/ADP like/SCONJ they/PRON have/AUX big/ADJ muscle/NOUN#0.0#0.0
+the person looks the their right, then checks the watch on their right wrist#the/DET person/NOUN look/VERB the/DET their/DET right/NOUN then/ADV check/VERB the/DET watch/NOUN on/ADP their/DET right/ADJ wrist/NOUN#0.0#0.0
+person stands still and brings right arm up to shoulder height to check watch.#person/NOUN stand/VERB still/ADV and/CCONJ bring/VERB right/ADJ arm/NOUN up/ADP to/ADP shoulder/NOUN height/NOUN to/PART check/VERB watch/NOUN#0.0#0.0

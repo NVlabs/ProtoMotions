@@ -1,0 +1,3 @@
+the person was walking clockwise.#the/DET person/NOUN was/AUX walk/VERB clockwise/NOUN#0.0#0.0
+a person walks in a clockwise circle with their arms slightly swaying.#a/DET person/NOUN walk/VERB in/ADP a/DET clockwise/NOUN circle/NOUN with/ADP their/DET arm/NOUN slightly/ADV sway/VERB#0.0#0.0
+a person walks in a counter counterclockwise circle.#a/DET person/NOUN walk/VERB in/ADP a/DET counter/ADJ counterclockwise/PROPN circle/NOUN#0.0#0.0

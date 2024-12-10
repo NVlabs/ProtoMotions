@@ -1,0 +1,3 @@
+raising and lowering hand above head.#raise/VERB and/CCONJ lower/VERB hand/NOUN above/ADP head/NOUN#0.0#0.0
+a person waves their left hand back and forth.#a/DET person/NOUN wave/VERB their/DET left/ADJ hand/NOUN back/ADV and/CCONJ forth/ADV#0.0#0.0
+the person raises his right arm up in a left angle, and rotates his forearm while trying not to move the rest of his body.#the/DET person/NOUN raise/VERB his/DET right/ADJ arm/NOUN up/ADP in/ADP a/DET left/ADJ angle/NOUN and/CCONJ rotate/VERB his/DET forearm/NOUN while/SCONJ try/VERB not/PART to/PART move/VERB the/DET rest/NOUN of/ADP his/DET body/NOUN#0.0#0.0

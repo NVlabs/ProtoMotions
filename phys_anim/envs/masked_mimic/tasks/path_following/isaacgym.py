@@ -42,8 +42,8 @@ from phys_anim.envs.masked_mimic.tasks.path_following.common import (
 
 
 class MaskedMimicPathFollowingHumanoid(BaseMaskedMimicPathFollowing, MaskedMimicTaskHumanoid):  # type: ignore[misc]
-    def __init__(self, config, device: torch.device):
-        super().__init__(config=config, device=device)
+    def __init__(self, config, device: torch.device, *args, **kwargs):
+        super().__init__(config=config, device=device, *args, **kwargs)
 
         if not self.headless:
             self._build_marker_state_tensors()
@@ -131,7 +131,7 @@ class MaskedMimicPathFollowingHumanoid(BaseMaskedMimicPathFollowing, MaskedMimic
         if not self.config.path_follower_params.path_generator.height_conditioned:
             self._marker_pos[..., 2] = 0.92  # CT hack
 
-        ground_below_marker = self.get_ground_heights(
+        ground_below_marker = self.terrain_obs_cb.get_ground_heights(
             traj_samples[..., :2].view(-1, 2)
         ).view(traj_samples.shape[:-1])
 
@@ -147,8 +147,6 @@ class MaskedMimicPathFollowingHumanoid(BaseMaskedMimicPathFollowing, MaskedMimic
     def draw_task(self):
         cols = np.array([[1.0, 0.0, 0.0]], dtype=np.float32)
 
-        bodies_positions = self.get_body_positions()
-
         self._update_marker()
 
         for i, env_ptr in enumerate(self.envs):
@@ -156,7 +154,7 @@ class MaskedMimicPathFollowingHumanoid(BaseMaskedMimicPathFollowing, MaskedMimic
             if not self.config.path_follower_params.path_generator.height_conditioned:
                 verts[..., 2] = self.humanoid_root_states[i, 2]  # ZL Hack
             else:
-                verts[..., 2] += self.get_ground_heights(bodies_positions[:, 0, :2])[i]
+                verts[..., 2] += self.terrain_obs_cb.ground_heights[i]
             lines = torch.cat([verts[:-1], verts[1:]], dim=-1).cpu().numpy()
             curr_cols = np.broadcast_to(cols, [lines.shape[0], cols.shape[-1]])
             self.gym.add_lines(self.viewer, env_ptr, lines.shape[0], lines, curr_cols)

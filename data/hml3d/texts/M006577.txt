@@ -1,0 +1,3 @@
+the person is stopping with their right foot.#the/DET person/NOUN is/AUX stop/VERB with/ADP their/DET right/ADJ foot/NOUN#0.0#0.0
+the man steps in something then thinks about it.#the/DET man/NOUN step/VERB in/ADP something/PRON then/ADV think/VERB about/ADP it/PRON#0.0#0.0
+a person lifts their right foot, then places it back down quickly, then lifts their right hand toward their head.#a/DET person/NOUN lift/VERB their/DET right/ADJ foot/NOUN then/ADV place/VERB it/PRON back/ADV down/ADP quickly/ADV then/ADV lift/VERB their/DET right/ADJ hand/NOUN toward/ADP their/DET head/NOUN#0.0#0.0

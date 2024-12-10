@@ -1,0 +1,3 @@
+person walks slowly with arms swaying slightly from top left to bottom right#person/NOUN walk/VERB slowly/ADV with/ADP arm/NOUN sway/VERB slightly/ADV from/ADP top/ADJ left/NOUN to/ADP bottom/NOUN right/ADV#0.0#0.0
+a person walks very leisurely diagonally across the floor.#a/DET person/NOUN walk/VERB very/ADV leisurely/ADV diagonally/ADV across/ADP the/DET floor/NOUN#0.0#0.0
+a person walking forward tilting to his left#a/DET person/NOUN walk/VERB forward/ADV tilt/VERB to/ADP his/DET left/NOUN#0.0#0.0

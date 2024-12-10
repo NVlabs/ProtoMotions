@@ -13,7 +13,7 @@ algo:
       config:
         initializer: default
         units: [1024, 512]
-        discriminator_obs_historical_steps: ${env.config.discriminator_obs_historical_steps}
+        discriminator_obs_historical_steps: ${env.config.amp_obs.discriminator_obs_historical_steps}
         activation: relu
         normalize_obs: ${algo.config.normalize_obs}
         obs_clamp_value: ${algo.config.obs_clamp_value}

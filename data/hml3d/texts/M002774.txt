@@ -1,0 +1,3 @@
+someone quickly dodges right and left moving their body and shoulders.#someone/PRON quickly/ADV dodge/VERB right/ADV and/CCONJ left/VERB move/VERB their/DET body/NOUN and/CCONJ shoulder/NOUN#0.0#0.0
+the man dodges to the left, then to the right twice, before running to the left.#the/DET man/NOUN dodge/VERB to/ADP the/DET left/NOUN then/ADV to/ADP the/DET right/NOUN twice/ADV before/ADP run/VERB to/ADP the/DET left/NOUN#0.0#0.0
+a person moving side to side attempting to avoid something coming towards them.#a/DET person/NOUN move/VERB side/NOUN to/PART side/VERB attempt/VERB to/PART avoid/VERB something/PRON come/VERB towards/ADP them/PRON#0.0#0.0

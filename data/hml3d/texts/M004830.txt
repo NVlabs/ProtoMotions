@@ -1,0 +1,3 @@
+the person is doing a leg stretch holding his left leg up#the/DET person/NOUN is/AUX do/VERB a/DET leg/NOUN stretch/NOUN hold/VERB his/DET left/ADJ leg/NOUN up/ADP#0.0#0.0
+a man is holding his left leg up in the air and kicks it.#a/DET man/NOUN is/AUX hold/VERB his/DET left/ADJ leg/NOUN up/ADP in/ADP the/DET air/NOUN and/CCONJ kick/VERB it/PRON#0.0#0.0
+a person using left and right hand to hold right leg.#a/DET person/NOUN use/VERB left/VERB and/CCONJ right/ADJ hand/NOUN to/PART hold/VERB right/ADJ leg/NOUN#0.0#0.0

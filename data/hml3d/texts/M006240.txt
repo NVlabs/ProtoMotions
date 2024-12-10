@@ -1,0 +1,3 @@
+a man sidesteps quickly to his left, then back to his right.#a/DET man/NOUN sidestep/VERB quickly/ADV to/ADP his/DET left/NOUN then/ADV back/ADV to/ADP his/DET right/NOUN#0.0#0.0
+moving side to side quickly.#move/VERB side/NOUN to/PART side/VERB quickly/ADV#0.0#0.0
+he skipped sideway to the left then to the right.#he/PRON skip/VERB sideway/NOUN to/ADP the/DET left/NOUN then/ADV to/ADP the/DET right/NOUN#0.0#0.0

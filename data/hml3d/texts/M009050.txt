@@ -1,0 +1,3 @@
+a man clasps hands together and raises his left hand waves.#a/DET man/NOUN clasps/NOUN hand/NOUN together/ADV and/CCONJ raise/VERB his/DET left/ADJ hand/NOUN wave/NOUN#0.0#0.0
+a person waves in front of them with their left hand.#a/DET person/NOUN wave/VERB in/ADP front/NOUN of/ADP them/PRON with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
+a person puts their hands together in a congratulatory gesture and then uses left hand to wave.#a/DET person/NOUN put/VERB their/DET hand/NOUN together/ADV in/ADP a/DET congratulatory/ADJ gesture/NOUN and/CCONJ then/ADV use/VERB left/ADJ hand/NOUN to/PART wave/VERB#0.0#0.0

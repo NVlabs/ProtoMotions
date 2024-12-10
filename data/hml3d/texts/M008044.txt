@@ -1,0 +1,3 @@
+as standing person pushes their left arm forward#as/SCONJ stand/VERB person/NOUN push/VERB their/DET left/ADJ arm/NOUN forward/ADV#0.0#0.0
+a person who repeatedly punches with their left hand#a/DET person/NOUN who/PRON repeatedly/ADV punch/VERB with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
+a man jabs and chops at the air several times with his left hand, keeping his right at his side.#a/DET man/NOUN jabs/PROPN and/CCONJ chop/NOUN at/ADP the/DET air/NOUN several/ADJ time/NOUN with/ADP his/DET left/ADJ hand/NOUN keep/VERB his/DET right/NOUN at/ADP his/DET side/NOUN#0.0#0.0

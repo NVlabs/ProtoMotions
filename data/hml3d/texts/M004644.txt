@@ -1,0 +1,3 @@
+a person steps forward with left foot, grabs one item with each hand, and makes a sawing motion with left arm#a/DET person/NOUN step/VERB forward/ADV with/ADP left/ADJ foot/NOUN grab/VERB one/NUM item/NOUN with/ADP each/DET hand/NOUN and/CCONJ make/VERB a/DET sawing/NOUN motion/NOUN with/ADP left/ADJ arm/NOUN#0.0#0.0
+the man picks up the soap and washes his left arm.#the/DET man/NOUN pick/VERB up/ADP the/DET soap/NOUN and/CCONJ wash/VERB his/DET left/ADJ arm/NOUN#0.0#0.0
+person picks up something, moves it back and forth, and puts it down#person/NOUN pick/VERB up/ADP something/PRON move/VERB it/PRON back/ADV and/CCONJ forth/ADV and/CCONJ put/VERB it/PRON down/ADP#0.0#0.0

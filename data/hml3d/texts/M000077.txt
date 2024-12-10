@@ -1,0 +1,3 @@
+a person bends down and motion the left hand in circles.#a/DET person/NOUN bend/VERB down/ADV and/CCONJ motion/VERB the/DET left/ADJ hand/NOUN in/ADP circle/NOUN#0.0#0.0
+someone is bending over with their left hand going in an anti clock wise direction.#someone/PRON is/AUX bend/VERB over/ADP with/ADP their/DET left/ADJ hand/NOUN go/VERB in/ADP an/DET anti/ADJ clock/ADJ wise/ADJ direction/NOUN#0.0#0.0
+person leans forward slightly and moves left hand in a wiping motion.#person/NOUN lean/VERB forward/ADV slightly/ADV and/CCONJ move/NOUN left/VERB hand/NOUN in/ADP a/DET wiping/ADJ motion/NOUN#0.0#0.0

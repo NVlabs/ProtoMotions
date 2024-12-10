@@ -1,0 +1,3 @@
+a person steps to the right with their right foot, then moves their left foot to the back of that foot, then returns the left foot and right foot back respectively.#a/DET person/NOUN step/VERB to/ADP the/DET right/NOUN with/ADP their/DET right/ADJ foot/NOUN then/ADV move/VERB their/DET left/ADJ foot/NOUN to/ADP the/DET back/NOUN of/ADP that/DET foot/NOUN then/ADV return/VERB the/DET left/ADJ foot/NOUN and/CCONJ right/ADJ foot/NOUN back/ADV respectively/ADV#0.0#0.0
+a person steps to their right and then back to the left#a/DET person/NOUN step/VERB to/ADP their/DET right/NOUN and/CCONJ then/ADV back/ADV to/ADP the/DET left/NOUN#0.0#0.0
+a person moved in right and left direction#a/DET person/NOUN move/VERB in/ADP right/NOUN and/CCONJ left/ADJ direction/NOUN#0.0#0.0

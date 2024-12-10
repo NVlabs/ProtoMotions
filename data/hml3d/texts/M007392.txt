@@ -1,0 +1,3 @@
+someone shuffles their feet to the left, then right, then left.#someone/PRON shuffle/VERB their/DET foot/NOUN to/ADP the/DET left/NOUN then/ADV right/INTJ then/ADV left/VERB#0.0#0.0
+a figure shuffles from the right to the left#a/DET figure/NOUN shuffle/VERB from/ADP the/DET right/NOUN to/ADP the/DET left/NOUN#0.0#0.0
+a person skips to the left then skips to the right then skips to the left again.#a/DET person/NOUN skip/VERB to/ADP the/DET left/NOUN then/ADV skip/VERB to/ADP the/DET right/NOUN then/ADV skip/VERB to/ADP the/DET left/NOUN again/ADV#0.0#0.0

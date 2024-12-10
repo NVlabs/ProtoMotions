@@ -1,0 +1,3 @@
+a person lifts up left hand to face then looks left then right and then puts hand back down to their side.#a/DET person/NOUN lift/VERB up/ADP left/ADJ hand/NOUN to/PART face/NOUN then/ADV look/VERB left/VERB then/ADV right/INTJ and/CCONJ then/ADV put/VERB hand/NOUN back/ADV down/ADV to/ADP their/DET side/NOUN#0.0#0.0
+a person looking at their left hand and turning their body from right to left and putting it back down.#a/DET person/NOUN look/VERB at/ADP their/DET left/ADJ hand/NOUN and/CCONJ turn/VERB their/DET body/NOUN from/ADP right/NOUN to/ADP left/VERB and/CCONJ put/VERB it/PRON back/ADV down/ADV#0.0#0.0
+a person looks around with a flashlight#a/DET person/NOUN look/VERB around/ADP with/ADP a/DET flashlight/NOUN#0.0#0.0

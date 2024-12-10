@@ -1,0 +1,3 @@
+a person lifts something up and tips it over.#a/DET person/NOUN lift/VERB something/PRON up/ADP and/CCONJ tip/VERB it/PRON over/ADP#0.0#0.0
+the person is tilting something to the left.#the/DET person/NOUN is/AUX tilt/VERB something/PRON to/ADP the/DET left/NOUN#0.0#0.0
+a person lifts an object from their right, holds it beside them to the left, then places the object back down.#a/DET person/NOUN lift/VERB an/DET object/NOUN from/ADP their/DET right/NOUN hold/VERB it/PRON beside/ADP them/PRON to/ADP the/DET left/NOUN then/ADV place/VERB the/DET object/NOUN back/ADV down/ADV#0.0#0.0

@@ -1,0 +1,3 @@
+a person throws an object with their left hand.#a/DET person/NOUN throw/VERB an/DET object/NOUN with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
+a person throws a punch with the left hand.#a/DET person/NOUN throw/VERB a/DET punch/NOUN with/ADP the/DET left/ADJ hand/NOUN#0.0#0.0
+person uses left hand to throw an object#person/NOUN use/VERB left/ADJ hand/NOUN to/PART throw/VERB an/DET object/NOUN#0.0#0.0

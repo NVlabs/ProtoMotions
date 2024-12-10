@@ -1,0 +1,3 @@
+a person that steps to the right and then steps back to the left#a/DET person/NOUN that/DET step/VERB to/ADP the/DET right/NOUN and/CCONJ then/ADV step/VERB back/ADV to/ADP the/DET left/NOUN#0.0#0.0
+a person staggers to their right, then returns to starting position.#a/DET person/NOUN stagger/VERB to/ADP their/DET right/NOUN then/ADV return/VERB to/ADP start/VERB position/NOUN#0.0#0.0
+a person takes a step to their right, then steps back.#a/DET person/NOUN take/VERB a/DET step/NOUN to/ADP their/DET right/NOUN then/ADV step/VERB back/ADV#0.0#0.0

@@ -1,0 +1,3 @@
+a standing person using their right foot firsty walks very slowly followed by their left foot behind them#a/DET stand/VERB person/NOUN use/VERB their/DET right/ADJ foot/NOUN firsty/NOUN walk/VERB very/ADV slowly/ADV follow/VERB by/ADP their/DET left/ADJ foot/NOUN behind/ADP them/PRON#0.0#0.0
+person walks while slowly moving left foot first and then right leg#person/NOUN walk/VERB while/SCONJ slowly/ADV move/VERB left/ADJ foot/NOUN first/ADV and/CCONJ then/ADV right/INTJ leg/NOUN#0.0#0.0
+a person walking slow diagonally to the left.#a/DET person/NOUN walk/VERB slow/ADV diagonally/ADV to/ADP the/DET left/NOUN#0.0#0.0

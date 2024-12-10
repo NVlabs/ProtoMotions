@@ -1,0 +1,3 @@
+a person checks their watch#a/DET person/NOUN check/VERB their/DET watch/NOUN#0.0#0.0
+a person raises his right elbow up to the side while also bending his right elbow and raising his right hand near shoulder, then does the reverse of the action.#a/DET person/NOUN raise/VERB his/DET right/NOUN elbow/NOUN up/ADP to/ADP the/DET side/NOUN while/SCONJ also/ADV bend/VERB his/DET right/ADJ elbow/NOUN and/CCONJ raise/VERB his/DET right/ADJ hand/NOUN near/SCONJ shoulder/NOUN then/ADV does/AUX the/DET reverse/NOUN of/ADP the/DET action/NOUN#0.0#0.0
+this person lifts his right arm then lowers it.#this/DET person/NOUN lift/VERB his/DET right/ADJ arm/NOUN then/ADV lower/VERB it/PRON#0.0#0.0

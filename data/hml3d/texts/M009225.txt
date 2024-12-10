@@ -1,0 +1,3 @@
+person looks for something on the ground with left hand.#person/NOUN look/VERB for/ADP something/PRON on/ADP the/DET ground/NOUN with/ADP left/ADJ hand/NOUN#0.0#0.0
+a person is hunched over and touching the floor.#a/DET person/NOUN is/AUX hunch/VERB over/ADP and/CCONJ touch/VERB the/DET floor/NOUN#0.0#0.0
+a person is searching for something on the ground with their left hand.#a/DET person/NOUN is/AUX search/VERB for/ADP something/PRON on/ADP the/DET ground/NOUN with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0

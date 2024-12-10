@@ -1,0 +1,3 @@
+a person steps to the left, slides their right foot, and waves with their left hand.#a/DET person/NOUN step/VERB to/ADP the/DET left/NOUN slide/VERB their/DET right/ADJ foot/NOUN and/CCONJ wave/NOUN with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
+walking a short distance diagonally.#walk/VERB a/DET short/ADJ distance/NOUN diagonally/ADV#0.0#0.0
+a person slides to the right and then waves his hand.#a/DET person/NOUN slide/VERB to/ADP the/DET right/NOUN and/CCONJ then/ADV wave/VERB his/DET hand/NOUN#0.0#2.0

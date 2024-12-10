@@ -1,0 +1,3 @@
+a person was kicking wiht left and right hand#a/DET person/NOUN was/AUX kick/VERB wiht/PROPN left/VERB and/CCONJ right/ADJ hand/NOUN#0.0#0.0
+the person is kicking dirt .#the/DET person/NOUN is/AUX kick/VERB dirt/NOUN#0.0#0.0
+kicking feet while standing still#kick/VERB foot/NOUN while/SCONJ stand/VERB still/ADV#0.0#0.0

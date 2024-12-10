@@ -1,0 +1,2 @@
+a person walking to the left.#a/DET person/NOUN walk/VERB to/ADP the/DET left/NOUN#0.0#0.0
+a person starts out walking straight and then turns slightly left.#a/DET person/NOUN start/VERB out/ADP walk/VERB straight/ADV and/CCONJ then/ADV turn/VERB slightly/ADV left/VERB#0.0#0.0

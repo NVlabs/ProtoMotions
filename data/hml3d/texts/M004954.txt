@@ -1,0 +1,3 @@
+stick figure takes a step to the far right#stick/PROPN figure/NOUN take/VERB a/DET step/NOUN to/ADP the/DET far/ADV right/ADJ#0.0#0.0
+a person takes a diagonal step to the left.#a/DET person/NOUN take/VERB a/DET diagonal/ADJ step/NOUN to/ADP the/DET left/NOUN#0.0#0.0
+a person taking a strafing step diagonally to the left#a/DET person/NOUN take/VERB a/DET strafing/ADJ step/NOUN diagonally/ADV to/ADP the/DET left/NOUN#0.0#0.0

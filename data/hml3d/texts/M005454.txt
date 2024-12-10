@@ -1,0 +1,3 @@
+a man catching and then throws an object with his left hand twice.#a/DET man/NOUN catch/VERB and/CCONJ then/ADV throw/VERB an/DET object/NOUN with/ADP his/DET left/ADJ hand/NOUN twice/ADV#0.0#0.0
+moving hand out throwing something.#move/VERB hand/NOUN out/ADP throw/VERB something/PRON#0.0#0.0
+person through something forward with his left hand.#person/NOUN through/ADP something/PRON forward/ADV with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0

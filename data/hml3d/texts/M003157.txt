@@ -1,0 +1,1 @@
+a person makes a quarter circle turn to the left.#a/DET person/NOUN make/VERB a/DET quarter/NOUN circle/NOUN turn/VERB to/ADP the/DET left/NOUN#0.0#0.0

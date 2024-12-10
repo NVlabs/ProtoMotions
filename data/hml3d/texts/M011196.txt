@@ -1,0 +1,3 @@
+a man walks forward and leans his hands on a table while lifting his right leg.#a/DET man/NOUN walk/VERB forward/ADV and/CCONJ lean/VERB his/DET hand/NOUN on/ADP a/DET table/NOUN while/SCONJ lift/VERB his/DET right/ADJ leg/NOUN#0.0#0.0
+a man steps forward, then pushes against something at midsection-height with his right leg behind him, then steps back.#a/DET man/NOUN step/VERB forward/ADV then/ADV push/VERB against/ADP something/PRON at/ADP midsectionheight/PROPN with/ADP his/DET right/ADJ leg/NOUN behind/ADP him/PRON then/ADV step/VERB back/ADV#0.0#0.0
+walks forward and leans both hands on table#walk/VERB forward/ADV and/CCONJ lean/VERB both/DET hand/NOUN on/ADP table/NOUN#0.0#0.0

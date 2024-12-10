@@ -1,0 +1,3 @@
+a person runs in place, and then springs to the left, then to the right, and back to their starting position.#a/DET person/NOUN run/VERB in/ADP place/NOUN and/CCONJ then/ADV spring/NOUN to/ADP the/DET left/NOUN then/ADV to/ADP the/DET right/NOUN and/CCONJ back/ADV to/ADP their/DET starting/NOUN position/NOUN#0.0#0.0
+the person is jogging in place.#the/DET person/NOUN is/AUX jog/VERB in/ADP place/NOUN#0.0#0.0
+person runs on the spot then runs right then left then right again into middle#person/NOUN run/VERB on/ADP the/DET spot/NOUN then/ADV run/VERB right/ADV then/ADV left/VERB then/ADV right/ADV again/ADV into/ADP middle/NOUN#0.0#0.0

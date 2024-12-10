@@ -1,0 +1,3 @@
+the man lifts something with his left hand.#the/DET man/NOUN lift/VERB something/PRON with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
+a figure moves their body slightly.#a/DET figure/NOUN move/VERB their/DET body/NOUN slightly/ADV#0.0#0.0
+a figure trembles slightly and is maybe an elderly person, gesturing with their left hand at someone else#a/DET figure/NOUN tremble/VERB slightly/ADV and/CCONJ is/AUX maybe/ADV an/DET elderly/ADJ person/NOUN gesture/VERB with/ADP their/DET left/ADJ hand/NOUN at/ADP someone/PRON else/ADV#0.0#0.0

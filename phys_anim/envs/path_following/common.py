@@ -41,8 +41,8 @@ else:
 
 
 class BasePathFollowing(PathFollowingHumanoid):  # type: ignore[misc]
-    def __init__(self, config, device: torch.device):
-        super().__init__(config=config, device=device)
+    def __init__(self, config, device: torch.device, *args, **kwargs):
+        super().__init__(config=config, device=device, *args, **kwargs)
 
         self._num_traj_samples = self.config.path_follower_params.num_traj_samples
         self._traj_sample_timestep = (
@@ -62,16 +62,27 @@ class BasePathFollowing(PathFollowingHumanoid):  # type: ignore[misc]
         self._fail_height_dist = 0.5
 
         self.build_path_generator()
-        self.reset_path_ids = torch.arange(
-            self.num_envs, dtype=torch.long, device=self.device
-        )
 
     ###############################################################
     # Handle resets
     ###############################################################
     def reset_task(self, env_ids):
         super().reset_task(env_ids)
-        self.reset_path_ids = env_ids
+
+        bodies_positions = self.get_body_positions()
+
+        if env_ids is None:
+            head_position = bodies_positions[:, self.head_body_id, :]
+        else:
+            head_position = bodies_positions[env_ids, self.head_body_id, :]
+
+        if len(env_ids) > 0:
+            flat_reset_head_position = head_position.view(-1, 3)
+            ground_below_reset_head = self.terrain_obs_cb.get_ground_heights(
+                head_position[..., :2]
+            )
+            flat_reset_head_position[..., 2] -= ground_below_reset_head.view(-1)
+            self.path_generator.reset(env_ids, flat_reset_head_position)
 
     ###############################################################
     # Environment step logic
@@ -91,19 +102,6 @@ class BasePathFollowing(PathFollowingHumanoid):  # type: ignore[misc]
             ground_below_head = torch.min(bodies_positions[env_ids], dim=1).values[
                 ..., 2
             ]
-
-        if self.reset_path_ids is not None and len(self.reset_path_ids) > 0:
-            reset_head_position = bodies_positions[
-                self.reset_path_ids, self.head_body_id, :
-            ]
-            flat_reset_head_position = reset_head_position.view(-1, 3)
-            ground_below_reset_head = self.get_ground_heights(
-                bodies_positions[:, self.head_body_id, :2]
-            )[self.reset_path_ids]
-            flat_reset_head_position[..., 2] -= ground_below_reset_head.view(-1)
-            self.path_generator.reset(self.reset_path_ids, flat_reset_head_position)
-
-            self.reset_path_ids = None
 
         traj_samples = self.fetch_path_samples(env_ids)
 
@@ -141,7 +139,7 @@ class BasePathFollowing(PathFollowingHumanoid):  # type: ignore[misc]
         tar_pos = self.path_generator.calc_pos(env_ids, time)
 
         bodies_positions = self.get_body_positions()
-        bodies_contact_buf = self.get_bodies_contact_buf()
+        bodies_contact_buf = self.self_obs_cb.body_contacts
 
         bodies_positions[..., 2] -= (
             torch.min(bodies_positions, dim=1).values[:, 2].view(-1, 1)
@@ -161,7 +159,9 @@ class BasePathFollowing(PathFollowingHumanoid):  # type: ignore[misc]
             self.config.path_follower_params.enable_path_termination,
             self.config.path_follower_params.height_conditioned,
             self.termination_heights
-            + self.get_ground_heights(bodies_positions[:, self.head_body_id, :2]),
+            + self.terrain_obs_cb.get_ground_heights(
+                bodies_positions[:, self.head_body_id, :2]
+            ),
             self.head_body_id,
         )
 

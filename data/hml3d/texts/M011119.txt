@@ -1,0 +1,3 @@
+a man raise right hand holds for a couple seconds lowers then repeats same action with the left#a/DET man/NOUN raise/VERB right/ADJ hand/NOUN hold/VERB for/ADP a/DET couple/NOUN second/NOUN lower/NOUN then/ADV repeat/VERB same/ADJ action/NOUN with/ADP the/DET left/NOUN#0.0#0.0
+stick figure holding its right arm up before lowing it and raising his left arm#stick/PROPN figure/NOUN hold/VERB its/DET right/ADJ arm/NOUN up/ADP before/ADP low/VERB it/PRON and/CCONJ raise/VERB his/DET left/ADJ arm/NOUN#0.0#4.0
+the person is doing an elbow warm up.#the/DET person/NOUN is/AUX do/VERB an/DET elbow/NOUN warm/NOUN up/ADP#0.0#0.0

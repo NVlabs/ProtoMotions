@@ -1,0 +1,3 @@
+a person moves shoo's something away.#a/DET person/NOUN move/VERB shoo/PROPN something/PRON away/ADV#0.0#7.0
+person waves left hand then connects both hands#person/NOUN wave/NOUN left/VERB hand/NOUN then/ADV connect/VERB both/DET hand/NOUN#0.0#0.0
+a person raises their arms, makes a circular motion with their left hand and raises both hands to the left.#a/DET person/NOUN raise/VERB their/DET arm/NOUN make/VERB a/DET circular/ADJ motion/NOUN with/ADP their/DET left/ADJ hand/NOUN and/CCONJ raise/VERB both/DET hand/NOUN to/ADP the/DET left/NOUN#0.0#0.0

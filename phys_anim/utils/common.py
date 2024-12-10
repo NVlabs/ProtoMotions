@@ -30,6 +30,7 @@ import argparse
 import os
 import random
 import sys
+import subprocess
 from datetime import datetime
 
 import numpy as np
@@ -142,3 +143,10 @@ def value_to_color(value, min_value, max_value):
 
     # Return the RGB color
     return red, green, blue
+
+def subprocess_run(cmd, ignore_err=False, **kwargs):
+    result = subprocess.run(cmd, **kwargs)
+    if result.returncode != 0:
+        if not ignore_err:
+            raise Exception("error in subprocess_run!")
+    return result

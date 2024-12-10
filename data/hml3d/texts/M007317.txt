@@ -1,0 +1,3 @@
+a person raises their left hand above their head.#a/DET person/NOUN raise/VERB their/DET left/ADJ hand/NOUN above/ADP their/DET head/NOUN#0.0#0.0
+the person stretches their left arm above their head.#the/DET person/NOUN stretch/VERB their/DET left/ADJ arm/NOUN above/ADP their/DET head/NOUN#0.0#0.0
+stick figure is holding its left rm up in the air#stick/PROPN figure/NOUN is/AUX hold/VERB its/DET left/ADJ rm/PROPN up/ADP in/ADP the/DET air/NOUN#0.0#2.0

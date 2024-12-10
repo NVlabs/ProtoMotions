@@ -1,0 +1,3 @@
+a person throws something underhanded with their left hand#a/DET person/NOUN throw/VERB something/PRON underhande/VERB with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
+a person throwing a left uppercut punch.#a/DET person/NOUN throw/VERB a/DET left/ADJ uppercut/NOUN punch/NOUN#0.0#0.0
+a person is standing and moves with arms and right leg forward, taking left arm swinging it back and throwing motion to right.#a/DET person/NOUN is/AUX stand/VERB and/CCONJ move/NOUN with/ADP arm/NOUN and/CCONJ right/ADJ leg/NOUN forward/ADV take/VERB left/ADJ arm/NOUN swinge/VERB it/PRON back/ADV and/CCONJ throw/VERB motion/NOUN to/ADP right/NOUN#0.0#2.0

@@ -1,0 +1,3 @@
+a person uses their left arm to lift weights.#a/DET person/NOUN use/VERB their/DET left/ADJ arm/NOUN to/PART lift/VERB weight/NOUN#0.0#0.0
+a person raising his left arm into a curl three times.#a/DET person/NOUN raise/VERB his/DET left/ADJ arm/NOUN into/ADP a/DET curl/NOUN three/NUM time/NOUN#0.0#0.0
+the left arm extends back and forth in front of the body a few times.#the/DET left/ADJ arm/NOUN extend/VERB back/ADV and/CCONJ forth/ADV in/ADP front/NOUN of/ADP the/DET body/NOUN a/DET few/ADJ time/NOUN#0.0#0.0

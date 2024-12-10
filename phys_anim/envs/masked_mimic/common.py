@@ -36,7 +36,6 @@ from isaac_utils import torch_utils
 from phys_anim.envs.masked_mimic.masked_mimic_utils import (
     build_historical_body_poses,
     build_sparse_target_poses,
-    get_object_bounding_box_obs,
 )
 from phys_anim.envs.mimic.mimic_utils import dof_to_local, exp_tracking_reward
 from phys_anim.envs.humanoid.humanoid_utils import quat_diff_norm
@@ -49,7 +48,7 @@ else:
 
 
 class BaseMaskedMimic(MaskedMimicHumanoid):
-    def __init__(self, config, device: torch.device):
+    def __init__(self, config, device: torch.device, *args, **kwargs):
         self.masked_mimic_tensors_init = False
 
         # +1 for heading and velocity. One is the translation entry and the other as the rotation.
@@ -95,17 +94,6 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
             config.masked_mimic_obs.num_future_steps + 1,
             dtype=torch.bool,
             device=device,  # + 1 for the inbetweening pose
-        )
-
-        self.object_bounding_box_obs = torch.zeros(
-            # 8 * 3 for the bounding box, 1 * 6 for the tanh rot, len(self.object_types) for the one-hot object category
-            config.num_envs,
-            8 * 3 + 6 + len(config.object_types),
-            dtype=torch.float,
-            device=device,
-        )
-        self.object_bounding_box_obs_mask = torch.zeros(
-            config.num_envs, 1, dtype=torch.bool, device=device
         )
 
         self.target_pose_time = torch.zeros(
@@ -163,11 +151,6 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
             * config.masked_mimic_masking.joint_masking.with_conditioning_max_gap_probability
         )
 
-        self.visible_object_bounding_box_probs = (
-            torch.ones(config.num_envs, dtype=torch.float, device=device)
-            * config.masked_mimic_masking.object_bounding_box_visible_prob
-        )
-
         self.visible_text_embeddings_probs = (
             torch.ones(config.num_envs, dtype=torch.float, device=device)
             * config.masked_mimic_masking.motion_text_embeddings_visible_prob
@@ -193,7 +176,7 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
             * config.masked_mimic_masking.start_without_history_prob
         )
 
-        super().__init__(config, device)
+        super().__init__(config, device, *args, **kwargs)
 
     def init_masked_mimic_tensors(self):
         self.masked_mimic_conditionable_bodies_ids = self.build_body_ids_tensor(
@@ -435,14 +418,6 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
         else:
             self.motion_text_embeddings_mask[env_ids] = False
 
-        visible_object_bounding_box = (
-            torch.bernoulli(self.visible_object_bounding_box_probs[: len(env_ids)]) > 0
-        )
-        has_scene = self.scene_ids[env_ids] >= 0
-        self.object_bounding_box_obs_mask[env_ids] = visible_object_bounding_box.view(
-            -1, 1
-        ) & has_scene.view(-1, 1)
-
         visible_target_pose = (
             torch.bernoulli(self.visible_target_pose_probs[: len(env_ids)]) > 0
         )
@@ -575,7 +550,7 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
             current_state.body_rot,
         )
         # First remove the height based on the current terrain, then remove the offset to get back to the ground-truth data position
-        cur_gt[:, :, -1:] -= self.get_ground_heights(cur_gt[:, 0, :2]).view(
+        cur_gt[:, :, -1:] -= self.terrain_obs_cb.ground_heights.view(
             self.num_envs, 1, 1
         )
         cur_gt[..., :2] -= self.respawn_offset_relative_to_data.clone()[..., :2].view(
@@ -689,9 +664,9 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
             self.num_envs, 1, 3
         )
 
-        target_pos[:, :, -1] += self.get_ground_heights(target_pos[:, 0, :2]).view(
-            self.num_envs, 1
-        )
+        target_pos[:, :, -1] += self.terrain_obs_cb.get_ground_heights(
+            target_pos[:, 0, :2]
+        ).view(self.num_envs, 1)
 
         self.motion_recording["target_poses"].append(
             target_pos[:, self.masked_mimic_conditionable_bodies_ids, :].cpu().numpy()
@@ -741,7 +716,7 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
             current_state.body_ang_vel,
         )
         # first remove height based on current position
-        gt[:, :, -1:] -= self.get_ground_heights(gt[:, 0, :2]).view(self.num_envs, 1, 1)
+        gt[:, :, -1:] -= self.terrain_obs_cb.ground_heights.view(self.num_envs, 1, 1)
         # then remove offset to get back to the ground-truth data position
         gt[..., :2] -= self.respawn_offset_relative_to_data.clone()[..., :2].view(
             self.num_envs, 1, 2
@@ -800,24 +775,9 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
             ref_gv=ref_gv,
             ref_gav=ref_gav,
             ref_dv=ref_dv,
-            joint_reward_weights=self.reward_joint_weights,
             config=self.config.mimic_reward_config,
             w_last=self.w_last,
         )
-
-        current_contact_forces = self.get_bodies_contact_buf()
-        forces_delta = torch.clip(
-            self.prev_contact_forces - current_contact_forces, min=0
-        )[
-            :, self.non_termination_contact_body_ids, 2
-        ]  # get the Z axis
-        kbf_rew = (
-            forces_delta.sum(-1)
-            .mul(self.config.mimic_reward_config.component_coefficients.kbf_rew_c)
-            .exp()
-        )
-
-        rew_dict["kbf_rew"] = kbf_rew
 
         dof_forces = self.get_dof_forces()
         power = torch.abs(torch.multiply(dof_forces, dv)).sum(dim=-1)
@@ -830,12 +790,12 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
 
         rew_dict["pow_rew"] = pow_rew
 
-        self.last_scaled_rewards: Dict[str, Tensor] = {
+        scaled_rewards: Dict[str, Tensor] = {
             k: v * getattr(self.config.mimic_reward_config.component_weights, f"{k}_w")
             for k, v in rew_dict.items()
         }
 
-        tracking_rew = sum(self.last_scaled_rewards.values())
+        tracking_rew = sum(scaled_rewards.values())
 
         self.rew_buf = tracking_rew + self.config.mimic_reward_config.positive_constant
 
@@ -843,7 +803,7 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
             self.log_dict[f"raw/{rew_name}_mean"] = rew.mean()
             self.log_dict[f"raw/{rew_name}_std"] = rew.std()
 
-        for rew_name, rew in self.last_scaled_rewards.items():
+        for rew_name, rew in scaled_rewards.items():
             self.log_dict[f"scaled/{rew_name}_mean"] = rew.mean()
             self.log_dict[f"scaled/{rew_name}_std"] = rew.std()
 
@@ -918,12 +878,11 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
             "max_joint_err": max_joint_err,
         }
         for rew_name, rew in other_log_terms.items():
-            self.log_dict[f"{rew_name}_mean"] = rew.mean()
-            self.log_dict[f"{rew_name}_std"] = rew.std()
+            self.log_dict[f"mimic_other/{rew_name}_mean"] = rew.mean()
+            self.log_dict[f"mimic_other/{rew_name}_std"] = rew.std()
 
-        self.last_unscaled_rewards: Dict[str, Tensor] = rew_dict
-        self.last_scaled_rewards = self.last_scaled_rewards
-        self.last_other_rewards = other_log_terms
+        self.mimic_info_dict.update(rew_dict)
+        self.mimic_info_dict.update(other_log_terms)
 
     def compute_observations(self, env_ids=None):
         super().compute_observations(env_ids)
@@ -931,16 +890,16 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=self.device).long()
 
-        # TODO: take env_ids as input here
-        self.masked_mimic_target_poses[:] = (
+        self.masked_mimic_target_poses[env_ids] = (
             self.build_sparse_target_poses_masked_with_time(
-                self.config.masked_mimic_obs.num_future_steps
+                env_ids, self.config.masked_mimic_obs.num_future_steps
             )
         )
 
+        num_envs = env_ids.shape[0]
         reshaped_masked_mimic_target_bodies_masks = (
-            self.masked_mimic_target_bodies_masks.view(
-                self.num_envs, self.config.masked_mimic_obs.num_future_steps, -1
+            self.masked_mimic_target_bodies_masks[env_ids].view(
+                num_envs, self.config.masked_mimic_obs.num_future_steps, -1
             )
         )
 
@@ -955,12 +914,16 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
             * self.dt
         )
 
-        near_future_times = self.motion_times.unsqueeze(-1) + time_offsets.unsqueeze(0)
-        motion_ids = self.motion_ids.unsqueeze(-1).tile(
-            [1, self.config.masked_mimic_obs.num_future_steps]
+        near_future_times = self.motion_times[env_ids].unsqueeze(
+            -1
+        ) + time_offsets.unsqueeze(0)
+        motion_ids = (
+            self.motion_ids[env_ids]
+            .unsqueeze(-1)
+            .tile([1, self.config.masked_mimic_obs.num_future_steps])
         )
         lengths = self.motion_lib.get_motion_length(motion_ids.view(-1)).view(
-            self.num_envs, self.config.masked_mimic_obs.num_future_steps
+            num_envs, self.config.masked_mimic_obs.num_future_steps
         )
         in_bound_times = near_future_times <= lengths
 
@@ -968,25 +931,13 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
             any_visible_joint = reshaped_masked_mimic_target_bodies_masks[:, i].any(
                 dim=-1
             )
-            self.masked_mimic_target_poses_masks[:, i] = (
+            self.masked_mimic_target_poses_masks[env_ids, i] = (
                 any_visible_joint & in_bound_times[:, i]
             )
 
-        self.masked_mimic_target_poses_masks[:, -1:] = self.target_pose_obs_mask
-
-        if self.total_num_objects > 0:
-            env_ids_with_scenes = torch.nonzero(
-                self.scene_ids >= 0, as_tuple=False
-            ).reshape(-1)
-            env_ids_without_scenes = torch.nonzero(
-                self.scene_ids < 0, as_tuple=False
-            ).reshape(-1)
-            if env_ids_with_scenes.shape[0] > 0:
-                self.object_bounding_box_obs[env_ids_with_scenes] = (
-                    self.get_object_bounding_box_obs(env_ids_with_scenes)
-                )
-            if env_ids_without_scenes.shape[0] > 0:
-                self.object_bounding_box_obs[env_ids_without_scenes] = 0
+        self.masked_mimic_target_poses_masks[env_ids, -1:] = self.target_pose_obs_mask[
+            env_ids
+        ]
 
         hist_poses, hist_masks = self.build_historical_body_poses(env_ids)
         self.historical_pose_obs[env_ids] = hist_poses
@@ -1046,13 +997,15 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
             )[:, ::sub_sampling],
         )
 
-    def build_sparse_target_poses(self, raw_future_times):
+    def build_sparse_target_poses(self, env_ids, raw_future_times):
         """
         This is identical to the max_coords humanoid observation, only in relative to the current pose.
         """
+        num_envs = env_ids.shape[0]
+
         num_future_steps = raw_future_times.shape[1]
 
-        motion_ids = self.motion_ids.unsqueeze(-1).tile([1, num_future_steps])
+        motion_ids = self.motion_ids[env_ids].unsqueeze(-1).tile([1, num_future_steps])
         flat_ids = motion_ids.view(-1)
 
         lengths = self.motion_lib.get_motion_length(flat_ids)
@@ -1066,15 +1019,17 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
 
         current_state = self.get_bodies_state()
         cur_gt, cur_gr = (
-            current_state.body_pos,
-            current_state.body_rot,
+            current_state.body_pos[env_ids],
+            current_state.body_rot[env_ids],
         )
         # First remove the height based on the current terrain, then remove the offset to get back to the ground-truth data position
-        cur_gt[:, :, -1:] -= self.get_ground_heights(cur_gt[:, 0, :2]).view(
-            self.num_envs, 1, 1
+        cur_gt[:, :, -1:] -= self.terrain_obs_cb.ground_heights[env_ids].view(
+            num_envs, 1, 1
         )
-        cur_gt[..., :2] -= self.respawn_offset_relative_to_data.clone()[..., :2].view(
-            self.num_envs, 1, 2
+        cur_gt[..., :2] -= (
+            self.respawn_offset_relative_to_data[env_ids]
+            .clone()[..., :2]
+            .view(num_envs, 1, 2)
         )
 
         return build_sparse_target_poses(
@@ -1085,88 +1040,56 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
             flat_target_vel=flat_target_vel,
             masked_mimic_conditionable_bodies_ids=self.masked_mimic_conditionable_bodies_ids,
             num_future_steps=num_future_steps,
-            num_envs=self.num_envs,
+            num_envs=num_envs,
             w_last=self.w_last,
         )
 
-    def build_sparse_target_poses_masked_with_time(self, num_future_steps):
+    def build_sparse_target_poses_masked_with_time(self, env_ids, num_future_steps):
+        num_envs = env_ids.shape[0]
+
         time_offsets = (
             torch.arange(1, num_future_steps + 1, device=self.device, dtype=torch.long)
             * self.dt
         )
 
-        near_future_times = self.motion_times.unsqueeze(-1) + time_offsets.unsqueeze(0)
+        near_future_times = self.motion_times[env_ids].unsqueeze(
+            -1
+        ) + time_offsets.unsqueeze(0)
         all_future_times = torch.cat(
-            [near_future_times, self.target_pose_time.view(-1, 1)], dim=1
+            [near_future_times, self.target_pose_time[env_ids].view(-1, 1)], dim=1
         )
 
-        motion_ids = self.motion_ids.unsqueeze(-1).tile([1, num_future_steps + 1])
+        motion_ids = (
+            self.motion_ids[env_ids].unsqueeze(-1).tile([1, num_future_steps + 1])
+        )
 
         # +1 for "far future step"
-        obs = self.build_sparse_target_poses(all_future_times).view(
-            self.num_envs, num_future_steps + 1, self.num_conditionable_bodies, 2, 12
+        obs = self.build_sparse_target_poses(env_ids, all_future_times).view(
+            num_envs, num_future_steps + 1, self.num_conditionable_bodies, 2, 12
         )
 
-        near_mask = self.masked_mimic_target_bodies_masks.view(
-            self.num_envs, num_future_steps, self.num_conditionable_bodies, 2, 1
+        near_mask = self.masked_mimic_target_bodies_masks[env_ids].view(
+            num_envs, num_future_steps, self.num_conditionable_bodies, 2, 1
         )
-        far_mask = self.target_pose_joints.view(self.num_envs, 1, -1, 2, 1)
+        far_mask = self.target_pose_joints[env_ids].view(num_envs, 1, -1, 2, 1)
         mask = torch.cat([near_mask, far_mask], dim=1)
 
         masked_obs = obs * mask
 
         masked_obs_with_joints = torch.cat((masked_obs, mask), dim=-1).view(
-            self.num_envs, num_future_steps + 1, -1
+            num_envs, num_future_steps + 1, -1
         )
 
         flat_ids = motion_ids.view(-1)
         lengths = self.motion_lib.get_motion_length(flat_ids)
 
         times = torch.minimum(all_future_times.view(-1), lengths).view(
-            self.num_envs, num_future_steps + 1, 1
-        ) - self.motion_times.view(self.num_envs, 1, 1)
-        ones_vec = torch.ones(
-            self.num_envs, num_future_steps + 1, 1, device=self.device
-        )
+            num_envs, num_future_steps + 1, 1
+        ) - self.motion_times[env_ids].view(num_envs, 1, 1)
+        ones_vec = torch.ones(num_envs, num_future_steps + 1, 1, device=self.device)
         times_with_mask = torch.cat((times, ones_vec), dim=-1)
         combined_sparse_future_pose_obs = torch.cat(
             (masked_obs_with_joints, times_with_mask), dim=-1
         )
 
-        return combined_sparse_future_pose_obs.view(self.num_envs, -1)
-
-    def get_object_bounding_box_obs(self, scene_env_ids):
-        scene_ids = self.scene_ids[scene_env_ids]
-        object_ids = self.scene_lib.scene_to_object_ids[scene_ids]
-
-        assert (
-            len(object_ids.shape) == 1 or object_ids.shape[1] == 1
-        ), "This observation does not yet support multiple objects per scene."
-
-        object_ids = object_ids.view(-1)
-
-        num_scene_envs = scene_env_ids.shape[0]
-
-        root_states = (
-            self.get_humanoid_root_states()[scene_env_ids]
-            .clone()
-            .view(num_scene_envs, -1)
-        )
-        root_pos = root_states[:, :3]
-
-        root_pos[:, -1] -= self.get_ground_heights(root_pos[:, :2]).view(-1)
-        root_quat = root_states[:, 3:7]
-
-        object_root_states = self.get_object_root_states()
-
-        return get_object_bounding_box_obs(
-            object_ids=object_ids,
-            root_pos=root_pos,
-            root_quat=root_quat,
-            num_object_envs=num_scene_envs,
-            object_root_states=object_root_states,
-            object_root_states_offsets=self.object_root_states_offsets,
-            object_bounding_box=self.object_id_to_object_bounding_box(object_ids),
-            num_object_types=self.config.scene_lib.num_object_types,
-            w_last=self.w_last,
-        )
+        return combined_sparse_future_pose_obs.view(num_envs, -1)

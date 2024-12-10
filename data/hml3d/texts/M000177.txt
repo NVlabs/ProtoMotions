@@ -1,0 +1,3 @@
+a person walking forward, swing their left arm upwards.#a/DET person/NOUN walk/VERB forward/ADV swing/VERB their/DET left/ADJ arm/NOUN upwards/ADV#0.0#0.0
+a person walks forward and gives someone else a high-five with their left hand.#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ give/VERB someone/PRON else/ADV a/DET highfive/ADJ with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
+walks forwards and swings left arm for a high five then drops arm back down.#walk/VERB forwards/ADJ and/CCONJ swing/NOUN left/VERB arm/NOUN for/ADP a/DET high/ADJ five/NUM then/ADV drop/VERB arm/VERB back/ADV down/ADV#0.0#0.0

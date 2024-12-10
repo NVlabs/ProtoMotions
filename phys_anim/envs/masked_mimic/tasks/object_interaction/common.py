@@ -43,8 +43,8 @@ else:
 
 
 class BaseMaskedMimicObject(MaskedMimicObjectHumanoid):  # type: ignore[misc]
-    def __init__(self, config, device: torch.device):
-        super().__init__(config=config, device=device)
+    def __init__(self, config, device: torch.device, *args, **kwargs):
+        super().__init__(config=config, device=device, *args, **kwargs)
 
         self._tar_reach_time = torch.zeros(
             [self.num_envs], device=self.device, dtype=torch.float
@@ -117,7 +117,9 @@ class BaseMaskedMimicObject(MaskedMimicObjectHumanoid):  # type: ignore[misc]
                         1
                     )  # add respawn offset
                     flat_normalized_dof_pos = normalized_dof_pos.view(-1, 3)
-                    z_all_joints = self.get_heights_with_scene(flat_normalized_dof_pos)
+                    z_all_joints = self.terrain_obs_cb.get_heights_with_scene(
+                        flat_normalized_dof_pos
+                    )
                     z_all_joints = z_all_joints.view(normalized_dof_pos.shape[:-1])
 
                     z_diff = z_all_joints - normalized_dof_pos[:, :, 2]
@@ -135,7 +137,7 @@ class BaseMaskedMimicObject(MaskedMimicObjectHumanoid):  # type: ignore[misc]
                         z_all_joints.gather(1, z_indices).view(-1, 1) + extra_offset
                     )
                 else:
-                    z_root = self.get_heights_with_scene(xy_position)
+                    z_root = self.terrain_obs_cb.get_heights_with_scene(xy_position)
                     z_offset = z_root.view(-1, 1) + self.config.ref_respawn_offset
 
                 object_respawn_position = torch.cat([xy_position, z_offset], dim=-1)
@@ -178,6 +180,16 @@ class BaseMaskedMimicObject(MaskedMimicObjectHumanoid):  # type: ignore[misc]
         self.mask_everything()
         super().compute_observations(env_ids)
         self.mask_everything()
+
+        for env_id in range(self.num_envs):
+            object_mask = self.object_id_to_scene_id == self.scene_ids[env_id]
+            self.env_id_to_object_ids[env_id, :] = -1
+            if object_mask.any():
+                object_ids = torch.where(object_mask)[0]
+                self.env_id_to_object_ids[env_id, : len(object_ids)] = object_ids
+            self.object_identity[env_id, :] = torch.randperm(
+                self.max_objects_per_scene, device=self.device
+            )
 
         target_positions = self.object_target_position[self.scene_ids]
         # compute 2d distance from object bounding box positions
@@ -226,10 +238,9 @@ class BaseMaskedMimicObject(MaskedMimicObjectHumanoid):  # type: ignore[misc]
         just_reached_range_env_ids = torch.nonzero(just_reached_range, as_tuple=True)[0]
         self.valid_hist_buf.set_all(False, just_reached_range_env_ids)
 
-        # self.object_bounding_box_obs_mask[:] = True
+        # self.object_bounding_box_obs_mask[:] = False
         self.object_bounding_box_obs_mask[close_to_object] = True
-        all_env_ids = torch.arange(self.num_envs, device=self.device)
-        self.object_bounding_box_obs[:] = self.get_object_bounding_box_obs(all_env_ids)
+        self.object_pointclouds_mask[close_to_object] = True
 
         # time_until_sitting = 3  # (self._tar_reach_steps - self.progress_buf).clamp(min=10)  # just incase keep above 0 to ensure it isn't hidden
         self._tar_reach_time[just_reached_range] = (
@@ -329,10 +340,10 @@ class BaseMaskedMimicObject(MaskedMimicObjectHumanoid):  # type: ignore[misc]
         target_positions[in_range, :2] = root_pos[in_range, :2]
 
         distance_to_target = torch.norm(root_pos - target_positions, dim=-1)
-        self.last_other_rewards["distance_to_object_position"] = (
+        self.mimic_info_dict["distance_to_object_position"] = (
             distance_to_target.detach()
         )
-        self.last_other_rewards["success_object_position"] = (
+        self.mimic_info_dict["success_object_position"] = (
             in_range.float().detach()
         )  # (distance_to_target < 0.4).float()
 
@@ -359,9 +370,7 @@ class BaseMaskedMimicObject(MaskedMimicObjectHumanoid):  # type: ignore[misc]
         current_state = self.get_bodies_state()
         cur_gt, cur_gr = current_state.body_pos, current_state.body_rot
         # First remove the height based on the current terrain, then remove the offset to get back to the ground-truth data position
-        cur_gt[:, :, -1:] -= self.get_ground_heights(cur_gt[:, 0, :2]).view(
-            self.num_envs, 1, 1
-        )
+        cur_gt[:, :, -1:] -= self.terrain_obs_cb.ground_heights.view(self.num_envs, 1, 1)
         # cur_gt[..., :2] -= self.respawn_offset_relative_to_data.clone()[..., :2].view(self.num_envs, 1, 2)
 
         # override to set the target root parameters

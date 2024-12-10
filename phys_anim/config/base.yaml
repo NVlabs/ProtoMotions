@@ -13,7 +13,6 @@ headless: True
 num_envs: 4096
 
 ### Checkpoint logic
-auto_load_latest: False
 checkpoint: null
 
 ### Naming and dir structure
@@ -25,4 +24,3 @@ force_flat_terrain: False
 eval_overrides:
   headless: False
   num_envs: 1
-  auto_load_latest: False

@@ -37,16 +37,16 @@ import torch.nn.functional as F
 
 from isaac_utils import torch_utils
 from phys_anim.envs.humanoid.humanoid_utils import (
-    compute_humanoid_observations,
-    compute_humanoid_observations_max,
     compute_humanoid_reset,
-    compute_humanoid_reward,
-    get_height_maps_jit,
-    get_heights,
+    build_pd_action_offset_scale,
 )
 from phys_anim.envs.env_utils.terrains.terrain import Terrain
 from phys_anim.utils.motion_lib import MotionLib
 from phys_anim.utils.scene_lib import SceneLib
+from phys_anim.envs.callbacks.humanoid_obs import HumanoidObs
+from phys_anim.envs.callbacks.amp_obs import AmpObs
+from phys_anim.envs.callbacks.terrain_obs import TerrainObs
+from phys_anim.envs.callbacks.object_obs import ObjectObs
 
 if TYPE_CHECKING:
     from phys_anim.envs.humanoid.isaacgym import Humanoid
@@ -61,26 +61,11 @@ class BaseHumanoid(Humanoid):
         Random = 2
         Hybrid = 3
 
-    def __init__(self, config, device: torch.device):
+    def __init__(self, config, device: torch.device, *args, **kwargs):
         self.config = config
         self.device = device
         self.num_envs = self.config.num_envs
-        self.init_done = False
-        self.scene_lib = None
-
-        self.num_obs = self.config.robot.self_obs_size
-
-        if self.config.sync_motion:
-            control_freq_inv = self.config.simulator.sim.control_freq_inv
-            self.config.simulator.sim.control_freq_inv = 1
-            self.sync_motion_dt = control_freq_inv / config.simulator.sim.fps
-            print("HACK SLOW DOWN")
-            self.config.robot.control.control_type = "T"
-
-        self.state_init = self.StateInit[config.state_init]
-        self.hybrid_init_prob = config.hybrid_init_prob
-        self.reset_default_env_ids = []
-        self.reset_ref_env_ids = []
+        self.create_terrain_and_scene_lib()
 
         # Scene storage
         self.total_num_objects = 0
@@ -91,16 +76,20 @@ class BaseHumanoid(Humanoid):
         self.object_root_states_offsets = []
         self.object_target_position = []
 
-        # General configurations
-        self.isaac_pd = self.config.robot.control.control_type == "isaac_pd"
-        self.control_freq_inv = self.config.simulator.sim.control_freq_inv
-
+        super().__init__(config, device, *args, **kwargs)
         self.setup_character_props()
 
+        self.init_done = False
+
+        self.state_init = self.StateInit[config.state_init]
+        self.hybrid_init_prob = config.hybrid_init_prob
+        self.reset_default_env_ids = []
+        self.reset_ref_env_ids = []
+
         # Buffers
-        self.obs_buf = torch.zeros(
-            (self.num_envs, self.get_obs_size()), device=self.device, dtype=torch.float
-        )
+        self.self_obs_cb = HumanoidObs(self.config.humanoid_obs, self)
+        self.amp_obs_cb = AmpObs(self.config.amp_obs, self)
+
         self.rew_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.float)
         self.reset_buf = torch.ones(self.num_envs, device=self.device, dtype=torch.long)
         self.progress_buf = torch.zeros(
@@ -112,10 +101,7 @@ class BaseHumanoid(Humanoid):
         self.extras = {}
         self.log_dict = {}
 
-        self.terrain = None
         self.force_respawn_on_flat = False
-
-        self.create_terrain_and_scene_lib()
 
         self.reset_happened = False
         self.reset_ref_env_ids = []
@@ -123,9 +109,8 @@ class BaseHumanoid(Humanoid):
         self.reset_ref_object_ids = []
         self.object_reset_states = None
 
-        super().__init__(config, device)
-
         # After objects have been populated, finalize structure
+        self.object_obs_cb.objects_spawned()
         if self.config.scene_lib is not None:
             self.scene_position = torch.stack(self.scene_position)
             self.object_id_to_scene_id = torch.tensor(
@@ -134,6 +119,7 @@ class BaseHumanoid(Humanoid):
             self.object_dims = torch.stack(self.object_dims).reshape(
                 self.total_num_objects, -1
             )
+
             self.object_root_states_offsets = torch.stack(
                 self.object_root_states_offsets
             )
@@ -141,12 +127,18 @@ class BaseHumanoid(Humanoid):
             self.env_id_to_object_ids = (
                 torch.zeros(
                     self.num_envs,
-                    self.scene_lib.config.max_objects_per_scene,
+                    self.max_objects_per_scene,
                     dtype=torch.long,
                     device=self.device,
                 )
                 - 1
             )  # -1 indicates no object
+            self.object_identity = torch.zeros(
+                self.num_envs,
+                self.max_objects_per_scene,
+                dtype=torch.long,
+                device=self.device,
+            )  # This is the identity of the object in the scene, is one-hot encoded.
 
         self.motion_ids = torch.zeros(
             self.num_envs, dtype=torch.long, device=self.device
@@ -246,7 +238,9 @@ class BaseHumanoid(Humanoid):
                 1
             )  # add respawn offset
             flat_normalized_dof_pos = normalized_rb_pos.view(-1, 3)
-            z_all_joints = self.get_ground_heights(flat_normalized_dof_pos)
+            z_all_joints = self.terrain_obs_cb.get_ground_heights(
+                flat_normalized_dof_pos
+            )
             z_all_joints = z_all_joints.view(normalized_rb_pos.shape[:-1])
 
             z_diff = z_all_joints - normalized_rb_pos[:, :, 2]
@@ -257,7 +251,7 @@ class BaseHumanoid(Humanoid):
             # the relative height above the terrain.
             z_offset = z_all_joints.gather(1, z_indices).view(-1, 1)
 
-            z_all_joints_with_scene = self.get_heights_with_scene(
+            z_all_joints_with_scene = self.terrain_obs_cb.get_heights_with_scene(
                 flat_normalized_dof_pos
             )
             z_all_joints_with_scene = z_all_joints_with_scene.view(
@@ -275,7 +269,7 @@ class BaseHumanoid(Humanoid):
 
             z_offset = z_offset + z_with_scene_offset
         else:
-            z_root = self.get_ground_heights(xy_position)
+            z_root = self.terrain_obs_cb.get_ground_heights(xy_position)
             z_offset = z_root.view(-1, 1) + self.config.ref_respawn_offset
 
         respawn_position = torch.cat([xy_position, z_offset], dim=-1)
@@ -333,6 +327,16 @@ class BaseHumanoid(Humanoid):
                 self.num_envs, device=self.device, dtype=torch.bool
             )
 
+        if self.isaac_pd:
+            self._pd_action_offset, self._pd_action_scale = (
+                build_pd_action_offset_scale(
+                    self.dof_offsets,
+                    self.dof_limits_lower,
+                    self.dof_limits_upper,
+                    self.device,
+                )
+            )
+
         super().on_environment_ready()
 
     def pre_physics_step(self, actions):
@@ -361,6 +365,8 @@ class BaseHumanoid(Humanoid):
 
             if self.config.output_motion:
                 self.output_motion()
+
+        self.amp_obs_cb.post_physics_step()
 
         self.log_dict["terminate_frac"] = self.terminate_buf.float().mean()
 
@@ -404,93 +410,23 @@ class BaseHumanoid(Humanoid):
         # Override in IsaacSim.
         return True
 
+    def force_reset(self):
+        super().force_reset()
+        self.progress_buf[:] = 1e6
+        self.motion_times[:] = 1e6
+
     def compute_observations(self, env_ids=None):
-        obs = self.compute_humanoid_obs(env_ids)
-
-        if self.terrain is not None:
-            height_obs = self.get_height_maps(env_ids)
-            if env_ids is None:
-                self.terrain_obs[:] = height_obs
-            else:
-                self.terrain_obs[env_ids] = height_obs
-
         if env_ids is None:
-            self.obs_buf[:] = obs
-        else:
-            self.obs_buf[env_ids] = obs
+            env_ids = torch.arange(self.num_envs, device=self.device, dtype=torch.long)
 
-    def compute_humanoid_obs(self, env_ids=None):
-        # Retrieve body transforms & velocities
-        current_state = self.get_bodies_state()
-        body_pos, body_rot, body_vel, body_ang_vel = (
-            current_state.body_pos,
-            current_state.body_rot,
-            current_state.body_vel,
-            current_state.body_ang_vel,
-        )
-
-        ground_heights = self.get_heights_with_scene(
-            self.get_humanoid_root_states()[..., :2]
-        )
-
-        if self.config.humanoid_obs.use_max_coords_obs:
-            if env_ids is not None:
-                body_pos = body_pos[env_ids]
-                body_rot = body_rot[env_ids]
-                body_vel = body_vel[env_ids]
-                body_ang_vel = body_ang_vel[env_ids]
-                ground_heights = ground_heights[env_ids]
-
-            obs = compute_humanoid_observations_max(
-                body_pos,
-                body_rot,
-                body_vel,
-                body_ang_vel,
-                ground_heights,
-                self.config.humanoid_obs.local_root_obs,
-                self.config.humanoid_obs.root_height_obs,
-                self.w_last,
-            )
-
-        else:
-            dof_pos, dof_vel = self.get_dof_state()
-            if env_ids is None:
-                root_pos = body_pos[:, 0, :]
-                root_rot = body_rot[:, 0, :]
-                root_vel = body_vel[:, 0, :]
-                root_ang_vel = body_ang_vel[:, 0, :]
-                dof_pos = dof_pos
-                dof_vel = dof_vel
-                key_body_pos = body_pos[:, self.key_body_ids, :]
-            else:
-                root_pos = body_pos[env_ids][:, 0, :]
-                root_rot = body_rot[env_ids][:, 0, :]
-                root_vel = body_vel[env_ids][:, 0, :]
-                root_ang_vel = body_ang_vel[env_ids][:, 0, :]
-                dof_pos = dof_pos[env_ids]
-                dof_vel = dof_vel[env_ids]
-                key_body_pos = body_pos[env_ids][:, self.key_body_ids, :]
-                ground_heights = ground_heights[env_ids]
-
-            obs = compute_humanoid_observations(
-                root_pos,
-                root_rot,
-                root_vel,
-                root_ang_vel,
-                dof_pos,
-                dof_vel,
-                key_body_pos,
-                ground_heights,
-                self.config.humanoid_obs.local_root_obs,
-                self.dof_obs_size,
-                self.get_dof_offsets(),
-                self.w_last,
-            )
-        return obs
+        self.terrain_obs_cb.compute_height_under_character(env_ids)
+        self.self_obs_cb.compute_observations(env_ids)
+        self.terrain_obs_cb.compute_observations(env_ids)
+        self.object_obs_cb.compute_observations(env_ids)
 
     def compute_reset(self):
         bodies_positions = self.get_body_positions()
-        bodies_contact_buf = self.get_bodies_contact_buf()
+        bodies_contact_buf = self.self_obs_cb.body_contacts
 
         self.reset_buf[:], self.terminate_buf[:] = compute_humanoid_reset(
             self.reset_buf,
@@ -500,12 +436,13 @@ class BaseHumanoid(Humanoid):
             bodies_positions,
             self.config.max_episode_length,
             self.config.enable_height_termination,
-            self.termination_heights
-            + self.get_ground_heights(self.get_humanoid_root_states()[..., :2]),
+            self.termination_heights + self.terrain_obs_cb.ground_heights,
         )
 
     def compute_reward(self, actions):
-        self.rew_buf[:] = compute_humanoid_reward(self.obs_buf)
+        self.rew_buf[:] = torch.ones(
+            self.num_envs, dtype=torch.float, device=self.device
+        )
 
     ###############################################################
     # Handle Resets
@@ -525,11 +462,12 @@ class BaseHumanoid(Humanoid):
             self.reset_happened = True
 
         self.reset_envs(env_ids)
-        return self.obs_buf
 
     def reset_envs(self, env_ids):
         if len(env_ids) == 0:
             return
+
+        self.amp_obs_cb.reset_envs(env_ids)
 
         self.reset_default_env_ids = []
         self.reset_ref_env_ids = []
@@ -588,6 +526,9 @@ class BaseHumanoid(Humanoid):
                         self.env_id_to_object_ids[env_id, : len(object_ids)] = (
                             object_ids
                         )
+                    self.object_identity[env_id, :] = torch.randperm(
+                        self.max_objects_per_scene, device=self.device
+                    )
             else:
                 raise ValueError(
                     "reset_ref_state_init: scene_ids and motion_ids must be provided together."
@@ -693,8 +634,8 @@ class BaseHumanoid(Humanoid):
                 ] += self.config.object_ref_respawn_offset
                 self.set_object_state(
                     object_ids=non_static_object_ids,
-                    positions=non_static_object_states.translations,
-                    rotations=non_static_object_states.rotations,
+                    obj_pos=non_static_object_states.translations,
+                    obj_rot=non_static_object_states.rotations,
                 )
                 if append_to_lists and len(self.reset_ref_object_ids) > 0:
                     self.reset_ref_object_ids = torch.cat(
@@ -733,6 +674,10 @@ class BaseHumanoid(Humanoid):
 
         if self.config.scene_lib is not None:
             self.scene_lib = SceneLib(self.config.scene_lib, device=self.device)
+            self.max_objects_per_scene = self.scene_lib.config.max_objects_per_scene
+        else:
+            self.scene_lib = None
+            self.max_objects_per_scene = 1
         self.terrain: Terrain = instantiate(
             self.config.terrain,
             scene_lib=self.scene_lib,
@@ -740,132 +685,22 @@ class BaseHumanoid(Humanoid):
             device=self.device,
         )
 
-        self.only_terrain_height_samples = (
-            torch.tensor(self.terrain.heightsamples)
-            .view(self.terrain.tot_rows, self.terrain.tot_cols)
-            .to(self.device)
-            * self.terrain.vertical_scale
-        )
-        self.height_samples = (
-            torch.tensor(self.terrain.heightsamples)
-            .view(self.terrain.tot_rows, self.terrain.tot_cols)
-            .to(self.device)
-            * self.terrain.vertical_scale
-        )
-        self.height_points = self.init_height_points()
+        self.terrain_obs_cb = TerrainObs(self.config.terrain.config, self)
+        self.object_obs_cb = ObjectObs(self.config.point_cloud_obs, self)
 
-        self.terrain_obs = torch.zeros(
-            self.num_envs,
-            self.num_height_points,
-            device=self.device,
-            dtype=torch.float,
-        )
-
-    def get_ground_heights(self, root_states):
-        """
-        This provides the height of the ground beneath the character.
-        Not to confuse with the height-map projection that a sensor would see.
-        Use this function for alignment between mocap and new terrains.
-        """
-        height_samples = self.only_terrain_height_samples
-        horizontal_scale = self.terrain.horizontal_scale
-
-        return get_heights(
-            root_states=root_states,
-            height_samples=height_samples,
-            horizontal_scale=horizontal_scale,
-        )
-
-    def get_heights_with_scene(self, root_states):
-        """
-        This provides the height-map projection that a sensor would see.
-        This takes into account objects in the scene, such as chairs, tables, etc...
-        Use this function to provide a heightmap representation for the character.
-        """
-        height_samples = self.height_samples
-        horizontal_scale = self.terrain.horizontal_scale
-
-        return get_heights(
-            root_states=root_states,
-            height_samples=height_samples,
-            horizontal_scale=horizontal_scale,
-        )
-
-    def init_height_points(self):
-        """
-        Pre-defines the grid for the height-map observation.
-        """
-        y = torch.tensor(
-            np.linspace(
-                -self.config.terrain.config.sample_width,
-                self.config.terrain.config.sample_width,
-                self.config.terrain.config.num_samples_per_axis,
-            ),
-            device=self.device,
-            requires_grad=False,
-        )
-        x = torch.tensor(
-            np.linspace(
-                -self.config.terrain.config.sample_width,
-                self.config.terrain.config.sample_width,
-                self.config.terrain.config.num_samples_per_axis,
-            ),
-            device=self.device,
-            requires_grad=False,
-        )
-        grid_x, grid_y = torch.meshgrid(x, y)
-
-        self.num_height_points = grid_x.numel()
-        points = torch.zeros(
-            self.num_envs,
-            self.num_height_points,
-            3,
-            device=self.device,
-            requires_grad=False,
-        )
-        points[:, :, 0] = grid_x.flatten()
-        points[:, :, 1] = grid_y.flatten()
-        return points
-
-    def get_height_maps(self, env_ids=None, return_all_dims=False):
-        """
-        Generates a 2D heightmap grid observation rotated w.r.t. the character's heading.
-        Each sample is the billinear interpolation between adjacent points.
-        """
-        if env_ids is None:
-            env_ids = torch.arange(self.num_envs, device=self.device).long()
-        num_envs = len(env_ids)
-
-        if self.terrain is None:
-            return torch.zeros(
-                num_envs,
-                self.num_height_points,
-                1,
-                device=self.device,
-                requires_grad=False,
-            ).view(num_envs, -1)
-
-        root_states = (
-            self.get_humanoid_root_states()[env_ids].clone().view(num_envs, -1)
-        )
-
-        base_pos = root_states[:, :3]
-
-        return get_height_maps_jit(
-            root_states=root_states,
-            base_pos=base_pos,
-            env_ids=env_ids,
-            num_envs=num_envs,
-            height_points=self.height_points,
-            height_samples=self.height_samples,
-            num_height_points=self.num_height_points,
-            terrain_horizontal_scale=self.terrain.horizontal_scale,
-            w_last=self.w_last,
-            return_all_dims=return_all_dims,
+        # TODO: temporary. move this into a more appropriate callback
+        self.terrain_obs = self.terrain_obs_cb.terrain_obs
+        self.object_pointclouds = self.object_obs_cb.object_pointclouds_obs
+        self.object_bounding_box_obs = self.object_obs_cb.object_bounding_box_obs
+        self.object_pointclouds_mask = self.object_bounding_box_obs_mask = (
+            self.object_obs_cb.object_mask
         )
 
     def get_required_history_length(self):
-        return 0
+        if self.amp_obs_cb.config.disable_discriminator:
+            return 0
+        else:
+            return self.amp_obs_cb.discriminator_obs_historical_steps
 
     ###############################################################
     # Helpers
@@ -939,8 +774,6 @@ class BaseHumanoid(Humanoid):
         return times + earliest_time
 
     def sync_motion(self):
-        self.sync_motion_times[self.sync_motion_just_reset] = 0
-        self.motion_times[:] = self.sync_motion_times
         if self.sync_motion_just_reset.any():
             if self.scene_lib is not None:
                 self.scene_lib.mark_scene_not_in_use(
@@ -988,13 +821,20 @@ class BaseHumanoid(Humanoid):
                         self.sync_motion_just_reset.sum()
                     )
 
-                self.motion_ids[self.sync_motion_just_reset] = motion_ids
+            self.motion_ids[self.sync_motion_just_reset] = motion_ids
+
+            self.sync_motion_times[self.sync_motion_just_reset] = (
+                self.motion_lib.state.motion_timings[
+                    self.motion_ids[self.sync_motion_just_reset], 0
+                ]
+            )
             self.sync_motion_just_reset[:] = False
+
+        self.motion_times[:] = self.sync_motion_times
 
         ref_state = self.motion_lib.get_motion_state(
             self.motion_ids,
-            self.motion_times
-            + self.motion_lib.state.motion_timings[self.motion_ids, 0],
+            self.motion_times,
         )
 
         ref_state.root_vel *= 0
@@ -1064,12 +904,15 @@ class BaseHumanoid(Humanoid):
                 object_states = self.scene_lib.get_object_pose(
                     non_static_active_object_ids, non_static_active_scene_times
                 )
-
+                # Update object states in the simulation
+                object_states.translations[
+                    :, 2
+                ] += self.config.object_ref_respawn_offset
                 # Update object states in the simulation
                 self.set_object_state(
                     object_ids=non_static_active_object_ids,
-                    positions=object_states.translations,
-                    rotations=object_states.rotations,
+                    obj_pos=object_states.translations,
+                    obj_rot=object_states.rotations,
                 )
 
         # TODO: for non-scene interactions, sample an initial random offset and then add terrain offset.
@@ -1091,15 +934,12 @@ class BaseHumanoid(Humanoid):
 
         self.reset_env_tensors(env_ids, utilized_object_ids)
 
-        motion_dur = (
-            self.motion_lib.state.motion_timings[self.motion_ids, 1]
-            - self.motion_lib.state.motion_timings[self.motion_ids, 0]
-        )
-        to_fmod = self.sync_motion_times + self.sync_motion_dt
-
-        self.sync_motion_times = torch.fmod(to_fmod, motion_dur)
+        self.sync_motion_times = self.sync_motion_times + self.sync_motion_dt
         # Check for motions that wrapped around
-        wrapped_motions = to_fmod >= motion_dur
+        wrapped_motions = (
+            self.sync_motion_times
+            >= self.motion_lib.state.motion_timings[self.motion_ids, 1]
+        )
         # Set sync_motion_just_reset to True for wrapped motions
         self.sync_motion_just_reset[wrapped_motions] = True
 
@@ -1198,3 +1038,18 @@ class BaseHumanoid(Humanoid):
 
     def get_dof_offsets(self):
         return self.dof_offsets
+
+    def instantiate_motion_lib(self):
+        spawned_scenes = None
+        if self.scene_lib is not None:
+            spawned_scenes = self.scene_lib.get_scene_ids()
+        motion_lib: MotionLib = instantiate(
+            self.config.motion_lib,
+            dof_body_ids=self.dof_body_ids,
+            dof_offsets=self.dof_offsets,
+            key_body_ids=self.key_body_ids,
+            device=self.device,
+            spawned_scene_ids=spawned_scenes,
+            skeleton_tree=None,
+        )
+        return motion_lib

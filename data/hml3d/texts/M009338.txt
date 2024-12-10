@@ -1,0 +1,3 @@
+a person raises their right arm holding an object and then lowers their arm#a/DET person/NOUN raise/VERB their/DET right/ADJ arm/NOUN hold/VERB an/DET object/NOUN and/CCONJ then/ADV lower/VERB their/DET arm/NOUN#0.0#0.0
+a person appears to be eating something holding it in their left hand#a/DET person/NOUN appear/VERB to/PART be/AUX eat/VERB something/PRON hold/VERB it/PRON in/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
+moving hands near face.#move/VERB hand/NOUN near/SCONJ face/NOUN#0.0#0.0

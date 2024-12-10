@@ -1,0 +1,3 @@
+a person walks calmly from the top right to the bottom left.#a/DET person/NOUN walk/VERB calmly/ADV from/ADP the/DET top/ADJ right/NOUN to/ADP the/DET bottom/NOUN left/VERB#0.0#0.0
+a person walks slowly a quarter of a circle counter counterclockwise.#a/DET person/NOUN walk/VERB slowly/ADV a/DET quarter/NOUN of/ADP a/DET circle/NOUN counter/NOUN counterclockwise/NOUN#0.0#0.0
+a person walks downward and to the left.#a/DET person/NOUN walk/VERB downward/ADV and/CCONJ to/ADP the/DET left/NOUN#0.0#0.0

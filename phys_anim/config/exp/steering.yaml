@@ -1,8 +1,8 @@
 # @package _global_
 
 defaults:
-  - /algo: amp
-  - /env: steering
+  - amp
+  - /env/steering
 
 experiment_name: steering
 

@@ -1,0 +1,3 @@
+person walks to the right of the screen and starts pacing#person/NOUN walk/VERB to/ADP the/DET right/NOUN of/ADP the/DET screen/NOUN and/CCONJ start/VERB pacing/NOUN#0.0#0.0
+a person paces from right to left.#a/DET person/NOUN pace/VERB from/ADP right/NOUN to/ADP left/NOUN#0.0#0.0
+someone is walking over and pacing back and forth.#someone/PRON is/AUX walk/VERB over/ADP and/CCONJ pace/VERB back/ADV and/CCONJ forth/ADV#0.0#0.0

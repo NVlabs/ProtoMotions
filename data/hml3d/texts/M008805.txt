@@ -1,0 +1,3 @@
+the figure walks sideways starting with the right leg before the motion repeats and the figure drags its legs to the left.#the/DET figure/NOUN walk/VERB sideways/ADV start/VERB with/ADP the/DET right/ADJ leg/NOUN before/ADP the/DET motion/NOUN repeat/VERB and/CCONJ the/DET figure/NOUN drag/VERB its/DET leg/NOUN to/ADP the/DET left/NOUN#0.0#0.0
+sidestepping to the right then back to the left#sidestep/VERB to/ADP the/DET right/NOUN then/ADV back/ADV to/ADP the/DET left/NOUN#0.0#0.0
+someone side stepping to the left then to the right#someone/PRON side/NOUN step/VERB to/ADP the/DET left/NOUN then/ADV to/ADP the/DET right/NOUN#0.0#0.0

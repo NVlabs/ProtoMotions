@@ -1,0 +1,3 @@
+a person is punching with their right hand.#a/DET person/NOUN is/AUX punch/VERB with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0
+a person hit with right hand a few times#a/DET person/NOUN hit/VERB with/ADP right/ADJ hand/NOUN a/DET few/ADJ time/NOUN#0.0#0.0
+person punches with right hand repeatedly.#person/NOUN punch/VERB with/ADP right/ADJ hand/NOUN repeatedly/ADV#nan#0.0

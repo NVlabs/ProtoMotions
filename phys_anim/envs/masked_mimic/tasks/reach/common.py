@@ -41,8 +41,8 @@ else:
 
 
 class BaseMaskedMimicReach(MaskedMimicReachHumanoid):
-    def __init__(self, config, device: torch.device):
-        super().__init__(config=config, device=device)
+    def __init__(self, config, device: torch.device, *args, **kwargs):
+        super().__init__(config=config, device=device, *args, **kwargs)
 
         self._tar_change_steps = torch.zeros(
             [self.num_envs], device=self.device, dtype=torch.int64
@@ -147,7 +147,9 @@ class BaseMaskedMimicReach(MaskedMimicReachHumanoid):
         root_pos[:, -1:] = 0
 
         marker_pos = root_pos + rand_pos
-        marker_pos[:, -1:] += self.get_ground_heights(marker_pos[:, :2]).view(-1, 1)
+        marker_pos[:, -1:] += self.terrain_obs_cb.get_ground_heights(
+            marker_pos[:, :2]
+        ).view(-1, 1)
 
         # Marker position is represented relative to the character pos, without terrains.
         self._tar_pos[env_ids, :] = marker_pos
@@ -191,18 +193,15 @@ class BaseMaskedMimicReach(MaskedMimicReachHumanoid):
         self._current_failures[measurement_started] += (
             distance_to_target[measurement_started] > 0.5
         )
-        print(
-            f"Measurement started: {measurement_started[0]} , failed {self._current_failures[0] > 0}"
-        )
         self._current_failures[measurement_not_started] = 0
         self._current_accumulated_errors[measurement_not_started] = 0
         self._last_length[:] = self.progress_buf[:]
 
         if len(self._failures) > 0:
-            self.last_other_rewards["reach_success"] = 1.0 - sum(self._failures) / len(
+            self.mimic_info_dict["reach_success"] = 1.0 - sum(self._failures) / len(
                 self._failures
             )
-            self.last_other_rewards["reach_distance"] = sum(self._distances) / len(
+            self.mimic_info_dict["reach_distance"] = sum(self._distances) / len(
                 self._distances
             )
 

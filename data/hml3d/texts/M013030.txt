@@ -1,0 +1,3 @@
+a person walks forward gingerly.#a/DET person/NOUN walk/VERB forward/ADV gingerly/ADV#0.0#0.0
+a standing person walks forward using their left foot first then followed by their right foot#a/DET stand/VERB person/NOUN walk/VERB forward/ADV use/VERB their/DET left/ADJ foot/NOUN first/ADV then/ADV follow/VERB by/ADP their/DET right/ADJ foot/NOUN#0.0#0.0
+the person is walking down a slope.#the/DET person/NOUN is/AUX walk/VERB down/ADP a/DET slope/NOUN#0.0#0.0

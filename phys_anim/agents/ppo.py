@@ -27,6 +27,8 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import torch
+import os
+import logging
 
 from torch import nn, Tensor
 
@@ -49,6 +51,8 @@ from phys_anim.envs.humanoid.common import Humanoid
 from phys_anim.utils.running_mean_std import RunningMeanStd
 from phys_anim.agents.callbacks.base_callback import RL_EvalCallback
 from rich.progress import track
+
+log = logging.getLogger(__name__)
 
 
 def get_params(obj) -> List[nn.Parameter]:
@@ -149,13 +153,11 @@ class PPO:
             )
 
         # Obs deliberately not on here, since its updated before env step
-        self.actor_state_to_experience_buffer_list = [
+        self.actor_outs_to_experience_buffer_list = [
             "mus",
             "sigmas",
             "actions",
             "neglogp",
-            "rewards",
-            "dones",
         ]
 
         self.current_lengths = torch.zeros(
@@ -170,6 +172,7 @@ class PPO:
         self.episode_env_tensors = TensorAverageMeterDict()
         self.step_count = 0
         self.current_epoch = 0
+        self.fit_start_time = None
         self.best_evaluated_score = None
 
         self.force_full_restart = False
@@ -224,6 +227,12 @@ class PPO:
 
     def load_parameters(self, state_dict):
         self.current_epoch = state_dict["epoch"]
+
+        if "step_count" in state_dict:
+            self.step_count = state_dict["step_count"]
+        if "run_start_time" in state_dict:
+            self.fit_start_time = state_dict["run_start_time"]
+
         self.best_evaluated_score = state_dict.get("best_evaluated_score", None)
 
         self.actor.load_state_dict(state_dict["actor"])
@@ -242,16 +251,13 @@ class PPO:
         self.episode_length_meter.load_state_dict(state_dict["episode_length_meter"])
 
     def fit(self):
-        self.env_reset()
-        self.fit_start_time = time.time()
-        self.time_report.add_timer("algorithm")
-        self.time_report.add_timer("epoch")
-        self.time_report.start_timer("algorithm")
+        self.handle_reset()
+        if self.fit_start_time is None:
+            self.fit_start_time = time.time()
         self.fabric.call("on_fit_start", self)
 
         while self.current_epoch < self.config.max_epochs:
             self.epoch_start_time = time.time()
-            self.time_report.start_timer("epoch")
 
             self.fabric.call("before_play_steps", self)
 
@@ -279,7 +285,6 @@ class PPO:
 
             training_log_dict["epoch"] = self.current_epoch
             self.current_epoch += 1
-            self.time_report.end_timer("epoch")
             self.fabric.call("after_train", self)
 
             # Saves memory
@@ -317,40 +322,41 @@ class PPO:
 
             if self.should_stop:
                 self.save()
-                exit(0)
+                return
 
-        self.time_report.end_timer("algorithm")
         self.time_report.report()
         self.save()
         self.fabric.call("on_fit_end", self)
 
     @torch.no_grad()
     def play_steps(self):
-        actor_state = self.create_actor_state()
-
-        for i in track(
+        done_indices = []
+        for step in track(
             range(self.num_steps),
             description=f"Epoch {self.current_epoch}, collecting data...",
         ):
-            actor_state["step"] = i
+            self.handle_reset(done_indices)
 
-            actor_state = self.handle_reset(actor_state)
+            # Update obs incase any environments were reset
+            obs = self.create_agent_obs()
 
-            # Invoke actor and critic, generate actions/values
-            actor_state = self.pre_env_step(actor_state)
+            # Obtain actor predictions
+            actor_outs = self.pre_env_step(obs, step)
 
             # Step env
-            actor_state = self.env_step(actor_state)
+            rewards, dones, extras = self.env_step(actor_outs["actions"])
 
-            all_done_indices = actor_state["dones"].nonzero(as_tuple=False)
+            all_done_indices = dones.nonzero(as_tuple=False)
             done_indices = all_done_indices.squeeze(-1)
-            actor_state["done_indices"] = done_indices
 
             # Store things in experience buffer
-            actor_state = self.post_env_step(actor_state)
-            actor_state = self.compute_next_values(actor_state)
+            self.post_env_step(actor_outs, rewards, dones, done_indices, extras, step)
 
-        self.post_play_steps(actor_state)
+            # Get updated obs after physics-step
+            obs = self.create_agent_obs()
+            self.compute_next_values(obs, extras, step)
+
+        self.post_play_steps()
 
     def training_step(self, batch_idx: int) -> Dict:
         iter_log_dict = {}
@@ -407,47 +413,26 @@ class PPO:
 
         return iter_log_dict
 
-    def handle_reset(self, actor_state):
-        done_indices = actor_state["done_indices"]
+    def handle_reset(self, done_indices=None):
         if self.force_full_restart:
             done_indices = None
             self.force_full_restart = False
 
-        obs = self.env_reset(done_indices)
-        actor_state["obs"] = obs
+        self.env.reset(done_indices)
 
-        actor_state = self.get_extra_obs_from_env(actor_state)
-
-        return actor_state
-
-    def env_reset(self, env_ids=None):
-        obs = self.env.reset(env_ids)
-        return obs
-
-    def env_step(self, actor_state):
-
-        obs, rewards, dones, extras = self.env.step(actor_state["actions"])
+    def env_step(self, actions):
+        rewards, dones, extras = self.env.step(actions)
         rewards = rewards * self.task_reward_w
-        actor_state.update(
-            {"obs": obs, "rewards": rewards, "dones": dones, "extras": extras}
-        )
 
-        actor_state = self.get_extra_obs_from_env(actor_state)
+        return rewards, dones, extras
 
-        return actor_state
-
-    def pre_env_step(self, actor_state):
-        self.experience_buffer.update_data(
-            "obs", actor_state["step"], actor_state["obs"]
-        )
+    def pre_env_step(self, obs, step):
+        self.experience_buffer.update_data("obs", step, obs["obs"])
         if self.extra_obs_inputs is not None:
             for key in self.extra_obs_inputs.keys():
-                self.experience_buffer.update_data(
-                    key, actor_state["step"], actor_state[key]
-                )
+                self.experience_buffer.update_data(key, step, obs[key])
 
-        actor_inputs = self.create_actor_args(actor_state)
-        actor_outs = self.actor.eval_forward(actor_inputs)
+        actor_outs = self.actor.eval_forward(obs)
 
         if self.use_rand_action_masks:
             rand_action_mask = torch.bernoulli(self.rand_action_probs)
@@ -456,67 +441,55 @@ class PPO:
                 deterministic_actions
             ]
             self.experience_buffer.update_data(
-                "rand_action_mask", actor_state["step"], rand_action_mask
+                "rand_action_mask", step, rand_action_mask
             )
 
-        critic_inputs = self.create_critic_args(actor_state)
-        values = self.critic(critic_inputs)
+        values = self.critic(obs)
 
         if self.config.normalize_values:
             values = self.running_val_norm.normalize(values, un_norm=True)
 
-        actor_state.update(actor_outs)
-
         # We want unnormalized values here.
-        self.experience_buffer.update_data(
-            "values", actor_state["step"], values.view(-1)
-        )
+        self.experience_buffer.update_data("values", step, values.view(-1))
 
-        return actor_state
+        return actor_outs
 
-    def pre_eval_env_step(self, actor_state: dict):
-        actor_inputs = self.create_actor_args(actor_state)
-        actor_outs = self.actor.eval_forward(actor_inputs)
-        actor_state.update(actor_outs)
-        actor_state["sampled_actions"] = actor_state["actions"]
+    def pre_eval_env_step(self, obs):
+        actor_outs = self.actor.eval_forward(obs)
+        actor_outs["sampled_actions"] = actor_outs["actions"]
 
         # By default, use deterministic policy in eval
         # (unless overriden in callbacks).
-        actor_state["actions"] = actor_state["mus"]
+        actor_outs["actions"] = actor_outs["mus"]
 
         for c in self.eval_callbacks:
-            actor_state = c.on_pre_eval_env_step(actor_state)
+            actor_outs = c.on_pre_eval_env_step(actor_outs)
 
-        return actor_state
+        return actor_outs
 
-    def post_env_step(self, actor_state):
-        self.current_rewards += actor_state["rewards"]
+    def post_env_step(self, actor_outs, rewards, dones, done_indices, extras, step):
+        self.current_rewards += rewards
         self.current_lengths += 1
-
-        done_indices = actor_state["done_indices"]
 
         self.episode_reward_meter.update(self.current_rewards[done_indices])
         self.episode_length_meter.update(self.current_lengths[done_indices])
 
-        not_dones = 1.0 - actor_state["dones"].float()
+        not_dones = 1.0 - dones.float()
 
         self.current_rewards = self.current_rewards * not_dones
         self.current_lengths = self.current_lengths * not_dones
 
-        for k in self.actor_state_to_experience_buffer_list:
-            self.experience_buffer.update_data(k, actor_state["step"], actor_state[k])
+        for k in self.actor_outs_to_experience_buffer_list:
+            self.experience_buffer.update_data(k, step, actor_outs[k])
 
-        self.episode_env_tensors.add(actor_state["extras"]["to_log"])
+        self.experience_buffer.update_data("rewards", step, rewards)
+        self.experience_buffer.update_data("dones", step, dones)
 
-        return actor_state
+        self.episode_env_tensors.add(extras["to_log"])
 
-    def post_eval_env_step(self, actor_state):
+    def post_eval_env_step(self, actor_outs):
         for c in self.eval_callbacks:
-            actor_state = c.on_post_eval_env_step(actor_state)
-        return actor_state
-
-    def create_actor_state(self):
-        return {"done_indices": [], "stop": False}
+            c.on_post_eval_env_step(actor_outs)
 
     def discount_values(self, mb_fdones, mb_values, mb_rewards, mb_next_values):
         lastgaelam = 0
@@ -532,7 +505,7 @@ class PPO:
 
         return mb_advs
 
-    def post_play_steps(self, actor_state):
+    def post_play_steps(self):
         self.step_count += self.get_step_count_increment()
 
         rewards = self.experience_buffer.rewards
@@ -701,6 +674,8 @@ class PPO:
             "actor_optimizer": self.actor_optimizer.state_dict(),
             "critic_optimizer": self.critic_optimizer.state_dict(),
             "epoch": self.current_epoch,
+            "step_count": self.step_count,
+            "run_start_time": self.fit_start_time,
             "episode_reward_meter": self.episode_reward_meter.state_dict(),
             "episode_length_meter": self.episode_length_meter.state_dict(),
             "best_evaluated_score": self.best_evaluated_score,
@@ -731,7 +706,10 @@ class PPO:
                 if (root_dir / "last.ckpt").is_symlink():
                     (root_dir / "last.ckpt").unlink()
                 # Make root_dir / "last.ckpt" point to the new checkpoint
-                (root_dir / "last.ckpt").symlink_to(save_dir / name)
+                # Calculate the relative path and create a symbolic link
+                relative_path = Path(os.path.relpath(save_dir / name, root_dir))
+                (root_dir / "last.ckpt").symlink_to(relative_path)
+                log.info(f"saved checkpoint, {root_dir / 'last.ckpt'}")
 
         # The function fabric.save has to be called on ALL devices. We assert that the new_high_score flag has the same
         # value across all devices. If it is True, we save the model with the best score to the root directory.
@@ -752,9 +730,9 @@ class PPO:
                     if (root_dir / "score_based.ckpt").is_symlink():
                         (root_dir / "score_based.ckpt").unlink()
                     # Make root_dir / "score_based.ckpt" point to the new checkpoint
-                    (root_dir / "score_based.ckpt").symlink_to(
-                        save_dir / score_based_name
-                    )
+                    # Calculate the relative path and create a symbolic link
+                    relative_path = Path(os.path.relpath(save_dir / name, root_dir))
+                    (root_dir / "score_based.ckpt").symlink_to(relative_path)
 
     def handle_actor_grad_clipping(self):
         actor_params = get_params(list(self.actor.parameters()))
@@ -888,59 +866,30 @@ class PPO:
 
         self.fabric.log_dict(log_dict)
 
-    def create_actor_args(self, actor_state):
-        actor_args = {"obs": actor_state["obs"]}
-
-        if self.extra_obs_inputs is not None:
-            for key in self.extra_obs_inputs.keys():
-                if key in actor_state:
-                    actor_args[key] = actor_state[key]
-
-        return actor_args
-
-    def create_critic_args(self, actor_state):
-        critic_args = {"obs": actor_state["obs"]}
-
-        if self.extra_obs_inputs is not None:
-            for key in self.extra_obs_inputs.keys():
-                if key in actor_state:
-                    critic_args[key] = actor_state[key]
-
-        return critic_args
-
     @torch.no_grad()
     def evaluate_policy(self):
         self.create_eval_callbacks()
         self.pre_evaluate_policy()
 
-        actor_state = self.create_actor_state()
+        done_indices = []
         step = 0
-        games_count = 0
-        while (
-            not actor_state["stop"]
-            and (self.config.num_games is None or games_count < self.config.num_games)
-            and (
-                self.config.max_eval_steps is None or step < self.config.max_eval_steps
-            )
-        ):
-            actor_state["step"] = step
-            actor_state["games_count"] = games_count
+        while self.config.max_eval_steps is None or step < self.config.max_eval_steps:
+            self.handle_reset(done_indices)
 
-            actor_state = self.handle_reset(actor_state)
+            # Update obs incase any environments were reset
+            obs = self.create_agent_obs()
 
-            # Invoke actor and critic, generate actions/values
-            actor_state = self.pre_eval_env_step(actor_state)
+            # Obtain actor predictions
+            actor_outs = self.pre_eval_env_step(obs)
 
             # Step env
-            actor_state = self.env_step(actor_state)
+            rewards, dones, extras = self.env_step(actor_outs["actions"])
 
-            all_done_indices = actor_state["dones"].nonzero(as_tuple=False)
+            all_done_indices = dones.nonzero(as_tuple=False)
             done_indices = all_done_indices.squeeze(-1)
-            actor_state["done_indices"] = done_indices
 
-            actor_state = self.post_eval_env_step(actor_state)
+            self.post_eval_env_step(actor_outs)
 
-            games_count += len(done_indices)
             step += 1
 
         self.post_evaluate_policy()
@@ -948,7 +897,7 @@ class PPO:
     def pre_evaluate_policy(self, reset_env=True):
         self.eval()
         if reset_env:
-            self.env_reset()
+            self.handle_reset()
 
         for c in self.eval_callbacks:
             c.on_pre_evaluate_policy()
@@ -958,28 +907,35 @@ class PPO:
             c.on_post_evaluate_policy()
 
     ### Helpers ###
-    def get_extra_obs_from_env(self, actor_state):
+    def create_agent_obs(self):
+        obs = {}
+        obs = self.get_obs_from_env(obs)
+        obs = self.get_obs_from_agent(obs)
+        return obs
+
+    def get_obs_from_agent(self, obs):
+        return obs
+
+    def get_obs_from_env(self, obs):
+        obs["obs"] = self.env.self_obs_cb.humanoid_obs
+
         if self.extra_obs_inputs is not None:
             for key in self.extra_obs_inputs.keys():
                 env_obs_name = self.extra_obs_inputs[key].get("env_obs_name", key)
                 val = getattr(self.env, env_obs_name, None)
                 assert val is not None, f"Env does not have attribute {env_obs_name}"
-                actor_state[key] = val.view(-1, self.extra_obs_inputs[key].size)
-        return actor_state
+                obs[key] = val.view(-1, self.extra_obs_inputs[key].size)
+        return obs
 
-    def compute_next_values(self, actor_state):
-        critic_inputs = self.create_critic_args(actor_state)
-        values = self.critic(critic_inputs).view(-1)
+    def compute_next_values(self, obs, extras, step):
+        values = self.critic(obs).view(-1)
 
         if self.config.normalize_values:
             values = self.running_val_norm.normalize(values, un_norm=True)
 
-        next_values = values * (1 - actor_state["extras"]["terminate"].float())
+        next_values = values * (1 - extras["terminate"].float())
 
-        self.experience_buffer.update_data(
-            "next_values", actor_state["step"], next_values
-        )
-        return actor_state
+        self.experience_buffer.update_data("next_values", step, next_values)
 
     def create_eval_callbacks(self):
         if self.config.eval_callbacks is not None:

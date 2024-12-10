@@ -1,0 +1,3 @@
+a person turns left while walking then stops#a/DET person/NOUN turn/VERB left/VERB while/SCONJ walk/VERB then/ADV stop/VERB#0.0#0.0
+a person walks ina curved line.#a/DET person/NOUN walk/VERB ina/X curved/ADJ line/NOUN#0.0#0.0
+someone is walking in a semicircle to the left side#someone/PRON is/AUX walk/VERB in/ADP a/DET semicircle/NOUN to/ADP the/DET left/ADJ side/NOUN#0.0#0.0

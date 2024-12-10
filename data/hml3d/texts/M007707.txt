@@ -1,0 +1,3 @@
+a person stretches their ankles and wrists.#a/DET person/NOUN stretch/VERB their/DET ankle/NOUN and/CCONJ wrist/NOUN#0.0#0.0
+a person stretches their left ankle then right ankle.#a/DET person/NOUN stretch/VERB their/DET left/ADJ ankle/NOUN then/ADV right/ADJ ankle/NOUN#0.0#0.0
+a person is dancing with their hands clasped together.#a/DET person/NOUN is/AUX dance/VERB with/ADP their/DET hand/NOUN clasp/VERB together/ADV#0.0#0.0

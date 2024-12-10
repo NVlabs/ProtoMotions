@@ -1,0 +1,3 @@
+a person skips right and left briskly.#a/DET person/NOUN skip/VERB right/ADJ and/CCONJ left/VERB briskly/ADV#0.0#0.0
+run sideways to right than run sideways to left.#run/VERB sideways/ADV to/ADP right/ADV than/SCONJ run/VERB sideways/ADV to/ADP left/NOUN#0.0#0.0
+starting with their left foot, a person sidesteps fast back and forth.#start/VERB with/ADP their/DET left/ADJ foot/NOUN a/DET person/NOUN sidestep/VERB fast/ADV back/ADV and/CCONJ forth/ADV#0.0#0.0

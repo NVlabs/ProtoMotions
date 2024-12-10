@@ -156,7 +156,9 @@ class ExportTrajectory(RL_EvalCallback):
             self.package_trajectories()
 
             if len(self.trajectories) >= self.config.num_trajectories:
-                actor_state["stop"] = True
+                # This is a bit hacky, should make it more robust
+                self.on_post_evaluate_policy()
+                exit(0)
             else:
                 print(
                     f"Not enough trajectories (currently at {len(self.trajectories)}/"

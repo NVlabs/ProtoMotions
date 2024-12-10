@@ -41,19 +41,17 @@ from phys_anim.agents.ppo import PPO, get_params
 from phys_anim.utils.replay_buffer import ReplayBuffer
 from phys_anim.utils.dataset import GeneralizedDataset
 from phys_anim.agents.models.discriminator import JointDiscMLP
-from phys_anim.envs.amp.common import DiscHumanoid
+from phys_anim.envs.humanoid.common import Humanoid
 
 
 class AMP(PPO):
-    env: DiscHumanoid
-
-    def __init__(self, fabric: Fabric, env: DiscHumanoid, config):
+    def __init__(self, fabric: Fabric, env: Humanoid, config):
         super().__init__(fabric, env, config)
 
-        self.disable_discriminator = self.env.config.disable_discriminator
+        self.disable_discriminator = self.env.amp_obs_cb.config.disable_discriminator
         if not self.disable_discriminator:
             self.discriminator_obs_size_per_step = (
-                self.env.config.discriminator_obs_size_per_step
+                self.env.amp_obs_cb.config.discriminator_obs_size_per_step
             )
 
             self.experience_buffer.register_key("discriminator_rewards")
@@ -67,7 +65,7 @@ class AMP(PPO):
 
             self.discriminator_batch_size: int = self.config.discriminator_batch_size
             self.discriminator_obs_historical_steps: int = (
-                self.env.config.discriminator_obs_historical_steps
+                self.env.amp_obs_cb.config.discriminator_obs_historical_steps
             )
 
             self.experience_buffer.register_key(
@@ -76,6 +74,12 @@ class AMP(PPO):
                     self.discriminator_obs_size_per_step
                     * self.discriminator_obs_historical_steps,
                 ),
+            )
+            self.prev_discriminator_obs = torch.zeros(
+                self.num_envs,
+                self.discriminator_obs_size_per_step
+                * self.discriminator_obs_historical_steps,
+                device=self.device,
             )
 
     def setup(self):
@@ -87,7 +91,7 @@ class AMP(PPO):
         discriminator: JointDiscMLP = instantiate(
             self.config.discriminator,
             num_in=self.discriminator_obs_size_per_step
-            * self.env.config.discriminator_obs_historical_steps,
+            * self.env.amp_obs_cb.config.discriminator_obs_historical_steps,
         )
         discriminator_optimizer = instantiate(
             self.config.discriminator_optimizer,
@@ -164,7 +168,9 @@ class AMP(PPO):
                     self.fabric.backward(scaled_discriminator_loss)
 
                 if not is_accumulating:
-                    discriminator_grad_clip_dict = self.handle_discriminator_grad_clipping()
+                    discriminator_grad_clip_dict = (
+                        self.handle_discriminator_grad_clipping()
+                    )
                     extra_opt_steps_dict.update(discriminator_grad_clip_dict)
                     self.discriminator_optimizer.step()
                     self.discriminator_optimizer.zero_grad()
@@ -173,7 +179,9 @@ class AMP(PPO):
 
     def handle_discriminator_grad_clipping(self):
         discriminator_params = get_params(list(self.discriminator.parameters()))
-        discriminator_grad_norm_before_clip = torch_utils.grad_norm(discriminator_params)
+        discriminator_grad_norm_before_clip = torch_utils.grad_norm(
+            discriminator_params
+        )
 
         if self.config.check_grad_mag:
             bad_grads = (
@@ -189,7 +197,11 @@ class AMP(PPO):
 
             if self.config.fail_on_bad_grads:
                 all_params = torch.cat(
-                    [p.grad.view(-1) for p in discriminator_params if p.grad is not None],
+                    [
+                        p.grad.view(-1)
+                        for p in discriminator_params
+                        if p.grad is not None
+                    ],
                     dim=0,
                 )
                 raise ValueError(
@@ -222,28 +234,22 @@ class AMP(PPO):
 
         return clip_dict
 
-    def handle_reset(self, actor_state):
-        actor_state = super().handle_reset(actor_state)
+    def handle_reset(self, done_indices=None):
+        super().handle_reset(done_indices)
         if not self.disable_discriminator:
-            actor_state["discriminator_obs"] = self.env.make_disc_obs().view(
+            self.prev_discriminator_obs = self.env.amp_obs_cb.make_disc_obs().view(
                 self.num_envs, -1
             )
 
-        return actor_state
-
-    def post_env_step(self, actor_state):
-        actor_state = super().post_env_step(actor_state)
+    def post_env_step(self, actor_outs, rewards, dones, done_indices, extras, step):
+        super().post_env_step(actor_outs, rewards, dones, done_indices, extras, step)
 
         if not self.disable_discriminator:
-
-            actor_state["discriminator_obs"] = actor_state["extras"]["disc_obs"]
             self.experience_buffer.update_data(
                 "discriminator_obs",
-                actor_state["step"],
-                actor_state["discriminator_obs"],
+                step,
+                self.prev_discriminator_obs,
             )
-
-        return actor_state
 
     def calculate_discriminator_reward(self, discriminator_obs: Tensor) -> Tensor:
         disc_logits = self.discriminator_forward(discriminator_obs)
@@ -272,15 +278,6 @@ class AMP(PPO):
 
         extra_reward = disc_r + rew
         return extra_reward
-
-    def create_actor_state(self):
-        state = super().create_actor_state()
-        if not self.disable_discriminator:
-            state["discriminator_obs"] = self.env.make_disc_obs().view(
-                self.num_envs, -1
-            )
-
-        return state
 
     @torch.no_grad()
     def generate_datasets(self):
@@ -330,7 +327,7 @@ class AMP(PPO):
             motion_ids, truncate_time=truncate_time
         )
         motion_times0 = motion_times0 + truncate_time
-        obs = self.env.build_disc_obs_demo(motion_ids, motion_times0)
+        obs = self.env.amp_obs_cb.build_disc_obs_demo(motion_ids, motion_times0)
 
         return obs.view(num_ids, -1)
 

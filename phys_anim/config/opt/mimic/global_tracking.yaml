@@ -15,8 +15,7 @@ env:
         kb_rew_w: 0
         dv_rew_w: 0.0
         rh_rew_w: 0.2
-        kbf_rew_w: 0.0
-        pow_rew_w: 0.0005
+        pow_rew_w: 0.00001
 
       component_coefficients:
         gt_rew_c: -100
@@ -25,8 +24,7 @@ env:
         rav_rew_c: -0.3
         gv_rew_c: -0.5
         gav_rew_c: -0.1
-        kb_rew_c: -100
-        gr_rew_c: -2
+        gr_rew_c: -5
         lr_rew_c: -2
         dv_rew_c: -0.005
         rh_rew_c: -100

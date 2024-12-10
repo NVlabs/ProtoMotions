@@ -1,0 +1,3 @@
+a person is walking counterclockwise and making a half cirle#a/DET person/NOUN is/AUX walk/VERB counterclockwise/NOUN and/CCONJ make/VERB a/DET half/ADJ cirle/NOUN#0.0#0.0
+person is walking towards the right.#person/NOUN is/AUX walk/VERB towards/ADP the/DET right/NOUN#0.0#0.0
+a person walks in a curve going towards their right, then stops.#a/DET person/NOUN walk/VERB in/ADP a/DET curve/NOUN go/VERB towards/ADP their/DET right/NOUN then/ADV stop/VERB#0.0#0.0

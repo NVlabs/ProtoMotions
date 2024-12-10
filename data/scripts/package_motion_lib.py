@@ -53,18 +53,18 @@ def main(
 
     key_body_ids = torch.tensor(
         [
-            cfg.robot.dfs_body_names.index(key_body_name)
+            cfg.robot.isaacgym_body_names.index(key_body_name)
             for key_body_name in cfg.robot.key_bodies
         ],
         dtype=torch.long,
     )
     dof_offsets = []
     previous_dof_name = "null"
-    for dof_offset, dof_name in enumerate(cfg.robot.dfs_dof_names):
+    for dof_offset, dof_name in enumerate(cfg.robot.isaacgym_dof_names):
         if dof_name[:-2] != previous_dof_name:  # remove the "_x/y/z"
             previous_dof_name = dof_name[:-2]
             dof_offsets.append(dof_offset)
-    dof_offsets.append(len(cfg.robot.dfs_dof_names))
+    dof_offsets.append(len(cfg.robot.isaacgym_dof_names))
 
     print("Creating motion state")
     motion_files = []
@@ -127,7 +127,7 @@ def main(
         cfg.motion_lib.motion_file = temp_file_path
         mlib = instantiate(
             cfg.motion_lib,
-            dof_body_ids=cfg.robot.dfs_dof_body_ids,
+            dof_body_ids=cfg.robot.isaacgym_dof_body_ids,
             dof_offsets=dof_offsets,
             key_body_ids=key_body_ids,
             device="cpu",

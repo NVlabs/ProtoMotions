@@ -1,0 +1,3 @@
+person is walking counterclockwise circle from 3:00 to 6:00#person/NOUN is/AUX walk/VERB counterclockwise/PROPN circle/NOUN from/ADP to/ADP#0.0#0.0
+a person walks towards his left.#a/DET person/NOUN walk/VERB towards/ADP his/DET left/NOUN#0.0#0.0
+someone is walking forward and to the left along an arcing path.#someone/PRON is/AUX walk/VERB forward/ADV and/CCONJ to/ADP the/DET left/NOUN along/ADP an/DET arc/VERB path/NOUN#0.0#0.0

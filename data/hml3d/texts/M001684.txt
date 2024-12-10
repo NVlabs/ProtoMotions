@@ -1,0 +1,3 @@
+someone limbers up by stretching their right arm over their left side deeply.#someone/PRON limber/VERB up/ADP by/ADP stretch/VERB their/DET right/ADJ arm/NOUN over/ADP their/DET left/ADJ side/NOUN deeply/ADV#0.0#0.0
+stretch up and to the right, right hand over head#stretch/VERB up/ADP and/CCONJ to/ADP the/DET right/ADJ right/ADJ hand/NOUN over/ADP head/NOUN#0.0#0.0
+a person performs a stretch#a/DET person/NOUN perform/VERB a/DET stretch/NOUN#0.0#0.0

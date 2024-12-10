@@ -28,3 +28,8 @@ algo:
         retrieve_from_env: True
         dtype: float
         size: ${algo.config.models.mimic_phase_model.num_in}
+
+env:
+  config:
+    mimic_phase_obs:
+      enabled: True

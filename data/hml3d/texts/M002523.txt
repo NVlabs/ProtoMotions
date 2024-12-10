@@ -1,0 +1,3 @@
+a person moves forward and right.#a/DET person/NOUN move/VERB forward/ADV and/CCONJ right/INTJ#0.0#0.0
+a person turning to the right while stepping forward.#a/DET person/NOUN turn/VERB to/ADP the/DET right/NOUN while/SCONJ step/VERB forward/ADV#0.0#0.0
+a person walks in a counter counterclockwise semicircle to the left hand side and stands.#a/DET person/NOUN walk/VERB in/ADP a/DET counter/ADJ counterclockwise/NOUN semicircle/NOUN to/ADP the/DET left/ADJ hand/NOUN side/NOUN and/CCONJ stand/VERB#0.0#0.0

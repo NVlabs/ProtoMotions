@@ -85,17 +85,17 @@ def Xform "Root"
                 doc = "Intensity of the emission"
                 hidden = false
             )
-            asset inputs:emissive_mask_texture = @omniverse://isaac-dev.ov.nvidia.com/Isaac_cm/Environments/Grid/Materials/Textures/Wireframe_basecolor.png@ (
-                colorSpace = "raw"
-                customData = {
-                    asset default = @@
-                }
-                displayGroup = "Emissive"
-                displayName = "Emissive Mask map"
-                doc = "The texture masking the emissive color"
-                hidden = false
-                renderType = "texture_2d"
-            )
+            #asset inputs:emissive_mask_texture = @omniverse://isaac-dev.ov.nvidia.com/Isaac_cm/Environments/Grid/Materials/Textures/Wireframe_basecolor.png@ (
+            #    colorSpace = "raw"
+            #    customData = {
+            #        asset default = @@
+            #    }
+            #    displayGroup = "Emissive"
+            #    displayName = "Emissive Mask map"
+            #    doc = "The texture masking the emissive color"
+            #    hidden = false
+            #    renderType = "texture_2d"
+            #)
             bool inputs:enable_emission = 1 (
                 customData = {
                     bool default = 0

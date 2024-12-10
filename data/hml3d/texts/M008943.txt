@@ -1,0 +1,3 @@
+the man is throwing his left hand#the/DET man/NOUN is/AUX throw/VERB his/DET left/ADJ hand/NOUN#0.0#0.0
+a person prepares to throw something with their left arm and completes the throw.#a/DET person/NOUN prepare/VERB to/PART throw/VERB something/PRON with/ADP their/DET left/ADJ arm/NOUN and/CCONJ complete/VERB the/DET throw/NOUN#0.0#0.0
+moving hands around near face.#move/VERB hand/NOUN around/ADV near/SCONJ face/NOUN#0.0#0.0

@@ -33,7 +33,7 @@ from torch import Tensor
 import numpy as np
 import math
 
-from isaac_utils import torch_utils, rotations
+from isaac_utils import torch_utils, rotations, maths
 
 
 @torch.jit.script
@@ -72,12 +72,6 @@ def dof_to_obs(
     assert (num_joints * joint_obs_size) == dof_obs_size
 
     return dof_obs
-
-
-@torch.jit.script
-def compute_humanoid_reward(obs_buf: Tensor) -> Tensor:
-    reward = torch.ones_like(obs_buf[:, 0])
-    return reward
 
 
 def build_pd_action_offset_scale(
@@ -142,6 +136,8 @@ def compute_humanoid_observations(
     local_root_obs: bool,
     dof_obs_size: int,
     dof_offsets: List[int],
+    contact_buf: Tensor,
+    with_contact: bool,
     w_last: bool,
 ) -> Tensor:
     root_h = root_pos[:, 2:3] - ground_height
@@ -190,6 +186,13 @@ def compute_humanoid_observations(
         ),
         dim=-1,
     )
+    if with_contact:
+        contact_force_local = torch_utils.quat_rotate(
+            heading_rot_expand[:, : contact_buf.shape[1]].reshape(-1, 4),
+            contact_buf.reshape(-1, 3),
+            w_last,
+        ).reshape(obs.shape[0], -1)
+        obs = torch.cat((obs, contact_force_local), dim=-1)
     return obs
 
 
@@ -200,6 +203,8 @@ def compute_humanoid_observations_max(
     body_vel: Tensor,
     body_ang_vel: Tensor,
     ground_height: Tensor,
+    contact_buf: Tensor,
+    with_contact: bool,
     local_root_obs: bool,
     root_height_obs: bool,
     w_last: bool,
@@ -276,10 +281,17 @@ def compute_humanoid_observations_max(
         ),
         dim=-1,
     )
+    if with_contact:
+        contact_force_local = torch_utils.quat_rotate(
+            heading_rot_expand[:, : contact_buf.shape[1]].reshape(-1, 4),
+            contact_buf.reshape(-1, 3),
+            w_last,
+        ).reshape(obs.shape[0], -1)
+        obs = torch.cat((obs, contact_force_local), dim=-1)
     return obs
 
 
-@torch.jit.script
+@torch.jit.script_if_tracing
 def compute_humanoid_reset(
     reset_buf: Tensor,
     progress_buf: Tensor,
@@ -417,6 +429,15 @@ def quat_diff_norm(quat1: Tensor, quat2: Tensor, w_last: bool):
 
 
 @torch.jit.script
+def quat_angle_diff_norm(quat1: Tensor, quat2: Tensor, w_last: bool):
+    diff_quat = rotations.quat_mul(
+        quat2, rotations.quat_conjugate(quat1, w_last), w_last
+    )
+    angle_axis = torch_utils.quat_to_angle_axis(diff_quat, w_last)[0]
+    return angle_axis**2
+
+
+@torch.jit.script
 def get_heights(
     root_states: Tensor,
     height_samples: Tensor,
@@ -442,8 +463,6 @@ def get_heights(
 def get_height_maps_jit(
     root_states: Tensor,
     base_pos: Tensor,
-    env_ids: Tensor,
-    num_envs: int,
     height_points: Tensor,
     height_samples: Tensor,
     num_height_points: int,
@@ -451,10 +470,11 @@ def get_height_maps_jit(
     w_last: bool,
     return_all_dims: bool,
 ):
+    num_envs = root_states.shape[0]
     base_quat = root_states[:, 3:7]
 
     points = rotations.quat_apply_yaw(
-        base_quat.repeat(1, num_height_points), height_points[env_ids], w_last
+        base_quat.repeat(1, num_height_points), height_points, w_last
     ) + (base_pos[:, :3]).unsqueeze(1)
 
     points = points / terrain_horizontal_scale
@@ -500,7 +520,7 @@ def get_height_maps_jit(
     if return_all_dims:
         # This is only for visualization purposes, plotting the height map the humanoid sees
         points = rotations.quat_apply_yaw(
-            base_quat.repeat(1, num_height_points), height_points[env_ids], w_last
+            base_quat.repeat(1, num_height_points), height_points, w_last
         ) + (base_pos[:, :3]).unsqueeze(1)
         heights = interpolated_heights.view(num_envs, -1, 1)
         return torch.cat(
@@ -517,3 +537,170 @@ def remove_base_rot(quat: Tensor, w_last: bool):
     )  # SMPL
     shape = quat.shape[0]
     return rotations.quat_mul(quat, base_rot.repeat(shape, 1), w_last)
+
+
+@torch.jit.script_if_tracing
+def get_relative_object_pointclouds_jit(
+    root_states: Tensor, pointclouds: Tensor, w_last: bool
+) -> Tensor:
+    """
+    Computes the relative point clouds of objects with respect to the root states.
+
+    Args:
+        root_states (Tensor): Tensor containing the root states of the humanoid.
+        pointclouds (Tensor): Tensor containing the point clouds of the objects.
+        object_root_states (Tensor): Tensor containing the root states of the objects.
+        w_last (bool): Boolean indicating if the last dimension is the w component of the quaternion.
+
+    Returns:
+        Tensor: The relative point clouds of the objects.
+    """
+    # Extract root positions and rotations
+    root_pos = root_states[:, :3]
+    root_rot = root_states[:, 3:7]
+
+    # Expand root positions and rotations to match the shape of pointclouds
+    expanded_root_pos = (
+        root_pos.unsqueeze(1)
+        .unsqueeze(1)
+        .expand(pointclouds.shape[0], pointclouds.shape[1], pointclouds.shape[2], 3)
+        .reshape(-1, 3)
+    )
+    expanded_root_rot = (
+        root_rot.unsqueeze(1)
+        .unsqueeze(1)
+        .expand(pointclouds.shape[0], pointclouds.shape[1], pointclouds.shape[2], 4)
+        .reshape(-1, 4)
+    )
+
+    # Calculate the inverse of the expanded root rotations
+    expanded_root_rot_inv = torch_utils.calc_heading_quat_inv(expanded_root_rot, w_last)
+
+    # Flatten pointclouds and object root states for processing
+    flat_pointclouds = pointclouds.reshape(-1, 3)
+
+    # Compute point clouds relative to the root
+    flat_pointclouds_wrt_root = flat_pointclouds - expanded_root_pos
+    flat_pointclouds_wrt_root = torch_utils.quat_rotate(
+        expanded_root_rot_inv, flat_pointclouds_wrt_root, w_last
+    )
+
+    # Reshape the result to match the original pointclouds shape
+    return flat_pointclouds_wrt_root.view(
+        pointclouds.shape[0], pointclouds.shape[1], pointclouds.shape[2], 3
+    )
+
+
+@torch.jit.script_if_tracing
+def compute_relative_object_contact_bodies_jit(
+    ego_object_pointclouds: Tensor, ego_contact_bodies: Tensor, w_last: bool
+) -> Tensor:
+    num_envs = ego_contact_bodies.shape[0]
+    num_contact_bodies = ego_contact_bodies.shape[1]
+    num_objects_per_env = ego_object_pointclouds.shape[1]
+    num_points_per_object = ego_object_pointclouds.shape[2]
+
+    # Handle single point case differently
+    if num_points_per_object == 1:
+        # Reshape points to [num_envs * num_objects_per_env, 3]
+        points = ego_object_pointclouds.reshape(num_envs * num_objects_per_env, 3)
+
+        # Expand bodies
+        bodies = ego_contact_bodies.unsqueeze(1).expand(
+            num_envs, num_objects_per_env, num_contact_bodies, 3
+        )
+        bodies = bodies.reshape(num_envs * num_objects_per_env, num_contact_bodies, 3)
+
+        # Compute vectors directly without distance calculation
+        points_expanded = points.unsqueeze(1).expand(-1, num_contact_bodies, 3)
+        global_vectors = points_expanded - bodies
+    else:
+        # Implementation for multiple points
+        points = ego_object_pointclouds.reshape(
+            num_envs * num_objects_per_env, -1, 3
+        ).contiguous()
+        bodies = ego_contact_bodies.unsqueeze(1).expand(
+            num_envs, num_objects_per_env, num_contact_bodies, 3
+        )
+        bodies = bodies.reshape(
+            num_envs * num_objects_per_env, num_contact_bodies, 3
+        ).contiguous()
+
+        points_expanded = points.unsqueeze(1)
+        bodies_expanded = bodies.unsqueeze(2)
+
+        squared_diff = (points_expanded - bodies_expanded) ** 2
+        distances = squared_diff.sum(dim=-1)
+
+        # Find minimum distances and corresponding indices
+        min_distances, min_indices = distances.min(dim=-1)
+
+        # Gather closest points efficiently
+        batch_indices = torch.arange(points.shape[0], device=points.device).unsqueeze(1)
+        batch_indices = batch_indices.expand(-1, num_contact_bodies)
+
+        closest_points = points[batch_indices, min_indices]
+        global_vectors = closest_points - bodies
+
+    return global_vectors.reshape(num_envs, num_objects_per_env, num_contact_bodies, 3)
+
+
+@torch.jit.script_if_tracing
+def get_object_bounding_box_obs_jit(
+    object_ids: Tensor,
+    root_pos: Tensor,
+    root_quat: Tensor,
+    object_root_states: Tensor,
+    object_root_states_offsets: Tensor,
+    object_bounding_box: Tensor,
+    w_last: bool,
+):
+    num_objects = object_ids.shape[0]
+    expanded_root_pos = root_pos.unsqueeze(1).expand(num_objects, 8, 3).reshape(-1, 3)
+    expanded_root_rot = root_quat.unsqueeze(1).expand(num_objects, 8, 4).reshape(-1, 4)
+
+    root_rot_inv = torch_utils.calc_heading_quat_inv(root_quat, w_last)
+    expanded_root_rot_inv = torch_utils.calc_heading_quat_inv(expanded_root_rot, w_last)
+
+    obj_root_pos = object_root_states[object_ids, :3]
+    obj_root_rot = object_root_states[object_ids, 3:7]
+
+    # Apply translation offset
+    obj_root_pos += object_root_states_offsets[object_ids, :3]
+
+    # Apply rotation offset
+    obj_root_rot = rotations.quat_mul(
+        object_root_states_offsets[object_ids, 3:7], obj_root_rot, w_last
+    )
+
+    # Ensure the quaternion is normalized
+    obj_root_rot = maths.normalize(obj_root_rot)
+
+    object_bbs = object_bounding_box.view(-1, 3)
+    expanded_obj_root_pos = (
+        obj_root_pos.unsqueeze(1).expand(num_objects, 8, 3).reshape(-1, 3)
+    )
+
+    expanded_obj_root_pos[..., -1] = 0
+
+    obj_relative_to_env = object_bbs - expanded_root_pos
+
+    object_rotated_relative_to_env = torch_utils.quat_rotate(
+        expanded_root_rot_inv, obj_relative_to_env, w_last
+    ).view(-1, 3)
+
+    object_root_rot_relative_to_env = rotations.quat_mul(
+        root_rot_inv, obj_root_rot, w_last
+    ).view(-1, 4)
+
+    object_root_rot_relative_to_env = torch_utils.quat_to_tan_norm(
+        object_root_rot_relative_to_env, w_last
+    )
+
+    return torch.cat(
+        (
+            object_rotated_relative_to_env.view(num_objects, -1),
+            object_root_rot_relative_to_env.view(num_objects, -1),
+        ),
+        dim=-1,
+    )

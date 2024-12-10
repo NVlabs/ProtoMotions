@@ -43,11 +43,11 @@ else:
 
 
 class BaseMaskedMimicPathFollowing(MaskedMimicPathFollowingHumanoid):  # type: ignore[misc]
-    def __init__(self, config, device: torch.device):
+    def __init__(self, config, device: torch.device, *args, **kwargs):
         self._num_traj_samples = config.path_follower_params.num_traj_samples
         self._traj_sample_timestep = config.path_follower_params.traj_sample_timestep
 
-        super().__init__(config=config, device=device)
+        super().__init__(config=config, device=device, *args, **kwargs)
 
         self.build_path_generator()
         self.reset_path_ids = torch.arange(
@@ -125,7 +125,7 @@ class BaseMaskedMimicPathFollowing(MaskedMimicPathFollowingHumanoid):  # type: i
         if not self.config.path_follower_params.path_generator.height_conditioned:
             self._marker_pos[..., 2] = 0.92  # CT hack
 
-        ground_below_marker = self.get_ground_heights(
+        ground_below_marker = self.terrain_obs_cb.get_ground_heights(
             traj_samples[..., :2].view(-1, 2)
         ).view(traj_samples.shape[:-1])
 
@@ -147,7 +147,7 @@ class BaseMaskedMimicPathFollowing(MaskedMimicPathFollowingHumanoid):  # type: i
         current_state = self.get_bodies_state()
         cur_gt = current_state.body_pos
 
-        cur_gt[:, :, -1:] -= self.get_ground_heights(cur_gt[:, 0, :2]).view(
+        cur_gt[:, :, -1:] -= self.terrain_obs_cb.ground_heights.view(
             self.num_envs, 1, 1
         )
 
@@ -171,10 +171,10 @@ class BaseMaskedMimicPathFollowing(MaskedMimicPathFollowingHumanoid):  # type: i
         self._current_failures[~warmup_passed] = 0
 
         if len(self._failures) > 0:
-            self.last_other_rewards["reach_success"] = 1.0 - sum(self._failures) / len(
+            self.mimic_info_dict["reach_success"] = 1.0 - sum(self._failures) / len(
                 self._failures
             )
-            self.last_other_rewards["reach_distance"] = sum(self._distances) / len(
+            self.mimic_info_dict["reach_distance"] = sum(self._distances) / len(
                 self._distances
             )
 
@@ -192,8 +192,7 @@ class BaseMaskedMimicPathFollowing(MaskedMimicPathFollowingHumanoid):  # type: i
             self.humanoid_asset, self.condition_body_part
         )
         head_position = bodies_positions[:, body_part, :]
-        ground_below_head = self.get_ground_heights(bodies_positions[:, 0, :2])
-        head_position[..., 2] -= ground_below_head.view(-1)
+        head_position[..., 2] -= self.terrain_obs_cb.ground_heights.squeeze(-1)
 
         if self.reset_path_ids is not None and len(self.reset_path_ids) > 0:
             self.path_generator.reset(
@@ -353,7 +352,7 @@ class BaseMaskedMimicPathFollowing(MaskedMimicPathFollowingHumanoid):  # type: i
         current_state = self.get_bodies_state()
         cur_gt, cur_gr = current_state.body_pos, current_state.body_rot
         # First remove the height based on the current terrain, then remove the offset to get back to the ground-truth data position
-        cur_gt[:, :, -1:] -= self.get_ground_heights(cur_gt[:, 0, :2]).view(
+        cur_gt[:, :, -1:] -= self.terrain_obs_cb.ground_heights.view(
             self.num_envs, 1, 1
         )
 

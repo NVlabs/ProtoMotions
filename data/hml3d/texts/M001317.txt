@@ -1,0 +1,3 @@
+a person waves friendly with their left hand.#a/DET person/NOUN wave/VERB friendly/ADJ with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
+a person waves with left hand.#a/DET person/NOUN wave/VERB with/ADP left/ADJ hand/NOUN#0.0#0.0
+a person waves at someone with his left hand.#a/DET person/NOUN wave/VERB at/ADP someone/PRON with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0

@@ -1,0 +1,3 @@
+the figure is kicking from left to right#the/DET figure/NOUN is/AUX kick/VERB from/ADP left/VERB to/ADP right/ADJ#0.0#0.0
+a person kicks twice with their left leg.#a/DET person/NOUN kick/VERB twice/ADV with/ADP their/DET left/ADJ leg/NOUN#0.0#0.0
+a person lifts left leg and kicks.#a/DET person/NOUN lift/VERB left/VERB leg/NOUN and/CCONJ kick/NOUN#0.0#0.0

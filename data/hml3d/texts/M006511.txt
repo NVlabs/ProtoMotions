@@ -1,0 +1,3 @@
+a person is standing still, slightly swaying their left & right arms,#a/DET person/NOUN is/AUX stand/VERB still/ADV slightly/ADV sway/VERB their/DET left/NOUN right/ADJ arm/NOUN#1.0#10.0
+a person slowly looks to their left, then to the right with arms hanging by their side.#a/DET person/NOUN slowly/ADV look/VERB to/ADP their/DET left/NOUN then/ADV to/ADP the/DET right/NOUN with/ADP arm/NOUN hang/VERB by/ADP their/DET side/NOUN#0.0#0.0
+a person stands still while gently moving their left arm back and forth.#a/DET person/NOUN stand/VERB still/ADV while/SCONJ gently/ADV move/VERB their/DET left/ADJ arm/NOUN back/ADV and/CCONJ forth/ADV#0.0#0.0

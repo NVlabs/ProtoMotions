@@ -1,0 +1,3 @@
+a person walks to the right quickly.#a/DET person/NOUN walk/VERB to/ADP the/DET right/NOUN quickly/ADV#0.0#0.0
+a person takes quick steps diagonally to their right whilst swinging their arms aggressively#a/DET person/NOUN take/VERB quick/ADJ step/NOUN diagonally/ADV to/ADP their/DET right/NOUN whilst/SCONJ swinge/VERB their/DET arm/NOUN aggressively/ADV#0.0#0.0
+a person walks diagonally across the room while swinging their arms up in front of their body alternatively.#a/DET person/NOUN walk/VERB diagonally/ADV across/ADP the/DET room/NOUN while/SCONJ swinge/VERB their/DET arm/NOUN up/ADP in/ADP front/NOUN of/ADP their/DET body/NOUN alternatively/ADV#0.0#0.0

@@ -1,0 +1,3 @@
+the man is moving his right arm#the/DET man/NOUN is/AUX move/VERB his/DET right/ADJ arm/NOUN#0.0#0.0
+a person balances on their left leg while bending their right leg and moving it around.#a/DET person/NOUN balance/VERB on/ADP their/DET left/ADJ leg/NOUN while/SCONJ bend/VERB their/DET right/ADJ leg/NOUN and/CCONJ move/VERB it/PRON around/ADV#0.0#0.0
+a person lifts right leg behind them and moves it right, up, down and left#a/DET person/NOUN lift/VERB right/ADJ leg/NOUN behind/ADP them/PRON and/CCONJ move/VERB it/PRON right/ADV up/ADV down/ADV and/CCONJ left/VERB#0.0#0.0

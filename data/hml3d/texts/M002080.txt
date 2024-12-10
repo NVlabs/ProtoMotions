@@ -1,0 +1,3 @@
+a person raises their arms and makes a motion as playing a violin with their right arm.#a/DET person/NOUN raise/VERB their/DET arm/NOUN and/CCONJ make/VERB a/DET motion/NOUN as/SCONJ play/VERB a/DET violin/NOUN with/ADP their/DET right/ADJ arm/NOUN#0.0#0.0
+a person raises their hands as if they are playing an instrument.#a/DET person/NOUN raise/VERB their/DET hand/NOUN as/SCONJ if/SCONJ they/PRON are/AUX play/VERB an/DET instrument/NOUN#0.0#0.0
+a man holds an object with his left hand and then strums object with right hand.#a/DET man/NOUN hold/VERB an/DET object/NOUN with/ADP his/DET left/ADJ hand/NOUN and/CCONJ then/ADV strum/VERB object/NOUN with/ADP right/ADJ hand/NOUN#0.0#0.0

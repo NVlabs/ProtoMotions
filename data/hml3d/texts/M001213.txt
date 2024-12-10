@@ -1,0 +1,3 @@
+the figure raises its right arm then swats downward and foward.#the/DET figure/NOUN raise/VERB its/DET right/ADJ arm/NOUN then/ADV swat/VERB downward/ADV and/CCONJ foward/ADJ#0.0#0.0
+a man smashing with his right arm at something on the ground.#a/DET man/NOUN smash/VERB with/ADP his/DET right/ADJ arm/NOUN at/ADP something/PRON on/ADP the/DET ground/NOUN#0.0#0.0
+a person does a hitting motion with his right hand.#a/DET person/NOUN does/AUX a/DET hit/VERB motion/NOUN with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0

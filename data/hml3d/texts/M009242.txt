@@ -1,0 +1,3 @@
+a person moves his right hand over torso, then turns that hand palm up.#a/DET person/NOUN move/VERB his/DET right/ADJ hand/NOUN over/ADP torso/NOUN then/ADV turn/VERB that/DET hand/NOUN palm/NOUN up/ADP#0.0#0.0
+someone picks up a small object with their right hand, looks at it, and sets it down.#someone/PRON pick/VERB up/ADP a/DET small/ADJ object/NOUN with/ADP their/DET right/ADJ hand/NOUN look/VERB at/ADP it/PRON and/CCONJ set/VERB it/PRON down/ADP#0.0#0.0
+person is holding something with right arm#person/NOUN is/AUX hold/VERB something/PRON with/ADP right/ADJ arm/NOUN#0.0#0.0

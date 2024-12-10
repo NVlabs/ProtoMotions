@@ -1,0 +1,3 @@
+a well built man calmly walks in a semi-circular fashion to his right.#a/DET well/ADV build/VERB man/NOUN calmly/ADV walk/VERB in/ADP a/DET semicircular/ADJ fashion/NOUN to/ADP his/DET right/NOUN#0.0#0.0
+stick figure moved in a counter counterclockwise motion#stick/PROPN figure/NOUN move/VERB in/ADP a/DET counter/ADJ counterclockwise/NOUN motion/NOUN#0.0#5.0
+a person is standing and walking to their right.#a/DET person/NOUN is/AUX stand/VERB and/CCONJ walk/VERB to/ADP their/DET right/NOUN#0.0#0.0

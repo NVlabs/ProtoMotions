@@ -1,0 +1,3 @@
+a man moves his right arm around.#a/DET man/NOUN move/VERB his/DET right/ADJ arm/NOUN around/ADV#0.0#0.0
+a person is standing still and lifts their right right arm swatting the air and puts their arm down to the original position.#a/DET person/NOUN is/AUX stand/VERB still/ADV and/CCONJ lift/VERB their/DET right/ADJ right/ADJ arm/NOUN swat/VERB the/DET air/NOUN and/CCONJ put/VERB their/DET arm/NOUN down/ADP to/ADP the/DET original/ADJ position/NOUN#0.0#0.0
+a person moves something up and out with his right arm.#a/DET person/NOUN move/VERB something/PRON up/ADV and/CCONJ out/ADV with/ADP his/DET right/ADJ arm/NOUN#0.0#0.0

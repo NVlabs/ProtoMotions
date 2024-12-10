@@ -1,0 +1,3 @@
+a person rotates their arm in and out.#a/DET person/NOUN rotate/VERB their/DET arm/NOUN in/ADP and/CCONJ out/ADV#0.0#0.0
+person covers stomach with right hand#person/NOUN cover/VERB stomach/NOUN with/ADP right/ADJ hand/NOUN#0.0#0.0
+a person rotates their right arm at the elbow in towards their stomach and out towards the right#a/DET person/NOUN rotate/VERB their/DET right/ADJ arm/NOUN at/ADP the/DET elbow/NOUN in/ADP towards/ADP their/DET stomach/NOUN and/CCONJ out/ADV towards/ADP the/DET right/NOUN#0.0#0.0

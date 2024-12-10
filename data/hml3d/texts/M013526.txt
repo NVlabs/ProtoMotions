@@ -1,0 +1,3 @@
+the person is stirring with the left hand.#the/DET person/NOUN is/AUX stir/VERB with/ADP the/DET left/ADJ hand/NOUN#0.0#0.0
+left hand touching the stomach.#left/ADJ hand/NOUN touch/VERB the/DET stomach/NOUN#0.0#0.0
+he stirs to his left#he/PRON stir/VERB to/ADP his/DET left/NOUN#0.0#0.0

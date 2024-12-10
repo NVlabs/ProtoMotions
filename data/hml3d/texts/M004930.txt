@@ -1,0 +1,3 @@
+a person has their guard up during boxing#a/DET person/NOUN has/AUX their/DET guard/NOUN up/ADP during/ADP boxing/NOUN#0.0#0.0
+a person punches with right hand.#a/DET person/NOUN punch/VERB with/ADP right/ADJ hand/NOUN#0.0#0.0
+a person swings their right arm like it is holding a tennis racket.#a/DET person/NOUN swing/VERB their/DET right/ADJ arm/NOUN like/SCONJ it/PRON is/AUX hold/VERB a/DET tennis/NOUN racket/NOUN#0.0#0.0

@@ -38,8 +38,8 @@ from phys_anim.envs.masked_mimic.tasks.story.common import BaseMaskedMimicStory
 
 
 class MaskedMimicStoryHumanoid(BaseMaskedMimicStory, MaskedMimicTaskHumanoid):  # type: ignore[misc]
-    def __init__(self, config, device: torch.device):
-        super().__init__(config=config, device=device)
+    def __init__(self, config, device: torch.device, *args, **kwargs):
+        super().__init__(config=config, device=device, *args, **kwargs)
 
         if not self.headless:
             self._build_marker_state_tensors()
@@ -124,7 +124,7 @@ class MaskedMimicStoryHumanoid(BaseMaskedMimicStory, MaskedMimicTaskHumanoid):  
     ###############################################################
     def _update_marker(self):
         current_root = self.get_humanoid_root_states().clone()[..., :3]
-        current_root[..., -1:] -= self.get_ground_heights(current_root[..., :2]).view(
+        current_root[..., -1:] -= self.terrain_obs_cb.ground_heights.view(
             self.num_envs, 1
         )
 
@@ -156,9 +156,9 @@ class MaskedMimicStoryHumanoid(BaseMaskedMimicStory, MaskedMimicTaskHumanoid):  
                 proposed_target_positions[~closer_than_proposed]
             )
 
-        ground_below_marker = self.get_ground_heights(proposed_target_positions).view(
-            proposed_target_positions.shape[0]
-        )
+        ground_below_marker = self.terrain_obs_cb.get_ground_heights(
+            proposed_target_positions
+        ).view(proposed_target_positions.shape[0])
 
         proposed_target_positions[..., 2] += ground_below_marker
 
@@ -176,9 +176,9 @@ class MaskedMimicStoryHumanoid(BaseMaskedMimicStory, MaskedMimicTaskHumanoid):  
         objects_bounding_box = self.object_id_to_object_bounding_box[object_ids].clone()
 
         object_root_states = self.get_object_root_states()[object_ids]
-        height_below_object = self.get_ground_heights(object_root_states[..., :2]).view(
-            -1, 1
-        )
+        height_below_object = self.terrain_obs_cb.get_ground_heights(
+            object_root_states[..., :2]
+        ).view(-1, 1)
         objects_bounding_box[..., 2] += height_below_object
 
         self._marker_pos[self._fsm_state == 5, 1:] = objects_bounding_box[

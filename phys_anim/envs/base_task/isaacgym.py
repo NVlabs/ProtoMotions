@@ -29,10 +29,10 @@
 from isaacgym import gymtorch
 
 from phys_anim.envs.base_task.common import BaseTask
-from phys_anim.envs.amp.isaacgym import DiscHumanoid
+from phys_anim.envs.humanoid.isaacgym import Humanoid
 
 
-class TaskHumanoid(BaseTask, DiscHumanoid):  # type: ignore[misc]
+class TaskHumanoid(BaseTask, Humanoid):  # type: ignore[misc]
     ###############################################################
     # Set up IsaacGym environment
     ###############################################################

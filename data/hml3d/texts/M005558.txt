@@ -1,0 +1,3 @@
+the man reaches his left arm down and he bends over to pick something up.#the/DET man/NOUN reach/VERB his/DET left/ADJ arm/NOUN down/ADP and/CCONJ he/PRON bend/VERB over/ADP to/PART pick/VERB something/PRON up/ADP#0.0#0.0
+a person bend from their hips to oick something up using the left hand.#a/DET person/NOUN bend/VERB from/ADP their/DET hip/NOUN to/PART oick/VERB something/PRON up/ADP use/VERB the/DET left/ADJ hand/NOUN#0.0#0.0
+a person leans over and touches the ground while right his leg behind him for balance, then stands up.#a/DET person/NOUN lean/VERB over/ADP and/CCONJ touch/VERB the/DET ground/NOUN while/SCONJ right/ADV his/DET leg/NOUN behind/ADP him/PRON for/ADP balance/NOUN then/ADV stand/VERB up/ADP#0.0#0.0

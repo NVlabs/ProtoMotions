@@ -1,0 +1,3 @@
+a person walks forward and turns to the left.#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ turn/VERB to/ADP the/DET left/NOUN#0.0#0.0
+a person walks forward and to the left.#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ to/ADP the/DET left/NOUN#0.0#0.0
+a person walks forward leading with their left foot stopping after five steps.#a/DET person/NOUN walk/VERB forward/ADV lead/VERB with/ADP their/DET left/ADJ foot/NOUN stopping/NOUN after/ADP five/NUM step/NOUN#0.0#0.0

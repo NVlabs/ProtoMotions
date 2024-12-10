@@ -1,0 +1,3 @@
+a person walks back and forth from left to right, stops, and stands in one place.#a/DET person/NOUN walk/VERB back/ADV and/CCONJ forth/ADV from/ADP left/VERB to/ADP right/NOUN stop/VERB and/CCONJ stand/VERB in/ADP one/NUM place/NOUN#0.0#0.0
+a person walks to the left, then to the right, then back to the left finishing in the center.#a/DET person/NOUN walk/VERB to/ADP the/DET left/NOUN then/ADV to/ADP the/DET right/NOUN then/ADV back/ADV to/ADP the/DET left/ADJ finish/VERB in/ADP the/DET center/NOUN#0.0#0.0
+the person walks side to side#the/DET person/NOUN walk/VERB side/NOUN to/PART side/VERB#0.0#0.0

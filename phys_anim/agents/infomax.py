@@ -33,12 +33,12 @@ from lightning.fabric import Fabric
 from torch import Tensor
 from phys_anim.agents.amp import AMP
 from phys_anim.envs.env_utils.general import StepTracker
-from phys_anim.envs.amp.common import DiscHumanoid
+from phys_anim.envs.humanoid.common import Humanoid
 from typing import Tuple, Dict
 
 
 class InfoMax(AMP):
-    def __init__(self, fabric: Fabric, env: DiscHumanoid, config):
+    def __init__(self, fabric: Fabric, env: Humanoid, config):
         super().__init__(fabric, env, config)
 
         self.latents = torch.zeros(
@@ -55,7 +55,9 @@ class InfoMax(AMP):
         )
 
         self.experience_buffer.register_key("mi_rewards")  # mi = mutual information
-        self.experience_buffer.register_key("latents", shape=(sum(self.config.infomax_parameters.latent_dim),))
+        self.experience_buffer.register_key(
+            "latents", shape=(sum(self.config.infomax_parameters.latent_dim),)
+        )
 
     def update_latents(self):
         self.latent_reset_steps.advance()
@@ -114,39 +116,19 @@ class InfoMax(AMP):
 
         return latents
 
-    def create_actor_state(self):
-        state = super().create_actor_state()
-        state["latents"] = self.latents
-        return state
+    def get_obs_from_agent(self, obs):
+        obs = super().get_obs_from_agent(obs)
+        obs["latents"] = self.latents
+        return obs
 
-    def handle_reset(self, actor_state):
-        actor_state = super().handle_reset(actor_state)
-
-        actor_state["latents"] = self.latents
-        return actor_state
-
-    def post_env_step(self, actor_state):
-        actor_state = super().post_env_step(actor_state)
+    def post_env_step(self, actor_outs, rewards, dones, done_indices, extras, step):
+        super().post_env_step(actor_outs, rewards, dones, done_indices, extras, step)
+        self.experience_buffer.update_data("latents", step, self.latents)
         self.update_latents()
-        actor_state["latents"] = self.latents
-        self.experience_buffer.update_data("latents", actor_state["step"],actor_state["latents"])
-        return actor_state
 
-    def post_eval_env_step(self, actor_state):
+    def post_eval_env_step(self, actor_outs):
         self.update_latents()
-        actor_state["latents"] = self.latents
-        actor_state = super().post_eval_env_step(actor_state)
-        return actor_state
-
-    def create_actor_args(self, actor_state):
-        actor_args = super().create_actor_args(actor_state)
-        actor_args['latents'] = actor_state['latents']
-        return actor_args
-
-    def create_critic_args(self, actor_state):
-        critic_args = super().create_critic_args(actor_state)
-        critic_args['latents'] = actor_state['latents']
-        return critic_args
+        super().post_eval_env_step(actor_outs)
 
     def calculate_extra_reward(self):
         rew = super().calculate_extra_reward()

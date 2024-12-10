@@ -1,0 +1,3 @@
+a person appears to be moving something with both hands.#a/DET person/NOUN appear/VERB to/PART be/AUX move/VERB something/PRON with/ADP both/DET hand/NOUN#0.0#0.0
+a man tilts on the right side and lifts something ,puts it on the lefts side and the repeats again.#a/DET man/NOUN tilt/VERB on/ADP the/DET right/ADJ side/NOUN and/CCONJ lift/VERB something/PRON put/VERB it/PRON on/ADP the/DET left/NOUN side/NOUN and/CCONJ the/DET repeat/NOUN again/ADV#0.0#0.0
+a person moves an object from his right to his left.#a/DET person/NOUN move/VERB an/DET object/NOUN from/ADP his/DET right/NOUN to/ADP his/DET left/NOUN#0.0#0.0

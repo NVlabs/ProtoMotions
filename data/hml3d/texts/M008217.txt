@@ -1,0 +1,3 @@
+a person is stretching their left leg by pulling it over their head.#a/DET person/NOUN is/AUX stretch/VERB their/DET left/ADJ leg/NOUN by/ADP pull/VERB it/PRON over/ADP their/DET head/NOUN#0.0#0.0
+a person is stretching their left leg.#a/DET person/NOUN is/AUX stretch/VERB their/DET left/ADJ leg/NOUN#0.0#0.0
+a person stretches their left leg and left arm above their head.#a/DET person/NOUN stretch/VERB their/DET left/ADJ leg/NOUN and/CCONJ left/ADJ arm/NOUN above/ADP their/DET head/NOUN#0.0#0.0

@@ -1,0 +1,3 @@
+a person reaches up to the left, then out to their side on the left, and then down below their hip on the left.#a/DET person/NOUN reach/VERB up/ADP to/ADP the/DET left/NOUN then/ADV out/SCONJ to/ADP their/DET side/NOUN on/ADP the/DET left/NOUN and/CCONJ then/ADV down/ADV below/ADP their/DET hip/NOUN on/ADP the/DET left/NOUN#0.0#0.0
+a man reaches his left arm out fully extended; first up and out, then out, then down.#a/DET man/NOUN reach/VERB his/DET left/ADJ arm/NOUN out/ADP fully/ADV extend/VERB first/ADV up/ADP and/CCONJ out/ADV then/ADV out/ADV then/ADV down/ADV#0.0#0.0
+a person lifts his left arm out high, out from body and lower.#a/DET person/NOUN lift/VERB his/DET left/ADJ arm/NOUN out/ADP high/ADV out/ADV from/ADP body/NOUN and/CCONJ lower/ADJ#0.0#0.0

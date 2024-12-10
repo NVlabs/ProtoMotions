@@ -1,0 +1,3 @@
+the person is punching something.#the/DET person/NOUN is/AUX punch/VERB something/PRON#0.0#0.0
+a person alternates punching forward with their left and right hands.#a/DET person/NOUN alternate/NOUN punch/VERB forward/ADV with/ADP their/DET left/ADJ and/CCONJ right/ADJ hand/NOUN#0.0#0.0
+a person hit with rigth and after right hands#a/DET person/NOUN hit/VERB with/ADP rigth/NOUN and/CCONJ after/ADP right/ADJ hand/NOUN#0.0#0.0

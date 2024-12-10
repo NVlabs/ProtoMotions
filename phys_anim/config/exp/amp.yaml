@@ -2,6 +2,13 @@
 
 defaults:
   - /algo: amp
-  - /env: amp
+  - /env: humanoid
+
+env:
+  config:
+    amp_obs:
+      disable_discriminator: False
+
+    state_init: Random
 
 experiment_name: amp

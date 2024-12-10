@@ -111,7 +111,7 @@ class MaskedMimicHumanoid(BaseMaskedMimic, MimicHumanoid):  # type: ignore[misc]
             self._marker_handles[env_id].append(marker_handle)
 
         if self.terrain is not None:
-            for i in range(self.num_height_points):
+            for i in range(self.terrain_obs_cb.num_height_points):
                 marker_handle = self.gym.create_actor(
                     env_ptr,
                     self._marker_asset_small,
@@ -127,10 +127,56 @@ class MaskedMimicHumanoid(BaseMaskedMimic, MimicHumanoid):  # type: ignore[misc]
                 )
                 self._marker_handles[env_id].append(marker_handle)
 
+        if self.scene_lib is not None and self.config.point_cloud_obs.enabled:
+            num_pointcloud_markers = (
+                self.config.point_cloud_obs.num_pointcloud_samples
+                * self.max_objects_per_scene
+            )
+
+            for i in range(num_pointcloud_markers):
+                marker_handle = self.gym.create_actor(
+                    env_ptr,
+                    self._marker_asset_tiny,
+                    default_pose,
+                    "pointcloud_marker",
+                    self.num_envs + 10,
+                    0,
+                    0,
+                )
+                object_number = (
+                    i // self.config.point_cloud_obs.num_pointcloud_samples
+                ) % self.max_objects_per_scene
+                color_interpolation = (
+                    object_number * 1.0 / max((self.max_objects_per_scene - 1), 1)
+                )
+                lightblue = [0.3, 0.7, 0.9]  # RGB values for a more vibrant light blue
+                light_purple = [
+                    0.6,
+                    0.4,
+                    0.7,
+                ]  # RGB values for a more distinct light purple
+                color = gymapi.Vec3(
+                    lightblue[0] * (1 - color_interpolation)
+                    + light_purple[0] * color_interpolation,
+                    lightblue[1] * (1 - color_interpolation)
+                    + light_purple[1] * color_interpolation,
+                    lightblue[2] * (1 - color_interpolation)
+                    + light_purple[2] * color_interpolation,
+                )
+                self.gym.set_rigid_body_color(
+                    env_ptr, marker_handle, 0, gymapi.MESH_VISUAL, color
+                )
+                self._marker_handles[env_id].append(marker_handle)
+
     def _build_marker_state_tensors(self):
         num_markers_per_env = len(self.config.masked_mimic_conditionable_bodies) * 2
         if self.terrain is not None:
-            num_markers_per_env += self.num_height_points
+            num_markers_per_env += self.terrain_obs_cb.num_height_points
+        if self.scene_lib is not None and self.config.point_cloud_obs.enabled:
+            num_markers_per_env += (
+                self.config.point_cloud_obs.num_pointcloud_samples
+                * self.max_objects_per_scene
+            )
 
         num_actors = self.get_num_actors_per_env()
         if self.total_num_objects > 0:
@@ -163,9 +209,9 @@ class MaskedMimicHumanoid(BaseMaskedMimic, MimicHumanoid):  # type: ignore[misc]
             self.num_envs, 1, 3
         )
 
-        target_pos[..., -1:] += self.get_ground_heights(target_pos[:, 0, :2]).view(
-            self.num_envs, 1, 1
-        )
+        target_pos[..., -1:] += self.terrain_obs_cb.get_ground_heights(
+            target_pos[:, 0, :2]
+        ).view(self.num_envs, 1, 1)
 
         target_pos = target_pos[:, self.masked_mimic_conditionable_bodies_ids, :]
 
@@ -204,9 +250,9 @@ class MaskedMimicHumanoid(BaseMaskedMimic, MimicHumanoid):  # type: ignore[misc]
         target_pos += self.respawn_offset_relative_to_data.clone().view(
             self.num_envs, 1, 3
         )
-        target_pos[..., -1:] += self.get_ground_heights(target_pos[:, 0, :2]).view(
-            self.num_envs, 1, 1
-        )
+        target_pos[..., -1:] += self.terrain_obs_cb.get_ground_heights(
+            target_pos[:, 0, :2]
+        ).view(self.num_envs, 1, 1)
 
         target_pos = target_pos[:, self.masked_mimic_conditionable_bodies_ids, :]
 
@@ -234,13 +280,33 @@ class MaskedMimicHumanoid(BaseMaskedMimic, MimicHumanoid):  # type: ignore[misc]
 
         # Terrain
         if self.terrain is not None:
-            num_terrain_markers = self.num_height_points
-            height_maps = self.get_height_maps(None, return_all_dims=True)
+            num_terrain_markers = self.terrain_obs_cb.num_height_points
+            height_maps = self.terrain_obs_cb.get_height_maps(
+                None, None, return_all_dims=True
+            )
             height_maps = height_maps.view(self.num_envs, -1, 3)
             self._marker_pos[
                 :, markers_offset : markers_offset + num_terrain_markers
             ] = height_maps
             markers_offset += num_terrain_markers
+
+        if self.scene_lib is not None and self.config.point_cloud_obs.enabled:
+            num_pointcloud_markers = (
+                self.config.point_cloud_obs.num_pointcloud_samples
+                * self.max_objects_per_scene
+            )
+            
+            self._marker_pos[
+                :,
+                markers_offset : markers_offset + num_pointcloud_markers,
+            ] = self.object_obs_cb.object_pointclouds.reshape(
+                self.num_envs,
+                self.config.point_cloud_obs.num_pointcloud_samples
+                * self.max_objects_per_scene,
+                3,
+            )
+
+            markers_offset += num_pointcloud_markers
 
         self.gym.set_actor_root_state_tensor_indexed(
             self.sim,

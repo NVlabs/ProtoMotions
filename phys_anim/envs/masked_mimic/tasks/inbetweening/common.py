@@ -62,12 +62,12 @@ else:
 
 
 class BaseMaskedMimicInbetweening(MaskedMimicInbetweeningHumanoid):  # type: ignore[misc]
-    def __init__(self, config, device):
+    def __init__(self, config, device, *args, **kwargs):
         self.text_command = None
         self.start_pose = None
         self.end_pose = None
 
-        super().__init__(config, device)
+        super().__init__(config, device, *args, **kwargs)
 
         self.transition_time = 0
         self.hold_time = 0.2
@@ -241,7 +241,6 @@ class BaseMaskedMimicInbetweening(MaskedMimicInbetweeningHumanoid):  # type: ign
             self.config.masked_mimic_masking.joint_masking.with_conditioning_max_gap_probability = (
                 1.0
             )
-            self.config.masked_mimic_masking.object_bounding_box_visible_prob = 0.0
             self.config.masked_mimic_masking.motion_text_embeddings_visible_prob = (
                 1.0 if inference_parameters["text_conditioned"] else 0.0
             )
@@ -256,10 +255,6 @@ class BaseMaskedMimicInbetweening(MaskedMimicInbetweeningHumanoid):  # type: ign
             self.long_term_gap_probs = (
                 torch.ones(self.config.num_envs, dtype=torch.float, device=self.device)
                 * self.config.masked_mimic_masking.joint_masking.with_conditioning_max_gap_probability
-            )
-            self.visible_object_bounding_box_probs = (
-                torch.ones(self.config.num_envs, dtype=torch.float, device=self.device)
-                * self.config.masked_mimic_masking.joint_masking.object_bounding_box_visible_prob
             )
             self.visible_text_embeddings_probs = (
                 torch.ones(self.config.num_envs, dtype=torch.float, device=self.device)
@@ -315,7 +310,7 @@ class BaseMaskedMimicInbetweening(MaskedMimicInbetweeningHumanoid):  # type: ign
         current_state = self.get_bodies_state()
         cur_gt, cur_gr = current_state.body_pos, current_state.body_rot
         # First remove the height based on the current terrain, then remove the offset to get back to the ground-truth data position
-        cur_gt[:, :, -1:] -= self.get_ground_heights(cur_gt[:, 0, :2]).view(
+        cur_gt[:, :, -1:] -= self.terrain_obs_cb.ground_heights.view(
             self.num_envs, 1, 1
         )
 

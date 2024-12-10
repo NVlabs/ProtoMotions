@@ -1,0 +1,3 @@
+a person shifts to the left claps their hands and imitates throws cards out to the side.#a/DET person/NOUN shift/VERB to/ADP the/DET left/ADJ clap/NOUN their/DET hand/NOUN and/CCONJ imitate/NOUN throw/VERB card/NOUN out/ADP to/ADP the/DET side/NOUN#0.0#0.0
+the person is throwing something from hands.#the/DET person/NOUN is/AUX throw/VERB something/PRON from/ADP hand/NOUN#0.0#0.0
+a person gets into wide standing squat position then brushes something off left hand with right with vigour#a/DET person/NOUN get/VERB into/ADP wide/ADJ standing/NOUN squat/NOUN position/NOUN then/ADV brush/VERB something/PRON off/ADP left/ADJ hand/NOUN with/ADP right/NOUN with/ADP vigour/NOUN#0.0#0.0

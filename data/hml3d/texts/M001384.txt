@@ -1,0 +1,3 @@
+a person lifts his right hand and waves his hand to say hello then puts right hand back down#a/DET person/NOUN lift/VERB his/DET right/ADJ hand/NOUN and/CCONJ wave/VERB his/DET hand/NOUN to/PART say/VERB hello/INTJ then/ADV put/VERB right/ADJ hand/NOUN back/ADV down/ADV#0.0#0.0
+a person waves their right hand out in front of their chest.#a/DET person/NOUN wave/VERB their/DET right/ADJ hand/NOUN out/ADP in/ADP front/NOUN of/ADP their/DET chest/NOUN#0.0#0.0
+a man waves with his right hand.#a/DET man/NOUN wave/VERB with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0

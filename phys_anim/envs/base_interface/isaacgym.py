@@ -27,17 +27,12 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import sys
-import os
 from typing import TYPE_CHECKING
-from datetime import datetime
 
 from isaacgym import gymapi  # type: ignore[misc]
 import torch
 
 from phys_anim.envs.base_interface.common import BaseInterface
-from collections import deque
-
-import cv2
 
 if TYPE_CHECKING:
     # Import IsaacGym Humanoid for autocompletion. Not imported during runtime.
@@ -94,6 +89,9 @@ class GymBaseInterface(BaseInterface, Humanoid):  # type: ignore[misc]
             self.gym.subscribe_viewer_keyboard_event(
                 self.viewer, gymapi.KEY_SEMICOLON, "cancel_video_record"
             )
+            self.gym.subscribe_viewer_keyboard_event(
+                self.viewer, gymapi.KEY_R, "reset_envs"
+            )
 
             # set the camera position based on up axis
             sim_params = self.gym.get_sim_params(self.sim)
@@ -105,14 +103,6 @@ class GymBaseInterface(BaseInterface, Humanoid):  # type: ignore[misc]
                 cam_target = gymapi.Vec3(10.0, 0.0, 15.0)
 
             self.gym.viewer_camera_look_at(self.viewer, None, cam_pos, cam_target)
-
-        self.user_is_recording, self.user_recording_state_change = False, False
-        self.user_recording_video_queue_size = 100000
-        rendering_out = os.path.join("output", "renderings")
-        os.makedirs(rendering_out, exist_ok=True)
-        self.user_recording_video_path = os.path.join(
-            rendering_out, f"{self.config.experiment_name}-%s"
-        )
 
         self.init_done = True
 
@@ -153,10 +143,16 @@ class GymBaseInterface(BaseInterface, Humanoid):  # type: ignore[misc]
         if self.device.type == "cpu":
             self.gym.fetch_results(self.sim, True)
 
+        self.render()
+
         # compute observations, rewards, resets, ...
         self.post_physics_step()
 
-        return self.obs_buf, self.rew_buf, self.reset_buf, self.extras
+        return (
+            self.rew_buf,
+            self.reset_buf,
+            self.extras,
+        )
 
     def render(self):
         if not self.headless:
@@ -164,7 +160,6 @@ class GymBaseInterface(BaseInterface, Humanoid):  # type: ignore[misc]
             if self.gym.query_viewer_has_closed(self.viewer):
                 sys.exit()
 
-            delete_user_viewer_recordings = False
             # check for keyboard events
             for evt in self.gym.query_viewer_action_events(self.viewer):
                 if evt.action == "QUIT" and evt.value > 0:
@@ -176,12 +171,11 @@ class GymBaseInterface(BaseInterface, Humanoid):  # type: ignore[misc]
                 elif evt.action == "apply_force" and evt.value > 0:
                     self.apply_sideways_force_to_feet()
                 elif evt.action == "toggle_video_record" and evt.value > 0:
-                    self.user_is_recording = not self.user_is_recording
-                    self.user_recording_state_change = True
+                    self.toggle_video_record()
                 elif evt.action == "cancel_video_record" and evt.value > 0:
-                    self.user_is_recording = False
-                    self.user_recording_state_change = False
-                    delete_user_viewer_recordings = True
+                    self.cancel_video_record()
+                elif evt.action == "reset_envs" and evt.value > 0:
+                    self.force_reset()
 
             # fetch results
             if self.device.type != "cpu":
@@ -194,84 +188,15 @@ class GymBaseInterface(BaseInterface, Humanoid):  # type: ignore[misc]
             else:
                 self.gym.poll_viewer_events(self.viewer)
 
-            if self.user_recording_state_change:
-                if self.user_is_recording:
-                    self.user_recording_video_queue = deque(
-                        maxlen=self.user_recording_video_queue_size
-                    )
+        super().render()
 
-                    curr_date_time = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-                    self.curr_user_recording_name = (
-                        self.user_recording_video_path % curr_date_time
-                    )
-                    self.user_recording_frame = 0
-                    if not os.path.exists(self.curr_user_recording_name):
-                        os.makedirs(self.curr_user_recording_name)
-
-                    print(
-                        f"Started to record data into folder {self.curr_user_recording_name}"
-                    )
-                if not self.user_is_recording:
-                    images = [
-                        img
-                        for img in os.listdir(self.curr_user_recording_name)
-                        if img.endswith(".png")
-                    ]
-                    images.sort()
-                    sample_frame = cv2.imread(
-                        os.path.join(self.curr_user_recording_name, images[0])
-                    )
-                    height, width, layers = sample_frame.shape
-
-                    fourcc = "MP4V"
-                    fourcc = cv2.VideoWriter_fourcc(*fourcc)
-                    video = cv2.VideoWriter(
-                        str(self.curr_user_recording_name) + ".mp4",
-                        fourcc,
-                        60,
-                        (width, height),
-                    )
-
-                    for image in images:
-                        video.write(
-                            cv2.imread(
-                                os.path.join(self.curr_user_recording_name, image)
-                            )
-                        )
-
-                    cv2.destroyAllWindows()
-                    video.release()
-
-                    delete_user_viewer_recordings = True
-
-                    print(
-                        f"============ Video finished writing {self.curr_user_recording_name}.mp4 ============"
-                    )
-                else:
-                    print("============ Writing video ============")
-                self.user_recording_state_change = False
-
-            if self.user_is_recording:
-                self.gym.write_viewer_image_to_file(
-                    self.viewer,
-                    self.curr_user_recording_name
-                    + "/%04d.png" % self.user_recording_frame,
-                )
-                self.user_recording_frame += 1
-
-            if delete_user_viewer_recordings:
-                images = [
-                    img
-                    for img in os.listdir(self.curr_user_recording_name)
-                    if img.endswith(".png")
-                ]
-                # delete all images
-                for image in images:
-                    os.remove(os.path.join(self.curr_user_recording_name, image))
-                os.removedirs(self.curr_user_recording_name)
+    def write_viewport_to_file(self, file_name):
+        self.gym.write_viewer_image_to_file(
+            self.viewer,
+            file_name,
+        )
 
     def simulate(self):
-        self.render()
         self.gym.simulate(self.sim)
         if self.device == "cpu":
             self.gym.fetch_results(self.sim, True)

@@ -1,0 +1,3 @@
+a person walked i right and left direction#a/DET person/NOUN walk/VERB i/PRON right/ADJ and/CCONJ left/VERB direction/NOUN#0.0#0.0
+a person paces to the right then the left , and right again to return to start position.#a/DET person/NOUN pace/VERB to/ADP the/DET right/NOUN then/ADV the/DET left/NOUN and/CCONJ right/ADV again/ADV to/PART return/VERB to/PART start/VERB position/NOUN#0.0#0.0
+a person walks back and forth#a/DET person/NOUN walk/VERB back/ADV and/CCONJ forth/ADV#0.0#0.0

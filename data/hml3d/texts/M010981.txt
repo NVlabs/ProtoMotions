@@ -1,0 +1,3 @@
+a person dances by throwing their hands in the air.#a/DET person/NOUN dance/VERB by/ADP throw/VERB their/DET hand/NOUN in/ADP the/DET air/NOUN#0.0#0.0
+this person waves with his right arm then his left.#this/DET person/NOUN wave/VERB with/ADP his/DET right/ADJ arm/NOUN then/ADV his/DET left/NOUN#0.0#0.0
+person holes right hand up put his hand down then puts left hand up and put his hand down.#person/NOUN hole/VERB right/ADJ hand/VERB up/ADP put/VERB his/DET hand/NOUN down/ADP then/ADV put/VERB left/ADJ hand/NOUN up/ADP and/CCONJ put/VERB his/DET hand/NOUN down/ADP#0.0#0.0

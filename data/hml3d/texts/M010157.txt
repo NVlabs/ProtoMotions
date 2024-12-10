@@ -1,0 +1,3 @@
+the person was taking a right drive and then to the left.#the/DET person/NOUN was/AUX take/VERB a/DET right/ADJ drive/NOUN and/CCONJ then/ADV to/ADP the/DET left/NOUN#0.0#0.0
+a person runs to their left and then curves to the right and continues to run then stops.#a/DET person/NOUN run/VERB to/ADP their/DET left/NOUN and/CCONJ then/ADV curve/VERB to/ADP the/DET right/NOUN and/CCONJ continue/VERB to/PART run/VERB then/ADV stop/VERB#0.0#0.0
+a person running to the left#a/DET person/NOUN run/VERB to/ADP the/DET left/NOUN#0.0#0.0

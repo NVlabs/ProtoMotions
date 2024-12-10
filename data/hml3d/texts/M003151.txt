@@ -1,0 +1,3 @@
+a person tilts right leg to right branch slightly, strides forward and follows with left leg.#a/DET person/NOUN tilt/VERB right/ADJ leg/NOUN to/ADP right/ADJ branch/NOUN slightly/ADV stride/VERB forward/ADV and/CCONJ follow/VERB with/ADP left/ADJ leg/NOUN#0.0#0.0
+a person steps up on a platform, right foot first.#a/DET person/NOUN step/VERB up/ADP on/ADP a/DET platform/NOUN right/ADJ foot/NOUN first/ADV#0.0#0.0
+a man stands and makes one step foward using his right foot and then stops with both feet.#a/DET man/NOUN stand/VERB and/CCONJ make/VERB one/NUM step/NOUN foward/NOUN use/VERB his/DET right/ADJ foot/NOUN and/CCONJ then/ADV stop/VERB with/ADP both/DET foot/NOUN#0.0#0.0

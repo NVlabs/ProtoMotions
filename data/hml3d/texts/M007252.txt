@@ -1,0 +1,3 @@
+a man imitates unzipping motion with his right hand#a/DET man/NOUN imitate/VERB unzip/VERB motion/NOUN with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0
+a person unzips his zipper with his right hand#a/DET person/NOUN unzip/VERB his/DET zipper/NOUN with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0
+a person moves his right arm down the top of his right leg.#a/DET person/NOUN move/VERB his/DET right/ADJ arm/NOUN down/ADP the/DET top/NOUN of/ADP his/DET right/ADJ leg/NOUN#nan#nan

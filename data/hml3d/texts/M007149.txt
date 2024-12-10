@@ -1,0 +1,3 @@
+a person is walking at an angle to the left.#a/DET person/NOUN is/AUX walk/VERB at/ADP an/DET angle/NOUN to/ADP the/DET left/NOUN#0.0#0.0
+the man makes a left turn#the/DET man/NOUN make/VERB a/DET left/ADJ turn/NOUN#0.0#0.0
+person was walking towards the left.#person/NOUN was/AUX walk/VERB towards/ADP the/DET left/NOUN#0.0#0.0

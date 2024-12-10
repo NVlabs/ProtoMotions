@@ -58,9 +58,7 @@ async def convert(in_file, out_file, load_materials=False):
     # converter_context.use_meter_as_world_unit = True
     # converter_context.create_world_as_default_root_prim = False
     instance = omni.kit.asset_converter.get_instance()
-    task = instance.create_converter_task(
-        in_file, out_file, progress_callback, converter_context
-    )
+    task = instance.create_converter_task(in_file, out_file, progress_callback, converter_context)
     success = True
     while True:
         success = await task.wait_until_finished()
@@ -81,7 +79,7 @@ def main(
     from omni.isaac.core.utils.extensions import enable_extension
 
     enable_extension("omni.kit.asset_converter")
-
+    
     folder_names = [
         f.path.split("/")[-1] for f in os.scandir(assets_root_dir) if f.is_dir()
     ]
@@ -91,31 +89,35 @@ def main(
 
         print(f"Processing subset {folder_name}")
 
-        files = [f for f in Path(data_dir).glob("**/*.obj")]
+        files = [
+            f
+            for f in Path(data_dir).glob("**/*")
+        ]
         print(f"Processing {len(files)} files")
 
         files.sort()
 
         for filename in tqdm(files):
-            relative_path_dir = filename.relative_to(data_dir).parent
-            file_ending = filename.name.split(".")[-1]
-            outpath = (
-                data_dir
-                / relative_path_dir
-                / filename.name.replace(file_ending, "usda")
-            )
+            if str(filename).endswith(".obj") or str(filename).endswith(".ply"):
+                relative_path_dir = filename.relative_to(data_dir).parent
+                file_ending = filename.name.split(".")[-1]
+                outpath = (
+                    data_dir
+                    / relative_path_dir
+                    / filename.name.replace(file_ending, "usda")
+                )
+                
+                if outpath.exists() and not force_remake:
+                    continue
 
-            if outpath.exists() and not force_remake:
-                continue
-
-            print(f"Processing {filename}")
-            status = asyncio.get_event_loop().run_until_complete(
-                convert(str(filename), str(outpath), True)
-            )
-            if not status:
-                print(f"Failed to convert {filename}")
-                exit(0)
-
+                print(f"Processing {filename}")
+                status = asyncio.get_event_loop().run_until_complete(
+                    convert(str(filename), str(outpath), False)
+                )
+                if not status:
+                    print(f"Failed to convert {filename}")
+                    exit(0)
+            
     kit.close()
 
 

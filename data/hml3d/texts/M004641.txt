@@ -1,0 +1,3 @@
+a person swing right arm all the way back and forward once.#a/DET person/NOUN swe/VERB right/ADJ arm/NOUN all/DET the/DET way/NOUN back/ADV and/CCONJ forward/ADV once/ADV#0.0#0.0
+a person swipes ahead with their right arm.#a/DET person/NOUN swipe/VERB ahead/ADV with/ADP their/DET right/ADJ arm/NOUN#0.0#0.0
+person person swan his right arm down.#person/NOUN person/NOUN swan/PROPN his/DET right/ADJ arm/NOUN down/ADP#0.0#0.0

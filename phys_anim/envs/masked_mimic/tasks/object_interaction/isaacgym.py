@@ -40,8 +40,8 @@ from phys_anim.envs.masked_mimic.tasks.object_interaction.common import (
 
 
 class MaskedMimicObjectHumanoid(BaseMaskedMimicObject, MaskedMimicTaskHumanoid):  # type: ignore[misc]
-    def __init__(self, config, device: torch.device):
-        super().__init__(config=config, device=device)
+    def __init__(self, config, device: torch.device, *args, **kwargs):
+        super().__init__(config=config, device=device, *args, **kwargs)
 
         if not self.headless:
             self._build_marker_state_tensors()

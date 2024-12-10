@@ -1,0 +1,3 @@
+a figure throws a frisbee or discuss#a/DET figure/NOUN throw/VERB a/DET frisbee/NOUN or/CCONJ discuss/VERB#0.0#0.0
+a person swings both arms in a backhand motion once to the left and swings in a backhand motion again to the left before taking to steps toward the left-handed motion.#a/DET person/NOUN swing/VERB both/DET arm/NOUN in/ADP a/DET backhand/NOUN motion/NOUN once/ADV to/ADP the/DET left/NOUN and/CCONJ swing/NOUN in/ADP a/DET backhand/NOUN motion/NOUN again/ADV to/ADP the/DET left/NOUN before/ADP take/VERB to/ADP step/NOUN toward/ADP the/DET lefthanded/ADJ motion/NOUN#0.0#0.0
+the man is doing a tennis backhand#the/DET man/NOUN is/AUX do/VERB a/DET tennis/NOUN backhand/NOUN#0.0#0.0

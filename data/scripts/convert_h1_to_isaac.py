@@ -1,4 +1,4 @@
-# This code is adapted from # Adapted from https://github.com/zhengyiluo/phc/tree/h1_phc
+# This code is adapted from https://github.com/zhengyiluo/phc/ for the H1 robot.
 
 import os
 from pathlib import Path

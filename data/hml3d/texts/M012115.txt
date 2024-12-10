@@ -1,0 +1,3 @@
+a person has his left arm up and drops it.#a/DET person/NOUN has/AUX his/DET left/ADJ arm/NOUN up/ADP and/CCONJ drop/VERB it/PRON#0.0#0.0
+a person's left arm is outstretched with their right hand on their leg, then lifts both arms out to the side.#a/DET person/NOUN left/ADJ arm/NOUN is/AUX outstretche/VERB with/ADP their/DET right/ADJ hand/NOUN on/ADP their/DET leg/NOUN then/ADV lift/VERB both/DET arm/NOUN out/ADV to/ADP the/DET side/NOUN#0.0#0.0
+a man retracts his left arm from an extended position and moves into a t-pose position.#a/DET man/NOUN retract/VERB his/DET left/ADJ arm/NOUN from/ADP an/DET extended/ADJ position/NOUN and/CCONJ move/NOUN into/ADP a/DET tpose/ADJ position/NOUN#6.0#9.0

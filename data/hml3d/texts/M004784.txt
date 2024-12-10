@@ -1,0 +1,3 @@
+a person appears to be writing something on a wall.#a/DET person/NOUN appear/VERB to/PART be/AUX write/VERB something/PRON on/ADP a/DET wall/NOUN#0.0#0.0
+a person stands and uses their left hand to perform an action at eye level from right to left.#a/DET person/NOUN stand/VERB and/CCONJ use/VERB their/DET left/ADJ hand/NOUN to/PART perform/VERB an/DET action/NOUN at/ADP eye/NOUN level/NOUN from/ADP right/NOUN to/ADP left/NOUN#0.0#0.0
+person stands in place and writes on a board from their right to left.#person/NOUN stand/VERB in/ADP place/NOUN and/CCONJ write/VERB on/ADP a/DET board/NOUN from/ADP their/DET right/NOUN to/ADP left/NOUN#0.0#0.0

@@ -1,0 +1,3 @@
+person is jumping in place.#person/NOUN is/AUX jump/VERB in/ADP place/NOUN#0.0#0.0
+a person makes a short jump up in place, then shuffles left to right.#a/DET person/NOUN make/VERB a/DET short/ADJ jump/NOUN up/ADP in/ADP place/NOUN then/ADV shuffle/NOUN left/VERB to/ADP right/ADV#0.0#0.0
+this person jumps in place then steps right 3 times.#this/DET person/NOUN jump/VERB in/ADP place/NOUN then/ADV step/VERB right/ADJ time/NOUN#0.0#0.0

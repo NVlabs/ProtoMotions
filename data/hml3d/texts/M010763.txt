@@ -1,0 +1,3 @@
+a person begins to wave his left hand as if he was waving to the crowd and then stops.#a/DET person/NOUN begin/VERB to/PART wave/VERB his/DET left/ADJ hand/NOUN as/SCONJ if/SCONJ he/PRON was/AUX wave/VERB to/ADP the/DET crowd/NOUN and/CCONJ then/ADV stop/VERB#0.0#3.0
+a person waves with their left hand.#a/DET person/NOUN wave/VERB with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
+person puts their red colored hand up to their chest and moves it upwards in a waving motion#person/NOUN put/VERB their/DET red/ADJ colored/ADJ hand/NOUN up/ADP to/ADP their/DET chest/NOUN and/CCONJ move/VERB it/PRON upwards/ADV in/ADP a/DET waving/ADJ motion/NOUN#0.0#0.0

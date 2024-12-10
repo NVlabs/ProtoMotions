@@ -1,0 +1,2 @@
+the body walks to right in a curve.#the/DET body/NOUN walk/VERB to/PART right/VERB in/ADP a/DET curve/NOUN#0.0#0.0
+a person walks forward then turns to walk to the left.#a/DET person/NOUN walk/VERB forward/ADV then/ADV turn/VERB to/PART walk/VERB to/ADP the/DET left/NOUN#0.0#0.0

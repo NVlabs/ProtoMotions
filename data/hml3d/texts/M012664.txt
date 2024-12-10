@@ -1,0 +1,3 @@
+a person turns to his left with his left arm raised above his head.#a/DET person/NOUN turn/VERB to/ADP his/DET left/NOUN with/ADP his/DET left/ADJ arm/NOUN raise/VERB above/ADP his/DET head/NOUN#0.0#0.0
+a man waves his left arm while his right arm is near his chest.#a/DET man/NOUN wave/VERB his/DET left/ADJ arm/NOUN while/SCONJ his/DET right/ADJ arm/NOUN is/AUX near/SCONJ his/DET chest/NOUN#0.0#0.0
+the man looks like he’s flagging a taxi.#the/DET man/NOUN look/VERB like/SCONJ he/PRON flag/VERB a/DET taxi/NOUN#0.0#0.0

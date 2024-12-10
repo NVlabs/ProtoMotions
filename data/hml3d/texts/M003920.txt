@@ -1,0 +1,3 @@
+starting from standing position and walks forward and to the left.#start/VERB from/ADP stand/VERB position/NOUN and/CCONJ walk/VERB forward/ADV and/CCONJ to/ADP the/DET left/NOUN#0.0#0.0
+a person walking and making a quarter of a circle to the left.#a/DET person/NOUN walk/VERB and/CCONJ make/VERB a/DET quarter/NOUN of/ADP a/DET circle/NOUN to/ADP the/DET left/NOUN#0.0#0.0
+a person walks and turns to the left.#a/DET person/NOUN walk/VERB and/CCONJ turn/VERB to/ADP the/DET left/NOUN#0.0#0.0

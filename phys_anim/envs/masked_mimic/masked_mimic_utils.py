@@ -31,7 +31,7 @@ from typing import List
 import torch
 from torch import Tensor
 
-from isaac_utils import rotations, torch_utils, maths
+from isaac_utils import rotations, torch_utils
 
 
 @torch.jit.script_if_tracing
@@ -173,79 +173,6 @@ def build_sparse_target_poses(
     obs = torch.cat((obs, heading_and_velocity), dim=-2).view(num_envs, -1)
 
     return obs
-
-
-@torch.jit.script_if_tracing
-def get_object_bounding_box_obs(
-    object_ids: Tensor,
-    root_pos: Tensor,
-    root_quat: Tensor,
-    num_object_envs: Tensor,
-    object_root_states: Tensor,
-    object_root_states_offsets: Tensor,
-    object_bounding_box: Tensor,
-    num_object_types: int,
-    w_last: bool,
-):
-    expanded_root_pos = (
-        root_pos.unsqueeze(1).expand(num_object_envs, 8, 3).reshape(-1, 3)
-    )
-    expanded_root_rot = (
-        root_quat.unsqueeze(1).expand(num_object_envs, 8, 4).reshape(-1, 4)
-    )
-
-    root_rot_inv = torch_utils.calc_heading_quat_inv(root_quat, w_last)
-    expanded_root_rot_inv = torch_utils.calc_heading_quat_inv(expanded_root_rot, w_last)
-
-    obj_root_pos = object_root_states[object_ids, :3]
-    obj_root_rot = object_root_states[object_ids, 3:7]
-
-    # Apply translation offset
-    obj_root_pos += object_root_states_offsets[object_ids, :3]
-
-    # Apply rotation offset
-    obj_root_rot = rotations.quat_mul(
-        object_root_states_offsets[object_ids, 3:7], obj_root_rot, w_last
-    )
-
-    # Ensure the quaternion is normalized
-    obj_root_rot = maths.normalize(obj_root_rot)
-
-    object_bbs = object_bounding_box.view(-1, 3)
-    expanded_obj_root_pos = (
-        obj_root_pos.unsqueeze(1).expand(num_object_envs, 8, 3).reshape(-1, 3)
-    )
-
-    expanded_obj_root_pos[..., -1] = 0
-
-    obj_relative_to_env = object_bbs - expanded_root_pos
-
-    object_rotated_relative_to_env = torch_utils.quat_rotate(
-        expanded_root_rot_inv, obj_relative_to_env, w_last
-    ).view(-1, 3)
-
-    object_root_rot_relative_to_env = rotations.quat_mul(
-        root_rot_inv, obj_root_rot, w_last
-    ).view(-1, 4)
-
-    object_root_rot_relative_to_env = torch_utils.quat_to_tan_norm(
-        object_root_rot_relative_to_env, w_last
-    )
-
-    # TODO: move this to a better place with SIGGRAPH Asia 2024 specific object observation.
-    object_type = object_root_states_offsets[object_ids, -1]
-    object_type_one_hot = torch.nn.functional.one_hot(
-        object_type.to(torch.int64).view(-1), num_object_types
-    )
-
-    return torch.cat(
-        (
-            object_rotated_relative_to_env.view(num_object_envs, -1),
-            object_root_rot_relative_to_env.view(num_object_envs, -1),
-            object_type_one_hot.view(num_object_envs, -1),
-        ),
-        dim=-1,
-    )
 
 
 @torch.jit.script_if_tracing

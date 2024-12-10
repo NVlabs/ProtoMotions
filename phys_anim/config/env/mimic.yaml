@@ -1,7 +1,7 @@
 # @package _global_
 
 defaults:
-  - amp
+  - humanoid
 
 # Env structure
 env:
@@ -10,9 +10,6 @@ env:
     # Simulation params
     mimic_residual_control: False
     max_episode_length: 1000
-
-    ## Observations
-    mimic_conditionable_bodies: null
 
     ## Termination
     enable_height_termination: False
@@ -29,10 +26,8 @@ env:
 
     mimic_reward_config:
       positive_constant: 0
-      tan_norm_reward: False
       relative_kb_pos: False
 
-      unequal_reward_joint_weights: False
       add_rr_to_lr: True
       rt_ignore_height: True
       sum_before_exp: True
@@ -49,7 +44,6 @@ env:
         kb_rew_w: 0.15
         dv_rew_w: 0.15
         rh_rew_w: 0.1
-        kbf_rew_w: 0.0
         pow_rew_w: 0.0002
 
       component_coefficients:
@@ -64,7 +58,6 @@ env:
         lr_rew_c: -0.2
         dv_rew_c: -0.002
         rh_rew_c: -100
-        kbf_rew_c: -0.01
 
     mimic_dynamic_sampling:
       enabled: False
@@ -81,6 +74,9 @@ env:
       grace_period: 5
       reset_on_episode_reset: False
       reset_episode_on_reset_track: True
+
+    mimic_phase_obs:
+      enabled: False
 
     mimic_target_pose:
       enabled: False

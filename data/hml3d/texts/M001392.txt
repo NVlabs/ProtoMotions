@@ -1,0 +1,3 @@
+a man twist his body to the right, stand straight and then shifts his body to the left.#a/DET man/NOUN twist/VERB his/DET body/NOUN to/ADP the/DET right/NOUN stand/VERB straight/ADV and/CCONJ then/ADV shift/VERB his/DET body/NOUN to/ADP the/DET left/NOUN#0.0#0.0
+someone looking over the right and left#someone/PRON look/VERB over/ADP the/DET right/NOUN and/CCONJ left/VERB#0.0#0.0
+person moves body to right stops then moves body to the left then stops#person/NOUN move/VERB body/NOUN to/ADP right/ADJ stop/NOUN then/ADV move/VERB body/NOUN to/ADP the/DET left/NOUN then/ADV stop/VERB#0.0#0.0

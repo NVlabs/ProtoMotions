@@ -1,0 +1,3 @@
+a person with feet unmoving moves their hips slightly from left to right while moving bent arms in a circular motion.#a/DET person/NOUN with/ADP foot/NOUN unmoving/ADJ move/NOUN their/DET hip/NOUN slightly/ADV from/ADP left/VERB to/ADP right/ADJ while/SCONJ move/VERB bent/ADJ arm/NOUN in/ADP a/DET circular/ADJ motion/NOUN#0.0#0.0
+a man standing with his legs far apart brings up his right hand towards his face.#a/DET man/NOUN stand/VERB with/ADP his/DET leg/NOUN far/ADV apart/ADV bring/VERB up/ADP his/DET right/ADJ hand/NOUN towards/ADP his/DET face/NOUN#0.0#0.0
+a person throws his right arm into the air.#a/DET person/NOUN throw/VERB his/DET right/ADJ arm/NOUN into/ADP the/DET air/NOUN#0.0#0.0

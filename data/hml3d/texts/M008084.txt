@@ -1,0 +1,3 @@
+a person wlowly walked by making the circle#a/DET person/NOUN wlowly/NOUN walk/VERB by/ADP make/VERB the/DET circle/NOUN#0.0#0.0
+a person is walking drunk in a circle counterclockwise#a/DET person/NOUN is/AUX walk/VERB drunk/ADJ in/ADP a/DET circle/NOUN counterclockwise/NOUN#0.0#0.0
+person stumbles with unsteady gait as walks in a counterclockwise circle#person/NOUN stumble/VERB with/ADP unsteady/ADJ gait/NOUN as/SCONJ walk/VERB in/ADP a/DET counterclockwise/ADJ circle/NOUN#0.0#0.0

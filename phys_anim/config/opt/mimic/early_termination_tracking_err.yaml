@@ -6,7 +6,6 @@ env:
       - mimic_early_termination_key: max_joint_err
         mimic_early_termination_thresh: 0.5
         mimic_early_termination_thresh_on_flat: 0.25
-        from_other: True
         less_than: False
 
 # At evaluation, disable early termination

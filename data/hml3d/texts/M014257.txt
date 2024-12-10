@@ -1,0 +1,3 @@
+a person kicks their right leg around in front of them while balancing on their left leg.#a/DET person/NOUN kick/VERB their/DET right/ADJ leg/NOUN around/ADV in/ADP front/NOUN of/ADP them/PRON while/SCONJ balance/VERB on/ADP their/DET left/ADJ leg/NOUN#0.0#0.0
+a person is standing on one leg and swinging the other#a/DET person/NOUN is/AUX stand/VERB on/ADP one/NUM leg/NOUN and/CCONJ swinge/VERB the/DET other/ADJ#0.0#0.0
+the person is holding onto something moving there right leg back-and-forth.#the/DET person/NOUN is/AUX hold/VERB onto/ADP something/PRON move/VERB there/ADV right/ADJ leg/NOUN backandforth/PROPN#0.0#0.0

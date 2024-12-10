@@ -30,9 +30,6 @@ env:
       
       # Text conditioning
       motion_text_embeddings_visible_prob: 0
-      
-      # Scene conditioning
-      object_bounding_box_visible_prob: 0
 
       # Historical info
       start_without_history_prob: 0

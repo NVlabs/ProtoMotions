@@ -82,7 +82,11 @@ class Mimic(AMP):
         if self.env.config.fixed_motion_id is not None:
             remaining_motions[self.env.config.fixed_motion_id] = True
             num_motions = 1
+        elif start_motion >= num_motions:
+            start_motion = 0
+            remaining_motions[0] = True
         else:
+            end_motion = min(num_motions, end_motion)
             remaining_motions[start_motion:end_motion] = True
             num_motions = end_motion - start_motion
 
@@ -196,34 +200,28 @@ class Mimic(AMP):
                 self.env.disable_reset = True
                 self.env.disable_reset_track = True
 
-                obs = self.env.reset(
+                self.env.reset(
                     # Force reset all envs to ensure we don't have any residual effects from previous iterations
                     #   for example, this ensures all untracked envs do not spawn near any objects.
                     torch.arange(0, self.num_envs, dtype=torch.long, device=self.device)
                 )
 
-                actor_state = self.create_actor_state()
-                actor_state["obs"] = obs
-                actor_state = self.get_extra_obs_from_env(actor_state)
-
                 for l in range(max_len):
-                    actor_state = self.pre_eval_env_step(actor_state)
+                    obs = self.create_agent_obs()
+                    actor_outs = self.pre_eval_env_step(obs)
 
-                    actor_state = self.env_step(actor_state)
+                    rewards, dones, extras = self.env_step(actor_outs["actions"])
 
-                    actor_state = self.post_eval_env_step(actor_state)
+                    self.post_eval_env_step(actor_outs)
+
                     elapsed_time += dt
                     clip_done = (motion_lengths - dt) < elapsed_time
                     clip_not_done = torch.logical_not(clip_done)
                     for k in self.config.eval_metric_keys:
-                        if k in self.env.last_unscaled_rewards:
-                            value = self.env.last_unscaled_rewards[k].detach()
-                        elif k in self.env.last_other_rewards:
-                            value = self.env.last_other_rewards[k].detach()
+                        if k in self.env.mimic_info_dict:
+                            value = self.env.mimic_info_dict[k].detach()
                         else:
-                            raise ValueError(
-                                f"Key {k} not found in last_unscaled_rewards or last_other_rewards"
-                            )
+                            raise ValueError(f"Key {k} not found in mimic_info_dict")
 
                         metric = value[:num_motions_this_iter]
                         metrics[k][motion_ids[clip_not_done]] += metric[clip_not_done]
@@ -236,7 +234,7 @@ class Mimic(AMP):
                             metric[clip_not_done],
                         )
 
-                    current_gt_err = self.env.last_other_rewards["gt_err"][
+                    current_gt_err = self.env.mimic_info_dict["gt_err"][
                         :num_motions_this_iter
                     ]
                     # Update max_average_deviation for non-done motions
@@ -252,28 +250,20 @@ class Mimic(AMP):
                             num_motions_this_iter, device=self.device, dtype=bool
                         )
                         for entry in self.env.config.mimic_early_termination:
-                            if entry.get("from_other", False):
-                                from_dict = self.env.last_other_rewards
-                            elif entry.use_scaled:
-                                from_dict = self.env.last_scaled_rewards
-                            else:
-                                from_dict = self.env.last_unscaled_rewards
-
                             if entry.less_than:
                                 entry_too_bad = (
-                                    from_dict[entry.mimic_early_termination_key][
-                                        :num_motions_this_iter
-                                    ]
+                                    self.env.mimic_info_dict[
+                                        entry.mimic_early_termination_key
+                                    ][:num_motions_this_iter]
                                     < entry.mimic_early_termination_thresh
                                 )
                             else:
                                 entry_too_bad = (
-                                    from_dict[entry.mimic_early_termination_key][
-                                        :num_motions_this_iter
-                                    ]
+                                    self.env.mimic_info_dict[
+                                        entry.mimic_early_termination_key
+                                    ][:num_motions_this_iter]
                                     > entry.mimic_early_termination_thresh
                                 )
-                            del from_dict
 
                             reward_too_bad = torch.logical_or(
                                 reward_too_bad, entry_too_bad
@@ -492,6 +482,7 @@ class Mimic(AMP):
             else self.config.eval_length
         )
 
+        done_indices = []
         for eval_episode in range(self.config.eval_num_episodes):
             torch.cuda.empty_cache()
 
@@ -522,53 +513,47 @@ class Mimic(AMP):
                 self.env.scene_lib.mark_scene_in_use(
                     self.env.scene_ids[:num_motions][valid_scene_masks]
                 )
-            obs = self.env.reset(
+            self.env.reset(
                 torch.arange(0, num_motions, dtype=torch.long, device=self.device)
             )
 
-            actor_state = self.create_actor_state()
-            actor_state["obs"] = obs
-            actor_state = self.get_extra_obs_from_env(actor_state)
+            obs = self.create_agent_obs()
 
             if "motion_ids" in self.extra_obs_inputs:
                 if self.actor.mu_model.extra_input_models[
                     "motion_ids"
                 ].config.random_embedding.use_random_embeddings:
-                    actor_state["motion_ids"] = (
-                        actor_state["motion_ids"].clone() + random_offset
-                    )
+                    obs["motion_ids"] = obs["motion_ids"].clone() + random_offset
 
             if hasattr(self, "vae_noise"):
-                self.reset_vae_noise(actor_state["done_indices"])
+                self.reset_vae_noise(done_indices)
 
             for l in track(
                 range(max_len),
                 description=f"Evaluating episode {eval_episode}/{self.config.eval_num_episodes}...",
             ):
-                actor_state = self.pre_eval_env_step(actor_state)
+                actor_outs = self.pre_eval_env_step(obs)
 
-                actor_state = self.env_step(actor_state)
+                rewards, dones, extras = self.env_step(actor_outs["actions"])
+
+                all_done_indices = dones.nonzero(as_tuple=False)
+                done_indices = all_done_indices.squeeze(-1)
+
                 if "motion_ids" in self.extra_obs_inputs:
                     if self.actor.mu_model.extra_input_models[
                         "motion_ids"
                     ].config.random_embedding.use_random_embeddings:
-                        actor_state["motion_ids"] = (
-                            actor_state["motion_ids"].clone() + random_offset
-                        )
+                        obs["motion_ids"] = obs["motion_ids"].clone() + random_offset
 
-                actor_state = self.post_eval_env_step(actor_state)
+                actor_outs = self.post_eval_env_step(actor_outs)
                 elapsed_time += dt
                 clip_done = (motion_lengths - dt) < elapsed_time
                 clip_not_done = torch.logical_not(clip_done)
                 for k in self.config.eval_metric_keys:
-                    if k in self.env.last_unscaled_rewards:
-                        value = self.env.last_unscaled_rewards[k].detach()
-                    elif k in self.env.last_other_rewards:
-                        value = self.env.last_other_rewards[k].detach()
+                    if k in self.env.mimic_info_dict:
+                        value = self.env.mimic_info_dict[k].detach()
                     else:
-                        raise ValueError(
-                            f"Key {k} not found in last_unscaled_rewards or last_other_rewards"
-                        )
+                        raise ValueError(f"Key {k} not found in mimic_info_dict")
 
                     metric = value[:num_motions]
                     metric *= 1 - clip_done.long()
@@ -582,18 +567,18 @@ class Mimic(AMP):
 
                 metrics["max_average_deviation"][clip_not_done] = torch.maximum(
                     metrics["max_average_deviation"][clip_not_done],
-                    self.env.last_other_rewards["gt_err"][:num_motions][clip_not_done],
+                    self.env.mimic_info_dict["gt_err"][:num_motions][clip_not_done],
                 )
                 metrics["max_max_deviation"][clip_not_done] = torch.maximum(
                     metrics["max_max_deviation"][clip_not_done],
-                    self.env.last_other_rewards["max_joint_err"][:num_motions][
+                    self.env.mimic_info_dict["max_joint_err"][:num_motions][
                         clip_not_done
                     ],
                 )
 
                 if "success_object_position" in self.config.eval_metric_keys:
                     non_zero_distance = (
-                        self.env.last_other_rewards["distance_to_object_position"][
+                        self.env.mimic_info_dict["distance_to_object_position"][
                             :num_motions
                         ]
                         > 0
@@ -601,7 +586,7 @@ class Mimic(AMP):
                     metrics["min_object_distance"][eval_episode][non_zero_distance] = (
                         torch.minimum(
                             metrics["min_object_distance"][eval_episode],
-                            self.env.last_other_rewards["distance_to_object_position"][
+                            self.env.mimic_info_dict["distance_to_object_position"][
                                 :num_motions
                             ],
                         )[non_zero_distance]
@@ -609,7 +594,7 @@ class Mimic(AMP):
                     metrics["success_object"][eval_episode][non_zero_distance] = (
                         torch.torch.maximum(
                             metrics["success_object"][eval_episode],
-                            self.env.last_other_rewards["success_object_position"][
+                            self.env.mimic_info_dict["success_object_position"][
                                 :num_motions
                             ],
                         )[non_zero_distance]
@@ -620,25 +605,18 @@ class Mimic(AMP):
                         num_motions, device=self.device, dtype=bool
                     )
                     for entry in self.env.config.mimic_early_termination:
-                        if entry.get("from_other", False):
-                            from_dict = self.env.last_other_rewards
-                        elif entry.use_scaled:
-                            from_dict = self.env.last_scaled_rewards
-                        else:
-                            from_dict = self.env.last_unscaled_rewards
-
                         if entry.less_than:
                             entry_too_bad = (
-                                from_dict[entry.mimic_early_termination_key][
-                                    :num_motions
-                                ]
+                                self.env.mimic_info_dict[
+                                    entry.mimic_early_termination_key
+                                ][:num_motions]
                                 < entry.early_reward_end_term_thresh
                             )
                         else:
                             entry_too_bad = (
-                                from_dict[entry.mimic_early_termination_key][
-                                    :num_motions
-                                ]
+                                self.env.mimic_info_dict[
+                                    entry.mimic_early_termination_key
+                                ][:num_motions]
                                 > entry.early_reward_end_term_thresh
                             )
 
@@ -646,7 +624,6 @@ class Mimic(AMP):
                         reward_too_bad = torch.logical_and(
                             reward_too_bad, torch.logical_not(clip_done)
                         )
-                        del from_dict
 
                     # Don't early track terminate if we very recently switched
                     # the tracking clip.
@@ -673,12 +650,12 @@ class Mimic(AMP):
             to_log[f"eval/{k}_max"] = metrics[f"{k}_max"].detach().mean()
             to_log[f"eval/{k}_min"] = metrics[f"{k}_min"].detach().mean()
 
-        if "reach_success" in self.env.last_other_rewards:
+        if "reach_success" in self.env.mimic_info_dict:
             to_log["eval/reach_success"] = torch.tensor(
-                self.env.last_other_rewards["reach_success"]
+                self.env.mimic_info_dict["reach_success"]
             )
             to_log["eval/reach_distance"] = torch.tensor(
-                self.env.last_other_rewards["reach_distance"]
+                self.env.mimic_info_dict["reach_distance"]
             )
 
         mean_tracking_errors = metrics["max_average_deviation"]

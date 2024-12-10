@@ -1,0 +1,3 @@
+a person has left hand over stomach while walking in a circle.#a/DET person/NOUN has/AUX left/VERB hand/NOUN over/ADP stomach/NOUN while/SCONJ walk/VERB in/ADP a/DET circle/NOUN#0.0#0.0
+he is walking around whole holding his belly with his left hand.#he/PRON is/AUX walk/VERB around/ADP whole/ADJ hold/VERB his/DET belly/NOUN with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
+this person is hunched forward, hold his left arm close while walking in a circle.#this/DET person/NOUN is/AUX hunch/VERB forward/ADV hold/VERB his/DET left/ADJ arm/NOUN close/ADV while/SCONJ walk/VERB in/ADP a/DET circle/NOUN#0.0#0.0

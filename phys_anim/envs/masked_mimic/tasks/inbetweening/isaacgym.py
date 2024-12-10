@@ -37,8 +37,8 @@ from phys_anim.envs.masked_mimic.isaacgym import MaskedMimicHumanoid
 
 
 class MaskedMimicInbetweeningHumanoid(BaseMaskedMimicInbetweening, MaskedMimicHumanoid):  # type: ignore[misc]
-    def __init__(self, config, device):
-        super().__init__(config=config, device=device)
+    def __init__(self, config, device, *args, **kwargs):
+        super().__init__(config=config, device=device, *args, **kwargs)
 
     def set_env_state(
         self,
@@ -58,7 +58,7 @@ class MaskedMimicInbetweeningHumanoid(BaseMaskedMimicInbetweening, MaskedMimicHu
             global_rb_pos = rb_pos.clone()
 
             flat_global_rb_pos = global_rb_pos.view(-1, 3)
-            z_all_joints = self.get_ground_heights(flat_global_rb_pos)
+            z_all_joints = self.terrain_obs_cb.get_ground_heights(flat_global_rb_pos)
             z_all_joints = z_all_joints.view(global_rb_pos.shape[:-1])
 
             z_diff = z_all_joints - global_rb_pos[:, :, 2]
@@ -69,7 +69,9 @@ class MaskedMimicInbetweeningHumanoid(BaseMaskedMimicInbetweening, MaskedMimicHu
             # the relative height above the terrain.
             z_offset = z_all_joints.gather(1, z_indices).view(-1, 1)
 
-            z_all_joints_with_objects = self.get_heights_with_scene(flat_global_rb_pos)
+            z_all_joints_with_objects = self.terrain_obs_cb.get_heights_with_scene(
+                flat_global_rb_pos
+            )
             z_all_joints_with_objects = z_all_joints_with_objects.view(
                 global_rb_pos.shape[:-1]
             )
@@ -142,9 +144,9 @@ class MaskedMimicInbetweeningHumanoid(BaseMaskedMimicInbetweening, MaskedMimicHu
             self.num_envs, 1, 3
         )
 
-        target_pos[..., -1:] += self.get_ground_heights(target_pos[:, 0, :2]).view(
-            self.num_envs, 1, 1
-        )
+        target_pos[..., -1:] += self.terrain_obs_cb.get_ground_heights(
+            target_pos[:, 0, :2]
+        ).view(self.num_envs, 1, 1)
 
         target_pos = target_pos[:, self.masked_mimic_conditionable_bodies_ids, :]
 
@@ -192,9 +194,9 @@ class MaskedMimicInbetweeningHumanoid(BaseMaskedMimicInbetweening, MaskedMimicHu
                 self.end_pose["translation"].view(1, 1, -1, 3).clone()
             )
 
-        target_pos[..., -1:] += self.get_ground_heights(target_pos[:, 0, :2]).view(
-            self.num_envs, 1, 1
-        )
+        target_pos[..., -1:] += self.terrain_obs_cb.get_ground_heights(
+            target_pos[:, 0, :2]
+        ).view(self.num_envs, 1, 1)
 
         target_pos = target_pos[:, self.masked_mimic_conditionable_bodies_ids, :]
 
@@ -220,7 +222,9 @@ class MaskedMimicInbetweeningHumanoid(BaseMaskedMimicInbetweening, MaskedMimicHu
 
         # Terrain
         if self.terrain is not None:
-            height_maps = self.get_height_maps(None, return_all_dims=True)
+            height_maps = self.terrain_obs_cb.get_height_maps(
+                None, None, return_all_dims=True
+            )
             height_maps = height_maps.view(self.num_envs, -1, 3)
             self._marker_pos[
                 :, self.masked_mimic_conditionable_bodies_ids.shape[0] * 2 :

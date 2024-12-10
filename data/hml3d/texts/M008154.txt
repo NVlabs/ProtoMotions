@@ -1,0 +1,3 @@
+a person grabbed something with left and right hand and put it somewhere#a/DET person/NOUN grab/VERB something/PRON with/ADP left/ADJ and/CCONJ right/ADJ hand/NOUN and/CCONJ put/VERB it/PRON somewhere/ADV#0.0#0.0
+a person moves object from right position to left and tilts object on its side.#a/DET person/NOUN move/VERB object/NOUN from/ADP right/ADJ position/NOUN to/ADP left/ADJ and/CCONJ tilt/NOUN object/NOUN on/ADP its/DET side/NOUN#0.0#0.0
+moving arms up and down while standing still.#move/VERB arm/NOUN up/ADV and/CCONJ down/ADV while/SCONJ stand/VERB still/ADV#0.0#0.0

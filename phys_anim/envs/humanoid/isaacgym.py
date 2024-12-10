@@ -40,30 +40,17 @@ from rich.progress import Progress
 
 from isaac_utils import rotations, torch_utils
 from phys_anim.envs.humanoid.common import BaseHumanoid
-from phys_anim.envs.humanoid.humanoid_utils import build_pd_action_offset_scale
 from phys_anim.envs.base_interface.isaacgym import GymBaseInterface
 from phys_anim.utils.file_utils import load_yaml
-from phys_anim.utils.motion_lib import MotionLib
 
 
 class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
     def __init__(self, config, device: torch.device):
-        self.w_last = True  # quaternion structure in isaacgym
-        self.config = config
-        self.device = device
-        self.sim_params = self.parse_sim_params()
-        self.physics_engine = gymapi.SIM_PHYSX
-
-        self.plane_static_friction = self.config.simulator.plane.static_friction
-        self.plane_dynamic_friction = self.config.simulator.plane.dynamic_friction
-        self.plane_restitution = self.config.simulator.plane.restitution
-
         super().__init__(config, device)
+
         assert (
             self.dof_offsets[-1] == self.num_dof
         ), f"Mismatch in num DOFs {self.num_dof} and {self.dof_offsets[-1]}"
-
-        self.dt: float = self.config.simulator.sim.control_freq_inv * self.sim_params.dt
 
         # Refresh tensors BEFORE we acquire them https://forums.developer.nvidia.com/t/isaacgym-preview-4-actor-root-state-returns-nans-with-isaacgymenvs-style-task/223738/4
         self.gym.refresh_dof_state_tensor(self.sim)
@@ -233,6 +220,13 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
         return sim_params
 
     def create_sim(self):
+        self.sim_params = self.parse_sim_params()
+        self.physics_engine = gymapi.SIM_PHYSX
+
+        self.plane_static_friction = self.config.simulator.plane.static_friction
+        self.plane_dynamic_friction = self.config.simulator.plane.dynamic_friction
+        self.plane_restitution = self.config.simulator.plane.restitution
+
         self.up_axis_idx = self.set_sim_params_up_axis(self.sim_params, "z")
         super().create_sim()
 
@@ -246,11 +240,8 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
 
     def create_ground_plane(self):
         print("Creating ground plane")
-        if self.config.terrain is None:
-            self.add_default_ground()
-        else:
-            self.add_terrain()
-        print("Ground plane created")
+        self.add_terrain()
+        print("Ground plane spawned")
 
     def add_default_ground(self):
         plane_params = gymapi.PlaneParams()
@@ -393,16 +384,6 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
             self.dof_limits_upper, device=self.device
         )
 
-        if self.isaac_pd:
-            self._pd_action_offset, self._pd_action_scale = (
-                build_pd_action_offset_scale(
-                    self.dof_offsets,
-                    self.dof_limits_lower,
-                    self.dof_limits_upper,
-                    self.device,
-                )
-            )
-
     def load_object_assets(self):
         if self.scene_lib.total_spawned_scenes > 0:
             self.object_target_positions = []
@@ -419,56 +400,59 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
                         os.path.basename(object_info.object_path)
                     )[0]
 
-                    object_asset_options = gymapi.AssetOptions()
-                    if object_info.get("vhacd_enabled", False):
-                        object_asset_options.vhacd_params = gymapi.VhacdParams()
-                    for key, value in object_info.object_options.items():
-                        if type(value) == easydict.EasyDict:
-                            if hasattr(object_asset_options, key):
-                                object_asset_sub_options = getattr(
-                                    object_asset_options, key
-                                )
-                                for sub_key, sub_value in value.items():
-                                    if hasattr(object_asset_sub_options, sub_key):
-                                        setattr(
-                                            object_asset_sub_options,
-                                            sub_key,
-                                            sub_value,
-                                        )
+                    if object_info.is_first_instance:
+                        object_asset_options = gymapi.AssetOptions()
+                        if object_info.get("vhacd_enabled", False):
+                            object_asset_options.vhacd_params = gymapi.VhacdParams()
+                        for key, value in object_info.object_options.items():
+                            if type(value) is easydict.EasyDict:
+                                if hasattr(object_asset_options, key):
+                                    object_asset_sub_options = getattr(
+                                        object_asset_options, key
+                                    )
+                                    for sub_key, sub_value in value.items():
+                                        if hasattr(object_asset_sub_options, sub_key):
+                                            setattr(
+                                                object_asset_sub_options,
+                                                sub_key,
+                                                sub_value,
+                                            )
+                                else:
+                                    print(
+                                        f"Warning: {key} is not a valid option for object asset"
+                                    )
                             else:
-                                print(
-                                    f"Warning: {key} is not a valid option for object asset"
-                                )
-                        else:
-                            if hasattr(object_asset_options, key):
-                                if key == "default_dof_drive_mode":
-                                    value = getattr(gymapi, value)
-                                setattr(object_asset_options, key, value)
-                            else:
-                                print(
-                                    f"Warning: {key} is not a valid option for object asset"
-                                )
-                    # Load Asset
-                    object_asset = self.gym.load_asset(
-                        self.sim,
-                        os.path.dirname(object_info.object_path),
-                        f"{object_name}.urdf",
-                        object_asset_options,
-                    )
+                                if hasattr(object_asset_options, key):
+                                    if key == "default_dof_drive_mode":
+                                        value = getattr(gymapi, value)
+                                    setattr(object_asset_options, key, value)
+                                else:
+                                    print(
+                                        f"Warning: {key} is not a valid option for object asset"
+                                    )
+                        # Load Asset
+                        object_asset = self.gym.load_asset(
+                            self.sim,
+                            os.path.dirname(object_info.object_path),
+                            f"{object_name}.urdf",
+                            object_asset_options,
+                        )
 
-                    # create force sensors
-                    sensor_pose = gymapi.Transform()
-                    sensor_options = gymapi.ForceSensorProperties()
-                    sensor_options.enable_forward_dynamics_forces = (
-                        False  # for example gravity
-                    )
-                    sensor_options.enable_constraint_solver_forces = (
-                        True  # for example contacts
-                    )
-                    sensor_options.use_world_frame = True  # report forces in world frame (easier to get vertical components)
-                    self.gym.create_asset_force_sensor(
-                        object_asset, 0, sensor_pose, sensor_options
-                    )
+                        # create force sensors
+                        sensor_pose = gymapi.Transform()
+                        sensor_options = gymapi.ForceSensorProperties()
+                        sensor_options.enable_forward_dynamics_forces = (
+                            False  # for example gravity
+                        )
+                        sensor_options.enable_constraint_solver_forces = (
+                            True  # for example contacts
+                        )
+                        sensor_options.use_world_frame = True  # report forces in world frame (easier to get vertical components)
+                        self.gym.create_asset_force_sensor(
+                            object_asset, 0, sensor_pose, sensor_options
+                        )
+                    else:
+                        object_asset = self.object_assets[object_info.first_instance_id]
 
                     self.object_assets.append(object_asset)
 
@@ -590,7 +574,7 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
             for scene_idx, scene_spawn_info in enumerate(self.scene_lib.scenes):
                 scene_offset = self.scene_lib.scene_offsets[scene_idx]
 
-                height_at_scene_origin = self.get_ground_heights(
+                height_at_scene_origin = self.terrain_obs_cb.get_ground_heights(
                     torch.tensor(
                         [[scene_offset[0], scene_offset[1]]],
                         device=self.device,
@@ -647,10 +631,14 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
 
                     # Assert that the object is within the valid range of the height samples
                     assert (
-                        0 <= terrain_coords[0] < self.height_samples.shape[0] - 2
+                        0
+                        <= terrain_coords[0]
+                        < self.terrain_obs_cb.height_samples.shape[0] - 2
                     ), f"Scene {scene_idx}: Object {object_name} is outside the valid range of height samples (x-axis)"
                     assert (
-                        0 <= terrain_coords[1] < self.height_samples.shape[1] - 2
+                        0
+                        <= terrain_coords[1]
+                        < self.terrain_obs_cb.height_samples.shape[1] - 2
                     ), f"Scene {scene_idx}: Object {object_name} is outside the valid range of height samples (y-axis)"
 
                     # Assert that the object is in the designated spawn area
@@ -670,7 +658,7 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
                         == 0
                     ), f"Scene {scene_idx}: Object {object_name} is placed on flat terrain"
 
-                    terrain_height = self.get_ground_heights(
+                    terrain_height = self.terrain_obs_cb.get_ground_heights(
                         global_object_position[:2].unsqueeze(0)
                     ).item()
                     global_object_position[2] = (
@@ -735,6 +723,26 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
                             mesh_path = ply_path
                         mesh = as_mesh(trimesh.load_mesh(mesh_path))
                         w_x, w_y, w_z, m_x, m_y, m_z = compute_bounding_box(mesh)
+                        # Sample points evenly from the mesh surface
+                        point_cloud = trimesh.sample.sample_surface_even(
+                            mesh, self.config.point_cloud_obs.num_pointcloud_samples
+                        )[0]
+                        if (
+                            point_cloud.shape[0]
+                            < self.config.point_cloud_obs.num_pointcloud_samples
+                        ):
+                            # Even spacing uses rejection sampling, as a result it may return less points than requested
+                            # we add the extra points by randomly sampling the mesh surface again
+                            missing_points = (
+                                self.config.point_cloud_obs.num_pointcloud_samples
+                                - point_cloud.shape[0]
+                            )
+                            extra_points = trimesh.sample.sample_surface(
+                                mesh, missing_points
+                            )[0]
+                            point_cloud = np.concatenate(
+                                [point_cloud, extra_points], axis=0
+                            )
                     elif object_spawn_info.object_path.endswith(".urdf"):
                         import xml.etree.ElementTree as ET
 
@@ -756,6 +764,46 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
                                         m_y = -w_y / 2
                                         m_z = -w_z / 2
                                         has_size = True
+                        # Generate point cloud for URDF box
+                        points_per_dim = int(
+                            np.ceil(
+                                self.config.point_cloud_obs.num_pointcloud_samples
+                                ** (1 / 3)
+                            )
+                        )
+                        x = torch.linspace(m_x, m_x + w_x, points_per_dim)
+                        y = torch.linspace(m_y, m_y + w_y, points_per_dim)
+                        z = torch.linspace(m_z, m_z + w_z, points_per_dim)
+                        xx, yy, zz = torch.meshgrid(x, y, z, indexing="ij")
+                        point_cloud = torch.stack(
+                            [xx.flatten(), yy.flatten(), zz.flatten()], dim=1
+                        )
+
+                        # Randomly select exactly 64 points if we have more
+                        if (
+                            point_cloud.shape[0]
+                            > self.config.point_cloud_obs.num_pointcloud_samples
+                        ):
+                            indices = torch.randperm(point_cloud.shape[0])[
+                                : self.config.point_cloud_obs.num_pointcloud_samples
+                            ]
+                            point_cloud = point_cloud[indices]
+                        elif (
+                            point_cloud.shape[0]
+                            < self.config.point_cloud_obs.num_pointcloud_samples
+                        ):
+                            # If we have less than 64 points, duplicate some randomly
+                            extra_indices = torch.randint(
+                                0,
+                                point_cloud.shape[0],
+                                (
+                                    self.config.point_cloud_obs.num_pointcloud_samples
+                                    - point_cloud.shape[0],
+                                ),
+                            )
+                            point_cloud = torch.cat(
+                                [point_cloud, point_cloud[extra_indices]], dim=0
+                            )
                         assert (
                             has_size
                         ), f"URDF {object_spawn_info.object_path} must provide size parameters."
@@ -778,6 +826,17 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
                             dtype=torch.float,
                         )
                     )
+                    tensor_pointcloud = torch.tensor(
+                        point_cloud, device=self.device, dtype=torch.float
+                    )
+                    assert tensor_pointcloud.shape == (
+                        self.config.point_cloud_obs.num_pointcloud_samples,
+                        3,
+                    ), f"Expected shape ({self.config.point_cloud_obs.num_pointcloud_samples}, 3), got {tensor_pointcloud.shape}"
+                    if self.config.point_cloud_obs.enabled:
+                        self.object_obs_cb.add_initial_object_pointcloud(
+                            tensor_pointcloud
+                        )
 
                     # Use offsets from spawn_info for object_root_states_offsets
                     translation_offset = self.scene_lib.object_translation_offsets[
@@ -790,166 +849,174 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
                             [
                                 translation_offset,
                                 rotation_offset,
-                                torch.tensor(
-                                    [self.config.object_types.index(object_category)],
-                                    device=self.device,
-                                    dtype=torch.float,
-                                ),
                             ]
                         )
                     )
 
-                    scale = 2.0
-                    heightmap_path = osp.join(
-                        os.path.dirname(object_spawn_info.object_path),
-                        f"{object_name}_{scale}_{self.terrain.config.horizontal_scale}.pt",
-                    )
-                    if osp.exists(heightmap_path):
-                        heightmap = torch.load(heightmap_path)
-                    else:
-                        print(
-                            "Creating object heightmap for object {} at scale {}".format(
-                                object_name, scale
+                    if object_spawn_info.object_options.participates_in_heightmap:
+                        scale = 2.0
+                        heightmap_path = osp.join(
+                            os.path.dirname(object_spawn_info.object_path),
+                            f"{object_name}_{scale}_{self.terrain.config.horizontal_scale}.pt",
+                        )
+                        if osp.exists(heightmap_path):
+                            heightmap = torch.load(heightmap_path)
+                        else:
+                            print(
+                                "Creating object heightmap for object {} at scale {}".format(
+                                    object_name, scale
+                                )
                             )
-                        )
-                        heightmap = torch.tensor(
-                            get_object_heightmap(
-                                mesh,
-                                dim_x=int(
-                                    np.ceil(
-                                        w_x
-                                        / (self.terrain.config.horizontal_scale / scale)
-                                    )
+                            heightmap = torch.tensor(
+                                get_object_heightmap(
+                                    mesh,
+                                    dim_x=int(
+                                        np.ceil(
+                                            w_x
+                                            / (
+                                                self.terrain.config.horizontal_scale
+                                                / scale
+                                            )
+                                        )
+                                    ),
+                                    dim_y=int(
+                                        np.ceil(
+                                            w_y
+                                            / (
+                                                self.terrain.config.horizontal_scale
+                                                / scale
+                                            )
+                                        )
+                                    ),
                                 ),
-                                dim_y=int(
-                                    np.ceil(
-                                        w_y
-                                        / (self.terrain.config.horizontal_scale / scale)
-                                    )
-                                ),
-                            ),
-                            dtype=torch.float,
-                        )
-                        torch.save(heightmap, heightmap_path)
+                                dtype=torch.float,
+                            )
+                            torch.save(heightmap, heightmap_path)
 
-                    heightmap = heightmap.to(self.device)
+                        heightmap = heightmap.to(self.device)
 
-                    # 1. Create a grid for the object in global coordinates --> each cell has the global coordinates of the center of that cell.
-                    # 2. Do the same for the heightmap.
-                    # 3. Go cell by cell in the heightmap, where the object resides.
-                    # 3.1. Find the appropriate cells in the object grid, and perform bilinear interpolation to get the height at that point.
+                        # 1. Create a grid for the object in global coordinates --> each cell has the global coordinates of the center of that cell.
+                        # 2. Do the same for the heightmap.
+                        # 3. Go cell by cell in the heightmap, where the object resides.
+                        # 3.1. Find the appropriate cells in the object grid, and perform bilinear interpolation to get the height at that point.
 
-                    object_min_coords = [
-                        (
-                            scene_offset[0]
-                            + initial_object_pose.translations[0, 0]
-                            + m_x
-                        ).item(),
-                        (
-                            scene_offset[1]
-                            + initial_object_pose.translations[0, 1]
-                            + m_y
-                        ).item(),
-                    ]
-                    object_max_coords = [
-                        object_min_coords[0] + w_x,
-                        object_min_coords[1] + w_y,
-                    ]
-                    object_min_cell_idx = [
-                        int(np.floor(coord / self.terrain.config.horizontal_scale))
-                        for coord in object_min_coords
-                    ]
-                    object_max_cell_idx = [
-                        int(np.ceil(coord / self.terrain.config.horizontal_scale))
-                        for coord in object_max_coords
-                    ]
+                        object_min_coords = [
+                            (
+                                scene_offset[0]
+                                + initial_object_pose.translations[0, 0]
+                                + m_x
+                            ).item(),
+                            (
+                                scene_offset[1]
+                                + initial_object_pose.translations[0, 1]
+                                + m_y
+                            ).item(),
+                        ]
+                        object_max_coords = [
+                            object_min_coords[0] + w_x,
+                            object_min_coords[1] + w_y,
+                        ]
+                        object_min_cell_idx = [
+                            int(np.floor(coord / self.terrain.config.horizontal_scale))
+                            for coord in object_min_coords
+                        ]
+                        object_max_cell_idx = [
+                            int(np.ceil(coord / self.terrain.config.horizontal_scale))
+                            for coord in object_max_coords
+                        ]
 
-                    for x in range(
-                        object_min_cell_idx[0] - 1, object_max_cell_idx[0] + 1
-                    ):
-                        for y in range(
-                            object_min_cell_idx[1] - 1, object_max_cell_idx[1] + 1
+                        for x in range(
+                            object_min_cell_idx[0] - 1, object_max_cell_idx[0] + 1
                         ):
-                            # get coordinates in object-relative frame, remove object offset
-                            object_coords = [
-                                x * self.terrain.config.horizontal_scale,
-                                y * self.terrain.config.horizontal_scale,
-                            ]
-                            object_coords = [
-                                object_coords[0]
-                                - (
-                                    scene_offset[0]
-                                    + initial_object_pose.translations[0, 0]
-                                ).item(),
-                                object_coords[1]
-                                - (
-                                    scene_offset[1]
-                                    + initial_object_pose.translations[0, 1]
-                                ).item(),
-                            ]
-                            object_coords = [
-                                object_coords[0] - m_x,
-                                object_coords[1] - m_y,
-                            ]
+                            for y in range(
+                                object_min_cell_idx[1] - 1, object_max_cell_idx[1] + 1
+                            ):
+                                # get coordinates in object-relative frame, remove object offset
+                                object_coords = [
+                                    x * self.terrain.config.horizontal_scale,
+                                    y * self.terrain.config.horizontal_scale,
+                                ]
+                                object_coords = [
+                                    object_coords[0]
+                                    - (
+                                        scene_offset[0]
+                                        + initial_object_pose.translations[0, 0]
+                                    ).item(),
+                                    object_coords[1]
+                                    - (
+                                        scene_offset[1]
+                                        + initial_object_pose.translations[0, 1]
+                                    ).item(),
+                                ]
+                                object_coords = [
+                                    object_coords[0] - m_x,
+                                    object_coords[1] - m_y,
+                                ]
 
-                            object_floor_idx = [
-                                int(
-                                    np.floor(
-                                        object_coords[0]
-                                        / (self.terrain.config.horizontal_scale / scale)
-                                    )
-                                ),
-                                int(
-                                    np.floor(
-                                        object_coords[1]
-                                        / (self.terrain.config.horizontal_scale / scale)
-                                    )
-                                ),
-                            ]
+                                object_floor_idx = [
+                                    int(
+                                        np.floor(
+                                            object_coords[0]
+                                            / (
+                                                self.terrain.config.horizontal_scale
+                                                / scale
+                                            )
+                                        )
+                                    ),
+                                    int(
+                                        np.floor(
+                                            object_coords[1]
+                                            / (
+                                                self.terrain.config.horizontal_scale
+                                                / scale
+                                            )
+                                        )
+                                    ),
+                                ]
 
-                            # TODO: For now, pick max height since there's some issue with billinear due to discretization size
+                                # TODO: For now, pick max height since there's some issue with billinear due to discretization size
 
-                            # perform billinear interpolation, if out of bounds interpolate with 0
-                            x1 = object_floor_idx[0]
-                            x2 = x1 + 1
-                            y1 = object_floor_idx[1]
-                            y2 = y1 + 1
-                            # xm = object_coords[0] / (
-                            #     self.terrain.config.horizontal_scale / scale
-                            # )
-                            # ym = object_coords[1] / (
-                            #     self.terrain.config.horizontal_scale / scale
-                            # )
+                                # perform billinear interpolation, if out of bounds interpolate with 0
+                                x1 = object_floor_idx[0]
+                                x2 = x1 + 1
+                                y1 = object_floor_idx[1]
+                                y2 = y1 + 1
+                                # xm = object_coords[0] / (
+                                #     self.terrain.config.horizontal_scale / scale
+                                # )
+                                # ym = object_coords[1] / (
+                                #     self.terrain.config.horizontal_scale / scale
+                                # )
 
-                            x1y1 = (
-                                heightmap[x1, y1]
-                                if 0 <= x1 < heightmap.shape[0]
-                                and 0 <= y1 < heightmap.shape[1]
-                                else 0
-                            )
-                            x2y1 = (
-                                heightmap[x2, y1]
-                                if 0 <= x2 < heightmap.shape[0]
-                                and 0 <= y1 < heightmap.shape[1]
-                                else 0
-                            )
-                            x1y2 = (
-                                heightmap[x1, y2]
-                                if 0 <= x1 < heightmap.shape[0]
-                                and 0 <= y2 < heightmap.shape[1]
-                                else 0
-                            )
-                            x2y2 = (
-                                heightmap[x2, y2]
-                                if 0 <= x2 < heightmap.shape[0]
-                                and 0 <= y2 < heightmap.shape[1]
-                                else 0
-                            )
+                                x1y1 = (
+                                    heightmap[x1, y1]
+                                    if 0 <= x1 < heightmap.shape[0]
+                                    and 0 <= y1 < heightmap.shape[1]
+                                    else 0
+                                )
+                                x2y1 = (
+                                    heightmap[x2, y1]
+                                    if 0 <= x2 < heightmap.shape[0]
+                                    and 0 <= y1 < heightmap.shape[1]
+                                    else 0
+                                )
+                                x1y2 = (
+                                    heightmap[x1, y2]
+                                    if 0 <= x1 < heightmap.shape[0]
+                                    and 0 <= y2 < heightmap.shape[1]
+                                    else 0
+                                )
+                                x2y2 = (
+                                    heightmap[x2, y2]
+                                    if 0 <= x2 < heightmap.shape[0]
+                                    and 0 <= y2 < heightmap.shape[1]
+                                    else 0
+                                )
 
-                            # height_point = (x2 - xm) * (y2 - ym) * x1y1 + (xm - x1) * (y2 - ym) * x2y1 + (x2 - xm) * (ym - y1) * x1y2 + (xm - x1) * (ym - y1) * x2y2
-                            height_point = max(x1y1, x2y1, x1y2, x2y2)
+                                # height_point = (x2 - xm) * (y2 - ym) * x1y1 + (xm - x1) * (y2 - ym) * x2y1 + (x2 - xm) * (ym - y1) * x1y2 + (xm - x1) * (ym - y1) * x2y2
+                                height_point = max(x1y1, x2y1, x1y2, x2y2)
 
-                            self.height_samples[x, y] += height_point
+                                self.terrain_obs_cb.height_samples[x, y] += height_point
 
     ###############################################################
     # Getters
@@ -1240,7 +1307,7 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
             "rb_ang_vel": rb_ang_vel.clone(),
         }
 
-    def set_object_state(self, object_ids, positions, rotations):
+    def set_object_state(self, object_ids, obj_pos, obj_rot):
         """
         Set the state of specified objects in the environment.
 
@@ -1250,8 +1317,8 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
 
         Args:
             object_ids (Tensor): The IDs of the objects to update.
-            positions (Tensor): The new positions for the objects, relative to their respective scenes.
-            rotations (Tensor): The new rotations for the objects.
+            obj_pos (Tensor): The new positions for the objects, relative to their respective scenes.
+            obj_rot (Tensor): The new rotations for the objects.
 
         Note:
             - The input positions are relative to the scene, not global coordinates.
@@ -1264,13 +1331,15 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
 
         # Calculate terrain height at object positions
         # Note: positions are relative to the scene, so we add scene_position for global coordinates
-        terrain_height = self.get_ground_heights((positions + scene_position)[..., :2])
+        terrain_height = self.terrain_obs_cb.get_ground_heights(
+            (obj_pos + scene_position)[..., :2]
+        )
 
         # Update object root states
         # Convert scene-relative positions to global positions
-        self.object_root_states[object_ids, 0:3] = positions + scene_position
+        self.object_root_states[object_ids, 0:3] = obj_pos + scene_position
         self.object_root_states[object_ids, 2] += terrain_height.view(-1)
-        self.object_root_states[object_ids, 3:7] = rotations
+        self.object_root_states[object_ids, 3:7] = obj_rot
         self.object_root_states[object_ids, 7:10] = 0  # Set velocity to zero
         self.object_root_states[object_ids, 10:13] = 0  # Set angular velocity to zero
 
@@ -1300,14 +1369,14 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
                 )
 
     def setup_character_props(self):
-        self.dof_body_ids = self.config.robot.dfs_dof_body_ids
+        self.dof_body_ids = self.config.robot.isaacgym_dof_body_ids
         self.dof_offsets = []
         previous_dof_name = "null"
-        for dof_offset, dof_name in enumerate(self.config.robot.dfs_dof_names):
+        for dof_offset, dof_name in enumerate(self.config.robot.isaacgym_dof_names):
             if dof_name[:-2] != previous_dof_name:  # remove the "_x/y/z"
                 previous_dof_name = dof_name[:-2]
                 self.dof_offsets.append(dof_offset)
-        self.dof_offsets.append(len(self.config.robot.dfs_dof_names))
+        self.dof_offsets.append(len(self.config.robot.isaacgym_dof_names))
         self.dof_obs_size = self.config.robot.dof_obs_size
         self.num_act = self.config.robot.number_of_actions
 
@@ -1620,17 +1689,3 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
     ###############################################################
     # Helpers
     ###############################################################
-    def instantiate_motion_lib(self):
-        spawned_scenes = None
-        if self.scene_lib is not None:
-            spawned_scenes = self.scene_lib.get_scene_ids()
-        motion_lib: MotionLib = instantiate(
-            self.config.motion_lib,
-            dof_body_ids=self.dof_body_ids,
-            dof_offsets=self.dof_offsets,
-            key_body_ids=self.key_body_ids,
-            device=self.device,
-            spawned_scene_ids=spawned_scenes,
-            skeleton_tree=None,
-        )
-        return motion_lib

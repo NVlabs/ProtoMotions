@@ -1,0 +1,3 @@
+a squatting person holds their left arm out.#a/DET squat/VERB person/NOUN hold/VERB their/DET left/ADJ arm/NOUN out/ADP#0.0#0.0
+the man is wiping his arms#the/DET man/NOUN is/AUX wipe/VERB his/DET arm/NOUN#0.0#0.0
+a man raises both arms, drops his right, waits a while, then drops his left.#a/DET man/NOUN raise/VERB both/DET arm/NOUN drop/VERB his/DET right/NOUN wait/VERB a/DET while/NOUN then/ADV drop/VERB his/DET left/NOUN#0.0#0.0

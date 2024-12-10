@@ -39,8 +39,8 @@ from phys_anim.envs.masked_mimic.tasks.reach.common import BaseMaskedMimicReach
 
 
 class MaskedMimicReachHumanoid(BaseMaskedMimicReach, MaskedMimicTaskHumanoid):
-    def __init__(self, config, device: torch.device):
-        super().__init__(config=config, device=device)
+    def __init__(self, config, device: torch.device, *args, **kwargs):
+        super().__init__(config=config, device=device, *args, **kwargs)
 
         reach_body_name = self.config.reach_params.reach_body_name
         self.reach_body_id = self.build_body_ids_tensor([reach_body_name]).item()

@@ -1,0 +1,3 @@
+a person holds their right leg with their right arm and leans forward, then puts their leg down#a/DET person/NOUN hold/VERB their/DET right/ADJ leg/NOUN with/ADP their/DET right/ADJ arm/NOUN and/CCONJ lean/VERB forward/ADV then/ADV put/VERB their/DET leg/NOUN down/ADP#0.0#0.0
+a person steps forward then picks up their right leg by their foot then they turn it slightly counter counterclockwise#a/DET person/NOUN step/VERB forward/ADV then/ADV pick/VERB up/ADP their/DET right/ADJ leg/NOUN by/ADP their/DET foot/NOUN then/ADV they/PRON turn/VERB it/PRON slightly/ADV counter/VERB counterclockwise/NOUN#0.0#0.0
+the person uses his right hand to stretch his right leg#the/DET person/NOUN use/VERB his/DET right/ADJ hand/NOUN to/PART stretch/VERB his/DET right/ADJ leg/NOUN#0.0#0.0

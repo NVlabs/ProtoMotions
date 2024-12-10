@@ -1,0 +1,3 @@
+a person turns to his right and looks around.#a/DET person/NOUN turn/VERB to/ADP his/DET right/NOUN and/CCONJ look/VERB around/ADV#0.0#0.0
+the body shifts weight from left foot to right partially unbalanced looking back.#the/DET body/NOUN shift/VERB weight/NOUN from/ADP left/ADJ foot/NOUN to/ADP right/ADV partially/ADV unbalanced/ADJ look/VERB back/ADV#0.0#0.0
+a person pivots on their left foot and looks to their right, turning their body.#a/DET person/NOUN pivot/VERB on/ADP their/DET left/ADJ foot/NOUN and/CCONJ look/VERB to/ADP their/DET right/NOUN turn/VERB their/DET body/NOUN#0.0#0.0

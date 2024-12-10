@@ -1,0 +1,18 @@
+# @package _global_
+
+# Robot
+backbone: isaaclab
+
+robot:
+  asset:
+    asset_file_name: "usd/${robot.asset.robot_type}.usda"
+
+# Environment config
+env:
+  config:
+    simulator:
+      sim:
+        physx:
+          gpu_found_lost_pairs_capacity: ${eval:2**21}
+          gpu_max_rigid_contact_count: ${eval:2**23}
+          gpu_found_lost_aggregate_pairs_capacity: ${eval:2**25}

@@ -1,0 +1,3 @@
+this person appears to play tennis.#this/DET person/NOUN appear/VERB to/PART play/VERB tennis/NOUN#0.0#0.0
+a person lefts forward with their left leg, then throws something with their right hand.#a/DET person/NOUN left/VERB forward/ADV with/ADP their/DET left/ADJ leg/NOUN then/ADV throw/VERB something/PRON with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0
+a person swings their right arm then stands still.#a/DET person/NOUN swing/VERB their/DET right/ADJ arm/NOUN then/ADV stand/VERB still/ADV#0.0#0.0

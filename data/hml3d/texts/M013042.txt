@@ -1,0 +1,3 @@
+someone lifts a weight-like object with their right hand.#someone/PRON lift/VERB a/DET weightlike/ADJ object/NOUN with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0
+a person did something with left hand and grabbed something right hand#a/DET person/NOUN did/AUX something/PRON with/ADP left/ADJ hand/NOUN and/CCONJ grab/VERB something/PRON right/ADJ hand/NOUN#0.0#0.0
+a person lifts up their right arm once.#a/DET person/NOUN lift/VERB up/ADP their/DET right/ADJ arm/NOUN once/ADV#0.0#0.0

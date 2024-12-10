@@ -1,0 +1,3 @@
+man reach up with right hand threw arm outwardly and drew back.#man/NOUN reach/VERB up/ADP with/ADP right/ADJ hand/NOUN throw/VERB arm/NOUN outwardly/ADV and/CCONJ draw/VERB back/ADV#0.0#0.0
+a person raises their right hand, steps forward onto their right foot, and slaps with their right hand.#a/DET person/NOUN raise/VERB their/DET right/ADJ hand/NOUN step/VERB forward/ADV onto/ADP their/DET right/ADJ foot/NOUN and/CCONJ slap/VERB with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0
+the person is playing tennis with his right arm.#the/DET person/NOUN is/AUX play/VERB tennis/NOUN with/ADP his/DET right/ADJ arm/NOUN#0.0#0.0

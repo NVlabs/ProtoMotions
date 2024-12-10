@@ -10,6 +10,5 @@ defaults:
   - /opt/mimic/global_tracking
   - /opt/mimic/early_termination_tracking_err
   - /opt/mimic/dynamic_sampling
-  - /opt/legged_robot
 
 experiment_name: h1_full_body_tracker

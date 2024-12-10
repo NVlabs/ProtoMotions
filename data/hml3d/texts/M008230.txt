@@ -1,0 +1,3 @@
+a person jumps to the left side.#a/DET person/NOUN jump/VERB to/ADP the/DET left/ADJ side/NOUN#0.0#0.0
+a person facing forward jumps sideways to the right.#a/DET person/NOUN face/VERB forward/ADV jumps/PROPN sideways/ADV to/ADP the/DET right/NOUN#0.0#0.0
+jumping to the side.#jump/VERB to/ADP the/DET side/NOUN#0.0#0.0

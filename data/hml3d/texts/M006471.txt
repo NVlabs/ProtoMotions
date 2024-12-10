@@ -1,0 +1,3 @@
+a person jumps counterclockwise, then counterclockwise again at 90 degrees, and then clockwise circle.#a/DET person/NOUN jump/VERB counterclockwise/NOUN then/ADV counterclockwise/VERB again/ADV at/ADP degree/NOUN and/CCONJ then/ADV clockwise/VERB circle/NOUN#1.0#10.0
+person does full legs together step then repeats jumping side to left side three times in a circle#person/NOUN does/AUX full/ADJ leg/NOUN together/ADV step/NOUN then/ADV repeat/VERB jump/VERB side/NOUN to/ADP left/ADJ side/NOUN three/NUM time/NOUN in/ADP a/DET circle/NOUN#0.0#0.0
+a person jumps twisting to the left.#a/DET person/NOUN jump/VERB twist/VERB to/ADP the/DET left/NOUN#0.0#0.0

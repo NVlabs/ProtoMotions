@@ -1,0 +1,3 @@
+a person puts his left hand forward.#a/DET person/NOUN put/VERB his/DET left/ADJ hand/NOUN forward/ADV#0.0#0.0
+moving the left  hand on left side.#move/VERB the/DET left/ADJ hand/NOUN on/ADP left/ADJ side/NOUN#0.0#0.0
+a person opens up a sliding door.#a/DET person/NOUN open/VERB up/ADP a/DET slide/VERB door/NOUN#0.0#0.0

@@ -1,0 +1,3 @@
+a person is drinking from a glass in their left hand#a/DET person/NOUN is/AUX drink/VERB from/ADP a/DET glass/NOUN in/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
+a figure has its right arm raised to near its head as though to hear#a/DET figure/NOUN has/AUX its/DET right/ADJ arm/NOUN raise/VERB to/ADP near/SCONJ its/DET head/NOUN as/SCONJ though/ADV to/PART hear/VERB#0.0#0.0
+a person drinks an object with his left hand#a/DET person/NOUN drink/VERB an/DET object/NOUN with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0

@@ -1,0 +1,3 @@
+the person is moving something.#the/DET person/NOUN is/AUX move/VERB something/PRON#0.0#0.0
+a person uses both of his hands and moves them side to side, then looks around and walks to the left#a/DET person/NOUN use/VERB both/DET of/ADP his/DET hand/NOUN and/CCONJ move/VERB them/PRON side/NOUN to/PART side/VERB then/ADV look/VERB around/ADV and/CCONJ walk/VERB to/ADP the/DET left/NOUN#0.0#0.0
+the person is moving his arms right to left like a monster.#the/DET person/NOUN is/AUX move/VERB his/DET arm/NOUN right/ADJ to/PART left/VERB like/INTJ a/DET monster/NOUN#0.0#0.0

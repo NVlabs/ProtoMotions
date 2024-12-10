@@ -1,0 +1,3 @@
+picking up invisible firgure from right to left#pick/VERB up/ADP invisible/ADJ firgure/NOUN from/ADP right/NOUN to/ADP left/ADV#0.0#0.0
+person lifts an object then atremots to secure and steady it, then sets it down on opposite side.#person/NOUN lift/VERB an/DET object/NOUN then/ADV atremot/VERB to/PART secure/VERB and/CCONJ steady/ADJ it/PRON then/ADV set/VERB it/PRON down/ADP on/ADP opposite/ADJ side/NOUN#0.0#0.0
+a person lifts a box and moves it from right to left.#a/DET person/NOUN lift/VERB a/DET box/NOUN and/CCONJ move/VERB it/PRON from/ADP right/NOUN to/ADP left/NOUN#0.0#0.0

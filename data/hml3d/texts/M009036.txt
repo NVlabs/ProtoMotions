@@ -1,0 +1,3 @@
+a person picks up an item with their left arm and looks at it.#a/DET person/NOUN pick/VERB up/ADP an/DET item/NOUN with/ADP their/DET left/ADJ arm/NOUN and/CCONJ look/VERB at/ADP it/PRON#0.0#0.0
+person appears to be holding something takes a few steps back and then push it towards something low with their left hand.#person/NOUN appear/VERB to/PART be/AUX hold/VERB something/PRON take/VERB a/DET few/ADJ step/NOUN back/ADV and/CCONJ then/ADV push/VERB it/PRON towards/ADP something/PRON low/ADJ with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
+a person grabbed something with left hand, and pull it down with left hand#a/DET person/NOUN grab/VERB something/PRON with/ADP left/ADJ hand/NOUN and/CCONJ pull/VERB it/PRON down/ADP with/ADP left/ADJ hand/NOUN#0.0#0.0

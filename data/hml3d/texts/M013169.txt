@@ -1,0 +1,3 @@
+the man walks in a clockwise circle.#the/DET man/NOUN walk/VERB in/ADP a/DET clockwise/ADJ circle/NOUN#0.0#0.0
+this person walks counterclockwise one and half times.#this/DET person/NOUN walk/VERB counterclockwise/VERB one/NUM and/CCONJ half/NOUN time/NOUN#0.0#0.0
+a figure casually walks in a circular pattern.#a/DET figure/NOUN casually/ADV walk/VERB in/ADP a/DET circular/ADJ pattern/NOUN#0.0#0.0

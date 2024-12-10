@@ -1,0 +1,3 @@
+the person standing with their arms out at their side.#the/DET person/NOUN stand/VERB with/ADP their/DET arm/NOUN out/ADV at/ADP their/DET side/NOUN#0.0#0.0
+with their left hand, they raise it to somewhat press to their right, then their left, and then up and down.#with/ADP their/DET left/ADJ hand/NOUN they/PRON raise/VERB it/PRON to/PART somewhat/ADV press/VERB to/ADP their/DET right/NOUN then/ADV their/DET left/NOUN and/CCONJ then/ADV up/ADP and/CCONJ down/ADV#0.0#0.0
+a person drops his hands to his side and moves his left hand.#a/DET person/NOUN drop/VERB his/DET hand/NOUN to/ADP his/DET side/NOUN and/CCONJ move/VERB his/DET left/ADJ hand/NOUN#0.0#0.0

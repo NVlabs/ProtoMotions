@@ -43,8 +43,8 @@ else:
 
 
 class BaseMaskedMimicSpeed(MaskedMimicSpeedHumanoid):  # type: ignore[misc]
-    def __init__(self, config, device: torch.device):
-        super().__init__(config=config, device=device)
+    def __init__(self, config, device: torch.device, *args, **kwargs):
+        super().__init__(config=config, device=device, *args, **kwargs)
 
         self._heading_change_steps = torch.zeros(
             [self.num_envs], device=self.device, dtype=torch.int64
@@ -190,10 +190,10 @@ class BaseMaskedMimicSpeed(MaskedMimicSpeedHumanoid):  # type: ignore[misc]
         self._last_length[:] = self.progress_buf[:]
 
         if len(self._failures) > 0:
-            self.last_other_rewards["reach_success"] = 1.0 - sum(self._failures) / len(
+            self.mimic_info_dict["reach_success"] = 1.0 - sum(self._failures) / len(
                 self._failures
             )
-            self.last_other_rewards["reach_distance"] = sum(self._distances) / len(
+            self.mimic_info_dict["reach_distance"] = sum(self._distances) / len(
                 self._distances
             )
 
@@ -284,10 +284,9 @@ class BaseMaskedMimicSpeed(MaskedMimicSpeedHumanoid):  # type: ignore[misc]
         current_state = self.get_bodies_state()
         cur_gt, cur_gr = current_state.body_pos, current_state.body_rot
         # First remove the height based on the current terrain, then remove the offset to get back to the ground-truth data position
-        cur_gt[:, :, -1:] -= self.get_ground_heights(cur_gt[:, 0, :2]).view(
+        cur_gt[:, :, -1:] -= self.terrain_obs_cb.ground_heights.view(
             self.num_envs, 1, 1
         )
-        # cur_gt[..., :2] -= self.respawn_offset_relative_to_data.clone()[..., :2].view(self.num_envs, 1, 2)
 
         # override to set the target root parameters
         reshaped_target_pos = flat_target_pos.reshape(

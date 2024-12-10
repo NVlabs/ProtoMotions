@@ -1,0 +1,3 @@
+person looks like they kick something with both legs 2 times#person/NOUN look/VERB like/SCONJ they/PRON kick/VERB something/PRON with/ADP both/DET leg/NOUN time/NOUN#0.0#0.0
+a person kicks twice with his right foot, then twice with his left.#a/DET person/NOUN kick/VERB twice/ADV with/ADP his/DET right/ADJ foot/NOUN then/ADV twice/ADV with/ADP his/DET left/NOUN#0.0#0.0
+a person kicks low with the right foot then raises right knee up and down then low kick with the left foot.#a/DET person/NOUN kick/VERB low/ADJ with/ADP the/DET right/ADJ foot/NOUN then/ADV raise/VERB right/ADJ knee/NOUN up/ADP and/CCONJ down/ADP then/ADV low/ADJ kick/NOUN with/ADP the/DET left/ADJ foot/NOUN#0.0#0.0

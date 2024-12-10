@@ -1,0 +1,3 @@
+a person walks side by side horizontally.#a/DET person/NOUN walk/VERB side/NOUN by/ADP side/NOUN horizontally/ADV#0.0#0.0
+someone shuffling their feet to the left, then back right.#someone/PRON shuffle/VERB their/DET foot/NOUN to/ADP the/DET left/NOUN then/ADV back/ADV right/ADV#0.0#0.0
+a person strafes to the viewer's right (the person's left) for six paces, then strafes to the viewer's left for three paces, partially retracing their steps.#a/DET person/NOUN strafe/VERB to/ADP the/DET viewer/NOUN right/NOUN the/DET person/NOUN left/NOUN for/ADP six/NUM pace/NOUN then/ADV strafe/VERB to/ADP the/DET viewer/NOUN left/VERB for/ADP three/NUM pace/NOUN partially/ADV retrace/VERB their/DET step/NOUN#0.0#0.0

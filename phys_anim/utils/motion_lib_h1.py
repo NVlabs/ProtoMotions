@@ -48,7 +48,7 @@ class H1_MotionLib(MotionLib):
         w_last: bool = True,
         create_text_embeddings: bool = False,
         spawned_scene_ids: List[str] = None,
-        fix_motion_heights: bool = False,
+        fix_motion_heights: bool = True,
         skeleton_tree: Any = None,
     ):
 

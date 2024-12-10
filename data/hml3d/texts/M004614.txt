@@ -1,0 +1,3 @@
+character crotches down and walk forward a few steps. reaches right hand behind him and thrn rubs head with left hand.#character/NOUN crotche/VERB down/ADP and/CCONJ walk/VERB forward/ADV a/DET few/ADJ step/NOUN reach/VERB right/ADJ hand/NOUN behind/ADP him/PRON and/CCONJ thrn/PROPN rub/VERB head/NOUN with/ADP left/ADJ hand/NOUN#1.0#10.0
+a person is looking for something using their left arm and squatting over#a/DET person/NOUN is/AUX look/VERB for/ADP something/PRON use/VERB their/DET left/ADJ arm/NOUN and/CCONJ squat/VERB over/ADP#0.0#0.0
+someone crouches in conspiratorially before pointing and looking off to their right.#someone/PRON crouch/VERB in/ADP conspiratorially/ADV before/ADP point/VERB and/CCONJ look/VERB off/ADP to/ADP their/DET right/NOUN#0.0#0.0

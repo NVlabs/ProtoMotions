@@ -1,0 +1,3 @@
+moving the left leg with balance of right leg.#move/VERB the/DET left/ADJ leg/NOUN with/ADP balance/NOUN of/ADP right/ADJ leg/NOUN#0.0#0.0
+a person balances shakily on her right foot, one hand up and one out to the side, while her left leg moves back and forth and around in an effort to keep balanced.#a/DET person/NOUN balance/VERB shakily/ADV on/ADP her/DET right/ADJ foot/NOUN one/NUM hand/NOUN up/ADP and/CCONJ one/NUM out/ADP to/ADP the/DET side/NOUN while/SCONJ her/DET left/VERB leg/NOUN move/VERB back/ADV and/CCONJ forth/ADV and/CCONJ around/ADV in/ADP an/DET effort/NOUN to/PART keep/VERB balanced/ADJ#0.0#0.0
+the person is doing ballet poses.#the/DET person/NOUN is/AUX do/VERB ballet/NOUN pose/NOUN#0.0#0.0

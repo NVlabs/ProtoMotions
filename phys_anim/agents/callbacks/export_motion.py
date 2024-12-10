@@ -116,9 +116,11 @@ class ExportMotion(RL_EvalCallback):
                     object_center_xy = self.env.object_root_states[object_id, :2].view(
                         1, 2
                     )
-                    terrain_height_below_object = self.env.get_ground_heights(
-                        object_center_xy
-                    ).view(1)
+                    terrain_height_below_object = (
+                        self.env.terrain_obs_cb.get_ground_heights(
+                            object_center_xy
+                        ).view(1)
+                    )
                     object_bbs[:, -1] += terrain_height_below_object
 
                     object_info = {

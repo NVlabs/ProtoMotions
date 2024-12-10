@@ -1,0 +1,3 @@
+a person is stretching their right leg.#a/DET person/NOUN is/AUX stretch/VERB their/DET right/ADJ leg/NOUN#0.0#0.0
+a person lifts left leg behind head balancing on right foot.#a/DET person/NOUN lift/VERB left/VERB leg/NOUN behind/ADP head/NOUN balance/VERB on/ADP right/ADJ foot/NOUN#0.0#0.0
+a person balancing with their left leg, then sets their right leg back down.#a/DET person/NOUN balance/VERB with/ADP their/DET left/ADJ leg/NOUN then/ADV set/VERB their/DET right/ADJ leg/NOUN back/ADV down/ADV#0.0#0.0

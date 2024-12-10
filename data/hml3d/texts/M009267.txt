@@ -1,0 +1,3 @@
+walking side to side while moving hands.#walk/VERB side/NOUN to/PART side/VERB while/SCONJ move/VERB hand/NOUN#0.0#0.0
+a person steps to the left and shifts back and forward with their left hand.#a/DET person/NOUN step/VERB to/ADP the/DET left/NOUN and/CCONJ shift/NOUN back/ADV and/CCONJ forward/ADV with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
+a person washes windows#a/DET person/NOUN wash/VERB windows/PROPN#0.0#0.0

@@ -45,8 +45,8 @@ TAR_FACING_ACTOR_ID = 2
 
 
 class MaskedMimicSteeringHumanoid(BaseMaskedMimicSteering, MaskedMimicTaskHumanoid):  # type: ignore[misc]
-    def __init__(self, config, device: torch.device):
-        super().__init__(config=config, device=device)
+    def __init__(self, config, device: torch.device, *args, **kwargs):
+        super().__init__(config=config, device=device, *args, **kwargs)
 
         if not self.headless:
             self._build_marker_state_tensors()
@@ -163,7 +163,6 @@ class MaskedMimicSteeringHumanoid(BaseMaskedMimicSteering, MaskedMimicTaskHumano
         humanoid_root_pos = self.humanoid_root_states[..., :3].clone()
         self._marker_pos[..., 0:2] = humanoid_root_pos[..., :2] + self._tar_dir[:]
 
-        # height_below_marker = self.get_ground_heights(env_global_positions)
         height_below_marker = humanoid_root_pos[..., -1:]
         self._marker_pos[..., -1:] = height_below_marker
 

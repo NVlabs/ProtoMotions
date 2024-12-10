@@ -1,0 +1,3 @@
+a person is stepping to the left.#a/DET person/NOUN is/AUX step/VERB to/ADP the/DET left/NOUN#0.0#0.0
+a person steps to their left#a/DET person/NOUN step/VERB to/ADP their/DET left/NOUN#0.0#0.0
+person drags right leg to left hand side and moves left leg out to left as well#person/NOUN drag/VERB right/ADJ leg/NOUN to/ADP left/ADJ hand/NOUN side/NOUN and/CCONJ move/NOUN left/VERB leg/NOUN out/ADP to/ADP left/VERB as/ADV well/ADV#0.0#0.0

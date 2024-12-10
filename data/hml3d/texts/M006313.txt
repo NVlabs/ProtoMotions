@@ -1,0 +1,3 @@
+the person is boxing with their right hand.#the/DET person/NOUN is/AUX box/VERB with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0
+the person is making a swimming motion with it's left arm.#the/DET person/NOUN is/AUX make/VERB a/DET swimming/NOUN motion/NOUN with/ADP it/PRON left/VERB arm/NOUN#0.0#0.0
+the person raises its blue shoulder.#the/DET person/NOUN raise/VERB its/DET blue/ADJ shoulder/NOUN#0.0#0.0

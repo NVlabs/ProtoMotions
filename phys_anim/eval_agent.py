@@ -48,14 +48,10 @@ for arg in sys.argv:
             import isaacgym  # noqa: F401
 
             backbone = "isaacgym"
-        elif "isaacsim" in arg.split("=")[-1]:
-            from isaacsim import SimulationApp
+        elif "isaaclab" in arg.split("=")[-1]:
+            from omni.isaac.lab.app import AppLauncher
 
-            from phys_anim.envs.base_interface.isaacsim_utils.experiences import (
-                get_experience,
-            )
-
-            backbone = "isaacsim"
+            backbone = "isaaclab"
 
 from lightning.fabric import Fabric  # noqa: E402
 from utils.config_utils import *  # noqa: E402, F403
@@ -70,7 +66,7 @@ def main(override_config: OmegaConf):
     if override_config.checkpoint is not None:
         has_config = True
 
-        checkpoint = Path(override_config.checkpoint).resolve()
+        checkpoint = Path(override_config.checkpoint)
         config_path = checkpoint.parent / "config.yaml"
         if not config_path.exists():
             config_path = checkpoint.parent.parent / "config.yaml"
@@ -108,13 +104,14 @@ def main(override_config: OmegaConf):
     fabric: Fabric = instantiate(config.fabric)
     fabric.launch()
 
-    if backbone == "isaacsim":
-        experience = get_experience(config.headless, False)
-        simulation_app = SimulationApp(
-            {"headless": config.headless}, experience=experience
+    if backbone == "isaaclab":
+        app_launcher = AppLauncher({"headless": config.headless})
+        simulation_app = app_launcher.app
+        env = instantiate(
+            config.env, device=fabric.device, simulation_app=simulation_app
         )
-
-    env = instantiate(config.env, device=fabric.device)
+    else:
+        env = instantiate(config.env, device=fabric.device)
 
     algo: PPO = instantiate(config.algo, env=env, fabric=fabric)
     algo.setup()

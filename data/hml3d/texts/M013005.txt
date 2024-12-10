@@ -1,0 +1,3 @@
+a person  walks in a circular counter counterclockwise direction#a/DET person/NOUN walk/VERB in/ADP a/DET circular/ADJ counter/ADJ counterclockwise/NOUN direction/NOUN#0.0#0.0
+a person walks down and stands facing left.#a/DET person/NOUN walk/VERB down/ADV and/CCONJ stand/VERB face/VERB left/VERB#0.0#0.0
+a person walks, turnign to their left.#a/DET person/NOUN walk/VERB turnign/VERB to/ADP their/DET left/NOUN#0.0#0.0

@@ -1,0 +1,3 @@
+a person is walking around with one raised#a/DET person/NOUN is/AUX walk/VERB around/ADP with/ADP one/NUM raise/VERB#0.0#0.0
+a person walks to the left with their left hand holding something on their shoulder. they walk in an clockwise circle.#a/DET person/NOUN walk/VERB to/ADP the/DET left/NOUN with/ADP their/DET left/ADJ hand/NOUN hold/VERB something/PRON on/ADP their/DET shoulder/NOUN they/PRON walk/VERB in/ADP an/DET clockwise/ADJ circle/NOUN#0.0#0.0
+the person walks in a circle with its red arm raised.#the/DET person/NOUN walk/VERB in/ADP a/DET circle/NOUN with/ADP its/DET red/ADJ arm/NOUN raise/VERB#0.0#0.0

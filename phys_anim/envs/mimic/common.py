@@ -30,20 +30,16 @@ import math
 from typing import TYPE_CHECKING, Dict, Optional
 
 import torch
-import torch.nn.functional as F
 from torch import Tensor
 
 from isaac_utils import rotations, torch_utils
 from phys_anim.envs.mimic.mimic_utils import (
-    build_max_coords_target_poses,
-    build_max_coords_target_poses_future_rel,
-    build_max_coords_object_target_poses,
-    build_max_coords_object_target_poses_future_rel,
     dof_to_local,
     exp_tracking_reward,
 )
 from phys_anim.envs.humanoid.humanoid_utils import quat_diff_norm
 from phys_anim.envs.env_utils.general import StepTracker
+from phys_anim.envs.callbacks.mimic_obs import MimicObs
 
 if TYPE_CHECKING:
     from phys_anim.envs.mimic.isaacgym import MimicHumanoid
@@ -52,40 +48,21 @@ else:
 
 
 class BaseMimic(MimicHumanoid):  # type: ignore[misc]
-    def __init__(self, config, device: torch.device):
-        super().__init__(config, device)
-
-        self.reward_joint_weights = self.get_reward_joint_weights()
-
+    def __init__(self, config, device: torch.device, *args, **kwargs):
+        super().__init__(config, device, *args, **kwargs)
         # Used by the tl in eval.
         self.disable_reset_track = False
+        # Tracks the internal mimic metrics.
+        self.mimic_info_dict = {}
 
         # This mask is used to filter out motions we can't start from due to missing scenes.
         self.motion_sampling_mask = torch.zeros(
             self.motion_lib.num_sub_motions(), dtype=torch.bool, device=self.device
         )
 
-        self.mimic_phase = torch.zeros(
-            self.num_envs, 2, dtype=torch.float, device=self.device
-        )
-
-        if self.config.mimic_target_pose.enabled:
-            self.mimic_target_poses = torch.zeros(
-                self.num_envs,
-                self.config.mimic_target_pose.num_future_steps
-                * self.config.mimic_target_pose.num_obs_per_target_pose,
-                dtype=torch.float,
-                device=self.device,
-            )
-
-        if self.config.mimic_conditionable_bodies is not None:
-            self.mimic_conditionable_bodies_ids = self.build_body_ids_tensor(
-                self.config.mimic_conditionable_bodies
-            )
-        else:
-            self.mimic_conditionable_bodies_ids = torch.arange(
-                self.config.robot.num_bodies, dtype=torch.long, device=self.device
-            )
+        self.mimic_obs_cb = MimicObs(self.config, self)
+        self.mimic_phase = self.mimic_obs_cb.mimic_phase
+        self.mimic_target_poses = self.mimic_obs_cb.mimic_target_poses
 
         self.failed_due_bad_reward = torch.zeros(
             self.num_envs, dtype=torch.float, device=self.device
@@ -539,8 +516,10 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
         self.scene_ids[env_ids] = new_scenes
 
         if self.config.scene_lib is not None:
+            # Reset object IDs for the given environments
+            self.env_id_to_object_ids[env_ids] = -1
+
             for env_id, scene_id in zip(env_ids, new_scenes):
-                self.env_id_to_object_ids[env_id, :] = -1
                 object_mask = self.object_id_to_scene_id == scene_id
                 if object_mask.any():
                     object_ids = torch.where(object_mask)[0]
@@ -591,24 +570,19 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
             respawn_position[:, :2] - target_cur_root_pos[:, :2]
         )
 
-        if self.terrain is not None:
-            # Check if spawned on flat, for prioritized sampling
-            new_root_pos = (
-                respawn_position[..., :2].clone().reshape(env_ids.shape[0], 1, 2)
-            )
-            new_root_pos = (new_root_pos / self.terrain.horizontal_scale).long()
-            px = new_root_pos[:, :, 0].view(-1)
-            py = new_root_pos[:, :, 1].view(-1)
-            px = torch.clip(px, 0, self.height_samples.shape[0] - 2)
-            py = torch.clip(py, 0, self.height_samples.shape[1] - 2)
+        # Check if spawned on flat, for prioritized sampling
+        new_root_pos = respawn_position[..., :2].clone().reshape(env_ids.shape[0], 1, 2)
+        new_root_pos = (new_root_pos / self.terrain.horizontal_scale).long()
+        px = new_root_pos[:, :, 0].view(-1)
+        py = new_root_pos[:, :, 1].view(-1)
+        px = torch.clip(px, 0, self.terrain_obs_cb.height_samples.shape[0] - 2)
+        py = torch.clip(py, 0, self.terrain_obs_cb.height_samples.shape[1] - 2)
 
-            self.respawned_on_flat[env_ids] = self.terrain.flat_field_raw[px, py] == 0
-            # if scene interaction motion -- also consider as "flat"
-            if scene_ids is not None:
-                scene_interaction_envs_mask = scene_ids != -1
-                self.respawned_on_flat[env_ids[scene_interaction_envs_mask]] = True
-        else:
-            self.respawned_on_flat[env_ids] = True
+        self.respawned_on_flat[env_ids] = self.terrain.flat_field_raw[px, py] == 0
+        # if scene interaction motion -- also consider as "flat"
+        if scene_ids is not None:
+            scene_interaction_envs_mask = scene_ids != -1
+            self.respawned_on_flat[env_ids[scene_interaction_envs_mask]] = True
 
         return respawn_position
 
@@ -618,29 +592,22 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
         if self.config.mimic_early_termination is not None:
             reward_too_bad = torch.zeros_like(self.reset_buf).bool()
             for entry in self.config.mimic_early_termination:
-                if entry.get("from_other", False):
-                    from_dict = self.last_other_rewards
-                elif entry.use_scaled:
-                    from_dict = self.last_scaled_rewards
-                else:
-                    from_dict = self.last_unscaled_rewards
-
                 if entry.less_than:
                     entry_too_bad = (
-                        from_dict[entry.mimic_early_termination_key]
+                        self.mimic_info_dict[entry.mimic_early_termination_key]
                         < entry.mimic_early_termination_thresh
                     )
                     entry_on_flat_too_bad = (
-                        from_dict[entry.mimic_early_termination_key]
+                        self.mimic_info_dict[entry.mimic_early_termination_key]
                         < entry.mimic_early_termination_thresh_on_flat
                     )
                 else:
                     entry_too_bad = (
-                        from_dict[entry.mimic_early_termination_key]
+                        self.mimic_info_dict[entry.mimic_early_termination_key]
                         > entry.mimic_early_termination_thresh
                     )
                     entry_on_flat_too_bad = (
-                        from_dict[entry.mimic_early_termination_key]
+                        self.mimic_info_dict[entry.mimic_early_termination_key]
                         > entry.mimic_early_termination_thresh_on_flat
                     )
 
@@ -652,9 +619,6 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
                 entry_too_bad[tight_tracking_threshold] = entry_on_flat_too_bad[
                     tight_tracking_threshold
                 ]
-                # entry_too_bad[self.respawned_on_flat] = entry_on_flat_too_bad[
-                #     self.respawned_on_flat
-                # ]
 
                 reward_too_bad = torch.logical_or(reward_too_bad, entry_too_bad)
 
@@ -796,15 +760,18 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
             current_state.body_ang_vel,
         )
         # first remove height based on current position
-        gt[:, :, -1:] -= self.get_ground_heights(gt[:, 0, :2]).view(self.num_envs, 1, 1)
-        # then remove offset to get back to the ground-truth data position
-        gt[..., :2] -= self.respawn_offset_relative_to_data.clone()[..., :2].view(
-            self.num_envs, 1, 2
+        relative_to_data_gt = gt.clone()
+        relative_to_data_gt[:, :, -1:] -= self.terrain_obs_cb.ground_heights.view(
+            self.num_envs, 1, 1
         )
+        # then remove offset to get back to the ground-truth data position
+        relative_to_data_gt[..., :2] -= self.respawn_offset_relative_to_data.clone()[
+            ..., :2
+        ].view(self.num_envs, 1, 2)
 
-        kb = self.process_kb(gt, gr)
+        kb = self.process_kb(relative_to_data_gt, gr)
 
-        rt = gt[:, 0]
+        rt = relative_to_data_gt[:, 0]
         ref_rt = ref_gt[:, 0]
 
         if self.config.mimic_reward_config.rt_ignore_height:
@@ -834,7 +801,7 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
             ref_lr = torch.cat([ref_rr.unsqueeze(1), ref_lr], dim=1)
 
         rew_dict = exp_tracking_reward(
-            gt=gt,
+            gt=relative_to_data_gt,
             rt=rt,
             kb=kb,
             gr=gr,
@@ -854,25 +821,9 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
             ref_gv=ref_gv,
             ref_gav=ref_gav,
             ref_dv=ref_dv,
-            joint_reward_weights=self.reward_joint_weights,
             config=self.config.mimic_reward_config,
             w_last=self.w_last,
         )
-
-        current_contact_forces = self.get_bodies_contact_buf()
-        forces_delta = torch.clip(
-            self.prev_contact_forces - current_contact_forces, min=0
-        )[
-            :, self.non_termination_contact_body_ids, 2
-        ]  # get the Z axis
-        kbf_rew = (
-            forces_delta.sum(-1)
-            .mul(self.config.mimic_reward_config.component_coefficients.kbf_rew_c)
-            .exp()
-        )
-
-        rew_dict["kbf_rew"] = kbf_rew
-
         dof_forces = self.get_dof_forces()
         power = torch.abs(torch.multiply(dof_forces, dv)).sum(dim=-1)
         pow_rew = -power
@@ -884,12 +835,12 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
 
         rew_dict["pow_rew"] = pow_rew
 
-        self.last_scaled_rewards: Dict[str, Tensor] = {
+        scaled_rewards: Dict[str, Tensor] = {
             k: v * getattr(self.config.mimic_reward_config.component_weights, f"{k}_w")
             for k, v in rew_dict.items()
         }
 
-        tracking_rew = sum(self.last_scaled_rewards.values())
+        tracking_rew = sum(scaled_rewards.values())
 
         self.rew_buf = tracking_rew + self.config.mimic_reward_config.positive_constant
 
@@ -897,12 +848,12 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
             self.log_dict[f"raw/{rew_name}_mean"] = rew.mean()
             self.log_dict[f"raw/{rew_name}_std"] = rew.std()
 
-        for rew_name, rew in self.last_scaled_rewards.items():
+        for rew_name, rew in scaled_rewards.items():
             self.log_dict[f"scaled/{rew_name}_mean"] = rew.mean()
             self.log_dict[f"scaled/{rew_name}_std"] = rew.std()
 
         local_ref_gt = self.rotate_pos_to_local(ref_gt, ref_inv_heading)
-        local_gt = self.rotate_pos_to_local(gt, inv_heading)
+        local_gt = self.rotate_pos_to_local(relative_to_data_gt, inv_heading)
         cartesian_err = (
             ((local_ref_gt - local_ref_gt[:, 0:1]) - (local_gt - local_gt[:, 0:1]))
             .pow(2)
@@ -914,8 +865,15 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
         translation_mask_coeff = self.num_bodies
         rotation_mask_coeff = self.num_bodies
 
-        gt_err = (ref_gt - gt).pow(2).sum(-1).sqrt().sum(-1).div(translation_mask_coeff)
-        max_joint_err = (ref_gt - gt).pow(2).sum(-1).sqrt().max(-1)[0]
+        gt_err = (
+            (ref_gt - relative_to_data_gt)
+            .pow(2)
+            .sum(-1)
+            .sqrt()
+            .sum(-1)
+            .div(translation_mask_coeff)
+        )
+        max_joint_err = (ref_gt - relative_to_data_gt).pow(2).sum(-1).sqrt().max(-1)[0]
 
         gr_diff = quat_diff_norm(gr, ref_gr, self.w_last)
         gr_err = gr_diff.sum(-1).div(rotation_mask_coeff)
@@ -943,22 +901,11 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
         }
 
         for rew_name, rew in other_log_terms.items():
-            self.log_dict[f"{rew_name}_mean"] = rew.mean()
-            self.log_dict[f"{rew_name}_std"] = rew.std()
+            self.log_dict[f"mimic_other/{rew_name}_mean"] = rew.mean()
+            self.log_dict[f"mimic_other/{rew_name}_std"] = rew.std()
 
-        self.last_unscaled_rewards: Dict[str, Tensor] = rew_dict
-        self.last_scaled_rewards = self.last_scaled_rewards
-        self.last_other_rewards = other_log_terms
-
-    def get_phase_obs(self, motion_ids: Tensor, motion_times: Tensor):
-        phase = (
-            motion_times - self.motion_lib.state.motion_timings[motion_ids, 0]
-        ) / self.motion_lib.get_sub_motion_length(motion_ids)
-        sin_phase = phase.sin().unsqueeze(-1)
-        cos_phase = phase.cos().unsqueeze(-1)
-
-        phase_obs = torch.cat([sin_phase, cos_phase], dim=-1)
-        return phase_obs
+        self.mimic_info_dict.update(rew_dict)
+        self.mimic_info_dict.update(other_log_terms)
 
     def compute_observations(self, env_ids=None):
         super().compute_observations(env_ids)
@@ -966,17 +913,7 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=self.device).long()
 
-        self.mimic_phase[env_ids] = self.get_phase_obs(
-            self.motion_ids[env_ids], self.motion_times[env_ids]
-        )
-
-        if self.config.mimic_target_pose.enabled:
-            # TODO: take env_ids as input here
-            self.mimic_target_poses[:] = self.build_target_poses(
-                self.config.mimic_target_pose.num_future_steps,
-                self.config.mimic_target_pose.type,
-                self.config.mimic_target_pose.with_time,
-            )
+        self.mimic_obs_cb.compute_observations(env_ids)
 
     def on_epoch_end(self, current_epoch: int):
         super().on_epoch_end(current_epoch)
@@ -989,101 +926,9 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
         ):
             self.refresh_dynamic_weights()
 
-    def build_target_poses(self, num_future_steps, target_pose_type, with_time):
-        time_offsets = (
-            torch.arange(1, num_future_steps + 1, device=self.device, dtype=torch.long)
-            * self.dt
-        )
-
-        raw_future_times = self.motion_times.unsqueeze(-1) + time_offsets.unsqueeze(0)
-        motion_ids = self.motion_ids.unsqueeze(-1).tile([1, num_future_steps])
-        flat_ids = motion_ids.view(-1)
-
-        lengths = self.motion_lib.get_motion_length(flat_ids)
-        flat_times = torch.minimum(raw_future_times.view(-1), lengths)
-
-        ref_state = self.motion_lib.get_mimic_motion_state(flat_ids, flat_times)
-        flat_target_pos = ref_state.rb_pos
-        flat_target_rot = ref_state.rb_rot
-
-        current_state = self.get_bodies_state()
-        cur_gt, cur_gr = (
-            current_state.body_pos,
-            current_state.body_rot,
-        )
-
-        # First remove the height based on the current terrain, then remove the offset to get back to the ground-truth data position
-        cur_gt[:, :, -1:] -= self.get_ground_heights(cur_gt[:, 0, :2]).view(
-            self.num_envs, 1, 1
-        )
-        cur_gt[..., :2] -= self.respawn_offset_relative_to_data.clone()[..., :2].view(
-            self.num_envs, 1, 2
-        )
-
-        if target_pose_type == "max-coords":
-            target_pose_obs = build_max_coords_target_poses(
-                cur_gt=cur_gt,
-                cur_gr=cur_gr,
-                flat_target_pos=flat_target_pos,
-                flat_target_rot=flat_target_rot,
-                num_envs=self.num_envs,
-                num_future_steps=num_future_steps,
-                mimic_conditionable_bodies_ids=self.mimic_conditionable_bodies_ids,
-                w_last=self.w_last,
-            )
-        elif target_pose_type == "max-coords-future-rel":
-            target_pose_obs = build_max_coords_target_poses_future_rel(
-                cur_gt=cur_gt,
-                cur_gr=cur_gr,
-                flat_target_pos=flat_target_pos,
-                flat_target_rot=flat_target_rot,
-                num_envs=self.num_envs,
-                num_future_steps=num_future_steps,
-                mimic_conditionable_bodies_ids=self.mimic_conditionable_bodies_ids,
-                w_last=self.w_last,
-            )
-        else:
-            raise ValueError(f"Unknown target pose type '{target_pose_type}'")
-
-        if with_time:
-            target_pose_obs = self.add_time_to_target_poses(
-                env_ids=torch.arange(self.num_envs, device=self.device),
-                target_pose_obs=target_pose_obs,
-                num_future_steps=num_future_steps,
-            )
-
-        return target_pose_obs
-
-    def add_time_to_target_poses(self, env_ids, target_pose_obs, num_future_steps):
-        num_envs = env_ids.shape[0]
-        target_pose_obs = target_pose_obs.view(num_envs, num_future_steps, -1)
-
-        time_offsets = (
-            torch.arange(1, num_future_steps + 1, device=self.device, dtype=torch.long)
-            * self.dt
-        )
-
-        raw_future_times = self.motion_times[env_ids].unsqueeze(
-            -1
-        ) + time_offsets.unsqueeze(0)
-        motion_ids = self.motion_ids[env_ids].unsqueeze(-1).tile([1, num_future_steps])
-        flat_ids = motion_ids.view(-1)
-
-        lengths = self.motion_lib.get_motion_length(flat_ids)
-
-        times = torch.minimum(raw_future_times.view(-1), lengths).view(
-            num_envs, num_future_steps, 1
-        ) - self.motion_times[env_ids].view(num_envs, 1, 1)
-
-        obs = torch.cat([target_pose_obs, times], dim=-1).view(num_envs, -1)
-
-        return obs
-
     def pre_physics_step(self, actions):
         if self.config.mimic_residual_control:
             actions = self.residual_actions_to_actual(actions)
-
-        self.prev_contact_forces = self.get_bodies_contact_buf()
 
         return super().pre_physics_step(actions)
 
@@ -1116,86 +961,3 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
         )
 
         return actions
-
-    def get_reward_joint_weights(self):
-        """
-        Calculate the weights for each joint in the reward function.
-
-        This method assigns different weights to joints based on their importance
-        in the overall motion. For the SMPLX humanoid model, it gives equal importance
-        to each finger joint within a hand, while other joints maintain their default weight.
-
-        Returns:
-            torch.Tensor: A tensor of joint weights, with shape (num_bodies,).
-
-        Note:
-            - This method only applies unequal weights for the SMPLX humanoid model.
-            - The weights are used to balance the contribution of different joints
-              in the reward calculation, preventing over-emphasis on joints with many
-              degrees of freedom (like hands).
-        """
-        # Return uniform weights if unequal weighting is disabled or not using SMPLX model
-        if (
-            not self.config.mimic_reward_config.unequal_reward_joint_weights
-            or "smplx" not in self.config.robot.asset.asset_file_name
-        ):
-            return 1
-
-        # Define groups of joints that should be weighted equally within the group
-        joint_groups = [
-            [
-                "L_Wrist",
-                "L_Index1",
-                "L_Index2",
-                "L_Index3",
-                "L_Middle1",
-                "L_Middle2",
-                "L_Middle3",
-                "L_Pinky1",
-                "L_Pinky2",
-                "L_Pinky3",
-                "L_Ring1",
-                "L_Ring2",
-                "L_Ring3",
-                "L_Thumb1",
-                "L_Thumb2",
-                "L_Thumb3",
-            ],
-            [
-                "R_Wrist",
-                "R_Index1",
-                "R_Index2",
-                "R_Index3",
-                "R_Middle1",
-                "R_Middle2",
-                "R_Middle3",
-                "R_Pinky1",
-                "R_Pinky2",
-                "R_Pinky3",
-                "R_Ring1",
-                "R_Ring2",
-                "R_Ring3",
-                "R_Thumb1",
-                "R_Thumb2",
-                "R_Thumb3",
-            ],
-        ]
-
-        # Initialize all weights to 1
-        joint_weights = torch.ones(
-            self.num_bodies, device=self.device, dtype=torch.float
-        )
-
-        # Assign weights to joints in the defined groups
-        for joint_index, joint_name in enumerate(self.body_names):
-            for joint_group in joint_groups:
-                if joint_name in joint_group:
-                    # Set the weight to be 1 divided by the number of joints in the group
-                    joint_weights[joint_index] = 1.0 / len(joint_group)
-
-        # Normalize joint weights to sum to the total number of bodies
-        total_bodies = len(self.body_names)
-        current_sum = joint_weights.sum()
-        joint_weights *= total_bodies / current_sum
-
-        return joint_weights

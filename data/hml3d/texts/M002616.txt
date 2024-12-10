@@ -1,0 +1,3 @@
+a man is moving his hands up at shoulder level and then repeat this motion by circling his hands.#a/DET man/NOUN is/AUX move/VERB his/DET hand/NOUN up/ADP at/ADP shoulder/NOUN level/NOUN and/CCONJ then/ADV repeat/VERB this/DET motion/NOUN by/ADP circle/VERB his/DET hand/NOUN#6.0#10.0
+a person moves their arms in circular motions, alternating right and left.#a/DET person/NOUN move/VERB their/DET arm/NOUN in/ADP circular/ADJ motion/NOUN alternate/VERB right/NOUN and/CCONJ left/VERB#0.0#0.0
+a person stands still then waves with his left hand and then right as if to direct traffic.#a/DET person/NOUN stand/VERB still/ADV then/ADV wave/NOUN with/ADP his/DET left/ADJ hand/NOUN and/CCONJ then/ADV right/ADV as/SCONJ if/SCONJ to/PART direct/VERB traffic/NOUN#0.0#0.0

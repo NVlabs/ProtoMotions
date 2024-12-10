@@ -1,8 +1,8 @@
 # @package _global_
 
 defaults:
-  - /algo: amp
-  - /env: path_follower
+  - amp
+  - /env/path_follower
   - /terrain/terrain_obs
   - /terrain/complex
 

@@ -65,20 +65,14 @@ def exp_tracking_reward(
     ref_gr: Tensor,
     ref_lr: Tensor,
     ref_dv: Tensor,
-    joint_reward_weights: Union[Tensor, float],
     config: DictConfig,
     w_last: bool,
 ) -> Dict[str, Tensor]:
-    # First sum across xyz
-    if isinstance(joint_reward_weights, Tensor):
-        joint_reward_weights = joint_reward_weights.unsqueeze(0)
-    else:
-        joint_reward_weights = joint_reward_weights
+
     gt_rew = (
-        (gt - ref_gt)
+        (gt - ref_gt)  # [num_envs, bodies, 3]
         .pow(2)
-        .mean(-1)
-        .mul(joint_reward_weights)
+        .mean(-1)  # [num_envs, bodies]
         .mean(-1)
         .mul(config.component_coefficients.gt_rew_c)
         .exp()
@@ -120,7 +114,6 @@ def exp_tracking_reward(
         .exp()
     )
 
-    # First sum across xyz
     kb_rew = (
         (kb - ref_kb)
         .pow(2)
@@ -130,52 +123,21 @@ def exp_tracking_reward(
         .exp()
     )
 
-    if config.add_rr_to_lr:
-        joint_reward_weights_for_lr = joint_reward_weights
-    else:
-        if isinstance(joint_reward_weights, Tensor):
-            joint_reward_weights_for_lr = joint_reward_weights[:, 1:]
-        else:
-            joint_reward_weights_for_lr = joint_reward_weights
+    gr_rew = (
+        quat_diff_norm(gr, ref_gr, w_last)  # [num_envs, bodies]
+        .pow(2)
+        .mean(-1)  # [num_envs]
+        .mul(config.component_coefficients.gr_rew_c)
+        .exp()
+    )
 
-    if config.tan_norm_reward:
-        gr = torch_utils.quat_to_tan_norm(gr.view(-1, 4), w_last).view(
-            *gr.shape[:-1], 6
-        )
-        ref_gr = torch_utils.quat_to_tan_norm(ref_gr.view(-1, 4), w_last).view(
-            *ref_gr.shape[:-1], 6
-        )
-
-        gr_rew = mul_exp_sum(
-            (gr - ref_gr).pow(2).sum(-1).mul(joint_reward_weights),
-            config.component_coefficients.gr_rew_c,
-            config.sum_before_exp,
-        )
-
-        lr = torch_utils.quat_to_tan_norm(lr.view(-1, 4), w_last).view(
-            *lr.shape[:-1], 6
-        )
-        ref_lr = torch_utils.quat_to_tan_norm(ref_lr.view(-1, 4), w_last).view(
-            *ref_lr.shape[:-1], 6
-        )
-
-        lr_rew = mul_exp_sum(
-            (lr - ref_lr).pow(2).sum(-1).mul(joint_reward_weights_for_lr),
-            config.component_coefficients.lr_rew_c,
-            config.sum_before_exp,
-        )
-    else:
-        diff_global_body_rot = (
-            quat_diff_norm(gr, ref_gr, w_last).mul(joint_reward_weights).mean(dim=-1)
-        )
-        gr_rew = diff_global_body_rot.mul(config.component_coefficients.gr_rew_c).exp()
-
-        diff_local_body_rot = (
-            quat_diff_norm(lr, ref_lr, w_last)
-            .mul(joint_reward_weights_for_lr)
-            .mean(dim=-1)
-        )
-        lr_rew = diff_local_body_rot.mul(config.component_coefficients.lr_rew_c).exp()
+    lr_rew = (
+        quat_diff_norm(lr, ref_lr, w_last)  # [num_envs, bodies]
+        .pow(2)
+        .mean(-1)  # [num_envs]
+        .mul(config.component_coefficients.lr_rew_c)
+        .exp()
+    )
 
     dv_rew = (
         (dv - ref_dv).pow(2).mean(-1).mul(config.component_coefficients.dv_rew_c).exp()
@@ -200,33 +162,43 @@ def exp_tracking_reward(
 
 @torch.jit.script
 def dof_to_local(pose: Tensor, dof_offsets: List[int], w_last: bool) -> Tensor:
-    num_joints = len(dof_offsets) - 1
+    """Convert degrees of freedom (DoF) representation to local rotations.
 
-    assert pose.shape[-1] == dof_offsets[-1]
+    Args:
+        pose: Input pose tensor with shape [..., total_dofs]
+        dof_offsets: List of DoF offsets for each joint
+        w_last: Whether quaternion w component is last
+
+    Returns:
+        Local rotation quaternions with shape [..., num_joints, 4]
+    """
+    num_joints = len(dof_offsets) - 1
+    assert pose.shape[-1] == dof_offsets[-1], "Pose size must match total DoFs"
+
+    # Initialize output tensor for local rotations
     local_rot_shape = pose.shape[:-1] + (num_joints, 4)
     local_rot = torch.zeros(local_rot_shape, device=pose.device)
 
-    for j in range(num_joints):
-        dof_offset = dof_offsets[j]
-        dof_size = dof_offsets[j + 1] - dof_offsets[j]
-        joint_pose = pose[:, dof_offset : (dof_offset + dof_size)]
+    # Convert each joint's DoFs to quaternion
+    for joint_idx in range(num_joints):
+        start_dof = dof_offsets[joint_idx]
+        end_dof = dof_offsets[joint_idx + 1]
+        dof_size = end_dof - start_dof
+        joint_pose = pose[..., start_dof:end_dof]
 
-        # jp hack
-        # assume this is a spherical joint
-        if dof_size == 3:
-            joint_pose_q = torch_utils.exp_map_to_quat(joint_pose, w_last)
-        elif dof_size == 1:
-            axis = torch.tensor(
+        if dof_size == 3:  # Spherical joint (3 DoF)
+            joint_quat = torch_utils.exp_map_to_quat(joint_pose, w_last)
+        elif dof_size == 1:  # Revolute joint (1 DoF)
+            y_axis = torch.tensor(
                 [0.0, 1.0, 0.0], dtype=joint_pose.dtype, device=pose.device
             )
-            joint_pose_q = rotations.quat_from_angle_axis(
-                joint_pose[..., 0], axis, w_last
+            joint_quat = rotations.quat_from_angle_axis(
+                joint_pose[..., 0], y_axis, w_last
             )
         else:
-            joint_pose_q = None
-            assert False, "Unsupported joint type"
+            raise ValueError(f"Unsupported joint type with {dof_size} DoF")
 
-        local_rot[:, j] = joint_pose_q
+        local_rot[..., joint_idx, :] = joint_quat
 
     return local_rot
 
@@ -239,7 +211,6 @@ def build_max_coords_target_poses_future_rel(
     flat_target_rot: Tensor,
     num_future_steps: int,
     num_envs: int,
-    mimic_conditionable_bodies_ids: Tensor,
     w_last: bool,
 ):
     reference_pos = (
@@ -299,9 +270,7 @@ def build_max_coords_target_poses_future_rel(
     )
     target_rel_body_rot_obs = (
         torch_utils.quat_to_tan_norm(target_rel_body_rot.view(-1, 4), w_last)
-        .reshape(num_envs, num_future_steps, -1, 6)[
-            :, :, mimic_conditionable_bodies_ids
-        ]
+        .reshape(num_envs, num_future_steps, -1, 6)
         .reshape(target_rel_body_rot.shape[0], -1)
     )
 
@@ -311,18 +280,16 @@ def build_max_coords_target_poses_future_rel(
     )
     target_body_rot_obs = (
         torch_utils.quat_to_tan_norm(target_body_rot.view(-1, 4), w_last)
-        .reshape(num_envs, num_future_steps, -1, 6)[
-            :, :, mimic_conditionable_bodies_ids
-        ]
+        .reshape(num_envs, num_future_steps, -1, 6)
         .reshape(target_rel_body_rot.shape[0], -1)
     )
 
     target_rel_body_pos = flat_target_rel_body_pos.reshape(
         num_envs, num_future_steps, -1, 3
-    )[:, :, mimic_conditionable_bodies_ids].reshape(target_rel_body_pos.shape[0], -1)
-    target_body_pos = flat_target_body_pos.reshape(num_envs, num_future_steps, -1, 3)[
-        :, :, mimic_conditionable_bodies_ids
-    ].reshape(flat_target_pos.shape[0], -1)
+    ).reshape(target_rel_body_pos.shape[0], -1)
+    target_body_pos = flat_target_body_pos.reshape(
+        num_envs, num_future_steps, -1, 3
+    ).reshape(flat_target_pos.shape[0], -1)
 
     obs = torch.cat(
         (
@@ -345,7 +312,6 @@ def build_max_coords_target_poses(
     flat_target_rot: Tensor,
     num_envs: int,
     num_future_steps: int,
-    mimic_conditionable_bodies_ids: Tensor,
     w_last: bool,
 ):
     expanded_body_pos = cur_gt.unsqueeze(1).expand(
@@ -386,7 +352,7 @@ def build_max_coords_target_poses(
     )
     target_rel_body_pos = flat_target_rel_body_pos.reshape(
         num_envs, num_future_steps, -1, 3
-    )[:, :, mimic_conditionable_bodies_ids].reshape(target_rel_body_pos.shape[0], -1)
+    ).reshape(target_rel_body_pos.shape[0], -1)
 
     # target body pos   [N, 3xB]
     flat_target_body_pos = (flat_target_pos - root_pos_expand).reshape(
@@ -395,9 +361,9 @@ def build_max_coords_target_poses(
     flat_target_body_pos = torch_utils.quat_rotate(
         flat_heading_inv_rot, flat_target_body_pos, w_last
     )
-    target_body_pos = flat_target_body_pos.reshape(num_envs, num_future_steps, -1, 3)[
-        :, :, mimic_conditionable_bodies_ids
-    ].reshape(flat_target_pos.shape[0], -1)
+    target_body_pos = flat_target_body_pos.reshape(
+        num_envs, num_future_steps, -1, 3
+    ).reshape(flat_target_pos.shape[0], -1)
 
     # target body rot   [N, 6xB]
     target_rel_body_rot = rotations.quat_mul(
@@ -405,9 +371,7 @@ def build_max_coords_target_poses(
     )
     target_rel_body_rot_obs = (
         torch_utils.quat_to_tan_norm(target_rel_body_rot.view(-1, 4), w_last)
-        .reshape(num_envs, num_future_steps, -1, 6)[
-            :, :, mimic_conditionable_bodies_ids
-        ]
+        .reshape(num_envs, num_future_steps, -1, 6)
         .reshape(target_rel_body_rot.shape[0], -1)
     )
 
@@ -417,9 +381,7 @@ def build_max_coords_target_poses(
     )
     target_body_rot_obs = (
         torch_utils.quat_to_tan_norm(target_body_rot.view(-1, 4), w_last)
-        .reshape(num_envs, num_future_steps, -1, 6)[
-            :, :, mimic_conditionable_bodies_ids
-        ]
+        .reshape(num_envs, num_future_steps, -1, 6)
         .reshape(target_rel_body_rot.shape[0], -1)
     )
 
@@ -434,222 +396,3 @@ def build_max_coords_target_poses(
     ).view(num_envs, -1)
 
     return obs
-
-
-@torch.jit.script_if_tracing
-def build_max_coords_object_target_poses(
-    cur_object_gt: Tensor,
-    cur_object_gr: Tensor,
-    cur_robot_gt: Tensor,
-    cur_robot_gr: Tensor,
-    flat_object_target_pos: Tensor,
-    flat_object_target_rot: Tensor,
-    num_scenes: int,
-    max_objects_per_scene: int,
-    num_future_steps: int,
-    w_last: bool,
-):
-    # Reshape inputs
-    target_pos = flat_object_target_pos.reshape(
-        num_scenes, max_objects_per_scene, num_future_steps, 3
-    )
-    target_rot = flat_object_target_rot.reshape(
-        num_scenes, max_objects_per_scene, num_future_steps, 4
-    )
-    cur_object_pos = cur_object_gt.reshape(num_scenes, max_objects_per_scene, 3)
-    cur_object_rot = cur_object_gr.reshape(num_scenes, max_objects_per_scene, 4)
-    cur_robot_pos = cur_robot_gt.reshape(num_scenes, 3)
-    cur_robot_rot = cur_robot_gr.reshape(num_scenes, 4)
-
-    # Calculate heading inverse rotation for objects and robot
-    object_heading_inv_rot = torch_utils.calc_heading_quat_inv(cur_object_rot, w_last)
-    robot_heading_inv_rot = torch_utils.calc_heading_quat_inv(cur_robot_rot, w_last)
-
-    # Expand current positions and rotations
-    cur_object_pos_expanded = cur_object_pos.unsqueeze(2).expand(
-        -1, -1, num_future_steps, -1
-    )
-    cur_object_rot_expanded = cur_object_rot.unsqueeze(2).expand(
-        -1, -1, num_future_steps, -1
-    )
-    cur_robot_pos_expanded = (
-        cur_robot_pos.unsqueeze(1)
-        .unsqueeze(1)
-        .expand(-1, max_objects_per_scene, num_future_steps, -1)
-    )
-    cur_robot_rot_expanded = (
-        cur_robot_rot.unsqueeze(1)
-        .unsqueeze(1)
-        .expand(-1, max_objects_per_scene, num_future_steps, -1)
-    )
-
-    # Flatten tensors
-    flat_target_pos = target_pos.reshape(-1, 3)
-    flat_target_rot = target_rot.reshape(-1, 4)
-    flat_cur_object_pos = cur_object_pos_expanded.reshape(-1, 3)
-    flat_cur_object_rot = cur_object_rot_expanded.reshape(-1, 4)
-    flat_cur_robot_pos = cur_robot_pos_expanded.reshape(-1, 3)
-    flat_cur_robot_rot = cur_robot_rot_expanded.reshape(-1, 4)
-    flat_object_heading_inv_rot = (
-        object_heading_inv_rot.unsqueeze(1)
-        .expand(-1, num_future_steps, -1, -1)
-        .reshape(-1, 4)
-    )
-    flat_robot_heading_inv_rot = (
-        robot_heading_inv_rot.unsqueeze(1)
-        .unsqueeze(2)
-        .expand(-1, num_future_steps, max_objects_per_scene, -1)
-        .reshape(-1, 4)
-    )
-
-    # 1. Relative change w.r.t. object's initial state
-    object_rel_pos = flat_target_pos - flat_cur_object_pos
-    object_rel_pos_heading_inv = torch_utils.quat_rotate(
-        flat_object_heading_inv_rot, object_rel_pos, w_last
-    )
-
-    object_rel_rot = rotations.quat_mul(
-        rotations.quat_conjugate(flat_cur_object_rot, w_last), flat_target_rot, w_last
-    )
-    object_rel_rot_obs = torch_utils.quat_to_tan_norm(object_rel_rot, w_last)
-
-    # 2. Relative change w.r.t. humanoid root
-    robot_rel_pos = flat_target_pos - flat_cur_robot_pos
-    robot_rel_pos_heading_inv = torch_utils.quat_rotate(
-        flat_robot_heading_inv_rot, robot_rel_pos, w_last
-    )
-
-    robot_rel_rot = rotations.quat_mul(
-        rotations.quat_conjugate(flat_cur_robot_rot, w_last), flat_target_rot, w_last
-    )
-    robot_rel_rot_obs = torch_utils.quat_to_tan_norm(robot_rel_rot, w_last)
-
-    # Reshape observations
-    object_rel_pos_heading_inv = object_rel_pos_heading_inv.reshape(
-        num_scenes, max_objects_per_scene, num_future_steps, 3
-    )
-    object_rel_rot_obs = object_rel_rot_obs.reshape(
-        num_scenes, max_objects_per_scene, num_future_steps, 6
-    )
-    robot_rel_pos_heading_inv = robot_rel_pos_heading_inv.reshape(
-        num_scenes, max_objects_per_scene, num_future_steps, 3
-    )
-    robot_rel_rot_obs = robot_rel_rot_obs.reshape(
-        num_scenes, max_objects_per_scene, num_future_steps, 6
-    )
-
-    # Concatenate all observations
-    obs = torch.cat(
-        (
-            object_rel_pos_heading_inv,
-            object_rel_rot_obs,
-            robot_rel_pos_heading_inv,
-            robot_rel_rot_obs,
-        ),
-        dim=-1,
-    )
-
-    return obs.reshape(num_scenes, -1)
-
-
-@torch.jit.script_if_tracing
-def build_max_coords_object_target_poses_future_rel(
-    cur_object_gt: Tensor,
-    cur_object_gr: Tensor,
-    cur_robot_gt: Tensor,
-    cur_robot_gr: Tensor,
-    flat_object_target_pos: Tensor,
-    flat_object_target_rot: Tensor,
-    num_scenes: int,
-    max_objects_per_scene: int,
-    num_future_steps: int,
-    w_last: bool,
-):
-    # Reshape inputs
-    target_pos = flat_object_target_pos.reshape(
-        num_scenes, max_objects_per_scene, num_future_steps, 3
-    )
-    target_rot = flat_object_target_rot.reshape(
-        num_scenes, max_objects_per_scene, num_future_steps, 4
-    )
-
-    # Calculate reference positions and rotations (shifted by one step)
-    reference_pos = target_pos.clone().roll(shifts=1, dims=2)
-    reference_pos[:, :, 0] = cur_object_gt.reshape(num_scenes, max_objects_per_scene, 3)
-    reference_rot = target_rot.clone().roll(shifts=1, dims=2)
-    reference_rot[:, :, 0] = cur_object_gr.reshape(num_scenes, max_objects_per_scene, 4)
-
-    # Flatten tensors for easier computation
-    flat_reference_pos = reference_pos.reshape(-1, 3)
-    flat_reference_rot = reference_rot.reshape(-1, 4)
-    flat_target_pos = target_pos.reshape(-1, 3)
-    flat_target_rot = target_rot.reshape(-1, 4)
-
-    # Calculate heading inverse rotation for objects
-    heading_inv_rot = torch_utils.calc_heading_quat_inv(flat_reference_rot, w_last)
-
-    # 1. Relative change w.r.t. object's previous state
-    object_rel_pos = flat_target_pos - flat_reference_pos
-    object_rel_pos_heading_inv = torch_utils.quat_rotate(
-        heading_inv_rot, object_rel_pos, w_last
-    )
-
-    object_rel_rot = rotations.quat_mul(
-        rotations.quat_conjugate(flat_reference_rot, w_last), flat_target_rot, w_last
-    )
-    object_rel_rot_obs = torch_utils.quat_to_tan_norm(object_rel_rot, w_last)
-
-    # 2. Relative change w.r.t. humanoid root
-    robot_root_pos = (
-        cur_robot_gt.unsqueeze(1)
-        .unsqueeze(1)
-        .expand(-1, max_objects_per_scene, num_future_steps, -1)
-    )
-    robot_root_rot = (
-        cur_robot_gr.unsqueeze(1)
-        .unsqueeze(1)
-        .expand(-1, max_objects_per_scene, num_future_steps, -1)
-    )
-    flat_robot_root_pos = robot_root_pos.reshape(-1, 3)
-    flat_robot_root_rot = robot_root_rot.reshape(-1, 4)
-
-    robot_heading_inv_rot = torch_utils.calc_heading_quat_inv(
-        flat_robot_root_rot, w_last
-    )
-
-    robot_rel_pos = flat_target_pos - flat_robot_root_pos
-    robot_rel_pos_heading_inv = torch_utils.quat_rotate(
-        robot_heading_inv_rot, robot_rel_pos, w_last
-    )
-
-    robot_rel_rot = rotations.quat_mul(
-        rotations.quat_conjugate(flat_robot_root_rot, w_last), flat_target_rot, w_last
-    )
-    robot_rel_rot_obs = torch_utils.quat_to_tan_norm(robot_rel_rot, w_last)
-
-    # Reshape observations
-    object_rel_pos_heading_inv = object_rel_pos_heading_inv.reshape(
-        num_scenes, max_objects_per_scene, num_future_steps, 3
-    )
-    object_rel_rot_obs = object_rel_rot_obs.reshape(
-        num_scenes, max_objects_per_scene, num_future_steps, 6
-    )
-    robot_rel_pos_heading_inv = robot_rel_pos_heading_inv.reshape(
-        num_scenes, max_objects_per_scene, num_future_steps, 3
-    )
-    robot_rel_rot_obs = robot_rel_rot_obs.reshape(
-        num_scenes, max_objects_per_scene, num_future_steps, 6
-    )
-
-    # Concatenate all observations
-    obs = torch.cat(
-        (
-            object_rel_pos_heading_inv,
-            object_rel_rot_obs,
-            robot_rel_pos_heading_inv,
-            robot_rel_rot_obs,
-        ),
-        dim=-1,
-    )
-
-    return obs.reshape(num_scenes, -1)

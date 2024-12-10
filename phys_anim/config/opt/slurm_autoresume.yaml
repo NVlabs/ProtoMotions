@@ -1,8 +1,0 @@
-# @package _global_
-
-fabric:
-  callbacks:
-    - _target_: agents.callbacks.slurm_autoresume.SlurmAutoResume
-
-auto_load_latest: True
-

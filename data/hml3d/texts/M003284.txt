@@ -1,0 +1,3 @@
+a man twists his torso right and left and then to the sides and the up and down.#a/DET man/NOUN twist/VERB his/DET torso/NOUN right/ADV and/CCONJ left/VERB and/CCONJ then/ADV to/ADP the/DET side/NOUN and/CCONJ the/DET up/NOUN and/CCONJ down/ADV#0.0#0.0
+a person stretches sideways and bends backward and forward.#a/DET person/NOUN stretch/VERB sideways/ADV and/CCONJ bend/VERB backward/ADV and/CCONJ forward/ADV#0.0#0.0
+a person has both arms up and is stretching to the right and the left, then bowing to stretch down to their feet.#a/DET person/NOUN has/AUX both/DET arm/NOUN up/ADV and/CCONJ is/AUX stretch/VERB to/ADP the/DET right/NOUN and/CCONJ the/DET left/NOUN then/ADV bow/VERB to/PART stretch/VERB down/ADP to/ADP their/DET foot/NOUN#0.0#0.0

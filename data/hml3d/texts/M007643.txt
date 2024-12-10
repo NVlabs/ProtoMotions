@@ -1,0 +1,3 @@
+someone is walking diagonally back and forth before stopping and facing to the left.#someone/PRON is/AUX walk/VERB diagonally/ADV back/ADV and/CCONJ forth/ADV before/ADP stop/VERB and/CCONJ face/VERB to/ADP the/DET left/NOUN#0.0#0.0
+a person walks forward turns to his left, walks, turns to his left, steps and stops.#a/DET person/NOUN walk/VERB forward/ADV turn/VERB to/ADP his/DET left/NOUN walk/NOUN turn/VERB to/ADP his/DET left/NOUN step/NOUN and/CCONJ stop/NOUN#0.0#0.0
+a person walks a few steps forward, turns around and walks back, then returns to where they started.#a/DET person/NOUN walk/VERB a/DET few/ADJ step/NOUN forward/ADV turn/VERB around/ADV and/CCONJ walk/VERB back/ADV then/ADV return/VERB to/ADP where/ADV they/PRON start/VERB#0.0#0.0

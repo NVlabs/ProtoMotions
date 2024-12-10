@@ -1,0 +1,2 @@
+a person walks forward starting with their left foot.#a/DET person/NOUN walk/VERB forward/ADV start/VERB with/ADP their/DET left/ADJ foot/NOUN#0.0#0.0
+a person moves forward, stepping down from something.#a/DET person/NOUN move/VERB forward/ADV step/VERB down/ADP from/ADP something/PRON#0.0#0.0

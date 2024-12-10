@@ -1,0 +1,3 @@
+a person grabbed something with left and right hand and put it somewhere#a/DET person/NOUN grab/VERB something/PRON with/ADP left/ADJ and/CCONJ right/ADJ hand/NOUN and/CCONJ put/VERB it/PRON somewhere/ADV#0.0#0.0
+a person appears to boxing someone but is swinging in a left to right motion.#a/DET person/NOUN appear/VERB to/PART box/VERB someone/PRON but/CCONJ is/AUX swinge/VERB in/ADP a/DET left/NOUN to/ADP right/ADJ motion/NOUN#0.0#0.0
+the person is stretching their left and right arm preparing for training.#the/DET person/NOUN is/AUX stretch/VERB their/DET left/ADJ and/CCONJ right/ADJ arm/NOUN prepare/VERB for/ADP training/NOUN#0.0#4.0

@@ -1,0 +1,3 @@
+the person is holding his left arm up.#the/DET person/NOUN is/AUX hold/VERB his/DET left/ADJ arm/NOUN up/ADP#0.0#0.0
+a person raised the left and right hand and warm them up#a/DET person/NOUN raise/VERB the/DET left/ADJ and/CCONJ right/ADJ hand/NOUN and/CCONJ warm/VERB them/PRON up/ADP#0.0#0.0
+man stretching, maybe getting ready for an athletic event.#man/NOUN stretch/VERB maybe/ADV get/VERB ready/ADJ for/ADP an/DET athletic/ADJ event/NOUN#0.0#0.0

@@ -1,0 +1,3 @@
+a person looks down while stepping to their left.#a/DET person/NOUN look/VERB down/ADP while/SCONJ step/VERB to/ADP their/DET left/NOUN#0.0#3.0
+a person moves left up a step.#a/DET person/NOUN move/VERB left/VERB up/ADP a/DET step/NOUN#0.0#0.0
+a figure sidesteps slightly to the left#a/DET figure/NOUN sidestep/VERB slightly/ADV to/ADP the/DET left/NOUN#0.0#0.0

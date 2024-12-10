@@ -1,0 +1,3 @@
+a man is throwing something.#a/DET man/NOUN is/AUX throw/VERB something/PRON#0.0#0.0
+person shifts weight to the right and swings left arm over their head.#person/NOUN shift/VERB weight/NOUN to/ADP the/DET right/NOUN and/CCONJ swing/NOUN left/VERB arm/NOUN over/ADP their/DET head/NOUN#0.0#0.0
+person reaches upwards with left hand, then swings their arm to their right across the sky.#person/NOUN reach/VERB upwards/ADJ with/ADP left/ADJ hand/NOUN then/ADV swing/VERB their/DET arm/NOUN to/ADP their/DET right/NOUN across/ADP the/DET sky/NOUN#0.0#0.0

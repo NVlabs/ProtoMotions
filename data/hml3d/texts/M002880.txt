@@ -1,0 +1,3 @@
+a man walks forward and mimes throwing a ball twice.#a/DET man/NOUN walk/VERB forward/ADV and/CCONJ mime/VERB throw/VERB a/DET ball/NOUN twice/ADV#0.0#0.0
+a man moves  foward and throws something with his left hand and repeats again.#a/DET man/NOUN move/VERB foward/ADJ and/CCONJ throw/VERB something/PRON with/ADP his/DET left/ADJ hand/NOUN and/CCONJ repeat/VERB again/ADV#0.0#0.0
+person throws a ball with their left arm three times.#person/NOUN throw/VERB a/DET ball/NOUN with/ADP their/DET left/ADJ arm/NOUN three/NUM time/NOUN#0.0#10.0

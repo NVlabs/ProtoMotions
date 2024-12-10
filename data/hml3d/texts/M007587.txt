@@ -1,0 +1,3 @@
+a man walks forward, picks an object up with right hand, moves the object to the left side and then steps back.#a/DET man/NOUN walk/VERB forward/ADV pick/VERB an/DET object/NOUN up/ADP with/ADP right/ADJ hand/NOUN move/VERB the/DET object/NOUN to/ADP the/DET left/ADJ side/NOUN and/CCONJ then/ADV step/VERB back/ADV#0.0#0.0
+a person walks up to something and moves it from the right side to the left side.#a/DET person/NOUN walk/VERB up/ADP to/ADP something/PRON and/CCONJ move/VERB it/PRON from/ADP the/DET right/ADJ side/NOUN to/ADP the/DET left/ADJ side/NOUN#0.0#0.0
+a man walks forward and moves something from his right to his left.#a/DET man/NOUN walk/VERB forward/ADV and/CCONJ move/VERB something/PRON from/ADP his/DET right/NOUN to/ADP his/DET left/NOUN#0.0#0.0

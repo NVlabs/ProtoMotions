@@ -81,30 +81,21 @@ class MimicVAE(Mimic):
             raise NotImplementedError
         self.vae_noise[env_ids] = epsilon
 
-    def handle_reset(self, actor_state):
-        done_indices = actor_state["done_indices"]
+    def handle_reset(self, done_indices=None):
         self.reset_vae_noise(done_indices)
-        actor_state = super().handle_reset(actor_state)
-        actor_state["vae_noise"] = self.vae_noise
+        super().handle_reset(done_indices)
+        
+    def get_obs_from_agent(self, obs):
+        obs = super().get_obs_from_agent(obs)
+        obs["vae_noise"] = self.vae_noise
+        return obs
 
-        return actor_state
-
-    def create_actor_state(self):
-        state = super().create_actor_state()
-        state["vae_noise"] = self.vae_noise
-        return state
-
-    def create_actor_args(self, actor_state):
-        actor_inputs = super().create_actor_args(actor_state)
-        actor_inputs["vae_noise"] = actor_state["vae_noise"]
-        return actor_inputs
-
-    def pre_env_step(self, actor_state) -> Tensor:
+    def pre_env_step(self, obs, step) -> Tensor:
         self.experience_buffer.update_data(
-            "vae_noise", actor_state["step"], actor_state["vae_noise"]
+            "vae_noise", step, obs["vae_noise"]
         )
 
-        return super().pre_env_step(actor_state)
+        return super().pre_env_step(obs, step)
 
     def calculate_extra_actor_loss(self, batch_idx, batch_dict) -> Tuple[Tensor, Dict]:
         extra_loss, extra_actor_log_dict = super().calculate_extra_actor_loss(
