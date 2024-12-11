@@ -45,6 +45,7 @@ First run `git lfs fetch --all` to fetch all files stored in git-lfs.
 1. Install [IsaacGym](https://developer.nvidia.com/isaac-gym), install using **python 3.8**.
 2. Once IG and PyTorch are installed, from the repository root install the Phys-Anim package and its dependencies with:
 ```
+pip install -r requirements.txt
 pip install -e .
 pip install -e isaac_utils
 pip install -e poselib
@@ -80,6 +81,7 @@ For Linux: alias PYTHON_PATH="<isaac_lab_path> -p"
 ```
 3. Once IsaacLab is installed, from the protomotions repository root, install the Physical Animation package and its dependencies with:
 ```
+PYTHON_PATH -m pip install -r requirements.txt
 PYTHON_PATH -m pip install -e .
 PYTHON_PATH -m pip install -e isaac_utils
 PYTHON_PATH -m pip install -e poselib
@@ -140,7 +142,7 @@ task with the provided motions.
 ### Path Following
 
 One such task for AMP is path following. The character needs to follow a set of markers.
-To provide AMP with a path following task, similar to 
+To provide AMP with a path following task, similar to
 [PACER](https://research.nvidia.com/labs/toronto-ai/trace-pace/), run the experiment `+exp=path_follower`.
 
 </details>
@@ -251,8 +253,8 @@ Motions can be visualized via kinematic replay by running `PYTHON_PATH phys_anim
 
 
 ## Download Data
-1. Download the [SMPL](https://smpl.is.tue.mpg.de/) v1.1.0 parameters and place them in the `data/smpl/` folder. Rename the files basicmodel_neutral_lbs_10_207_0_v1.1.0, basicmodel_m_lbs_10_207_0_v1.1.0.pkl, basicmodel_f_lbs_10_207_0_v1.1.0.pkl to SMPL_NEUTRAL.pkl, SMPL_MALE.pkl and SMPL_FEMALE.pkl. 
-2. Download the [SMPL-X](https://smpl-x.is.tue.mpg.de/) v1.1 parameters and place them in the `data/smpl/` folder. Rename the files to SMPLX_NEUTRAL.pkl, SMPLX_MALE.pkl and SMPLX_FEMALE.pkl. 
+1. Download the [SMPL](https://smpl.is.tue.mpg.de/) v1.1.0 parameters and place them in the `data/smpl/` folder. Rename the files basicmodel_neutral_lbs_10_207_0_v1.1.0, basicmodel_m_lbs_10_207_0_v1.1.0.pkl, basicmodel_f_lbs_10_207_0_v1.1.0.pkl to SMPL_NEUTRAL.pkl, SMPL_MALE.pkl and SMPL_FEMALE.pkl.
+2. Download the [SMPL-X](https://smpl-x.is.tue.mpg.de/) v1.1 parameters and place them in the `data/smpl/` folder. Rename the files to SMPLX_NEUTRAL.pkl, SMPLX_MALE.pkl and SMPLX_FEMALE.pkl.
 3. Download the [AMASS](https://amass.is.tue.mpg.de/) dataset.
 4. Download the [SAMP](https://samp.is.tue.mpg.de/) dataset.
 
@@ -326,14 +328,14 @@ Also consider citing these prior works that helped contribute to this project:
     title={Perpetual Humanoid Control for Real-time Simulated Avatars},
     booktitle={International Conference on Computer Vision (ICCV)},
     year={2023}
-}            
+}
 
 @inproceedings{rempeluo2023tracepace,
     author={Rempe, Davis and Luo, Zhengyi and Peng, Xue Bin and Yuan, Ye and Kitani, Kris and Kreis, Karsten and Fidler, Sanja and Litany, Or},
     title={Trace and Pace: Controllable Pedestrian Animation via Guided Trajectory Diffusion},
     booktitle={Conference on Computer Vision and Pattern Recognition (CVPR)},
     year={2023}
-} 
+}
 
 @inproceedings{hassan2023synthesizing,
   title={Synthesizing physical character-scene interactions},
@@ -345,7 +347,7 @@ Also consider citing these prior works that helped contribute to this project:
 ```
 
 # References and Thanks
-This project repository builds upon the shoulders of giants. 
+This project repository builds upon the shoulders of giants.
 * [IsaacGymEnvs](https://github.com/isaac-sim/IsaacGymEnvs) for reference IsaacGym code. For example, terrain generation code.
 * [OmniIsaacGymEnvs](https://github.com/isaac-sim/OmniIsaacGymEnvs) for reference IsaacSim code.
 * [DeepMimic](https://github.com/xbpeng/DeepMimic) our full body tracker (Mimic) can be seen as a direct extension of DeepMimic.
