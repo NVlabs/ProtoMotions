@@ -80,17 +80,20 @@ class SimBaseInterface(BaseInterface, Humanoid):
         # Set main camera
         self.sim.set_camera_view([2.5, 0.0, 4.0], [0.0, 0.0, 2.0])
 
+        num_objects = 0
+        if self.scene_lib is not None:
+            num_objects = self.scene_lib.total_num_objects
         if self.config.robot.asset.robot_type == "smpl_humanoid":
             scene_cfg = SMPLSceneCfg(
                 num_envs=config.num_envs,
                 env_spacing=2.0,
-                num_objects=self.scene_lib.total_num_objects,
+                num_objects=num_objects,
             )
         elif self.config.robot.asset.robot_type == "smplx_humanoid":
             scene_cfg = SMPLXSceneCfg(
                 num_envs=config.num_envs,
                 env_spacing=2.0,
-                num_objects=self.scene_lib.total_num_objects,
+                num_objects=num_objects,
             )
         else:
             raise ValueError(
