@@ -36,9 +36,6 @@ from isaac_utils import rotations
 from phys_anim.envs.steering.common import BaseSteering
 from phys_anim.envs.base_task.isaaclab import TaskHumanoid
 
-TAR_ACTOR_ID = 1
-TAR_FACING_ACTOR_ID = 2
-
 
 class SteeringHumanoid(BaseSteering, TaskHumanoid):
     def __init__(self, config, device: torch.device, simulation_app):
@@ -47,10 +44,10 @@ class SteeringHumanoid(BaseSteering, TaskHumanoid):
     ###############################################################
     # Set up IsaacSim environment
     ###############################################################
-    def set_up_scene(self, scene) -> None:
+    def set_up_scene(self) -> None:
         if not self.headless:
-            self._load_marker_asset(scene)
-        super().set_up_scene(scene)
+            self._load_marker_asset()
+        super().set_up_scene()
         if not self.headless:
             self.post_set_up_scene()
 
@@ -60,7 +57,7 @@ class SteeringHumanoid(BaseSteering, TaskHumanoid):
         )
         self.markers.set_local_scales(0.1 * torch.ones((self.num_envs, 3)))
 
-    def _load_marker_asset(self, scene):
+    def _load_marker_asset(self):
         # Each marker will be a sphere
         base_env_path = self.default_zero_env_path + "/DirectionMarker_0"
         UsdGeom.Cone.Define(get_current_stage(), base_env_path)

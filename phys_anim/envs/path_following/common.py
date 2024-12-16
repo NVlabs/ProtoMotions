@@ -44,6 +44,11 @@ class BasePathFollowing(PathFollowingHumanoid):  # type: ignore[misc]
     def __init__(self, config, device: torch.device, *args, **kwargs):
         super().__init__(config=config, device=device, *args, **kwargs)
 
+        if "smpl" in self.config.robot.asset.asset_file_name:
+            self.head_body_id = self.build_body_ids_tensor(["Head"]).item()
+        else:
+            self.head_body_id = self.build_body_ids_tensor(["head"]).item()
+
         self._num_traj_samples = self.config.path_follower_params.num_traj_samples
         self._traj_sample_timestep = (
             self.config.path_follower_params.traj_sample_timestep

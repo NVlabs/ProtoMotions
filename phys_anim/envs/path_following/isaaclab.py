@@ -35,48 +35,43 @@ from pxr import UsdGeom
 from phys_anim.envs.path_following.common import BasePathFollowing
 from phys_anim.envs.base_task.isaaclab import TaskHumanoid
 
+import omni.isaac.lab.sim as sim_utils
+from omni.isaac.lab.markers import VisualizationMarkers, VisualizationMarkersCfg
+
 
 class PathFollowingHumanoid(BasePathFollowing, TaskHumanoid):
     def __init__(self, config, device: torch.device, simulation_app):
         super().__init__(config=config, device=device, simulation_app=simulation_app)
 
-        self.head_body_id = self.bodies_names.index("head")
-
     ###############################################################
     # Set up IsaacSim environment
     ###############################################################
-    def set_up_scene(self, scene) -> None:
+    def set_up_scene(self) -> None:
         if not self.headless:
-            self._load_marker_asset(scene)
-        super().set_up_scene(scene)
-        if not self.headless:
-            self.post_set_up_scene()
+            self._load_marker_asset()
+        super().set_up_scene()
 
-    def post_set_up_scene(self):
-        self.markers = ArticulationView(
-            self.default_base_env_path + "/env_*/TrajectoryMarker_*"
+    def _load_marker_asset(self):
+        traj_marker_obj_cfg = VisualizationMarkersCfg(
+            prim_path="/Visuals/TrajectoryMarker",
+            markers={
+                "sphere": sim_utils.SphereCfg(
+                    radius=1,
+                    visual_material=sim_utils.PreviewSurfaceCfg(
+                        diffuse_color=(1.0, 0.0, 0.0)
+                    ),
+                ),
+            },
         )
-        self.markers.set_local_scales(0.05 * torch.ones((self.num_envs * 10, 3)))
+        trajectory_marker_scale = []
+        for i in range(
+            self.num_envs * self.config.path_follower_params.num_traj_samples
+        ):
+            trajectory_marker_scale.append([0.05, 0.05, 0.05])
 
-    def _load_marker_asset(self, scene):
-        # Each marker will be a sphere
-        base_env_path = self.default_zero_env_path + "/TrajectoryMarker_0"
-        sphere = UsdGeom.Sphere.Define(get_current_stage(), base_env_path)
-        color_attribute = sphere.GetDisplayColorAttr()
-        color_attribute.Set([(0.21, 0.46, 0.53)])
-
-        # Create a grid cloner instance
-        cloner = GridCloner(spacing=3)
-
-        # Create 10 clones, the num_env clones will be created by the main cloner
-        target_paths = cloner.generate_paths(
-            self.default_zero_env_path + "/TrajectoryMarker", 10
-        )
-
-        # Clone the marker at target paths
-        cloner.clone(
-            source_prim_path=self.default_zero_env_path + "/TrajectoryMarker_0",
-            prim_paths=target_paths,
+        self.trajectory_markers = VisualizationMarkers(traj_marker_obj_cfg)
+        self.trajectory_marker_scale = torch.tensor(
+            trajectory_marker_scale, device=self.device
         )
 
     ###############################################################
@@ -84,7 +79,7 @@ class PathFollowingHumanoid(BasePathFollowing, TaskHumanoid):
     ###############################################################
     def _update_marker(self):
         traj_samples = self.fetch_path_samples().clone()
-        if not self.config.height_conditioned:
+        if not self.config.path_follower_params.height_conditioned:
             traj_samples[..., 2] = 0.8  # CT hack
 
         ground_below_marker = self.terrain_obs_cb.get_ground_heights(
@@ -92,7 +87,10 @@ class PathFollowingHumanoid(BasePathFollowing, TaskHumanoid):
         ).view(traj_samples.shape[:-1])
         traj_samples[..., 2] += ground_below_marker
 
-        self.markers.set_world_poses(traj_samples.view(-1, 3))
+        self.trajectory_markers.visualize(
+            translations=traj_samples.view(-1, 3),
+            scales=self.trajectory_marker_scale,
+        )
 
     def draw_task(self):
         self._update_marker()

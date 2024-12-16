@@ -39,11 +39,6 @@ class PathFollowingHumanoid(BasePathFollowing, TaskHumanoid):  # type: ignore[mi
     def __init__(self, config, device: torch.device):
         super().__init__(config=config, device=device)
 
-        if "smpl" in self.config.robot.asset.asset_file_name:
-            self.head_body_id = self.build_body_ids_tensor(["Head"]).item()
-        else:
-            self.head_body_id = self.build_body_ids_tensor(["head"]).item()
-
         if not self.headless:
             self._build_marker_state_tensors()
 
