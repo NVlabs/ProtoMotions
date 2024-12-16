@@ -36,8 +36,8 @@ else:
 
 
 class BaseTask(TaskHumanoid):  # type: ignore[misc]
-    def __init__(self, config, device):
-        super().__init__(config, device)
+    def __init__(self, config, device, *args, **kwargs):
+        super().__init__(config, device, *args, **kwargs)
         self.setup_task()
 
     ###############################################################
