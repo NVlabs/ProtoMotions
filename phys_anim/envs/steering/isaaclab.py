@@ -27,10 +27,10 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import torch
-from omni.isaac.cloner import GridCloner
-from omni.isaac.core.articulations import ArticulationView
-from omni.isaac.core.utils.stage import get_current_stage
-from pxr import UsdGeom
+import omni.isaac.lab.sim as sim_utils
+from omni.isaac.lab.markers import VisualizationMarkersCfg
+from omni.isaac.lab.markers import VisualizationMarkers
+from omni.isaac.lab.utils.assets import ISAAC_NUCLEUS_DIR
 
 from isaac_utils import rotations
 from phys_anim.envs.steering.common import BaseSteering
@@ -48,67 +48,40 @@ class SteeringHumanoid(BaseSteering, TaskHumanoid):
         if not self.headless:
             self._load_marker_asset()
         super().set_up_scene()
-        if not self.headless:
-            self.post_set_up_scene()
-
-    def post_set_up_scene(self):
-        self.markers = ArticulationView(
-            self.default_base_env_path + "/env_*/DirectionMarker_*"
-        )
-        self.markers.set_local_scales(0.1 * torch.ones((self.num_envs, 3)))
 
     def _load_marker_asset(self):
-        # Each marker will be a sphere
-        base_env_path = self.default_zero_env_path + "/DirectionMarker_0"
-        UsdGeom.Cone.Define(get_current_stage(), base_env_path)
-
-        # Create a grid cloner instance
-        cloner = GridCloner(spacing=3)
-
-        # Create 10 clones, the num_env clones will be created by the main cloner
-        target_paths = cloner.generate_paths(
-            self.default_zero_env_path + "/DirectionMarker", 1
+        steering_marker_obj_cfg = VisualizationMarkersCfg(
+            prim_path="/Visuals/SteeringMarker",
+            markers={
+                "arrow_x": sim_utils.UsdFileCfg(
+                    usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/UIElements/arrow_x.usd",
+                    scale=(0.1, 0.1, 0.5),
+                    visual_material=sim_utils.PreviewSurfaceCfg(
+                        diffuse_color=(0.0, 1.0, 1.0), opacity=0.5
+                    ),
+                ),
+            },
         )
 
-        # Clone the marker at target paths
-        cloner.clone(
-            source_prim_path=self.default_zero_env_path + "/DirectionMarker_0",
-            prim_paths=target_paths,
-        )
-
-        self._marker_pos = torch.zeros(
-            [self.num_envs, 3], device=self.device, dtype=torch.float
-        )
+        self.steering_markers = VisualizationMarkers(steering_marker_obj_cfg)
 
     ###############################################################
     # Helpers
     ###############################################################
     def _update_marker(self):
-        humanoid_root_pos = self.get_humanoid_root_states()[..., 0:3]
-        self._marker_pos[..., 0:2] = humanoid_root_pos[..., 0:2] + self._tar_dir
-        self._marker_pos[..., 2] = humanoid_root_pos[..., 2]
+        marker_root_pos = self.get_humanoid_root_states()[..., 0:3].clone()
+        marker_root_pos[..., 0:2] += self._tar_dir
 
-        heading_theta = (
-            self._tar_dir_theta
-        )  # torch.atan2(self._tar_dir[..., 1], self._tar_dir[..., 0])
-        heading_axis = torch.zeros_like(self._marker_pos)
+        heading_axis = torch.zeros_like(marker_root_pos)
         heading_axis[..., -1] = 1.0
         marker_rot = rotations.quat_from_angle_axis(
-            heading_theta, heading_axis, self.w_last
+            self._tar_dir_theta, heading_axis, self.w_last
         )
 
-        self.markers.set_world_poses(self._marker_pos, marker_rot)
-
-        for env_id in range(self.num_envs):
-            cone_prim = UsdGeom.Cone.Define(
-                get_current_stage(),
-                self.default_base_env_path + f"/env_{env_id}/DirectionMarker_0",
-            )
-            color_attr = cone_prim.GetDisplayColorAttr()
-
-            weight = self._tar_speed[env_id].cpu().item() / self._tar_speed_max
-            color = [(weight, 0, 1 - weight)]
-            color_attr.Set(color)
+        self.steering_markers.visualize(
+            translations=marker_root_pos,
+            orientations=rotations.xyzw_to_wxyz(marker_rot),
+        )
 
     def draw_task(self):
         self._update_marker()
