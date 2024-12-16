@@ -27,10 +27,6 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import torch
-from omni.isaac.cloner import GridCloner
-from omni.isaac.core.articulations import ArticulationView
-from omni.isaac.core.utils.stage import get_current_stage
-from pxr import UsdGeom
 
 from phys_anim.envs.path_following.common import BasePathFollowing
 from phys_anim.envs.base_task.isaaclab import TaskHumanoid
