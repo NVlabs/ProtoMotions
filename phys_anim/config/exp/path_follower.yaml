@@ -8,6 +8,11 @@ defaults:
 
 experiment_name: path_follower
 
+env:
+  config:
+    amp_obs:
+      disable_discriminator: False
+
 algo:
   config:
     task_reward_w: 0.5
