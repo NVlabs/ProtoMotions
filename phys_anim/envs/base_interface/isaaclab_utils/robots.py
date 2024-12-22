@@ -387,7 +387,8 @@ class SMPLSceneCfg(InteractiveSceneCfg):
             prim_path="/World/envs/env_.*/Robot/bodies/.*",
             filter_prim_paths_expr=[
                 f"/World/objects/object_{i}" for i in range(num_objects)
-            ],
+            ]
+            + ["/World/terrain"],
         )
 
 
@@ -411,5 +412,6 @@ class SMPLXSceneCfg(InteractiveSceneCfg):
             prim_path="/World/envs/env_.*/Robot/bodies/.*",
             filter_prim_paths_expr=[
                 f"/World/objects/object_{i}" for i in range(num_objects)
-            ],
+            ]
+            + ["/World/terrain"],
         )
