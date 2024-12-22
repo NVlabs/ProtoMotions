@@ -752,9 +752,6 @@ class Humanoid(BaseHumanoid, SimBaseInterface):
     ###############################################################
     # Getters
     ###############################################################
-    def get_body_id(self, body_name):
-        return self.bodies_names.index(body_name)
-
     def get_bodies_state(self):
         isaacsim_bodies_positions = self.robot.data.body_pos_w.clone()
         isaacsim_bodies_rotations = self.robot.data.body_quat_w.clone()
@@ -912,16 +909,24 @@ class Humanoid(BaseHumanoid, SimBaseInterface):
         rb_vel,
         rb_ang_vel,
     ):
+        # Store reset states
+        self.reset_states = {
+            "root_pos": root_pos.clone(),
+            "root_rot": root_rot.clone(),
+            "root_vel": root_vel.clone(),
+            "root_ang_vel": root_ang_vel.clone(),
+            "dof_pos": dof_pos.clone(),
+            "dof_vel": dof_vel.clone(),
+            "rb_pos": rb_pos.clone(),
+            "rb_rot": rb_rot.clone(),
+            "rb_vel": rb_vel.clone(),
+            "rb_ang_vel": rb_ang_vel.clone(),
+        }
+
         root_rot = rotations.xyzw_to_wxyz(root_rot)
-        rb_rot = rotations.xyzw_to_wxyz(rb_rot)
 
         dof_pos = dof_pos[:, self.dof_offset_indices_isaac_gym_to_sim]
         dof_vel = dof_vel[:, self.dof_offset_indices_isaac_gym_to_sim]
-
-        # rb_pos = rb_pos[:, self.rigid_body_indices_isaac_gym_to_sim]
-        # rb_rot = rb_rot[:, self.rigid_body_indices_isaac_gym_to_sim]
-        # rb_vel = rb_vel[:, self.rigid_body_indices_isaac_gym_to_sim]
-        # rb_ang_vel = rb_ang_vel[:, self.rigid_body_indices_isaac_gym_to_sim]
 
         init_root_state = torch.cat(
             [root_pos, root_rot, root_vel, root_ang_vel], dim=-1
@@ -959,12 +964,19 @@ class Humanoid(BaseHumanoid, SimBaseInterface):
         # Update object root states
         root_pos = obj_pos + scene_position
         root_pos[..., 2] += terrain_height.view(-1)
-        obj_rot = rotations.xyzw_to_wxyz(obj_rot)
-        self.objects_view.set_world_poses(root_pos, obj_rot, object_ids)
+        sim_obj_rot = rotations.xyzw_to_wxyz(obj_rot)
+        self.objects_view.set_world_poses(root_pos, sim_obj_rot, object_ids)
         velocities = torch.zeros(
             len(object_ids), 6, device=self.device, dtype=torch.float
         )
         self.objects_view.set_velocities(velocities, object_ids)
+
+        self.object_reset_states = {
+            "position": root_pos,
+            "rotation": obj_rot,
+            "velocity": velocities[..., :3],
+            "angular_velocity": velocities[..., 3:],
+        }
 
     def reset_envs(self, env_ids):
         if len(env_ids) > 0:
@@ -972,6 +984,7 @@ class Humanoid(BaseHumanoid, SimBaseInterface):
             self.reset_env_tensors(env_ids)
             # self.set_char_color(np.array([0.65, 0.1, 1.0]), env_ids)
             self.compute_observations(env_ids)
+            super().reset_envs(env_ids)
 
     def reset_default(self, env_ids):
         respawn_position = self.get_envs_respawn_position(env_ids)
@@ -997,52 +1010,12 @@ class Humanoid(BaseHumanoid, SimBaseInterface):
     # Helpers
     ###############################################################
     def setup_character_props(self):
-        self.bodies_names = self.config.robot.isaacgym_body_names
-        self.num_bodies = self.config.robot.num_bodies
-        self.key_body_ids = torch.tensor(
-            [
-                self.bodies_names.index(key_body_name)
-                for key_body_name in self.config.robot.key_bodies
-            ],
-            device=self.device,
-            dtype=torch.long,
-        )
-        self.non_termination_contact_body_ids = torch.tensor(
-            [
-                self.bodies_names.index(non_termination_contact_body_name)
-                for non_termination_contact_body_name in self.config.robot.non_termination_contact_bodies
-            ],
-            device=self.device,
-            dtype=torch.long,
-        )
-
-        self.contact_body_ids = torch.tensor(
-            [
-                self.bodies_names.index(contact_body_name)
-                for contact_body_name in self.config.robot.contact_bodies
-            ],
-            device=self.device,
-            dtype=torch.long,
-        )
-
-        self.dof_body_ids = self.config.robot.isaacgym_dof_body_ids
-
-        self.dof_offsets = []
-        previous_dof_name = "null"
-        for dof_offset, dof_name in enumerate(self.config.robot.isaacgym_dof_names):
-            if dof_name[:-2] != previous_dof_name:  # remove the "_x/y/z"
-                previous_dof_name = dof_name[:-2]
-                self.dof_offsets.append(dof_offset)
-        self.dof_offsets.append(len(self.config.robot.isaacgym_dof_names))
-
-        self.dof_obs_size = self.config.robot.dof_obs_size
-        self.num_act = self.config.robot.number_of_actions
-
+        super().setup_character_props()
         isaacsim_dof_names = self.robot.data.joint_names
         isaacsim_body_names = self.robot.data.body_names
         isaacsim_contact_sensor_body_names = self.contact_sensor.body_names
 
-        self.rigid_body_indices_isaac_gym_to_sim = torch.tensor(
+        self.body_isaac_gym_to_sim = torch.tensor(
             [
                 self.config.robot.isaacgym_body_names.index(body_name)
                 for body_name in isaacsim_body_names
@@ -1050,26 +1023,7 @@ class Humanoid(BaseHumanoid, SimBaseInterface):
             dtype=torch.long,
             device=self.device,
         )
-
-        self.contact_sensor_rigid_body_indices_isaac_sim_to_gym = torch.tensor(
-            [
-                self.config.robot.isaacgym_body_names.index(body_name)
-                for body_name in isaacsim_contact_sensor_body_names
-            ],
-            dtype=torch.long,
-            device=self.device,
-        )
-
-        self.dof_offset_indices_isaac_sim_to_gym = torch.tensor(
-            [
-                isaacsim_dof_names.index(dof_name)
-                for dof_name in self.config.robot.isaacgym_dof_names
-            ],
-            dtype=torch.long,
-            device=self.device,
-        )
-
-        self.rigid_body_indices_isaac_sim_to_gym = torch.tensor(
+        self.body_isaac_sim_to_gym = torch.tensor(
             [
                 isaacsim_body_names.index(body_name)
                 for body_name in self.config.robot.isaacgym_body_names
@@ -1078,7 +1032,16 @@ class Humanoid(BaseHumanoid, SimBaseInterface):
             device=self.device,
         )
 
-        self.dof_offset_indices_isaac_gym_to_sim = torch.tensor(
+        self.contact_sensor_isaac_sim_to_gym = torch.tensor(
+            [
+                self.config.robot.isaacgym_body_names.index(body_name)
+                for body_name in isaacsim_contact_sensor_body_names
+            ],
+            dtype=torch.long,
+            device=self.device,
+        )
+
+        self.dof_isaac_gym_to_sim = torch.tensor(
             [
                 self.config.robot.isaacgym_dof_names.index(dof_name)
                 for dof_name in isaacsim_dof_names
@@ -1086,8 +1049,7 @@ class Humanoid(BaseHumanoid, SimBaseInterface):
             dtype=torch.long,
             device=self.device,
         )
-
-        self.dof_body_indices_isaac_sim_to_gym = torch.tensor(
+        self.dof_isaac_sim_to_gym = torch.tensor(
             [
                 isaacsim_dof_names.index(dof_name)
                 for dof_name in self.config.robot.isaacgym_dof_names

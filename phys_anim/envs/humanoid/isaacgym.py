@@ -163,14 +163,6 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
             )
             self.object_forces = force_tensor[-self.total_num_objects :]
 
-        self.key_body_ids = self.build_body_ids_tensor(self.config.robot.key_bodies)
-        self.non_termination_contact_body_ids = self.build_body_ids_tensor(
-            self.config.robot.non_termination_contact_bodies
-        )
-        self.contact_body_ids = self.build_body_ids_tensor(
-            self.config.robot.contact_bodies
-        )
-
         props = self.gym.get_asset_dof_properties(self.humanoid_asset)
         self.process_dof_props(props)
         self.create_legged_robot_tensors()
@@ -312,13 +304,15 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
             self.sim, asset_root, asset_file, asset_options
         )
 
-        self.num_bodies = self.gym.get_asset_rigid_body_count(humanoid_asset)
+        robot_num_bodies = self.gym.get_asset_rigid_body_count(humanoid_asset)
         assert (
-            self.num_bodies == self.config.robot.num_bodies
-        ), f"Number of bodies in the config {self.config.robot.num_bodies} doesn't match provided robot {self.num_bodies}"
-        self.body_names = self.gym.get_asset_rigid_body_names(humanoid_asset)
+            robot_num_bodies == self.config.robot.num_bodies
+        ), f"Number of bodies in the config {self.config.robot.num_bodies} doesn't match provided robot {robot_num_bodies}"
         self.dof_names = self.gym.get_asset_dof_names(humanoid_asset)
-        self.num_dof = self.gym.get_asset_dof_count(humanoid_asset)
+        robot_num_dof = self.gym.get_asset_dof_count(humanoid_asset)
+        assert robot_num_dof == len(
+            self.config.robot.isaacgym_dof_names
+        ), f"Number of dofs in the config {len(self.config.robot.isaacgym_dof_names)} doesn't match provided robot {robot_num_dof}"
         self.num_joints = self.gym.get_asset_joint_count(humanoid_asset)
 
         # create force sensors
@@ -369,7 +363,7 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
         dof_prop = self.gym.get_actor_dof_properties(
             self.envs[0], self.humanoid_handles[0]
         )
-        for j in range(self.num_dof):
+        for j in range(len(dof_prop["upper"])):  # num dof
             if dof_prop["lower"][j] > dof_prop["upper"][j]:
                 self.dof_limits_lower.append(dof_prop["upper"][j])
                 self.dof_limits_upper.append(dof_prop["lower"][j])
@@ -525,7 +519,7 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
             ]
         )
 
-        for j in range(self.num_bodies):
+        for j in range(self.config.robot.num_bodies):
             self.gym.set_rigid_body_color(
                 env_ptr,
                 humanoid_handle,
@@ -1033,11 +1027,6 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
         ) // self.num_envs
         return num_actors
 
-    def get_body_id(self, body_name):
-        return self.gym.find_actor_rigid_body_handle(
-            self.envs[0], self.humanoid_handles[0], body_name
-        )
-
     def get_body_positions(self):
         return self.rigid_body_pos.clone()
 
@@ -1093,39 +1082,43 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self.gym.refresh_rigid_body_state_tensor(self.sim)
 
-        if self.reset_happened:
-            env_ids = self.reset_ref_env_ids
-            self.humanoid_root_states[env_ids, 0:3] = self.reset_states["root_pos"]
-            self.humanoid_root_states[env_ids, 3:7] = self.reset_states["root_rot"]
-            self.humanoid_root_states[env_ids, 7:10] = self.reset_states["root_vel"]
+        if len(self.reset_env_ids) > 0:
+            env_ids = self.reset_env_ids
+            self.humanoid_root_states[env_ids, 0:3] = self.reset_states["root_pos"][
+                env_ids
+            ]
+            self.humanoid_root_states[env_ids, 3:7] = self.reset_states["root_rot"][
+                env_ids
+            ]
+            self.humanoid_root_states[env_ids, 7:10] = self.reset_states["root_vel"][
+                env_ids
+            ]
             self.humanoid_root_states[env_ids, 10:13] = self.reset_states[
                 "root_ang_vel"
-            ]
+            ][env_ids]
 
-            self.dof_pos[env_ids] = self.reset_states["dof_pos"]
-            self.dof_vel[env_ids] = self.reset_states["dof_vel"]
+            self.dof_pos[env_ids] = self.reset_states["dof_pos"][env_ids]
+            self.dof_vel[env_ids] = self.reset_states["dof_vel"][env_ids]
 
-            self.rigid_body_pos[env_ids] = self.reset_states["rb_pos"]
-            self.rigid_body_rot[env_ids] = self.reset_states["rb_rot"]
-            self.rigid_body_vel[env_ids] = self.reset_states["rb_vel"]
-            self.rigid_body_ang_vel[env_ids] = self.reset_states["rb_ang_vel"]
+            self.rigid_body_pos[env_ids] = self.reset_states["rb_pos"][env_ids]
+            self.rigid_body_rot[env_ids] = self.reset_states["rb_rot"][env_ids]
+            self.rigid_body_vel[env_ids] = self.reset_states["rb_vel"][env_ids]
+            self.rigid_body_ang_vel[env_ids] = self.reset_states["rb_ang_vel"][env_ids]
 
-            if self.object_reset_states is not None:
+            if len(self.reset_ref_object_ids) > 0:
                 object_ids = self.reset_ref_object_ids
                 self.object_root_states[object_ids, 0:3] = self.object_reset_states[
                     "position"
-                ]
+                ][object_ids]
                 self.object_root_states[object_ids, 3:7] = self.object_reset_states[
                     "rotation"
-                ]
+                ][object_ids]
                 self.object_root_states[object_ids, 7:10] = self.object_reset_states[
                     "velocity"
-                ]
+                ][object_ids]
                 self.object_root_states[object_ids, 10:13] = self.object_reset_states[
                     "angular_velocity"
-                ]
-                self.object_reset_states = None
-            self.reset_happened = False
+                ][object_ids]
 
         self.gym.refresh_force_sensor_tensor(self.sim)
         self.gym.refresh_dof_force_tensor(self.sim)
@@ -1146,13 +1139,12 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
     # Handle Resets
     ###############################################################
     def reset_envs(self, env_ids):
-        super().reset_envs(env_ids)
-
         if len(env_ids) > 0:
             self.reset_actors(env_ids)
             self.reset_env_tensors(env_ids)
             self.refresh_sim_tensors()
             self.compute_observations(env_ids)
+            super().reset_envs(env_ids)
 
     def reset_env_tensors(self, env_ids, object_ids=None):
         if object_ids is None:
@@ -1294,18 +1286,16 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
         self.rigid_body_ang_vel[env_ids] = rb_ang_vel
 
         # Store reset states
-        self.reset_states = {
-            "root_pos": root_pos.clone(),
-            "root_rot": root_rot.clone(),
-            "root_vel": root_vel.clone(),
-            "root_ang_vel": root_ang_vel.clone(),
-            "dof_pos": dof_pos.clone(),
-            "dof_vel": dof_vel.clone(),
-            "rb_pos": rb_pos.clone(),
-            "rb_rot": rb_rot.clone(),
-            "rb_vel": rb_vel.clone(),
-            "rb_ang_vel": rb_ang_vel.clone(),
-        }
+        self.reset_states["root_pos"][env_ids] = root_pos.clone()
+        self.reset_states["root_rot"][env_ids] = root_rot.clone()
+        self.reset_states["root_vel"][env_ids] = root_vel.clone()
+        self.reset_states["root_ang_vel"][env_ids] = root_ang_vel.clone()
+        self.reset_states["dof_pos"][env_ids] = dof_pos.clone()
+        self.reset_states["dof_vel"][env_ids] = dof_vel.clone()
+        self.reset_states["rb_pos"][env_ids] = rb_pos.clone()
+        self.reset_states["rb_rot"][env_ids] = rb_rot.clone()
+        self.reset_states["rb_vel"][env_ids] = rb_vel.clone()
+        self.reset_states["rb_ang_vel"][env_ids] = rb_ang_vel.clone()
 
     def set_object_state(self, object_ids, obj_pos, obj_rot):
         """
@@ -1344,12 +1334,18 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
         self.object_root_states[object_ids, 10:13] = 0  # Set angular velocity to zero
 
         # Store reset states for objects (in global coordinates)
-        self.object_reset_states = {
-            "position": self.object_root_states[object_ids, 0:3].clone(),
-            "rotation": self.object_root_states[object_ids, 3:7].clone(),
-            "velocity": self.object_root_states[object_ids, 7:10].clone(),
-            "angular_velocity": self.object_root_states[object_ids, 10:13].clone(),
-        }
+        self.object_reset_states["position"][object_ids] = self.object_root_states[
+            object_ids, 0:3
+        ].clone()
+        self.object_reset_states["rotation"][object_ids] = self.object_root_states[
+            object_ids, 3:7
+        ].clone()
+        self.object_reset_states["velocity"][object_ids] = self.object_root_states[
+            object_ids, 7:10
+        ].clone()
+        self.object_reset_states["angular_velocity"][object_ids] = (
+            self.object_root_states[object_ids, 10:13].clone()
+        )
 
     ###############################################################
     # Helpers
@@ -1367,18 +1363,6 @@ class Humanoid(BaseHumanoid, GymBaseInterface):  # type: ignore[misc]
                     gymapi.MESH_VISUAL,
                     gymapi.Vec3(col[0], col[1], col[2]),
                 )
-
-    def setup_character_props(self):
-        self.dof_body_ids = self.config.robot.isaacgym_dof_body_ids
-        self.dof_offsets = []
-        previous_dof_name = "null"
-        for dof_offset, dof_name in enumerate(self.config.robot.isaacgym_dof_names):
-            if dof_name[:-2] != previous_dof_name:  # remove the "_x/y/z"
-                previous_dof_name = dof_name[:-2]
-                self.dof_offsets.append(dof_offset)
-        self.dof_offsets.append(len(self.config.robot.isaacgym_dof_names))
-        self.dof_obs_size = self.config.robot.dof_obs_size
-        self.num_act = self.config.robot.number_of_actions
 
     def render(self):
         if not self.headless:

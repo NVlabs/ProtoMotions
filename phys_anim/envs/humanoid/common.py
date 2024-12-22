@@ -83,8 +83,58 @@ class BaseHumanoid(Humanoid):
 
         self.state_init = self.StateInit[config.state_init]
         self.hybrid_init_prob = config.hybrid_init_prob
+
+        self.reset_env_ids = []
         self.reset_default_env_ids = []
         self.reset_ref_env_ids = []
+        self.reset_states = {
+            "root_pos": torch.zeros(
+                self.num_envs, 3, dtype=torch.float, device=self.device
+            ),
+            "root_rot": torch.zeros(
+                self.num_envs, 4, dtype=torch.float, device=self.device
+            ),
+            "root_vel": torch.zeros(
+                self.num_envs, 3, dtype=torch.float, device=self.device
+            ),
+            "root_ang_vel": torch.zeros(
+                self.num_envs, 3, dtype=torch.float, device=self.device
+            ),
+            "dof_pos": torch.zeros(
+                self.num_envs, self.num_dof, dtype=torch.float, device=self.device
+            ),
+            "dof_vel": torch.zeros(
+                self.num_envs, self.num_dof, dtype=torch.float, device=self.device
+            ),
+            "rb_pos": torch.zeros(
+                self.num_envs, self.num_bodies, 3, dtype=torch.float, device=self.device
+            ),
+            "rb_rot": torch.zeros(
+                self.num_envs, self.num_bodies, 4, dtype=torch.float, device=self.device
+            ),
+            "rb_vel": torch.zeros(
+                self.num_envs, self.num_bodies, 3, dtype=torch.float, device=self.device
+            ),
+            "rb_ang_vel": torch.zeros(
+                self.num_envs, self.num_bodies, 3, dtype=torch.float, device=self.device
+            ),
+        }
+
+        self.reset_ref_object_ids = []
+        self.object_reset_states = {
+            "position": torch.zeros(
+                self.total_num_objects, 3, dtype=torch.float, device=self.device
+            ),
+            "rotation": torch.zeros(
+                self.total_num_objects, 4, dtype=torch.float, device=self.device
+            ),
+            "velocity": torch.zeros(
+                self.total_num_objects, 3, dtype=torch.float, device=self.device
+            ),
+            "angular_velocity": torch.zeros(
+                self.total_num_objects, 3, dtype=torch.float, device=self.device
+            ),
+        }
 
         # Buffers
         self.self_obs_cb = HumanoidObs(self.config.humanoid_obs, self)
@@ -102,12 +152,6 @@ class BaseHumanoid(Humanoid):
         self.log_dict = {}
 
         self.force_respawn_on_flat = False
-
-        self.reset_happened = False
-        self.reset_ref_env_ids = []
-        self.reset_states = None
-        self.reset_ref_object_ids = []
-        self.object_reset_states = None
 
         # After objects have been populated, finalize structure
         self.object_obs_cb.objects_spawned()
@@ -163,6 +207,9 @@ class BaseHumanoid(Humanoid):
 
     def get_action_size(self):
         return self.num_act
+
+    def get_body_id(self, body_name):
+        return self.body_names.index(body_name)
 
     def get_body_id(self, body_name):
         raise NotImplementedError
@@ -340,6 +387,14 @@ class BaseHumanoid(Humanoid):
         super().on_environment_ready()
 
     def pre_physics_step(self, actions):
+        self.reset_states = None
+        self.object_reset_states = None
+
+        self.reset_env_ids = []
+        self.reset_default_env_ids = []
+        self.reset_ref_env_ids = []
+        self.reset_ref_object_ids = []
+
         if self.config.sync_motion:
             actions *= 0
 
@@ -458,9 +513,6 @@ class BaseHumanoid(Humanoid):
             env_ids = torch.tensor(env_ids, device=self.device, dtype=torch.long)
         env_ids = env_ids.to(self.device)
 
-        if len(env_ids) > 0:
-            self.reset_happened = True
-
         self.reset_envs(env_ids)
 
     def reset_envs(self, env_ids):
@@ -468,7 +520,7 @@ class BaseHumanoid(Humanoid):
             return
 
         self.amp_obs_cb.reset_envs(env_ids)
-
+        self.reset_env_ids = []
         self.reset_default_env_ids = []
         self.reset_ref_env_ids = []
         self.reset_ref_object_ids = []
@@ -492,6 +544,8 @@ class BaseHumanoid(Humanoid):
             assert False, "Unsupported state initialization strategy: {:s}".format(
                 str(self.state_init)
             )
+        if len(env_ids) > 0:
+            self.reset_env_ids = env_ids
 
     def reset_ref_state_init(
         self,
@@ -705,6 +759,30 @@ class BaseHumanoid(Humanoid):
     ###############################################################
     # Helpers
     ###############################################################
+    def setup_character_props(self):
+        self.body_names = self.config.robot.isaacgym_body_names
+        self.num_bodies = self.config.robot.num_bodies
+        self.num_dof = len(self.config.robot.isaacgym_dof_names)
+
+        self.dof_body_ids = self.config.robot.isaacgym_dof_body_ids
+        self.dof_offsets = []
+        previous_dof_name = "null"
+        for dof_offset, dof_name in enumerate(self.config.robot.isaacgym_dof_names):
+            if dof_name[:-2] != previous_dof_name:  # remove the "_x/y/z"
+                previous_dof_name = dof_name[:-2]
+                self.dof_offsets.append(dof_offset)
+        self.dof_offsets.append(len(self.config.robot.isaacgym_dof_names))
+        self.dof_obs_size = self.config.robot.dof_obs_size
+        self.num_act = self.config.robot.number_of_actions
+
+        self.key_body_ids = self.build_body_ids_tensor(self.config.robot.key_bodies)
+        self.non_termination_contact_body_ids = self.build_body_ids_tensor(
+            self.config.robot.non_termination_contact_bodies
+        )
+        self.contact_body_ids = self.build_body_ids_tensor(
+            self.config.robot.contact_bodies
+        )
+
     def action_to_pd_targets(self, action):
         pd_tar = self._pd_action_offset + self._pd_action_scale * action
         return pd_tar
