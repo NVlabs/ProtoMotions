@@ -143,10 +143,10 @@ class GymBaseInterface(BaseInterface, Humanoid):  # type: ignore[misc]
         if self.device.type == "cpu":
             self.gym.fetch_results(self.sim, True)
 
-        self.render()
-
         # compute observations, rewards, resets, ...
         self.post_physics_step()
+
+        self.render()
 
         return (
             self.rew_buf,

@@ -156,9 +156,9 @@ class SimBaseInterface(BaseInterface, Humanoid):
 
         self.physics_step()
 
-        self.render()
-
         self.post_physics_step()
+
+        self.render()
 
         return (
             self.rew_buf,
