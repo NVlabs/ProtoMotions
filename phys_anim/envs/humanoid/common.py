@@ -211,9 +211,6 @@ class BaseHumanoid(Humanoid):
     def get_body_id(self, body_name):
         return self.body_names.index(body_name)
 
-    def get_body_id(self, body_name):
-        raise NotImplementedError
-
     def get_envs_respawn_position(
         self,
         env_ids,
