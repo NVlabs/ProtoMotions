@@ -774,16 +774,16 @@ class Humanoid(BaseHumanoid, SimBaseInterface):
         isaacsim_bodies_rotations = rotations.wxyz_to_xyzw(isaacsim_bodies_rotations)
 
         bodies_positions = isaacsim_bodies_positions[
-            :, self.rigid_body_indices_isaac_sim_to_gym
+            :, self.body_isaac_sim_to_gym
         ]
         bodies_rotations = isaacsim_bodies_rotations[
-            :, self.rigid_body_indices_isaac_sim_to_gym
+            :, self.body_isaac_sim_to_gym
         ]
         bodies_velocities = isaacsim_bodies_velocities[
-            :, self.rigid_body_indices_isaac_sim_to_gym
+            :, self.body_isaac_sim_to_gym
         ]
         bodies_ang_velocities = isaacsim_bodies_ang_velocities[
-            :, self.rigid_body_indices_isaac_sim_to_gym
+            :, self.body_isaac_sim_to_gym
         ]
 
         return_dict = EasyDict(
@@ -800,22 +800,22 @@ class Humanoid(BaseHumanoid, SimBaseInterface):
     def get_dof_forces(self):
         isaacsim_dof_forces = self.robot.data.applied_torque.clone()
 
-        dof_forces = isaacsim_dof_forces[:, self.dof_offset_indices_isaac_sim_to_gym]
+        dof_forces = isaacsim_dof_forces[:, self.dof_isaac_sim_to_gym]
         return dof_forces
 
     def get_dof_state(self) -> tuple:
         isaacsim_dof_pos = self.robot.data.joint_pos.clone()
         isaacsim_dof_vel = self.robot.data.joint_vel.clone()
 
-        dof_pos = isaacsim_dof_pos[:, self.dof_offset_indices_isaac_sim_to_gym]
-        dof_vel = isaacsim_dof_vel[:, self.dof_offset_indices_isaac_sim_to_gym]
+        dof_pos = isaacsim_dof_pos[:, self.dof_isaac_sim_to_gym]
+        dof_vel = isaacsim_dof_vel[:, self.dof_isaac_sim_to_gym]
         return dof_pos, dof_vel
 
     def get_body_positions(self):
         isaacsim_rb_pos = self.robot.data.body_pos_w.clone().view(
             self.num_envs, self.num_bodies, 3
         )
-        rb_pos = isaacsim_rb_pos[:, self.rigid_body_indices_isaac_sim_to_gym]
+        rb_pos = isaacsim_rb_pos[:, self.body_isaac_sim_to_gym]
         return rb_pos
 
     def get_bodies_contact_buf(self):
@@ -829,7 +829,7 @@ class Humanoid(BaseHumanoid, SimBaseInterface):
                 self.num_envs, self.num_bodies, 3
             )
         rb_contacts = contacts[
-            :, self.contact_sensor_rigid_body_indices_isaac_sim_to_gym
+            :, self.contact_sensor_isaac_sim_to_gym
         ]
         return rb_contacts
 
@@ -884,7 +884,7 @@ class Humanoid(BaseHumanoid, SimBaseInterface):
         return self.simulation_app.is_running()
 
     def apply_pd_control(self):
-        isaacsim_actions = self.actions[:, self.dof_offset_indices_isaac_gym_to_sim]
+        isaacsim_actions = self.actions[:, self.dof_isaac_gym_to_sim]
         pd_tar = self.action_to_pd_targets(isaacsim_actions)
         self.robot.set_joint_position_target(pd_tar, joint_ids=None)
 
@@ -925,8 +925,8 @@ class Humanoid(BaseHumanoid, SimBaseInterface):
 
         root_rot = rotations.xyzw_to_wxyz(root_rot)
 
-        dof_pos = dof_pos[:, self.dof_offset_indices_isaac_gym_to_sim]
-        dof_vel = dof_vel[:, self.dof_offset_indices_isaac_gym_to_sim]
+        dof_pos = dof_pos[:, self.dof_isaac_gym_to_sim]
+        dof_vel = dof_vel[:, self.dof_isaac_gym_to_sim]
 
         init_root_state = torch.cat(
             [root_pos, root_rot, root_vel, root_ang_vel], dim=-1
