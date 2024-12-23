@@ -909,19 +909,17 @@ class Humanoid(BaseHumanoid, SimBaseInterface):
         rb_vel,
         rb_ang_vel,
     ):
-        # Store reset states
-        self.reset_states = {
-            "root_pos": root_pos.clone(),
-            "root_rot": root_rot.clone(),
-            "root_vel": root_vel.clone(),
-            "root_ang_vel": root_ang_vel.clone(),
-            "dof_pos": dof_pos.clone(),
-            "dof_vel": dof_vel.clone(),
-            "rb_pos": rb_pos.clone(),
-            "rb_rot": rb_rot.clone(),
-            "rb_vel": rb_vel.clone(),
-            "rb_ang_vel": rb_ang_vel.clone(),
-        }
+        # # Store reset states
+        # self.reset_states["root_pos"][env_ids] = root_pos.clone()
+        # self.reset_states["root_rot"][env_ids] = root_rot.clone()
+        # self.reset_states["root_vel"][env_ids] = root_vel.clone()
+        # self.reset_states["root_ang_vel"][env_ids] = root_ang_vel.clone()
+        # self.reset_states["dof_pos"][env_ids] = dof_pos.clone()
+        # self.reset_states["dof_vel"][env_ids] = dof_vel.clone()
+        # self.reset_states["rb_pos"][env_ids] = rb_pos.clone()
+        # self.reset_states["rb_rot"][env_ids] = rb_rot.clone()
+        # self.reset_states["rb_vel"][env_ids] = rb_vel.clone()
+        # self.reset_states["rb_ang_vel"][env_ids] = rb_ang_vel.clone()
 
         root_rot = rotations.xyzw_to_wxyz(root_rot)
 
@@ -971,12 +969,12 @@ class Humanoid(BaseHumanoid, SimBaseInterface):
         )
         self.objects_view.set_velocities(velocities, object_ids)
 
-        self.object_reset_states = {
-            "position": root_pos,
-            "rotation": obj_rot,
-            "velocity": velocities[..., :3],
-            "angular_velocity": velocities[..., 3:],
-        }
+        # self.object_reset_states["position"][object_ids] = root_pos.clone()
+        # self.object_reset_states["rotation"][object_ids] = obj_rot.clone()
+        # self.object_reset_states["velocity"][object_ids] = velocities[..., :3].clone()
+        # self.object_reset_states["angular_velocity"][object_ids] = velocities[
+        #     ..., 3:
+        # ].clone()
 
     def reset_envs(self, env_ids):
         if len(env_ids) > 0:
