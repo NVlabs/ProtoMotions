@@ -384,14 +384,6 @@ class BaseHumanoid(Humanoid):
         super().on_environment_ready()
 
     def pre_physics_step(self, actions):
-        self.reset_states = None
-        self.object_reset_states = None
-
-        self.reset_env_ids = []
-        self.reset_default_env_ids = []
-        self.reset_ref_env_ids = []
-        self.reset_ref_object_ids = []
-
         if self.config.sync_motion:
             actions *= 0
 
