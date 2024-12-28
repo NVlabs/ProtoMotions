@@ -2,10 +2,13 @@
 
 defaults:
   - /algo: infomax
-  - /env: amp
+  - /env: humanoid
 
 env:
   config:
+    amp_obs:
+      disable_discriminator: False
+
     state_init: Random
     # Currently hybrid respawn is not supported
 #    state_init: Hybrid
