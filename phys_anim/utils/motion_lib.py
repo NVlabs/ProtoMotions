@@ -350,18 +350,13 @@ class MotionLib(DeviceDtypeModuleMixin):
             return self.state.text_embeddings[sub_motion_ids, indices]
         return 0
 
-    def sample_time(self, sub_motion_ids, max_time=None, truncate_time=None):
+    def sample_time(self, sub_motion_ids, truncate_time=None):
         phase = torch.rand(sub_motion_ids.shape, device=self.device)
 
         motion_len = (
             self.state.motion_timings[sub_motion_ids, 1]
             - self.state.motion_timings[sub_motion_ids, 0]
         )
-        if max_time is not None:
-            motion_len = torch.clamp(
-                motion_len,
-                max=max_time,
-            )
 
         if truncate_time is not None:
             assert truncate_time >= 0.0
@@ -369,7 +364,9 @@ class MotionLib(DeviceDtypeModuleMixin):
             assert torch.all(motion_len >= 0)
 
         motion_time = phase * motion_len
-        return motion_time + self.state.motion_timings[sub_motion_ids, 0]
+        motion_time = motion_time + self.state.motion_timings[sub_motion_ids, 0]
+
+        return motion_time
 
     def get_sub_motion_length(self, sub_motion_ids):
         return (
@@ -380,90 +377,6 @@ class MotionLib(DeviceDtypeModuleMixin):
     def get_motion_length(self, sub_motion_ids):
         motion_ids = self.state.sub_motion_to_motion[sub_motion_ids]
         return self.state.motion_lengths[motion_ids]
-
-    def get_mimic_motion_state(
-        self, sub_motion_ids, motion_times, joint_3d_format="exp_map"
-    ) -> MotionState:
-        motion_ids = self.state.sub_motion_to_motion[sub_motion_ids]
-
-        motion_len = self.state.motion_lengths[motion_ids]
-        motion_times = motion_times.clip(min=0).clip(
-            max=motion_len
-        )  # Making sure time is in bounds
-
-        num_frames = self.state.motion_num_frames[motion_ids]
-        dt = self.state.motion_dt[motion_ids]
-
-        frame_idx0, frame_idx1, blend = self._calc_frame_blend(
-            motion_times, motion_len, num_frames, dt
-        )
-
-        f0l = frame_idx0 + self.length_starts[motion_ids]
-        f1l = frame_idx1 + self.length_starts[motion_ids]
-
-        global_translation0 = self.gts[f0l]
-        global_translation1 = self.gts[f1l]
-
-        global_rotation0 = self.grs[f0l]
-        global_rotation1 = self.grs[f1l]
-
-        local_rotation0 = self.lrs[f0l]
-        local_rotation1 = self.lrs[f1l]
-
-        global_vel0 = self.gvs[f0l]
-        global_vel1 = self.gvs[f1l]
-
-        global_ang_vel0 = self.gavs[f0l]
-        global_ang_vel1 = self.gavs[f1l]
-
-        dof_vel0 = self.dvs[f0l]
-        dof_vel1 = self.dvs[f1l]
-
-        blend = blend.unsqueeze(-1)
-        blend_exp = blend.unsqueeze(-1)
-
-        global_translation: Tensor = (
-            1.0 - blend_exp
-        ) * global_translation0 + blend_exp * global_translation1
-        global_rotation: Tensor = torch_utils.slerp(
-            global_rotation0, global_rotation1, blend_exp
-        )
-
-        local_rotation: Tensor = torch_utils.slerp(
-            local_rotation0, local_rotation1, blend_exp
-        )
-
-        if hasattr(self, "dof_pos"):  # H1 joints
-            dof_pos = (1.0 - blend) * self.dof_pos[f0l] + blend * self.dof_pos[f1l]
-        else:
-            dof_pos: Tensor = self._local_rotation_to_dof(
-                local_rotation, joint_3d_format
-            )
-
-        global_vel = (1.0 - blend_exp) * global_vel0 + blend_exp * global_vel1
-        global_ang_vel = (
-            1.0 - blend_exp
-        ) * global_ang_vel0 + blend_exp * global_ang_vel1
-        dof_vel = (1.0 - blend) * dof_vel0 + blend * dof_vel1
-
-        global_translation[:, :, 2] += self.ref_height_adjust
-
-        motion_state = MotionState(
-            root_pos=None,
-            root_rot=None,
-            root_vel=None,
-            root_ang_vel=None,
-            key_body_pos=None,
-            dof_pos=dof_pos,
-            dof_vel=dof_vel,
-            rb_pos=global_translation,
-            rb_rot=global_rotation,
-            local_rot=local_rotation,
-            rb_vel=global_vel,
-            rb_ang_vel=global_ang_vel,
-        )
-
-        return motion_state
 
     def get_motion_state(
         self, sub_motion_ids, motion_times, joint_3d_format="exp_map"

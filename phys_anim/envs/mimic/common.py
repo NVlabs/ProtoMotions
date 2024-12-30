@@ -560,7 +560,7 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
             env_ids, offset=offset, rb_pos=rb_pos, scene_ids=scene_ids
         )
 
-        ref_state = self.motion_lib.get_mimic_motion_state(
+        ref_state = self.motion_lib.get_motion_state(
             self.motion_ids[env_ids], self.motion_times[env_ids]
         )
         target_cur_gt = ref_state.rb_pos
@@ -685,9 +685,7 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
         if "target_poses" not in self.motion_recording:
             self.motion_recording["target_poses"] = []
 
-        ref_state = self.motion_lib.get_mimic_motion_state(
-            self.motion_ids, self.motion_times
-        )
+        ref_state = self.motion_lib.get_motion_state(self.motion_ids, self.motion_times)
         target_pos = ref_state.rb_pos
         target_pos += self.respawn_offset_relative_to_data.clone().view(
             self.num_envs, 1, 3
@@ -739,9 +737,7 @@ class BaseMimic(MimicHumanoid):  # type: ignore[misc]
         kb = key bodies
         dv = dof (degrees of freedom velocity)
         """
-        ref_state = self.motion_lib.get_mimic_motion_state(
-            self.motion_ids, self.motion_times
-        )
+        ref_state = self.motion_lib.get_motion_state(self.motion_ids, self.motion_times)
         ref_gt = ref_state.rb_pos
         ref_gr = ref_state.rb_rot
         ref_lr = ref_state.local_rot

@@ -306,7 +306,7 @@ class BaseMaskedMimicSteering(MaskedMimicSteeringHumanoid):  # type: ignore[misc
 
         flat_times = torch.minimum(raw_future_times.view(-1), lengths)
 
-        ref_state = self.motion_lib.get_mimic_motion_state(flat_ids, flat_times)
+        ref_state = self.motion_lib.get_motion_state(flat_ids, flat_times)
         flat_target_pos, flat_target_rot, flat_target_vel = (
             ref_state.rb_pos,
             ref_state.rb_rot,

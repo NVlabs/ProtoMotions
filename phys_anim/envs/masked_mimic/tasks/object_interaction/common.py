@@ -360,7 +360,7 @@ class BaseMaskedMimicObject(MaskedMimicObjectHumanoid):  # type: ignore[misc]
 
         flat_times = torch.minimum(raw_future_times.view(-1), lengths)
 
-        ref_state = self.motion_lib.get_mimic_motion_state(flat_ids, flat_times)
+        ref_state = self.motion_lib.get_motion_state(flat_ids, flat_times)
         flat_target_pos, flat_target_rot, flat_target_vel = (
             ref_state.rb_pos,
             ref_state.rb_rot,
@@ -370,7 +370,9 @@ class BaseMaskedMimicObject(MaskedMimicObjectHumanoid):  # type: ignore[misc]
         current_state = self.get_bodies_state()
         cur_gt, cur_gr = current_state.body_pos, current_state.body_rot
         # First remove the height based on the current terrain, then remove the offset to get back to the ground-truth data position
-        cur_gt[:, :, -1:] -= self.terrain_obs_cb.ground_heights.view(self.num_envs, 1, 1)
+        cur_gt[:, :, -1:] -= self.terrain_obs_cb.ground_heights.view(
+            self.num_envs, 1, 1
+        )
         # cur_gt[..., :2] -= self.respawn_offset_relative_to_data.clone()[..., :2].view(self.num_envs, 1, 2)
 
         # override to set the target root parameters

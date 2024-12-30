@@ -140,9 +140,7 @@ class MaskedMimicHumanoid(BaseMaskedMimic, MimicHumanoid):
     ###############################################################
     def _update_marker(self):
         # Update mimic markers
-        ref_state = self.motion_lib.get_mimic_motion_state(
-            self.motion_ids, self.motion_times
-        )
+        ref_state = self.motion_lib.get_motion_state(self.motion_ids, self.motion_times)
 
         target_pos = ref_state.rb_pos
         target_pos += self.respawn_offset_relative_to_data.clone().view(
@@ -182,7 +180,7 @@ class MaskedMimicHumanoid(BaseMaskedMimic, MimicHumanoid):
         )
 
         # Inbetweening markers
-        ref_state = self.motion_lib.get_mimic_motion_state(
+        ref_state = self.motion_lib.get_motion_state(
             self.motion_ids, self.target_pose_time
         )
         target_pos = ref_state.rb_pos

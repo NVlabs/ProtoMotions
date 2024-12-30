@@ -513,7 +513,7 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
         flat_ids = motion_ids.view(-1)
         flat_times = torch.clamp(raw_historical_times.view(-1), min=0)
 
-        ref_state = self.motion_lib.get_mimic_motion_state(flat_ids, flat_times)
+        ref_state = self.motion_lib.get_motion_state(flat_ids, flat_times)
         flat_gt = ref_state.rb_pos
         flat_gr = ref_state.rb_rot
 
@@ -656,9 +656,7 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
         if "target_poses" not in self.motion_recording:
             self.motion_recording["target_poses"] = []
 
-        ref_state = self.motion_lib.get_mimic_motion_state(
-            self.motion_ids, self.motion_times
-        )
+        ref_state = self.motion_lib.get_motion_state(self.motion_ids, self.motion_times)
         target_pos = ref_state.rb_pos
         target_pos += self.respawn_offset_relative_to_data.clone().view(
             self.num_envs, 1, 3
@@ -695,9 +693,7 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
         as well as the smoothness and stability of the motion. The specific details of the reward computation
         are defined in the implementation of this function.
         """
-        ref_state = self.motion_lib.get_mimic_motion_state(
-            self.motion_ids, self.motion_times
-        )
+        ref_state = self.motion_lib.get_motion_state(self.motion_ids, self.motion_times)
         ref_gt = ref_state.rb_pos
         ref_gr = ref_state.rb_rot
         ref_lr = ref_state.local_rot
@@ -1012,7 +1008,7 @@ class BaseMaskedMimic(MaskedMimicHumanoid):
 
         flat_times = torch.minimum(raw_future_times.view(-1), lengths)
 
-        ref_state = self.motion_lib.get_mimic_motion_state(flat_ids, flat_times)
+        ref_state = self.motion_lib.get_motion_state(flat_ids, flat_times)
         flat_target_pos = ref_state.rb_pos
         flat_target_rot = ref_state.rb_rot
         flat_target_vel = ref_state.rb_vel

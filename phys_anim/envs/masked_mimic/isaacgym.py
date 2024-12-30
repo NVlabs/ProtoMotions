@@ -201,9 +201,7 @@ class MaskedMimicHumanoid(BaseMaskedMimic, MimicHumanoid):  # type: ignore[misc]
     ###############################################################
     def _update_marker(self):
         # Standard future poses
-        ref_state = self.motion_lib.get_mimic_motion_state(
-            self.motion_ids, self.motion_times
-        )
+        ref_state = self.motion_lib.get_motion_state(self.motion_ids, self.motion_times)
         target_pos = ref_state.rb_pos
         target_pos += self.respawn_offset_relative_to_data.clone().view(
             self.num_envs, 1, 3
@@ -243,7 +241,7 @@ class MaskedMimicHumanoid(BaseMaskedMimic, MimicHumanoid):  # type: ignore[misc]
         )
 
         # Inbetweening target pose
-        ref_state = self.motion_lib.get_mimic_motion_state(
+        ref_state = self.motion_lib.get_motion_state(
             self.motion_ids, self.target_pose_time
         )
         target_pos = ref_state.rb_pos
@@ -295,7 +293,7 @@ class MaskedMimicHumanoid(BaseMaskedMimic, MimicHumanoid):  # type: ignore[misc]
                 self.config.point_cloud_obs.num_pointcloud_samples
                 * self.max_objects_per_scene
             )
-            
+
             self._marker_pos[
                 :,
                 markers_offset : markers_offset + num_pointcloud_markers,
@@ -318,9 +316,7 @@ class MaskedMimicHumanoid(BaseMaskedMimic, MimicHumanoid):  # type: ignore[misc]
     def draw_mimic_markers(self):
         self._update_marker()
 
-        ref_state = self.motion_lib.get_mimic_motion_state(
-            self.motion_ids, self.motion_times
-        )
+        ref_state = self.motion_lib.get_motion_state(self.motion_ids, self.motion_times)
         target_rot = ref_state.rb_rot
         current_state = self.get_bodies_state()
         current_pos, current_rot = (

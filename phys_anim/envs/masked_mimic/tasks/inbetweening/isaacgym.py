@@ -136,9 +136,7 @@ class MaskedMimicInbetweeningHumanoid(BaseMaskedMimicInbetweening, MaskedMimicHu
 
     def _update_marker(self):
         # Standard future poses
-        ref_state = self.motion_lib.get_mimic_motion_state(
-            self.motion_ids, self.motion_times
-        )
+        ref_state = self.motion_lib.get_motion_state(self.motion_ids, self.motion_times)
         target_pos = ref_state.rb_pos
         target_pos += self.respawn_offset_relative_to_data.clone().view(
             self.num_envs, 1, 3
@@ -178,7 +176,7 @@ class MaskedMimicInbetweeningHumanoid(BaseMaskedMimicInbetweening, MaskedMimicHu
         )
 
         # Inbetweening target pose
-        ref_state = self.motion_lib.get_mimic_motion_state(
+        ref_state = self.motion_lib.get_motion_state(
             self.motion_ids, self.target_pose_time
         )
         target_pos = ref_state.rb_pos
