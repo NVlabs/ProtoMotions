@@ -176,23 +176,6 @@ class MimicHumanoid(BaseMimic, Humanoid):  # type: ignore[misc]
                 )
                 self._marker_handles[env_id].append(marker_handle)
 
-            num_contact_markers = len(self.config.robot.contact_bodies)
-            for i in range(num_contact_markers):
-                marker_handle = self.gym.create_actor(
-                    env_ptr,
-                    self._marker_asset_tiny,
-                    default_pose,
-                    "contact_marker",
-                    self.num_envs + 10,
-                    0,
-                    0,
-                )
-                color = gymapi.Vec3(1.0, 0.4, 0.7)  # Pink color
-                self.gym.set_rigid_body_color(
-                    env_ptr, marker_handle, 0, gymapi.MESH_VISUAL, color
-                )
-                self._marker_handles[env_id].append(marker_handle)
-
     def _build_marker_state_tensors(self):
         num_markers_per_env = self.num_bodies
         if self.terrain is not None:
@@ -202,8 +185,6 @@ class MimicHumanoid(BaseMimic, Humanoid):  # type: ignore[misc]
                 self.config.point_cloud_obs.num_pointcloud_samples
                 * self.max_objects_per_scene
             )
-            num_contact_markers = len(self.config.robot.contact_bodies)
-            num_markers_per_env += num_contact_markers
 
         num_actors = self.get_num_actors_per_env()
         if self.total_num_objects > 0:
@@ -262,6 +243,7 @@ class MimicHumanoid(BaseMimic, Humanoid):  # type: ignore[misc]
                 self.config.point_cloud_obs.num_pointcloud_samples
                 * self.max_objects_per_scene
             )
+
             self._marker_pos[
                 :,
                 markers_offset : markers_offset + num_pointcloud_markers,
@@ -273,78 +255,6 @@ class MimicHumanoid(BaseMimic, Humanoid):  # type: ignore[misc]
             )
 
             markers_offset += num_pointcloud_markers
-
-            # Update contact markers
-            object_ids = self.env_id_to_object_ids
-            flat_object_ids = object_ids.flatten()
-            expanded_times = self.motion_times.unsqueeze(-1).expand(
-                self.num_envs, self.max_objects_per_scene
-            )
-            object_root_states = self.get_object_root_states()[object_ids.flatten()]
-            object_gt, object_gr = (
-                object_root_states[..., 0:3],
-                object_root_states[..., 3:7],
-            )
-            object_gt = object_gt.view(self.num_envs, self.max_objects_per_scene, -1)
-            object_gr = object_gr.view(self.num_envs, self.max_objects_per_scene, -1)
-
-            ref_object_state = self.scene_lib.get_object_pose(
-                flat_object_ids, expanded_times.flatten()
-            )
-
-            non_static_object_mask = self.scene_target_poses_mask.view(
-                self.num_envs, self.max_objects_per_scene, -1
-            )[:, :, 0]
-
-            bodies_in_contact_target_positions = (
-                ref_object_state.bodies_in_contact_target_positions.view(
-                    self.num_envs,
-                    self.max_objects_per_scene,
-                    self.num_bodies,
-                    3,
-                )
-            )
-            ref_contact_joint_positions = (
-                bodies_in_contact_target_positions
-                * non_static_object_mask.unsqueeze(-1).unsqueeze(-1)
-            ).sum(dim=1)
-            # Remove the reference object offset and rotation
-            # TODO: For now only support single dynamic object
-            object_ids = (self.env_id_to_object_ids * non_static_object_mask).sum(dim=1)
-
-            cur_object_pos = (object_gt * non_static_object_mask.unsqueeze(-1)).sum(
-                dim=1
-            )
-
-            # Apply translation and rotation from current object position
-            cur_object_gr_expanded = (
-                (object_gr * non_static_object_mask.unsqueeze(-1))
-                .sum(dim=-2)
-                .unsqueeze(1)
-                .expand(self.num_envs, self.num_bodies, 4)
-            )
-            rotated_contact_joint_positions = rotations.quat_rotate(
-                cur_object_gr_expanded, ref_contact_joint_positions, self.w_last
-            )
-            target_contact_joint_positions = (
-                rotated_contact_joint_positions + cur_object_pos.unsqueeze(1)
-            )
-
-            expected_contacts = ref_object_state.bodies_in_contact.view(
-                self.num_envs,
-                self.max_objects_per_scene,
-                self.num_bodies,
-            )
-            expected_contacts = (
-                expected_contacts * non_static_object_mask.unsqueeze(-1)
-            ).sum(dim=1)
-
-            target_contact_joint_positions[expected_contacts == 0] = 100
-
-            num_contact_markers = len(self.config.robot.contact_bodies)
-            self._marker_pos[
-                :, markers_offset : markers_offset + num_contact_markers
-            ] = target_contact_joint_positions[:, self.contact_body_ids]
 
         self.gym.set_actor_root_state_tensor_indexed(
             self.sim,

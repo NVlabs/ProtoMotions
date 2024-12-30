@@ -126,27 +126,6 @@ class MimicHumanoid(BaseMimic, Humanoid):
                 pointcloud_marker_scale, device=self.device
             )
 
-            # Contact markers
-            contact_marker_obj_cfg = VisualizationMarkersCfg(
-                prim_path="/Visuals/ContactMarker",
-                markers={
-                    "sphere": sim_utils.SphereCfg(
-                        radius=1,
-                        visual_material=sim_utils.PreviewSurfaceCfg(
-                            diffuse_color=(1.0, 0.4, 0.7)
-                        ),
-                    ),
-                },
-            )
-            contact_marker_scale = []
-            num_contact_markers = len(self.config.robot.contact_bodies)
-            for i in range(num_contact_markers):
-                contact_marker_scale.append([0.005, 0.005, 0.005])
-            self.contact_markers = VisualizationMarkers(contact_marker_obj_cfg)
-            self.contact_marker_scale = torch.tensor(
-                contact_marker_scale, device=self.device
-            )
-
     ###############################################################
     # Helpers
     ###############################################################
@@ -181,80 +160,6 @@ class MimicHumanoid(BaseMimic, Humanoid):
             self.pointcloud_markers.visualize(
                 translations=self.object_obs_cb.object_pointclouds.view(-1, 3),
                 scales=self.pointcloud_marker_scale,
-            )
-
-            # Update contact markers
-            object_ids = self.env_id_to_object_ids
-            flat_object_ids = object_ids.flatten()
-            expanded_times = self.motion_times.unsqueeze(-1).expand(
-                self.num_envs, self.max_objects_per_scene
-            )
-            object_root_states = self.get_object_root_states()[object_ids.flatten()]
-            object_gt, object_gr = (
-                object_root_states[..., 0:3],
-                object_root_states[..., 3:7],
-            )
-            object_gt = object_gt.view(self.num_envs, self.max_objects_per_scene, -1)
-            object_gr = object_gr.view(self.num_envs, self.max_objects_per_scene, -1)
-
-            ref_object_state = self.scene_lib.get_object_pose(
-                flat_object_ids, expanded_times.flatten()
-            )
-
-            non_static_object_mask = self.scene_target_poses_mask.view(
-                self.num_envs, self.max_objects_per_scene, -1
-            )[:, :, 0]
-
-            bodies_in_contact_target_positions = (
-                ref_object_state.bodies_in_contact_target_positions.view(
-                    self.num_envs,
-                    self.max_objects_per_scene,
-                    self.num_bodies,
-                    3,
-                )
-            )
-            ref_contact_joint_positions = (
-                bodies_in_contact_target_positions
-                * non_static_object_mask.unsqueeze(-1).unsqueeze(-1)
-            ).sum(dim=1)
-            # Remove the reference object offset and rotation
-            # TODO: For now only support single dynamic object
-            object_ids = (self.env_id_to_object_ids * non_static_object_mask).sum(dim=1)
-
-            cur_object_pos = (object_gt * non_static_object_mask.unsqueeze(-1)).sum(
-                dim=1
-            )
-
-            # Apply translation and rotation from current object position
-            cur_object_gr_expanded = (
-                (object_gr * non_static_object_mask.unsqueeze(-1))
-                .sum(dim=-2)
-                .unsqueeze(1)
-                .expand(self.num_envs, self.num_bodies, 4)
-            )
-            rotated_contact_joint_positions = rotations.quat_rotate(
-                cur_object_gr_expanded, ref_contact_joint_positions, self.w_last
-            )
-            target_contact_joint_positions = (
-                rotated_contact_joint_positions + cur_object_pos.unsqueeze(1)
-            )
-
-            expected_contacts = ref_object_state.bodies_in_contact.view(
-                self.num_envs,
-                self.max_objects_per_scene,
-                self.num_bodies,
-            )
-            expected_contacts = (
-                expected_contacts * non_static_object_mask.unsqueeze(-1)
-            ).sum(dim=1)
-
-            target_contact_joint_positions[expected_contacts == 0] = 100
-
-            self.contact_markers.visualize(
-                translations=target_contact_joint_positions[
-                    :, self.contact_body_ids
-                ].view(-1, 3),
-                scales=self.contact_marker_scale,
             )
 
     def draw_mimic_markers(self):
