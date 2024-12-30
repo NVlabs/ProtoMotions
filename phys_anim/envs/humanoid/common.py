@@ -76,8 +76,9 @@ class BaseHumanoid(Humanoid):
         self.object_root_states_offsets = []
         self.object_target_position = []
 
+        self.pre_scene_setup_character_props()
         super().__init__(config, device, *args, **kwargs)
-        self.setup_character_props()
+        self.post_scene_setup_character_props()
 
         self.init_done = False
 
@@ -748,7 +749,7 @@ class BaseHumanoid(Humanoid):
     ###############################################################
     # Helpers
     ###############################################################
-    def setup_character_props(self):
+    def pre_scene_setup_character_props(self):
         self.body_names = self.config.robot.isaacgym_body_names
         self.num_bodies = self.config.robot.num_bodies
         self.num_dof = len(self.config.robot.isaacgym_dof_names)
@@ -771,6 +772,9 @@ class BaseHumanoid(Humanoid):
         self.contact_body_ids = self.build_body_ids_tensor(
             self.config.robot.contact_bodies
         )
+
+    def post_scene_setup_character_props(self):
+        pass
 
     def action_to_pd_targets(self, action):
         pd_tar = self._pd_action_offset + self._pd_action_scale * action

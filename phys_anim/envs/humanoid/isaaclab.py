@@ -41,7 +41,7 @@ import xml.etree.ElementTree as ET
 from omni.isaac.core.prims import RigidPrimView
 from omni.isaac.core.utils.stage import get_current_stage
 from omni.physx.scripts import physicsUtils, utils
-from pxr import UsdShade, UsdGeom, Vt, UsdPhysics, PhysxSchema, Gf
+from pxr import UsdGeom, Vt, UsdPhysics, PhysxSchema, Gf
 
 from phys_anim.envs.humanoid.common import BaseHumanoid
 from phys_anim.utils.file_utils import load_yaml
@@ -773,15 +773,9 @@ class Humanoid(BaseHumanoid, SimBaseInterface):
 
         isaacsim_bodies_rotations = rotations.wxyz_to_xyzw(isaacsim_bodies_rotations)
 
-        bodies_positions = isaacsim_bodies_positions[
-            :, self.body_isaac_sim_to_gym
-        ]
-        bodies_rotations = isaacsim_bodies_rotations[
-            :, self.body_isaac_sim_to_gym
-        ]
-        bodies_velocities = isaacsim_bodies_velocities[
-            :, self.body_isaac_sim_to_gym
-        ]
+        bodies_positions = isaacsim_bodies_positions[:, self.body_isaac_sim_to_gym]
+        bodies_rotations = isaacsim_bodies_rotations[:, self.body_isaac_sim_to_gym]
+        bodies_velocities = isaacsim_bodies_velocities[:, self.body_isaac_sim_to_gym]
         bodies_ang_velocities = isaacsim_bodies_ang_velocities[
             :, self.body_isaac_sim_to_gym
         ]
@@ -828,9 +822,7 @@ class Humanoid(BaseHumanoid, SimBaseInterface):
             contacts = self.contact_sensor.data.net_forces_w.clone().view(
                 self.num_envs, self.num_bodies, 3
             )
-        rb_contacts = contacts[
-            :, self.contact_sensor_isaac_sim_to_gym
-        ]
+        rb_contacts = contacts[:, self.contact_sensor_isaac_sim_to_gym]
         return rb_contacts
 
     def get_object_contact_buf(self):
@@ -1007,8 +999,8 @@ class Humanoid(BaseHumanoid, SimBaseInterface):
     ###############################################################
     # Helpers
     ###############################################################
-    def setup_character_props(self):
-        super().setup_character_props()
+    def post_scene_setup_character_props(self):
+        super().post_scene_setup_character_props()
         isaacsim_dof_names = self.robot.data.joint_names
         isaacsim_body_names = self.robot.data.body_names
         isaacsim_contact_sensor_body_names = self.contact_sensor.body_names
