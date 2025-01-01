@@ -59,7 +59,8 @@ class MimicVAEDagger(MimicVAE):
             pre_trained_expert = torch.load(checkpoint_path)
 
             self.gt_actor_config = OmegaConf.load(
-                Path(self.config.dagger.gt_actor_path + "/last.ckpt").resolve().parent / "config.yaml"
+                Path(self.config.dagger.gt_actor_path + "/last.ckpt").resolve().parent
+                / "config.yaml"
             )
             self.gt_actor: PPO_Actor = instantiate(
                 self.gt_actor_config.algo.config.actor,
@@ -84,11 +85,13 @@ class MimicVAEDagger(MimicVAE):
                 if key != "mimic_target_poses":
                     gt_actor_inputs[key] = value
 
-            gt_actor_inputs["mimic_target_poses"] = self.env.build_target_poses(
-                num_future_steps=self.gt_actor_config.env.config.mimic_target_pose.num_future_steps,
-                target_pose_type=self.gt_actor_config.env.config.mimic_target_pose.type,
-                with_time=self.gt_actor_config.env.config.mimic_target_pose.with_time,
-                env_ids=torch.arange(self.env.num_envs, device=self.device),
+            gt_actor_inputs["mimic_target_poses"] = (
+                self.env.mimic_obs_cb.build_target_poses(
+                    num_future_steps=self.gt_actor_config.env.config.mimic_target_pose.num_future_steps,
+                    target_pose_type=self.gt_actor_config.env.config.mimic_target_pose.type,
+                    with_time=self.gt_actor_config.env.config.mimic_target_pose.with_time,
+                    env_ids=torch.arange(self.env.num_envs, device=self.device),
+                )
             )
 
             gt_actor_outs = self.gt_actor.eval_forward(gt_actor_inputs)
@@ -96,9 +99,7 @@ class MimicVAEDagger(MimicVAE):
             gt_actor_mus = gt_actor_outs["mus"]
             gt_actor_sampled_actions = gt_actor_outs["actions"]
 
-            self.experience_buffer.update_data(
-                "gt_actions", step, gt_actor_mus
-            )
+            self.experience_buffer.update_data("gt_actions", step, gt_actor_mus)
 
             if self.config.dagger.collect_data_with_expert:
                 actor_outs["actions"] = gt_actor_sampled_actions
