@@ -6,7 +6,7 @@ defaults:
 terrain:
   _target_: phys_anim.envs.env_utils.terrains.terrain.Terrain
   config:
-    num_terrains: 10
+    num_terrains: 7
     # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete, stepping, poles, flat]
     terrain_proportions: [ 0.2, 0.1, 0.1, 0.1, 0.05, 0., 0., 0.45 ]
     # For non-scene regions in the terrain, this is the minimal distance between humanoids if spaced out evenly in a grid fashion.
