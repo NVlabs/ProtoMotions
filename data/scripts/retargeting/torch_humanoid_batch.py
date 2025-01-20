@@ -213,8 +213,6 @@ class Humanoid_Batch:
         }
 
     def fk_batch(self, pose, trans, convert_to_mat=True, return_full=False, dt=1 / 30):
-        device, dtype = pose.device, pose.dtype
-        pose_input = pose.clone()
         B, seq_len = pose.shape[:2]
         pose = pose[
             ..., : len(self._parents), :
@@ -237,8 +235,8 @@ class Humanoid_Batch:
 
         wbody_rot = tRot.wxyz_to_xyzw(tRot.matrix_to_quaternion(wbody_mat))
 
-        return_dict.global_translation = wbody_pos.clone()
-        return_dict.global_rotation_mat = wbody_mat.clone()
+        return_dict.global_translation = wbody_pos
+        return_dict.global_rotation_mat = wbody_mat
         return_dict.global_rotation = wbody_rot
 
         if return_full:
