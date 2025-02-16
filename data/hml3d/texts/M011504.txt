@@ -1,3 +1,0 @@
-a person is stepping around while their hands are behind their back#a/DET person/NOUN is/AUX step/VERB around/ADV while/SCONJ their/DET hand/NOUN are/AUX behind/ADP their/DET back/NOUN#0.0#0.0
-a man is locking his hands behind his back and sweeping his legs right and left, in a dance like motion.#a/DET man/NOUN is/AUX lock/VERB his/DET hand/NOUN behind/ADP his/DET back/NOUN and/CCONJ sweep/VERB his/DET leg/NOUN right/ADJ and/CCONJ left/VERB in/ADP a/DET dance/NOUN like/SCONJ motion/NOUN#0.0#0.0
-figure with hands clasped in front of them, sweeps their legs to the right and left#figure/NOUN with/ADP hand/NOUN clasp/VERB in/ADP front/NOUN of/ADP them/PRON sweep/VERB their/DET leg/NOUN to/ADP the/DET right/NOUN and/CCONJ left/VERB#0.0#0.0

@@ -1,3 +1,0 @@
-person is getting a shower and picking up something with his left hand.#person/NOUN is/AUX get/VERB a/DET shower/NOUN and/CCONJ pick/VERB up/ADP something/PRON with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
-a person rubbing something with the left arm#a/DET person/NOUN rub/VERB something/PRON with/ADP the/DET left/ADJ arm/NOUN#0.0#0.0
-a person picks up a brush with his left hand, scrubs a desk top then places the brush back in the same place.#a/DET person/NOUN pick/VERB up/ADP a/DET brush/NOUN with/ADP his/DET left/ADJ hand/NOUN scrub/VERB a/DET desk/NOUN top/NOUN then/ADV place/VERB the/DET brush/NOUN back/ADV in/ADP the/DET same/ADJ place/NOUN#0.0#0.0

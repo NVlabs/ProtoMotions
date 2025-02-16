@@ -1,3 +1,0 @@
-moving forward on right  side .#move/VERB forward/ADV on/ADP right/ADJ side/NOUN#0.0#0.0
-a person walks up towards the right.#a/DET person/NOUN walk/VERB up/ADP towards/ADP the/DET right/NOUN#0.0#0.0
-a person takes 4 steps turning 90 degrees to the right.#a/DET person/NOUN take/VERB step/NOUN turn/VERB degree/NOUN to/ADP the/DET right/NOUN#0.0#0.0

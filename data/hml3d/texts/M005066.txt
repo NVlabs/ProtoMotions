@@ -1,3 +1,0 @@
-the man jogs forwards and then slows down to a walk as he makes a counterclockwise half circle back the way he came.#the/DET man/NOUN jog/VERB forwards/ADV and/CCONJ then/ADV slow/VERB down/ADP to/ADP a/DET walk/NOUN as/SCONJ he/PRON make/VERB a/DET counterclockwise/ADJ half/NOUN circle/NOUN back/ADP the/DET way/NOUN he/PRON come/VERB#0.0#0.0
-a person walks in a semi circular route to the left.#a/DET person/NOUN walk/VERB in/ADP a/DET semi/ADJ circular/ADJ route/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-a person walking excitedly then walking sad in a counterclockwise circle.#a/DET person/NOUN walk/VERB excitedly/ADV then/ADV walk/VERB sad/ADJ in/ADP a/DET counterclockwise/ADJ circle/NOUN#0.0#0.0

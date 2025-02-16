@@ -1,3 +1,0 @@
-a person doing a shoulder stretch.#a/DET person/NOUN do/VERB a/DET shoulder/NOUN stretch/NOUN#0.0#0.0
-a person extends their left arm across their chest, then pulls their left forearm in towards their body with their right forearm while rotating counter counterclockwise at the hips.#a/DET person/NOUN extend/VERB their/DET left/ADJ arm/NOUN across/ADP their/DET chest/NOUN then/ADV pull/VERB their/DET left/ADJ forearm/NOUN in/ADP towards/ADP their/DET body/NOUN with/ADP their/DET right/ADJ forearm/NOUN while/SCONJ rotate/VERB counter/NOUN counterclockwise/PROPN at/ADP the/DET hip/NOUN#0.0#0.0
-stretching arm then stopping.#stretch/VERB arm/NOUN then/ADV stop/VERB#0.0#0.0

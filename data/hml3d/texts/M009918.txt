@@ -1,3 +1,0 @@
-person moves walks from left to right counterclockwise into centre#person/NOUN move/VERB walk/VERB from/ADP left/NOUN to/ADP right/ADJ counterclockwise/NOUN into/ADP centre/NOUN#0.0#0.0
-a person who walked in odd oval shape#a/DET person/NOUN who/PRON walk/VERB in/ADP odd/ADJ oval/NOUN shape/NOUN#0.0#0.0
-a man walks diagonally across a room from left to right.#a/DET man/NOUN walk/VERB diagonally/ADV across/ADP a/DET room/NOUN from/ADP left/VERB to/ADP right/NOUN#0.0#0.0

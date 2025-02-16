@@ -1,3 +1,0 @@
-the person takes a big step with their left foot foward#the/DET person/NOUN take/VERB a/DET big/ADJ step/NOUN with/ADP their/DET left/ADJ foot/NOUN foward/NOUN#0.0#0.0
-person takes a long step left#person/NOUN take/VERB a/DET long/ADJ step/NOUN left/VERB#0.0#0.0
-a man taking a big step forward.#a/DET man/NOUN take/VERB a/DET big/ADJ step/NOUN forward/ADV#0.0#0.0

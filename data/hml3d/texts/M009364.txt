@@ -1,3 +1,0 @@
-a person stepping sideways over something#a/DET person/NOUN step/VERB sideways/ADV over/ADP something/PRON#0.0#0.0
-a person takes a large step to their left.#a/DET person/NOUN take/VERB a/DET large/ADJ step/NOUN to/ADP their/DET left/NOUN#0.0#0.0
-a figure takes one long side-step to the left over an object.#a/DET figure/NOUN take/VERB one/NUM long/ADJ sidestep/NOUN to/ADP the/DET left/NOUN over/ADP an/DET object/NOUN#0.0#0.0

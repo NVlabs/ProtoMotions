@@ -1,3 +1,0 @@
-person walks forward fast then pivots on the  right leg and returns back#person/NOUN walk/VERB forward/ADV fast/ADV then/ADV pivot/NOUN on/ADP the/DET right/ADJ leg/NOUN and/CCONJ return/VERB back/ADV#0.0#0.0
-a person is walking, quickly pivots 180° and then walks back#a/DET person/NOUN is/AUX walk/VERB quickly/ADV pivot/VERB and/CCONJ then/ADV walk/VERB back/ADV#0.0#0.0
-the person is stepping back and forth.#the/DET person/NOUN is/AUX step/VERB back/ADV and/CCONJ forth/ADV#0.0#0.0

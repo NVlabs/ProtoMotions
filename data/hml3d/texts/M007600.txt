@@ -1,3 +1,0 @@
-walking forward in a line.#walk/VERB forward/ADV in/ADP a/DET line/NOUN#0.0#0.0
-a person walks while placing their right hand on a surface.#a/DET person/NOUN walk/VERB while/SCONJ place/VERB their/DET right/ADJ hand/NOUN on/ADP a/DET surface/NOUN#0.0#0.0
-a person walks forward holding handrail with right hand.#a/DET person/NOUN walk/VERB forward/ADV hold/VERB handrail/NOUN with/ADP right/ADJ hand/NOUN#0.0#0.0

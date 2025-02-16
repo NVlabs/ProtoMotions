@@ -1,3 +1,0 @@
-a standing person moving from their left to right then moving backwards and forward again#a/DET stand/VERB person/NOUN move/VERB from/ADP their/DET left/NOUN to/ADP right/ADV then/ADV move/VERB backwards/ADV and/CCONJ forward/ADV again/ADV#0.0#0.0
-someone with short steps is dancing from left to right and backwards#someone/PRON with/ADP short/ADJ step/NOUN is/AUX dance/VERB from/ADP left/VERB to/ADP right/NOUN and/CCONJ backwards/ADV#0.0#0.0
-a person is pretending to be a penguin#a/DET person/NOUN is/AUX pretend/VERB to/PART be/AUX a/DET penguin/NOUN#0.0#0.0

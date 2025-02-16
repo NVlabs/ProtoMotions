@@ -1,3 +1,0 @@
-a person quickly raises their left hand, then motions with their right hand, as if they picked something up.#a/DET person/NOUN quickly/ADV raise/VERB their/DET left/ADJ hand/NOUN then/ADV motion/NOUN with/ADP their/DET right/ADJ hand/NOUN as/SCONJ if/SCONJ they/PRON pick/VERB something/PRON up/ADP#0.0#0.0
-a person lifts his hands into the air.#a/DET person/NOUN lift/VERB his/DET hand/NOUN into/ADP the/DET air/NOUN#0.0#0.0
-a person raises left hand and then brings right hand to it in a scooping motion.#a/DET person/NOUN raise/VERB left/VERB hand/NOUN and/CCONJ then/ADV bring/VERB right/ADJ hand/NOUN to/ADP it/PRON in/ADP a/DET scooping/NOUN motion/NOUN#0.0#0.0

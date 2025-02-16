@@ -1,3 +1,0 @@
-a person sidesteps to their left three time, then right four times, then one more step to the left.#a/DET person/NOUN sidestep/VERB to/ADP their/DET left/ADJ three/NUM time/NOUN then/ADV right/INTJ four/NUM time/NOUN then/ADV one/NUM more/ADJ step/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-a person does a defensive shuffle#a/DET person/NOUN does/AUX a/DET defensive/ADJ shuffle/NOUN#0.0#0.0
-a person takes hop steps to their left then returns back to their original position#a/DET person/NOUN take/VERB hop/NOUN step/NOUN to/ADP their/DET left/NOUN then/ADV return/VERB back/ADV to/ADP their/DET original/ADJ position/NOUN#0.0#0.0

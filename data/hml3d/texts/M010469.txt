@@ -1,2 +1,0 @@
-a person walks while slightly turning counterclockwise.#a/DET person/NOUN walk/VERB while/SCONJ slightly/ADV turn/VERB counterclockwise/NOUN#0.0#0.0
-a person slowy walked forward and in left direction#a/DET person/NOUN slowy/NOUN walk/VERB forward/ADV and/CCONJ in/ADP left/ADJ direction/NOUN#0.0#0.0

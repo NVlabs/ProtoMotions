@@ -1,3 +1,0 @@
-stick figure walks right and stops#stick/PROPN figure/NOUN walk/VERB right/ADV and/CCONJ stop/VERB#0.0#0.0
-a man walks and slowly turns 45 degrees to the right.#a/DET man/NOUN walk/VERB and/CCONJ slowly/ADV turn/VERB degree/NOUN to/ADP the/DET right/NOUN#0.0#0.0
-a person walks towards right .#a/DET person/NOUN walk/VERB towards/ADP right/ADV#0.0#0.0

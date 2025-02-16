@@ -1,3 +1,0 @@
-a person raises the left hand toward the face, then lowers it.#a/DET person/NOUN raise/VERB the/DET left/ADJ hand/NOUN toward/ADP the/DET face/NOUN then/ADV lower/VERB it/PRON#0.0#0.0
-the person lifts and holds its left hand to its face and drops it down by its side.#the/DET person/NOUN lift/VERB and/CCONJ hold/VERB its/DET left/ADJ hand/NOUN to/ADP its/DET face/NOUN and/CCONJ drop/VERB it/PRON down/ADP by/ADP its/DET side/NOUN#0.0#0.0
-a man raises and then lowers his left hand.#a/DET man/NOUN raise/VERB and/CCONJ then/ADV lower/VERB his/DET left/ADJ hand/NOUN#0.0#0.0

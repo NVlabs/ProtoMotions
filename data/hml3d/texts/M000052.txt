@@ -1,3 +1,0 @@
-a person walks to the left in a partial circle.#a/DET person/NOUN walk/VERB to/ADP the/DET left/NOUN in/ADP a/DET partial/ADJ circle/NOUN#0.0#0.0
-a person walks at a normal speed diagonally across the room.#a/DET person/NOUN walk/VERB at/ADP a/DET normal/ADJ speed/NOUN diagonally/ADV across/ADP the/DET room/NOUN#0.0#0.0
-a person walks forward then turns to the left and continues to walk.#a/DET person/NOUN walk/VERB forward/ADV then/ADV turn/VERB to/ADP the/DET left/NOUN and/CCONJ continue/VERB to/PART walk/VERB#0.0#0.0

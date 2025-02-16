@@ -1,3 +1,0 @@
-a person is pushed hard from his left side and he moves towards his right.#a/DET person/NOUN is/AUX push/VERB hard/ADV from/ADP his/DET left/ADJ side/NOUN and/CCONJ he/PRON move/VERB towards/ADP his/DET right/NOUN#0.0#0.0
-a standing person, takes a quick step/shove to the right, and resumes the same standing position.#a/DET stand/VERB person/NOUN take/VERB a/DET quick/ADJ step/NOUN shove/NOUN to/ADP the/DET right/NOUN and/CCONJ resume/VERB the/DET same/ADJ standing/NOUN position/NOUN#0.0#0.0
-a person is pushed from the left softly.#a/DET person/NOUN is/AUX push/VERB from/ADP the/DET left/NOUN softly/ADV#0.0#0.0

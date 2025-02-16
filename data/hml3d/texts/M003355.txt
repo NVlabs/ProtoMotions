@@ -1,3 +1,0 @@
-a man holds his hands together and kicks with his right leg repeatedly.#a/DET man/NOUN hold/VERB his/DET hand/NOUN together/ADV and/CCONJ kick/VERB with/ADP his/DET right/ADJ leg/NOUN repeatedly/ADV#0.0#0.0
-a person kicks backwards, then swings around their right leg.#a/DET person/NOUN kick/VERB backwards/ADV then/ADV swing/VERB around/ADP their/DET right/ADJ leg/NOUN#0.0#0.0
-a person kicking right leg back, sideward and circular direction.#a/DET person/NOUN kick/VERB right/ADJ leg/NOUN back/ADV sideward/NOUN and/CCONJ circular/ADJ direction/NOUN#0.0#0.0

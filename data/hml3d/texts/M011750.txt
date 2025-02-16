@@ -1,3 +1,0 @@
-a person who is rolling and pulling something in their hand#a/DET person/NOUN who/PRON is/AUX roll/VERB and/CCONJ pull/VERB something/PRON in/ADP their/DET hand/NOUN#0.0#0.0
-a person holds something in their right hand and pulls in and out with the left hand.#a/DET person/NOUN hold/VERB something/PRON in/ADP their/DET right/ADJ hand/NOUN and/CCONJ pull/VERB in/ADP and/CCONJ out/ADV with/ADP the/DET left/ADJ hand/NOUN#0.0#0.0
-a person is sewing with his left hand.#a/DET person/NOUN is/AUX sew/VERB with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0

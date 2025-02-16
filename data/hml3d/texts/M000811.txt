@@ -1,3 +1,0 @@
-a person standing stationary holds their right hand chest height, extends their right arm straight out, and then lowers their right arm while relaxing their body.#a/DET person/NOUN stand/VERB stationary/ADJ hold/VERB their/DET right/ADJ hand/NOUN chest/NOUN height/NOUN extend/VERB their/DET right/ADJ arm/NOUN straight/ADV out/ADV and/CCONJ then/ADV lower/VERB their/DET right/ADJ arm/NOUN while/SCONJ relax/VERB their/DET body/NOUN#0.0#0.0
-a person motions forward with their right hand.#a/DET person/NOUN motion/NOUN forward/ADV with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0
-the right arm extends forward then drops to the waist.#the/DET right/ADJ arm/NOUN extend/VERB forward/ADV then/ADV drop/VERB to/ADP the/DET waist/NOUN#0.0#0.0

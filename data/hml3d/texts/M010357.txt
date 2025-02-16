@@ -1,3 +1,0 @@
-a person walks to his right.#a/DET person/NOUN walk/VERB to/ADP his/DET right/NOUN#0.0#0.0
-the person is walking and making a right turn.#the/DET person/NOUN is/AUX walk/VERB and/CCONJ make/VERB a/DET right/ADJ turn/NOUN#0.0#0.0
-a person slowly walked forward in right direction#a/DET person/NOUN slowly/ADV walk/VERB forward/ADV in/ADP right/ADJ direction/NOUN#0.0#0.0

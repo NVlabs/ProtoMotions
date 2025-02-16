@@ -1,3 +1,0 @@
-a man walks forward, then moves quickly to his left and then back to the right.#a/DET man/NOUN walk/VERB forward/ADV then/ADV move/VERB quickly/ADV to/ADP his/DET left/NOUN and/CCONJ then/ADV back/ADV to/ADP the/DET right/NOUN#0.0#0.0
-the person was pushed but recovered from falling.#the/DET person/NOUN was/AUX push/VERB but/CCONJ recover/VERB from/ADP fall/VERB#0.0#0.0
-a man is moving forward then moves to the right then the left.#a/DET man/NOUN is/AUX move/VERB forward/ADV then/ADV move/VERB to/ADP the/DET right/NOUN then/ADV the/DET left/NOUN#1.0#5.0

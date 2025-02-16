@@ -1,3 +1,0 @@
-a person takes one step forward with their left foot and then with their right to end with their feet side by side.#a/DET person/NOUN take/VERB one/NUM step/NOUN forward/ADV with/ADP their/DET left/ADJ foot/NOUN and/CCONJ then/ADV with/ADP their/DET right/NOUN to/PART end/VERB with/ADP their/DET foot/NOUN side/NOUN by/ADP side/NOUN#0.0#0.0
-a person takes one step forward.#a/DET person/NOUN take/VERB one/NUM step/NOUN forward/ADV#0.0#0.0
-a person walks forward with their left leg and then their right leg.#a/DET person/NOUN walk/VERB forward/ADV with/ADP their/DET left/ADJ leg/NOUN and/CCONJ then/ADV their/DET right/ADJ leg/NOUN#0.0#0.0

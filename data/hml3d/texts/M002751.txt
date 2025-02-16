@@ -1,3 +1,0 @@
-a person crosses their arm.#a/DET person/NOUN cross/VERB their/DET arm/NOUN#0.0#0.0
-a man folds his arms across his body.#a/DET man/NOUN fold/VERB his/DET arm/NOUN across/ADP his/DET body/NOUN#0.0#0.0
-person raises arms to chest then folds arms tapping left  hand on right elbow twice#person/NOUN raise/VERB arm/NOUN to/PART chest/VERB then/ADV fold/VERB arm/NOUN tap/VERB left/ADJ hand/NOUN on/ADP right/ADV elbow/NOUN twice/ADV#0.0#0.0

@@ -1,0 +1,56 @@
+# @package _global_
+
+defaults:
+  - /terrain/flat
+  - /motion_manager/base_manager
+
+# Env structure
+env:
+  _target_: protomotions.envs.base_env.env.BaseEnv
+  _recursive_: False
+  config:
+    experiment_name: ${experiment_name}
+    num_envs: ${num_envs}
+    headless: ${headless}
+    
+    simulator: ${simulator}
+
+    max_episode_length: 300
+    robot: ${robot}
+
+    ## Observations
+    humanoid_obs:
+      use_max_coords_obs: True
+      obs_size: ${robot.self_obs_size}
+      local_root_obs: True
+      root_height_obs: True
+      num_historical_steps: 1
+
+    ## Termination
+    termination_height: 0.15
+    head_termination_height: 0.3
+    shield_termination_height: 0.32
+    enable_height_termination: False
+
+    ## Motion-related params
+    motion_lib: ${motion_lib}
+    motion_manager: ${motion_manager}
+
+    ### Respawn related params
+    hybrid_init_prob: 0.0
+    state_init: Default
+    ref_respawn_offset: ${ref_respawn_offset}
+
+    terrain: ${terrain}
+
+    # Evaluation params
+    sync_motion: ${sync_motion}
+
+# Globally accessible parameters
+ref_respawn_offset: 0.05
+
+eval_overrides:
+  env:
+    config:
+      max_episode_length: 10000
+      enable_height_termination: False

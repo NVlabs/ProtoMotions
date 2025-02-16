@@ -26,8 +26,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import asyncio
-from isaacsim import SimulationApp
+from isaaclab.app import AppLauncher
 
 import os
 from pathlib import Path
@@ -38,48 +37,57 @@ import typer
 from tqdm import tqdm
 
 
-async def convert(in_file, out_file, load_materials=False):
-    # This import causes conflicts when global
-    import omni.kit.asset_converter
+def convert(in_file, out_file, make_instanceable, collision_approximation, mass):
+    # Mass properties
+    from isaaclab.sim.converters import MeshConverter, MeshConverterCfg
+    from isaaclab.sim.schemas import schemas_cfg
 
-    def progress_callback(progress, total_steps):
-        pass
+    if mass is not None:
+        mass_props = schemas_cfg.MassPropertiesCfg(mass=mass)
+        rigid_props = schemas_cfg.RigidBodyPropertiesCfg()
+    else:
+        mass_props = None
+        rigid_props = None
 
-    converter_context = omni.kit.asset_converter.AssetConverterContext()
-    # setup converter and flags
-    converter_context.ignore_materials = not load_materials
-    # converter_context.ignore_animation = False
-    # converter_context.ignore_cameras = True
-    # converter_context.single_mesh = True
-    # converter_context.smooth_normals = True
-    # converter_context.preview_surface = False
-    # converter_context.support_point_instancer = False
-    # converter_context.embed_mdl_in_usd = False
-    # converter_context.use_meter_as_world_unit = True
-    # converter_context.create_world_as_default_root_prim = False
-    instance = omni.kit.asset_converter.get_instance()
-    task = instance.create_converter_task(in_file, out_file, progress_callback, converter_context)
-    success = True
-    while True:
-        success = await task.wait_until_finished()
-        if not success:
-            await asyncio.sleep(0.1)
-        else:
-            break
-    return success
+    # Collision properties
+    collision_props = schemas_cfg.CollisionPropertiesCfg(
+        collision_enabled=True  # collision_approximation != "none"
+    )
+
+    # Create Mesh converter config
+    mesh_converter_cfg = MeshConverterCfg(
+        mass_props=mass_props,
+        rigid_props=rigid_props,
+        collision_props=collision_props,
+        asset_path=in_file,
+        force_usd_conversion=True,
+        usd_dir=os.path.dirname(out_file),
+        usd_file_name=os.path.basename(out_file),
+        make_instanceable=make_instanceable,
+        collision_approximation=collision_approximation,
+    )
+    MeshConverter(mesh_converter_cfg)
 
 
 def main(
     assets_root_dir: Path,
     force_remake: bool = False,
+    make_instanceable: bool = False,
+    collision_approximation: str = "none",
+    mass: float = None,
 ):
-    kit = SimulationApp()
+    app_launcher = AppLauncher({"headless": True})
+    simulation_app = app_launcher.app
 
-    import omni
-    from omni.isaac.core.utils.extensions import enable_extension
+    """Rest everything follows."""
 
-    enable_extension("omni.kit.asset_converter")
-    
+    import contextlib
+    import os
+
+    import carb
+    import isaacsim.core.utils.stage as stage_utils
+    import omni.kit.app
+
     folder_names = [
         f.path.split("/")[-1] for f in os.scandir(assets_root_dir) if f.is_dir()
     ]
@@ -89,10 +97,7 @@ def main(
 
         print(f"Processing subset {folder_name}")
 
-        files = [
-            f
-            for f in Path(data_dir).glob("**/*")
-        ]
+        files = [f for f in Path(data_dir).glob("**/*")]
         print(f"Processing {len(files)} files")
 
         files.sort()
@@ -106,19 +111,20 @@ def main(
                     / relative_path_dir
                     / filename.name.replace(file_ending, "usda")
                 )
-                
+
                 if outpath.exists() and not force_remake:
                     continue
 
                 print(f"Processing {filename}")
-                status = asyncio.get_event_loop().run_until_complete(
-                    convert(str(filename), str(outpath), False)
+                convert(
+                    str(filename),
+                    str(outpath),
+                    make_instanceable,
+                    collision_approximation,
+                    mass,
                 )
-                if not status:
-                    print(f"Failed to convert {filename}")
-                    exit(0)
-            
-    kit.close()
+
+    simulation_app.close()
 
 
 if __name__ == "__main__":

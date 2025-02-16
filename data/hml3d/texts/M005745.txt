@@ -1,3 +1,0 @@
-person is exercising their left arm#person/NOUN is/AUX exercise/VERB their/DET left/ADJ arm/NOUN#0.0#0.0
-bending down and moving hand side to side.#bend/VERB down/ADP and/CCONJ move/VERB hand/NOUN side/NOUN to/PART side/VERB#0.0#0.0
-a person pets a dog with both his right and left hand#a/DET person/NOUN pet/VERB a/DET dog/NOUN with/ADP both/CCONJ his/DET right/NOUN and/CCONJ left/VERB hand/NOUN#0.0#0.0

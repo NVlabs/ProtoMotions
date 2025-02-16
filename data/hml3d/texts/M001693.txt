@@ -1,3 +1,0 @@
-a person staggers in a semi circle  right counter- counterclockwise#a/DET person/NOUN stagger/VERB in/ADP a/DET semi/ADJ circle/NOUN right/ADV counter/NOUN counterclockwise/NOUN#0.0#0.0
-a man walks to the right and then starts to walk to the left.#a/DET man/NOUN walk/VERB to/ADP the/DET right/NOUN and/CCONJ then/ADV start/VERB to/PART walk/VERB to/ADP the/DET left/NOUN#0.0#0.0
-a man stagers around, as if lost.#a/DET man/NOUN stager/VERB around/ADV as/SCONJ if/SCONJ lose/VERB#0.0#0.0

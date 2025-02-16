@@ -1,3 +1,0 @@
-a person lifts his right arm multiple times.#a/DET person/NOUN lift/VERB his/DET right/ADJ arm/NOUN multiple/NOUN time/NOUN#0.0#0.0
-a person raising and lowering object with their right arm/ hand.#a/DET person/NOUN raise/VERB and/CCONJ lower/VERB object/NOUN with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0
-a person who lifts there right hand up twice#a/DET person/NOUN who/PRON lift/VERB there/ADV right/ADJ hand/NOUN up/ADP twice/ADV#0.0#0.0

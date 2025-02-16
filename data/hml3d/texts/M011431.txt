@@ -1,3 +1,0 @@
-a man leans heavily on his left leg, jerking his left hand in the air in front of him as he does.#a/DET man/NOUN lean/VERB heavily/ADV on/ADP his/DET left/ADJ leg/NOUN jerk/VERB his/DET left/ADJ hand/NOUN in/ADP the/DET air/NOUN in/ADP front/NOUN of/ADP him/PRON as/SCONJ he/PRON does/AUX#0.0#0.0
-person is leaning to the left#person/NOUN is/AUX lean/VERB to/ADP the/DET left/NOUN#0.0#0.0
-a man shakes whilst leaning on his left leg.#a/DET man/NOUN shake/VERB whilst/SCONJ lean/VERB on/ADP his/DET left/ADJ leg/NOUN#0.0#0.0

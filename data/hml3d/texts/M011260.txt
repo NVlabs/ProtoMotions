@@ -1,3 +1,0 @@
-a man paces back and forth.#a/DET man/NOUN pace/VERB back/ADV and/CCONJ forth/ADV#0.0#0.0
-a man steps to the right and walks forward then turns around and walks forward again.#a/DET man/NOUN step/VERB to/ADP the/DET right/NOUN and/CCONJ walk/VERB forward/ADV then/ADV turn/VERB around/ADP and/CCONJ walk/VERB forward/ADV again/ADV#0.0#0.0
-the  person is walking towards the left looking down for something.#the/DET person/NOUN is/AUX walk/VERB towards/ADP the/DET left/NOUN look/VERB down/ADP for/ADP something/PRON#0.0#0.0

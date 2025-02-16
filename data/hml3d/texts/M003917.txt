@@ -1,3 +1,0 @@
-a person is break dancing.#a/DET person/NOUN is/AUX break/NOUN dancing/NOUN#0.0#0.0
-a stick figure break dances counter counterclockwise,flips to a standing position and walks to his right.#a/DET stick/NOUN figure/NOUN break/NOUN dance/NOUN counter/VERB counterclockwise/NOUN flip/VERB to/ADP a/DET stand/VERB position/NOUN and/CCONJ walk/VERB to/ADP his/DET right/NOUN#0.0#0.0
-a person is break dancing in a clockwise motion, he then does a one armed handstand and jumps back onto his two feet.#a/DET person/NOUN is/AUX break/NOUN dancing/NOUN in/ADP a/DET clockwise/NOUN motion/NOUN he/PRON then/ADV does/AUX a/DET one/NUM armed/ADJ handstand/NOUN and/CCONJ jump/VERB back/ADV onto/ADP his/DET two/NUM foot/NOUN#0.0#0.0

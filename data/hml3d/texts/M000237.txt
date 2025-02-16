@@ -1,4 +1,0 @@
-a person walks slowly turning to the left.#a/DET person/NOUN walk/VERB slowly/ADV turn/VERB to/ADP the/DET left/NOUN#0.0#0.0
-a person is walking and then makes a left turn.#a/DET person/NOUN is/AUX walk/VERB and/CCONJ then/ADV make/VERB a/DET left/ADJ turn/NOUN#0.0#0.0
-he walked from left to right and stand.#he/PRON walk/VERB from/ADP left/VERB to/ADP right/NOUN and/CCONJ stand/VERB#0.0#0.0
-a person takes a straight step forward and then continues walking while curving to the left.#a/DET person/NOUN take/VERB a/DET straight/ADJ step/NOUN forward/ADV and/CCONJ then/ADV continue/VERB walk/VERB while/SCONJ curve/VERB to/ADP the/DET left/NOUN#0.0#0.0

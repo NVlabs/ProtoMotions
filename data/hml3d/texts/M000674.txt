@@ -1,3 +1,0 @@
-body reaches down to right, straighten and twist to left bring right arm up and then reaches back down to right side.#body/NOUN reach/VERB down/ADP to/ADP right/ADJ straighten/VERB and/CCONJ twist/NOUN to/ADP left/VERB bring/VERB right/ADJ arm/NOUN up/ADP and/CCONJ then/ADV reach/VERB back/ADV down/ADV to/ADP right/ADJ side/NOUN#0.0#0.0
-a person lifts an object and places it down in another spot.#a/DET person/NOUN lift/VERB an/DET object/NOUN and/CCONJ place/VERB it/PRON down/ADP in/ADP another/DET spot/NOUN#0.0#0.0
-a person lifts an invisible object, tilting it to the left.#a/DET person/NOUN lift/VERB an/DET invisible/ADJ object/NOUN tilt/VERB it/PRON to/ADP the/DET left/NOUN#0.0#0.0

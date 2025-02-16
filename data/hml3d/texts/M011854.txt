@@ -1,3 +1,0 @@
-a person puts his left hand to his face.#a/DET person/NOUN put/VERB his/DET left/ADJ hand/NOUN to/ADP his/DET face/NOUN#0.0#0.0
-a man takes a drink.#a/DET man/NOUN take/VERB a/DET drink/NOUN#3.0#6.0
-person scratching his chin and then his head left after#person/NOUN scratch/VERB his/DET chin/NOUN and/CCONJ then/ADV his/DET head/NOUN left/VERB after/ADP#0.0#0.0

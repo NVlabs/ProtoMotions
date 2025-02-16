@@ -1,3 +1,0 @@
-a person picks something up in front of him and moves it to the side#a/DET person/NOUN pick/VERB something/PRON up/ADP in/ADP front/NOUN of/ADP him/PRON and/CCONJ move/VERB it/PRON to/ADP the/DET side/NOUN#0.0#0.0
-a person moves something from their right to left.#a/DET person/NOUN move/VERB something/PRON from/ADP their/DET right/NOUN to/ADP left/NOUN#0.0#0.0
-a person moves something with both hands from right to left.#a/DET person/NOUN move/VERB something/PRON with/ADP both/DET hand/NOUN from/ADP right/NOUN to/ADP left/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person is making a motion of throwing an object to his right side with his left hand.#a/DET person/NOUN is/AUX make/VERB a/DET motion/NOUN of/ADP throw/VERB an/DET object/NOUN to/ADP his/DET right/ADJ side/NOUN with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
-a person is playing tennis#a/DET person/NOUN is/AUX play/VERB tennis/NOUN#0.0#0.0
-a person does three consecutive, left-handed, forehand tennis shots.#a/DET person/NOUN does/AUX three/NUM consecutive/ADJ lefthanded/ADJ forehand/NOUN tennis/NOUN shot/NOUN#0.0#0.0

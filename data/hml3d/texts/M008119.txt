@@ -1,3 +1,0 @@
-person runs quickly to the right, then turns back to the left and runs that way.#person/NOUN run/VERB quickly/ADV to/ADP the/DET right/NOUN then/ADV turn/VERB back/ADV to/ADP the/DET left/NOUN and/CCONJ run/VERB that/DET way/NOUN#0.0#0.0
-a person hurries to the left, then hurries back to the right.#a/DET person/NOUN hurry/VERB to/ADP the/DET left/NOUN then/ADV hurry/VERB back/ADV to/ADP the/DET right/NOUN#0.0#0.0
-a person jogs to the right then jogs to the left then jogs in place.#a/DET person/NOUN jog/VERB to/ADP the/DET right/NOUN then/ADV jog/VERB to/ADP the/DET left/NOUN then/ADV jog/VERB in/ADP place/NOUN#0.0#0.0

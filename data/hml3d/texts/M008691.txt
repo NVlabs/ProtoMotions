@@ -1,3 +1,0 @@
-a person walks in a counter counterclockwise circle.#a/DET person/NOUN walk/VERB in/ADP a/DET counter/ADJ counterclockwise/PROPN circle/NOUN#0.0#0.0
-a person walks in a counter counterclockwise direction.#a/DET person/NOUN walk/VERB in/ADP a/DET counter/ADJ counterclockwise/NOUN direction/NOUN#0.0#0.0
-a person starts in a spot, walks clockwise in a slight oval, then stops in the original spot.#a/DET person/NOUN start/VERB in/ADP a/DET spot/NOUN walk/VERB clockwise/NOUN in/ADP a/DET slight/ADJ oval/NOUN then/ADV stop/VERB in/ADP the/DET original/ADJ spot/NOUN#0.0#0.0

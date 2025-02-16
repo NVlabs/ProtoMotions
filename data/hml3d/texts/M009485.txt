@@ -1,3 +1,0 @@
-a figure raises a weight in front of themself.#a/DET figure/NOUN raise/VERB a/DET weight/NOUN in/ADP front/NOUN of/ADP themself/PRON#0.0#0.0
-a person reaches his left arm straight forward#a/DET person/NOUN reach/VERB his/DET left/ADJ arm/NOUN straight/ADV forward/ADV#0.0#0.0
-a person raises and then lowers their left hand.#a/DET person/NOUN raise/VERB and/CCONJ then/ADV lower/VERB their/DET left/ADJ hand/NOUN#0.0#0.0

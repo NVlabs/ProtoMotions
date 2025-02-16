@@ -1,3 +1,0 @@
-the person is walking sideways to his left.#the/DET person/NOUN is/AUX walk/VERB sideways/ADV to/ADP his/DET left/NOUN#0.0#0.0
-with the left knee bent, the person drags his right leg, turns and steps out with his right leg.#with/ADP the/DET left/ADJ knee/NOUN bent/NOUN the/DET person/NOUN drag/VERB his/DET right/ADJ leg/NOUN turn/VERB and/CCONJ step/VERB out/ADP with/ADP his/DET right/ADJ leg/NOUN#0.0#0.0
-person is crouched over, then takes their right leg in front of their left, and proceeds to side step to the left.#person/NOUN is/AUX crouch/VERB over/ADP then/ADV take/VERB their/DET right/ADJ leg/NOUN in/ADP front/NOUN of/ADP their/DET left/NOUN and/CCONJ proceed/VERB to/ADP side/NOUN step/NOUN to/ADP the/DET left/NOUN#0.0#0.0

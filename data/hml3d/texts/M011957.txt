@@ -1,3 +1,0 @@
-person lifts up hand then puts it back down#person/NOUN lift/VERB up/ADP hand/NOUN then/ADV put/VERB it/PRON back/ADV down/ADP#0.0#0.0
-a person scratches their head with their left hand.#a/DET person/NOUN scratch/VERB their/DET head/NOUN with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a person raises their left hand above their head.#a/DET person/NOUN raise/VERB their/DET left/ADJ hand/NOUN above/ADP their/DET head/NOUN#0.0#0.0

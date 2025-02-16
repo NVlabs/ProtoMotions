@@ -1,3 +1,0 @@
-standing on one foot.#stand/VERB on/ADP one/NUM foot/NOUN#0.0#0.0
-a person moves their left foor around while balancing on their right foot.#a/DET person/NOUN move/VERB their/DET left/ADJ foor/NOUN around/ADV while/SCONJ balance/VERB on/ADP their/DET right/ADJ foot/NOUN#0.0#0.0
-person is lifting his left knee.#person/NOUN is/AUX lift/VERB his/DET left/ADJ knee/NOUN#0.0#0.0

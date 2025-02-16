@@ -1,3 +1,0 @@
-character raises left arm to shoulder height then drops to side.#character/NOUN raise/VERB left/VERB arm/NOUN to/ADP shoulder/NOUN height/NOUN then/ADV drop/VERB to/PART side/VERB#1.0#4.0
-a person slides something to the left.#a/DET person/NOUN slide/VERB something/PRON to/ADP the/DET left/NOUN#0.0#0.0
-a person standing and puts right arms out.#a/DET person/NOUN stand/VERB and/CCONJ put/VERB right/ADJ arm/NOUN out/ADV#0.0#0.0

@@ -1,3 +1,0 @@
-a person takes a step forward and three steps more to his right.#a/DET person/NOUN take/VERB a/DET step/NOUN forward/ADV and/CCONJ three/NUM step/NOUN more/ADJ to/ADP his/DET right/NOUN#0.0#0.0
-person appears to walk forward to their right.#person/NOUN appear/VERB to/PART walk/VERB forward/ADV to/ADP their/DET right/NOUN#0.0#0.0
-a person walks in a right turn.#a/DET person/NOUN walk/VERB in/ADP a/DET right/ADJ turn/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person walks, turns around, and walks back#a/DET person/NOUN walk/VERB turn/VERB around/ADV and/CCONJ walk/VERB back/ADV#0.0#0.0
-the person is walking and turning right.#the/DET person/NOUN is/AUX walk/VERB and/CCONJ turn/VERB right/ADV#0.0#0.0
-a person walks and turns around right.#a/DET person/NOUN walk/VERB and/CCONJ turn/VERB around/ADV right/ADV#0.0#0.0

@@ -1,3 +1,0 @@
-a person seeming to be working with arms placing things up and back and forth.#a/DET person/NOUN seeming/ADJ to/PART be/AUX work/VERB with/ADP arm/NOUN place/VERB thing/NOUN up/ADP and/CCONJ back/ADV and/CCONJ forth/ADV#0.0#0.0
-a person is rubbing something together in their hands then raises their left hand#a/DET person/NOUN is/AUX rub/VERB something/PRON together/ADV in/ADP their/DET hand/NOUN then/ADV raise/VERB their/DET left/ADJ hand/NOUN#0.0#0.0
-person drinks from a bottle in their left hand before screwing a lid back on#person/NOUN drink/VERB from/ADP a/DET bottle/NOUN in/ADP their/DET left/ADJ hand/NOUN before/ADP screw/VERB a/DET lid/NOUN back/ADV on/ADP#0.0#0.0

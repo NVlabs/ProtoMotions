@@ -1,3 +1,0 @@
-a person is demonstrating how to gently throw an object with his left hand.#a/DET person/NOUN is/AUX demonstrate/VERB how/ADV to/PART gently/ADV throw/VERB an/DET object/NOUN with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
-a person throwing something with the left hand#a/DET person/NOUN throw/VERB something/PRON with/ADP the/DET left/ADJ hand/NOUN#0.0#0.0
-person makes a throwing motion with left arm#person/NOUN make/VERB a/DET throwing/NOUN motion/NOUN with/ADP left/ADJ arm/NOUN#0.0#0.0

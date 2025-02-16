@@ -1,3 +1,0 @@
-arms slightly curled go to right to left.#arm/NOUN slightly/ADV curl/VERB go/VERB to/ADP right/NOUN to/ADP left/ADV#0.0#0.0
-a person reaches for something on the right then moves it to the left.#a/DET person/NOUN reach/VERB for/ADP something/PRON on/ADP the/DET right/NOUN then/ADV move/VERB it/PRON to/ADP the/DET left/NOUN#0.0#0.0
-a person picks something up, moves it to the left, and places it down.#a/DET person/NOUN pick/VERB something/PRON up/ADP move/VERB it/PRON to/ADP the/DET left/NOUN and/CCONJ place/VERB it/PRON down/ADP#0.0#0.0

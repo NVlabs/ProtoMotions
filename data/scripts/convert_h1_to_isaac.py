@@ -80,12 +80,10 @@ def main(
     from multiprocessing import Pool, set_start_method
 
     set_start_method("spawn")
-    num_jobs = 2
+    num_jobs = 1
     chunk = np.ceil(len(file_list) / num_jobs).astype(int)
 
-    print(
-        f"Processing {len(file_list)} out of {len(all_files)} files with {num_jobs} jobs"
-    )
+    print(f"Processing {len(file_list)} out of {len(all_files)} files with {num_jobs} jobs")
 
     file_list = [file_list[i : i + chunk] for i in range(0, len(file_list), chunk)]
     job_args = [(humanoid_type, file_list[i]) for i in range(len(file_list))]

@@ -1,3 +1,0 @@
-a person walks forward then moves their arms in unison from right to left#a/DET person/NOUN walk/VERB forward/ADV then/ADV move/VERB their/DET arm/NOUN in/ADP unison/PROPN from/ADP right/NOUN to/ADP left/ADV#0.0#0.0
-a person is passing objects from the right to the left initially heavy but then lighter objects.#a/DET person/NOUN is/AUX pass/VERB object/NOUN from/ADP the/DET right/NOUN to/ADP the/DET left/NOUN initially/ADV heavy/ADJ but/CCONJ then/ADV lighter/ADJ object/NOUN#0.0#0.0
-a person passes something to the left#a/DET person/NOUN pass/VERB something/PRON to/ADP the/DET left/NOUN#0.0#0.0

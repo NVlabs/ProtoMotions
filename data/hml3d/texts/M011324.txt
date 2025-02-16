@@ -1,3 +1,0 @@
-throw a baseball with his left hand.#throw/VERB a/DET baseball/NOUN with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
-a person throws something with their left hand.#a/DET person/NOUN throw/VERB something/PRON with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a person throws with their left hand.#a/DET person/NOUN throw/VERB with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0

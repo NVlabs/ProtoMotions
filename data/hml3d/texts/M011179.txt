@@ -1,3 +1,0 @@
-feeling well continuing by moving in a joyous mood.#feel/VERB well/ADV continue/VERB by/ADP move/VERB in/ADP a/DET joyous/ADJ mood/NOUN#0.0#0.0
-a person is hopping and kicking around joyfully#a/DET person/NOUN is/AUX hop/VERB and/CCONJ kick/VERB around/ADP joyfully/ADV#0.0#0.0
-person has arms fully extended to side shoulder length then  kicks left  leg forward then right leg then left leg#person/NOUN has/AUX arm/NOUN fully/ADV extend/VERB to/PART side/VERB shoulder/NOUN length/NOUN then/ADV kick/NOUN left/VERB leg/NOUN forward/ADV then/ADV right/INTJ leg/NOUN then/ADV left/VERB leg/NOUN#0.0#0.0

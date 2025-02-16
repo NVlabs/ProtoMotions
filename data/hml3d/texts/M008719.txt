@@ -1,2 +1,0 @@
-a man walking makes a left turn#a/DET man/NOUN walk/VERB make/VERB a/DET left/ADJ turn/NOUN#0.0#0.0
-a person walks forward before veering off to their left.#a/DET person/NOUN walk/VERB forward/ADV before/ADP veer/VERB off/ADP to/ADP their/DET left/NOUN#0.0#0.0

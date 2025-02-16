@@ -1,3 +1,0 @@
-a person walks and is pushed forwards.#a/DET person/NOUN walk/VERB and/CCONJ is/AUX push/VERB forwards/ADV#0.0#0.0
-a person walking downward stumbles toward the right hand side along the way.#a/DET person/NOUN walk/VERB downward/ADJ stumble/NOUN toward/ADP the/DET right/ADJ hand/NOUN side/NOUN along/ADP the/DET way/NOUN#0.0#0.0
-a red and blue stick figure walks and stumbles to his left.#a/DET red/ADJ and/CCONJ blue/ADJ stick/NOUN figure/NOUN walk/VERB and/CCONJ stumble/NOUN to/ADP his/DET left/NOUN#0.0#0.0

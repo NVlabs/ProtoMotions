@@ -1,3 +1,0 @@
-a person lifts dumb bell with its left hand.#a/DET person/NOUN lift/VERB dumb/ADJ bell/NOUN with/ADP its/DET left/ADJ hand/NOUN#0.0#0.0
-a person repeatedly bends their left arm at the elbow.#a/DET person/NOUN repeatedly/ADV bend/VERB their/DET left/ADJ arm/NOUN at/ADP the/DET elbow/NOUN#0.0#0.0
-a person makes a lifting motion with their left arm, lowers their left arm, and then raises their left arm again.#a/DET person/NOUN make/VERB a/DET lifting/NOUN motion/NOUN with/ADP their/DET left/ADJ arm/NOUN lower/VERB their/DET left/ADJ arm/NOUN and/CCONJ then/ADV raise/VERB their/DET left/ADJ arm/NOUN again/ADV#0.0#0.0

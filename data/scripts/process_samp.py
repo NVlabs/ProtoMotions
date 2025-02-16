@@ -234,7 +234,7 @@ def process_sequence(cfg, sequence, sequence_idx):
                 [
                     {
                         "is_static": True,
-                        "path": f"phys_anim/data/assets/scenes/train/SAMP/{object_category}/{os.path.basename(object_mesh_path)}",
+                        "path": f"protomotions/data/assets/scenes/train/SAMP/{object_category}/{os.path.basename(object_mesh_path)}",
                         "object_options": {
                             "vhacd_enabled": True,
                             "vhacd_params": {

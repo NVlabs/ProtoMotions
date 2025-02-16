@@ -1,3 +1,0 @@
-the left hand goes to the right and the right hand goes upward to the face.#the/DET left/ADJ hand/NOUN go/VERB to/ADP the/DET right/NOUN and/CCONJ the/DET right/ADJ hand/NOUN go/VERB upward/ADV to/ADP the/DET face/NOUN#0.0#0.0
-a person knocking on a surface multiple times#a/DET person/NOUN knock/VERB on/ADP a/DET surface/NOUN multiple/NOUN time/NOUN#0.0#0.0
-a person appears to be dancing while moving their arms.#a/DET person/NOUN appear/VERB to/PART be/AUX dance/VERB while/SCONJ move/VERB their/DET arm/NOUN#0.0#0.0

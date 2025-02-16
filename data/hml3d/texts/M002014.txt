@@ -1,3 +1,0 @@
-falling down with a leg injury#fall/VERB down/ADP with/ADP a/DET leg/NOUN injury/NOUN#0.0#0.0
-a person holds injured left leg and collapses to ground.#a/DET person/NOUN hold/VERB injure/VERB left/VERB leg/NOUN and/CCONJ collapse/VERB to/PART ground/VERB#0.0#0.0
-a person grasps their leg and falls to the ground.#a/DET person/NOUN grasp/VERB their/DET leg/NOUN and/CCONJ fall/VERB to/ADP the/DET ground/NOUN#0.0#0.0

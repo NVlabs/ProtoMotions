@@ -1,3 +1,0 @@
-the person walks backwards while looking left to right.#the/DET person/NOUN walk/VERB backwards/ADV while/SCONJ look/VERB left/ADV to/ADP right/ADJ#2.0#3.0
-the person takes steps back#the/DET person/NOUN take/VERB step/NOUN back/ADV#0.0#0.0
-a person walks slowly backward.#a/DET person/NOUN walk/VERB slowly/ADV backward/ADJ#0.0#0.0

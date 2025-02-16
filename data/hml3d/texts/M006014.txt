@@ -1,3 +1,0 @@
-the man take sideways steps to the left.#the/DET man/NOUN take/VERB sideways/ADV step/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-he walked to the right while keeping his center of gravity very low.#he/PRON walk/VERB to/ADP the/DET right/NOUN while/SCONJ keep/VERB his/DET center/NOUN of/ADP gravity/NOUN very/ADV low/ADV#0.0#0.0
-a person bent forward slightly at the waist walks in a diagonal line to the right, taking rather large steps.#a/DET person/NOUN bent/ADJ forward/ADV slightly/ADV at/ADP the/DET waist/NOUN walk/VERB in/ADP a/DET diagonal/ADJ line/NOUN to/ADP the/DET right/NOUN take/VERB rather/ADV large/ADJ step/NOUN#0.0#0.0

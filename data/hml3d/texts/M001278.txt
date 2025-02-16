@@ -1,3 +1,0 @@
-a person raises their right arm to their face pensively while shifting their weight from side to side.#a/DET person/NOUN raise/VERB their/DET right/ADJ arm/NOUN to/ADP their/DET face/NOUN pensively/ADV while/SCONJ shift/VERB their/DET weight/NOUN from/ADP side/NOUN to/ADP side/NOUN#0.0#0.0
-man swivels right to left with right hand up towards the face.#man/NOUN swivel/VERB right/ADJ to/PART left/VERB with/ADP right/ADJ hand/NOUN up/ADP towards/ADP the/DET face/NOUN#0.0#0.0
-a man raises his right arm and looks from side to side.#a/DET man/NOUN raise/VERB his/DET right/ADJ arm/NOUN and/CCONJ look/VERB from/ADP side/NOUN to/ADP side/NOUN#0.0#0.0

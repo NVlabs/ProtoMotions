@@ -1,3 +1,0 @@
-a peson steps backwards from their right to left to avoid something.#a/DET peson/NOUN step/VERB backwards/ADV from/ADP their/DET right/NOUN to/ADP left/NOUN to/PART avoid/VERB something/PRON#0.0#0.0
-the person is recovering from being pushed.#the/DET person/NOUN is/AUX recover/VERB from/ADP being/AUX push/VERB#0.0#0.0
-a person steps backwards to the left.#a/DET person/NOUN step/VERB backwards/ADV to/ADP the/DET left/NOUN#0.0#0.0

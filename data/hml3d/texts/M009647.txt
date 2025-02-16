@@ -1,3 +1,0 @@
-person picks something up and moves it to a shelf#person/NOUN pick/VERB something/PRON up/ADP and/CCONJ move/VERB it/PRON to/ADP a/DET shelf/NOUN#0.0#0.0
-a person picks up an item with both hands and places it somewhere else.#a/DET person/NOUN pick/VERB up/ADP an/DET item/NOUN with/ADP both/DET hand/NOUN and/CCONJ place/VERB it/PRON somewhere/ADV else/ADV#0.0#0.0
-a man lifts from his hands from left side and gives it to someone at the right side.#a/DET man/NOUN lift/VERB from/ADP his/DET hand/NOUN from/ADP left/ADJ side/NOUN and/CCONJ give/VERB it/PRON to/ADP someone/PRON at/ADP the/DET right/ADJ side/NOUN#0.0#0.0

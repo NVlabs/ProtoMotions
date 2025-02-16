@@ -1,3 +1,0 @@
-a person swings his right hand.#a/DET person/NOUN swing/VERB his/DET right/ADJ hand/NOUN#0.0#0.0
-a person swings their right hand quickly while holding an object.#a/DET person/NOUN swing/VERB their/DET right/ADJ hand/NOUN quickly/ADV while/SCONJ hold/VERB an/DET object/NOUN#0.0#0.0
-waving arm and standing still#wave/VERB arm/NOUN and/CCONJ standing/NOUN still/ADV#0.0#0.0

@@ -1,3 +1,0 @@
-person walks six steps to side with left arm up#person/NOUN walk/VERB six/NUM step/NOUN to/PART side/VERB with/ADP left/ADJ arm/NOUN up/ADP#0.0#0.0
-a person walks forward and makes a waving motion with his left arm before walking off to his left.#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ make/VERB a/DET waving/ADJ motion/NOUN with/ADP his/DET left/ADJ arm/NOUN before/ADP walk/VERB off/ADP to/ADP his/DET left/NOUN#0.0#0.0
-the person is walking over the clean floor.#the/DET person/NOUN is/AUX walk/VERB over/ADP the/DET clean/ADJ floor/NOUN#0.0#0.0

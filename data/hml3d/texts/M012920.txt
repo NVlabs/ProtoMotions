@@ -1,3 +1,0 @@
-the person is climbing on terrain.#the/DET person/NOUN is/AUX climb/VERB on/ADP terrain/NOUN#0.0#0.0
-the man walks forward, turns to his right, steps up once, steps down twice, turns to his left, walks forward a few steps, turns to his left again and walks forward.#the/DET man/NOUN walk/VERB forward/ADV turn/VERB to/ADP his/DET right/NOUN step/VERB up/ADV once/ADV step/VERB down/ADV twice/ADV turn/VERB to/ADP his/DET left/NOUN walk/VERB forward/ADV a/DET few/ADJ step/NOUN turn/VERB to/ADP his/DET left/NOUN again/ADV and/CCONJ walk/VERB forward/ADV#0.0#0.0
-a person is walking on things.#a/DET person/NOUN is/AUX walk/VERB on/ADP thing/NOUN#0.0#0.0

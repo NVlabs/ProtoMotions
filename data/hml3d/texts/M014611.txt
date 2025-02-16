@@ -1,3 +1,0 @@
-lifting left arm above head#lift/VERB left/VERB arm/NOUN above/ADP head/NOUN#0.0#0.0
-a figure mimicks a grabbing motion as if removing clothing#a/DET figure/NOUN mimick/VERB a/DET grabbing/ADJ motion/NOUN as/SCONJ if/SCONJ remove/VERB clothing/NOUN#0.0#0.0
-person lifts left arm from in front of torso to over the head.#person/NOUN lift/VERB left/VERB arm/NOUN from/ADP in/ADP front/NOUN of/ADP torso/NOUN to/ADP over/ADP the/DET head/NOUN#0.0#0.0

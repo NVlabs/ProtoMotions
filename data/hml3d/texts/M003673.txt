@@ -1,3 +1,0 @@
-a person hops forward on only their right foot.#a/DET person/NOUN hop/VERB forward/ADV on/ADP only/ADV their/DET right/ADJ foot/NOUN#0.0#0.0
-a person hopping down with his/her right leg.#a/DET person/NOUN hop/VERB down/ADP with/ADP his/DET her/DET right/ADJ leg/NOUN#0.0#0.0
-someone hopping on only their right foot, then stands on two.#someone/PRON hop/VERB on/ADP only/ADV their/DET right/ADJ foot/NOUN then/ADV stand/VERB on/ADP two/NUM#0.0#0.0

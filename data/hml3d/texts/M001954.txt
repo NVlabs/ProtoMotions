@@ -1,3 +1,0 @@
-a person limps while putting their hands on their left leg#a/DET person/NOUN limp/VERB while/SCONJ put/VERB their/DET hand/NOUN on/ADP their/DET left/ADJ leg/NOUN#0.0#0.0
-the man limps around on his left leg holding it.#the/DET man/NOUN limp/VERB around/ADP on/ADP his/DET left/ADJ leg/NOUN hold/VERB it/PRON#0.0#0.0
-a man is limping forward and then turns around and limps back.#a/DET man/NOUN is/AUX limp/VERB forward/ADV and/CCONJ then/ADV turn/VERB around/ADP and/CCONJ limp/VERB back/ADV#0.0#0.0

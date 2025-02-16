@@ -1,3 +1,0 @@
-a person picks up something and moves it to the left.#a/DET person/NOUN pick/VERB up/ADP something/PRON and/CCONJ move/VERB it/PRON to/ADP the/DET left/NOUN#0.0#0.0
-a man is holding both arms out and then pulling them back in right to left as if he is transferring something heavy.#a/DET man/NOUN is/AUX hold/VERB both/DET arm/NOUN out/ADV and/CCONJ then/ADV pull/VERB them/PRON back/ADV in/ADP right/NOUN to/PART left/VERB as/SCONJ if/SCONJ he/PRON is/AUX transfer/VERB something/PRON heavy/ADJ#0.0#0.0
-a person gently lifts an object and passes it to their left.#a/DET person/NOUN gently/ADV lift/VERB an/DET object/NOUN and/CCONJ pass/VERB it/PRON to/ADP their/DET left/NOUN#0.0#0.0

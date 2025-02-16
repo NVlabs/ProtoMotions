@@ -1,3 +1,0 @@
-a person walks sideways around an object.#a/DET person/NOUN walk/VERB sideways/ADV around/ADP an/DET object/NOUN#0.0#0.0
-a person faces something and steps clockwise around it and then steps back around it counterclockwise.#a/DET person/NOUN face/VERB something/PRON and/CCONJ step/NOUN clockwise/VERB around/ADP it/PRON and/CCONJ then/ADV step/VERB back/ADV around/ADP it/PRON counterclockwise/VERB#0.0#0.0
-person is wwalking around slowly.#person/NOUN is/AUX wwalke/VERB around/ADV slowly/ADV#0.0#0.0

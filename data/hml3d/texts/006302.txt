@@ -1,3 +1,0 @@
-the person is doing the moonwalk.#the/DET person/NOUN is/AUX do/VERB the/DET moonwalk/NOUN#0.0#0.0
-the man is doing the moonwalk#the/DET man/NOUN is/AUX do/VERB the/DET moonwalk/NOUN#0.0#0.0
-this person is walking backwards#this/DET person/NOUN is/AUX walk/VERB backwards/ADV#0.0#0.0

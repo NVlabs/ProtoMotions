@@ -1,7 +1,0 @@
-# @package _global_
-
-defaults:
-  - /algo: ppo
-  - /env: humanoid
-
-experiment_name: ppo

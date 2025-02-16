@@ -1,3 +1,0 @@
-a person walks in a counterclockwise direction.#a/DET person/NOUN walk/VERB in/ADP a/DET counterclockwise/ADJ direction/NOUN#0.0#0.0
-a person walks forward then turns to the left and stands.#a/DET person/NOUN walk/VERB forward/ADV then/ADV turn/VERB to/ADP the/DET left/NOUN and/CCONJ stand/VERB#0.0#0.0
-a person walks in a quarter turn counterclockwise arc.#a/DET person/NOUN walk/VERB in/ADP a/DET quarter/NOUN turn/NOUN counterclockwise/PROPN arc/PROPN#0.0#0.0

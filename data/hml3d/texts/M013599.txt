@@ -1,3 +1,0 @@
-a person walks forward and to the left.#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ to/ADP the/DET left/NOUN#0.0#0.0
-the person is walking around the bend to the left.#the/DET person/NOUN is/AUX walk/VERB around/ADP the/DET bend/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-person bends body and walks counterclockwise half circle#person/NOUN bend/VERB body/NOUN and/CCONJ walk/VERB counterclockwise/VERB half/NOUN circle/NOUN#0.0#0.0

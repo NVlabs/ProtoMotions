@@ -1,3 +1,0 @@
-moving hand around near chest.#move/VERB hand/NOUN around/ADP near/SCONJ chest/NOUN#0.0#0.0
-the person is moving his left arm in front of him.#the/DET person/NOUN is/AUX move/VERB his/DET left/ADJ arm/NOUN in/ADP front/NOUN of/ADP him/PRON#0.0#0.0
-a man raises his left arm, makes a motion, and lowers his left hand.#a/DET man/NOUN raise/VERB his/DET left/ADJ arm/NOUN make/VERB a/DET motion/NOUN and/CCONJ lower/VERB his/DET left/ADJ hand/NOUN#0.0#0.0

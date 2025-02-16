@@ -1,3 +1,0 @@
-a person waves with his left hand.#a/DET person/NOUN wave/VERB with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
-a person stands still, while waving with their left hand.#a/DET person/NOUN stand/VERB still/ADV while/SCONJ wave/VERB with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a person is waving with their left hand.#a/DET person/NOUN is/AUX wave/VERB with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0

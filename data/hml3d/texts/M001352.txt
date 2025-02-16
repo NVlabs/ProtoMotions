@@ -1,3 +1,0 @@
-figure stands, turns right and walks, stops, turns left and walks, turns right and stops halfway, turns forward, and then stands.#figure/NOUN stand/NOUN turn/VERB right/ADJ and/CCONJ walk/VERB stop/NOUN turn/VERB left/VERB and/CCONJ walk/NOUN turn/VERB right/ADJ and/CCONJ stop/VERB halfway/ADV turn/VERB forward/ADV and/CCONJ then/ADV stand/VERB#0.0#0.0
-a person walking sideways .#a/DET person/NOUN walk/VERB sideways/ADV#0.0#0.0
-the person paces to his left, then to his right, and finally to his left again.#the/DET person/NOUN pace/VERB to/ADP his/DET left/NOUN then/ADV to/ADP his/DET right/NOUN and/CCONJ finally/ADV to/ADP his/DET left/NOUN again/ADV#0.0#0.0

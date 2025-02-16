@@ -1,3 +1,0 @@
-a person walks forward and then back around to the starting point.#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ then/ADV back/ADV around/ADV to/ADP the/DET starting/NOUN point/NOUN#0.0#0.0
-a person walks from upper left to lower right and back in a counterclockwise circle.#a/DET person/NOUN walk/VERB from/ADP upper/ADJ left/NOUN to/PART lower/VERB right/NOUN and/CCONJ back/ADV in/ADP a/DET counterclockwise/ADJ circle/NOUN#0.0#0.0
-a person walks in a counterclockwise circle#a/DET person/NOUN walk/VERB in/ADP a/DET counterclockwise/ADJ circle/NOUN#0.0#0.0

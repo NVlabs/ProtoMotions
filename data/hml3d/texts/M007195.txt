@@ -1,3 +1,0 @@
-a person walks a curved path a few steps to the right.#a/DET person/NOUN walk/VERB a/DET curved/ADJ path/NOUN a/DET few/ADJ step/NOUN to/ADP the/DET right/NOUN#0.0#0.0
-a figure walks forward and off to the right#a/DET figure/NOUN walk/VERB forward/ADV and/CCONJ off/ADV to/ADP the/DET right/NOUN#0.0#0.0
-person walks in curve from top right to bottom left.#person/NOUN walk/VERB in/ADP curve/NOUN from/ADP top/ADJ right/NOUN to/ADP bottom/NOUN left/ADV#0.0#0.0

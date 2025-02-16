@@ -1,3 +1,0 @@
-person moves left arm in an opening gesture slowly#person/NOUN move/VERB left/VERB arm/NOUN in/ADP an/DET opening/NOUN gesture/NOUN slowly/ADV#0.0#0.0
-a man moves an object with his left hand from the right side to the left side.#a/DET man/NOUN move/VERB an/DET object/NOUN with/ADP his/DET left/ADJ hand/NOUN from/ADP the/DET right/ADJ side/NOUN to/ADP the/DET left/ADJ side/NOUN#0.0#0.0
-the persons left arm reaches over to their right side at shoulder level, than returns to being down.#the/DET person/NOUN left/VERB arm/NOUN reach/VERB over/ADP to/ADP their/DET right/ADJ side/NOUN at/ADP shoulder/NOUN level/NOUN than/SCONJ return/NOUN to/ADP being/AUX down/ADV#0.0#0.0

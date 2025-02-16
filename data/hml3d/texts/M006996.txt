@@ -1,3 +1,0 @@
-a person holds up both hands and slightly waivers before boxing.#a/DET person/NOUN hold/VERB up/ADP both/DET hand/NOUN and/CCONJ slightly/ADV waiver/NOUN before/ADP box/VERB#0.0#0.0
-a person punches something on their right-hand side, while keeping their other arm raised defensively.#a/DET person/NOUN punch/VERB something/PRON on/ADP their/DET righthand/NOUN side/NOUN while/SCONJ keep/VERB their/DET other/ADJ arm/NOUN raise/VERB defensively/ADV#0.0#0.0
-a person turns to the left and punches with their left arm.#a/DET person/NOUN turn/VERB to/ADP the/DET left/NOUN and/CCONJ punch/NOUN with/ADP their/DET left/ADJ arm/NOUN#0.0#0.0

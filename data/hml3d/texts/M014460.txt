@@ -1,3 +1,0 @@
-a person kicked something with right leg#a/DET person/NOUN kick/VERB something/PRON with/ADP right/ADJ leg/NOUN#0.0#0.0
-a man kicks his right leg.#a/DET man/NOUN kick/VERB his/DET right/ADJ leg/NOUN#0.0#0.0
-a person takes a right step forward then back to the same spot.#a/DET person/NOUN take/VERB a/DET right/ADJ step/NOUN forward/ADV then/ADV back/ADV to/ADP the/DET same/ADJ spot/NOUN#0.0#0.0

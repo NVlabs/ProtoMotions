@@ -1,3 +1,0 @@
-a person performs a low jab using the right hand.#a/DET person/NOUN perform/VERB a/DET low/ADJ jab/NOUN use/VERB the/DET right/ADJ hand/NOUN#0.0#0.0
-a person punches with his right hand.#a/DET person/NOUN punch/VERB with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0
-a person with both arms raised punches out with his right hand.#a/DET person/NOUN with/ADP both/DET arm/NOUN raise/VERB punch/NOUN out/ADP with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0

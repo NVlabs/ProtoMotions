@@ -1,3 +1,0 @@
-a person takes a step then moves their left hand to the right side in a grabbing motion, and then takes a step lower.#a/DET person/NOUN take/VERB a/DET step/NOUN then/ADV move/VERB their/DET left/ADJ hand/NOUN to/ADP the/DET right/ADJ side/NOUN in/ADP a/DET grab/VERB motion/NOUN and/CCONJ then/ADV take/VERB a/DET step/NOUN lower/ADV#0.0#0.0
-the man is moving his arms#the/DET man/NOUN is/AUX move/VERB his/DET arm/NOUN#0.0#0.0
-slowly moves left hand from right side of body to left#slowly/ADV move/VERB left/VERB hand/NOUN from/ADP right/ADJ side/NOUN of/ADP body/NOUN to/ADP left/VERB#0.0#0.0

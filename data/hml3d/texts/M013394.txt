@@ -1,3 +1,0 @@
-a person raised his right hand and made the jesture with it#a/DET person/NOUN raise/VERB his/DET right/ADJ hand/NOUN and/CCONJ make/VERB the/DET jesture/NOUN with/ADP it/PRON#0.0#0.0
-the right hand goes up towards the shoulder then waves the hand back and forth.#the/DET right/ADJ hand/NOUN go/VERB up/ADP towards/ADP the/DET shoulder/NOUN then/ADV wave/VERB the/DET hand/NOUN back/ADV and/CCONJ forth/ADV#0.0#0.0
-a person raises their right hand and waves.#a/DET person/NOUN raise/VERB their/DET right/ADJ hand/NOUN and/CCONJ wave/NOUN#0.0#0.0

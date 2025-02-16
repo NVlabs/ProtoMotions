@@ -1,3 +1,0 @@
-a person takes one step to the right, then takes multiple steps to the left.#a/DET person/NOUN take/VERB one/NUM step/NOUN to/ADP the/DET right/NOUN then/ADV take/VERB multiple/ADJ step/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-a person shuffles in to the right and then to the left#a/DET person/NOUN shuffle/VERB in/ADP to/ADP the/DET right/NOUN and/CCONJ then/ADV to/ADP the/DET left/NOUN#0.0#0.0
-a man sidesteps to his right twice, stops, then cross-steps to the left twice.#a/DET man/NOUN sidestep/VERB to/ADP his/DET right/ADJ twice/ADV stop/VERB then/ADV crossstep/VERB to/ADP the/DET left/NOUN twice/ADV#0.0#0.0

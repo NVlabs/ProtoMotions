@@ -1,3 +1,0 @@
-person punches into the air with his left hand, then punches into the air with his right hand.#person/NOUN punch/VERB into/ADP the/DET air/NOUN with/ADP his/DET left/ADJ hand/NOUN then/ADV punch/VERB into/ADP the/DET air/NOUN with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0
-person is doing boxing exercises#person/NOUN is/AUX do/VERB boxing/NOUN exercise/NOUN#0.0#0.0
-person slowly does a punching motion with left arm followed by the right arm#person/NOUN slowly/ADV does/AUX a/DET punching/NOUN motion/NOUN with/ADP left/ADJ arm/NOUN follow/VERB by/ADP the/DET right/ADJ arm/NOUN#0.0#0.0

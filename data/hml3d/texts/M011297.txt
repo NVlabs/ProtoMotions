@@ -1,3 +1,0 @@
-a person bends their left leg up at the knee and catches it with their left hand, stretches, then lets it go.#a/DET person/NOUN bend/VERB their/DET left/ADJ leg/NOUN up/ADP at/ADP the/DET knee/NOUN and/CCONJ catch/VERB it/PRON with/ADP their/DET left/ADJ hand/NOUN stretch/NOUN then/ADV let/VERB it/PRON go/VERB#0.0#0.0
-a person raises their left leg then sets it back down.#a/DET person/NOUN raise/VERB their/DET left/ADJ leg/NOUN then/ADV set/VERB it/PRON back/ADV down/ADV#0.0#0.0
-man takes left hand and lift up left leg then gently put it down facing straight forward.#man/NOUN take/VERB left/VERB hand/NOUN and/CCONJ lift/VERB up/ADP left/ADJ leg/NOUN then/ADV gently/ADV put/VERB it/PRON down/ADP face/VERB straight/ADV forward/ADV#0.0#0.0

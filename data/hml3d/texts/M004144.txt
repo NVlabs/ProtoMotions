@@ -1,3 +1,0 @@
-a person walks to the left.#a/DET person/NOUN walk/VERB to/ADP the/DET left/NOUN#0.0#0.0
-a man walks forward then turns right continues to walk.#a/DET man/NOUN walk/VERB forward/ADV then/ADV turn/VERB right/ADJ continue/VERB to/PART walk/VERB#0.0#0.0
-a person walks straight, turns left  and then stops.#a/DET person/NOUN walk/VERB straight/ADV turn/VERB left/VERB and/CCONJ then/ADV stop/VERB#0.0#0.0

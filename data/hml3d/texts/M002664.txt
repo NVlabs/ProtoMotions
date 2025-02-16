@@ -1,3 +1,0 @@
-a person raises their right hand and points forward.#a/DET person/NOUN raise/VERB their/DET right/ADJ hand/NOUN and/CCONJ point/VERB forward/ADV#0.0#0.0
-a figure slowly raises its right hand and arm in a cheers gesture#a/DET figure/NOUN slowly/ADV raise/VERB its/DET right/ADJ hand/NOUN and/CCONJ arm/NOUN in/ADP a/DET cheer/NOUN gesture/NOUN#0.0#0.0
-the person puts his right hand out#the/DET person/NOUN put/VERB his/DET right/ADJ hand/NOUN out/ADP#0.0#0.0

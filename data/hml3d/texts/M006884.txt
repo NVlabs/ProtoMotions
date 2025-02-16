@@ -1,3 +1,0 @@
-a man lifts an object to his face with his left hand.#a/DET man/NOUN lift/VERB an/DET object/NOUN to/ADP his/DET face/NOUN with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
-a person brings their left hand up to their ear and swivels their head.#a/DET person/NOUN bring/VERB their/DET left/ADJ hand/NOUN up/ADP to/ADP their/DET ear/NOUN and/CCONJ swivel/VERB their/DET head/NOUN#0.0#0.0
-raising hand towards face then back down.#raise/VERB hand/NOUN towards/ADP face/NOUN then/ADV back/ADV down/ADP#0.0#0.0

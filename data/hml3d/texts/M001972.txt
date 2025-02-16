@@ -1,3 +1,0 @@
-a person jogging making two complete circles.#a/DET person/NOUN jog/VERB make/VERB two/NUM complete/ADJ circle/NOUN#0.0#0.0
-a person jogging in a anti counterclockwise direction.#a/DET person/NOUN jog/VERB in/ADP a/DET anti/ADJ counterclockwise/ADJ direction/NOUN#0.0#0.0
-a person jogs in a right turning pattern and completes two full circles.#a/DET person/NOUN jog/VERB in/ADP a/DET right/ADJ turning/NOUN pattern/NOUN and/CCONJ complete/VERB two/NUM full/ADJ circle/NOUN#0.0#0.0

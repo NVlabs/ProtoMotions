@@ -1,3 +1,0 @@
-the person steps forward, then turns facing right and steps backwards#the/DET person/NOUN step/VERB forward/ADV then/ADV turn/VERB face/VERB right/ADJ and/CCONJ step/NOUN backwards/ADV#0.0#0.0
-a man walks 2 fits and returns to his place#a/DET man/NOUN walk/VERB fit/NOUN and/CCONJ return/NOUN to/ADP his/DET place/NOUN#0.0#0.0
-the person is walking forward to turning left.#the/DET person/NOUN is/AUX walk/VERB forward/ADV to/ADP turn/VERB left/ADV#0.0#0.0

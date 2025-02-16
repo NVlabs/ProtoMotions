@@ -1,2 +1,0 @@
-person turns left and goes over a few obstacles on ground#person/NOUN turn/VERB left/VERB and/CCONJ go/VERB over/ADP a/DET few/ADJ obstacle/NOUN on/ADP ground/NOUN#0.0#0.0
-a person walks over bumps in their path.#a/DET person/NOUN walk/VERB over/ADP bump/NOUN in/ADP their/DET path/NOUN#0.0#0.0

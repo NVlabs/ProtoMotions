@@ -1,3 +1,0 @@
-a person kicks as if he is kicking a ball.#a/DET person/NOUN kick/VERB as/SCONJ if/SCONJ he/PRON is/AUX kick/VERB a/DET ball/NOUN#0.0#0.0
-a person moves forward kicking a ball with the left leg.#a/DET person/NOUN move/VERB forward/ADV kick/VERB a/DET ball/NOUN with/ADP the/DET left/ADJ leg/NOUN#0.0#0.0
-a person moves forward to strike ball.#a/DET person/NOUN move/VERB forward/ADV to/PART strike/VERB ball/NOUN#0.0#0.0

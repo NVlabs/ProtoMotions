@@ -1,3 +1,0 @@
-the body tiredly walks in a slight bend left to right.#the/DET body/NOUN tiredly/ADV walk/VERB in/ADP a/DET slight/ADJ bend/NOUN left/VERB to/ADP right/NOUN#0.0#0.0
-a person slowly walked forward in left direction#a/DET person/NOUN slowly/ADV walk/VERB forward/ADV in/ADP left/ADJ direction/NOUN#0.0#0.0
-a person walks a short distance while turning to their left#a/DET person/NOUN walk/VERB a/DET short/ADJ distance/NOUN while/SCONJ turn/VERB to/ADP their/DET left/NOUN#0.0#0.0

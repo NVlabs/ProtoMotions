@@ -1,3 +1,0 @@
-a person takes a large step with their left leg#a/DET person/NOUN take/VERB a/DET large/ADJ step/NOUN with/ADP their/DET left/ADJ leg/NOUN#0.0#0.0
-a person widely steped forward in left direction#a/DET person/NOUN widely/ADV step/VERB forward/ADV in/ADP left/ADJ direction/NOUN#0.0#0.0
-the person took a big step over the clean floor.#the/DET person/NOUN take/VERB a/DET big/ADJ step/NOUN over/ADP the/DET clean/ADJ floor/NOUN#0.0#0.0

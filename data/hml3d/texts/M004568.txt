@@ -1,3 +1,0 @@
-a peraon walking makes a left turn.#a/DET peraon/NOUN walking/NOUN make/VERB a/DET left/ADJ turn/NOUN#0.0#0.0
-someone walks forward turn left and stop#someone/PRON walk/VERB forward/ADV turn/VERB left/VERB and/CCONJ stop/VERB#0.0#0.0
-a person walks forward, then to the left and stops.#a/DET person/NOUN walk/VERB forward/ADV then/ADV to/ADP the/DET left/NOUN and/CCONJ stop/NOUN#0.0#0.0

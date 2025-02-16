@@ -1,3 +1,0 @@
-a person kicks their right leg forward one time.#a/DET person/NOUN kick/VERB their/DET right/ADJ leg/NOUN forward/ADV one/NUM time/NOUN#0.0#0.0
-the person is doing a dance with his right foot.#the/DET person/NOUN is/AUX do/VERB a/DET dance/NOUN with/ADP his/DET right/ADJ foot/NOUN#0.0#0.0
-a person kicks the air with his right foot.#a/DET person/NOUN kick/VERB the/DET air/NOUN with/ADP his/DET right/ADJ foot/NOUN#0.0#0.0

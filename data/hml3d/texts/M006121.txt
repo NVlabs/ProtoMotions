@@ -1,3 +1,0 @@
-a person steps forward, plants their left foot and spins, walking back to where they started.#a/DET person/NOUN step/VERB forward/ADV plant/VERB their/DET left/ADJ foot/NOUN and/CCONJ spin/NOUN walk/VERB back/ADV to/ADP where/ADV they/PRON start/VERB#0.0#0.0
-a man walks forwards and then pivots back in a counterclockwise half circle.#a/DET man/NOUN walk/VERB forwards/ADV and/CCONJ then/ADV pivot/NOUN back/ADV in/ADP a/DET counterclockwise/ADJ half/NOUN circle/NOUN#0.0#0.0
-a person is walking forward, spins around on their left foot, then walks back to where he came from#a/DET person/NOUN is/AUX walk/VERB forward/ADV spin/VERB around/ADV on/ADP their/DET left/ADJ foot/NOUN then/ADV walk/VERB back/ADV to/ADP where/ADV he/PRON come/VERB from/ADP#0.0#0.0

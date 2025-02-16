@@ -1,3 +1,0 @@
-a man extends right arm, then moves arm around at the elbow.#a/DET man/NOUN extend/VERB right/ADJ arm/NOUN then/ADV move/VERB arm/NOUN around/ADP at/ADP the/DET elbow/NOUN#0.0#0.0
-person is making different movements with right arm#person/NOUN is/AUX make/VERB different/ADJ movement/NOUN with/ADP right/ADJ arm/NOUN#0.0#0.0
-person is bending right arm upwards, downwards and a waving position while the left arm is still#person/NOUN is/AUX bend/VERB right/ADJ arm/NOUN upwards/ADV downwards/INTJ and/CCONJ a/DET wave/VERB position/NOUN while/SCONJ the/DET left/ADJ arm/NOUN is/AUX still/ADV#0.0#0.0

@@ -1,3 +1,0 @@
-moving arms side to side slowly.#move/VERB arm/NOUN side/NOUN to/PART side/VERB slowly/ADV#0.0#0.0
-a person moves an object from right to left.#a/DET person/NOUN move/VERB an/DET object/NOUN from/ADP right/NOUN to/ADP left/NOUN#0.0#0.0
-a person moves their arms from their right to the left.#a/DET person/NOUN move/VERB their/DET arm/NOUN from/ADP their/DET right/NOUN to/ADP the/DET left/NOUN#0.0#0.0

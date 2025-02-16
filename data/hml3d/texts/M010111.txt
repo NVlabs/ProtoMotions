@@ -1,3 +1,0 @@
-a person is walking in a circle in the clockwise direction#a/DET person/NOUN is/AUX walk/VERB in/ADP a/DET circle/NOUN in/ADP the/DET clockwise/ADJ direction/NOUN#0.0#0.0
-a person slowly walked by making the circle#a/DET person/NOUN slowly/ADV walk/VERB by/ADP make/VERB the/DET circle/NOUN#0.0#0.0
-the person walks in a clockwise oval.#the/DET person/NOUN walk/VERB in/ADP a/DET clockwise/NOUN oval/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person holds out their left hand.#a/DET person/NOUN hold/VERB out/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-moving arm forward then stopping.#move/VERB arm/NOUN forward/ADV then/ADV stop/VERB#0.0#0.0
-a person who is standing with his hands by his sides extends his left arm in front of his body, then drops his left arm and resumes his original position.#a/DET person/NOUN who/PRON is/AUX stand/VERB with/ADP his/DET hand/NOUN by/ADP his/DET side/NOUN extend/VERB his/DET left/ADJ arm/NOUN in/ADP front/NOUN of/ADP his/DET body/NOUN then/ADV drop/VERB his/DET left/ADJ arm/NOUN and/CCONJ resume/VERB his/DET original/ADJ position/NOUN#0.0#0.0

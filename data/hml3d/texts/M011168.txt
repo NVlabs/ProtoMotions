@@ -1,3 +1,0 @@
-a person takes a step forward with the left leg while simultaneously lifting their left hands slightly in front of their face.#a/DET person/NOUN take/VERB a/DET step/NOUN forward/ADV with/ADP the/DET left/ADJ leg/NOUN while/SCONJ simultaneously/ADV lift/VERB their/DET left/ADJ hand/NOUN slightly/ADV in/ADP front/NOUN of/ADP their/DET face/NOUN#0.0#0.0
-a person moves up abit forward and puts up left hand to show a sign of anger#a/DET person/NOUN move/VERB up/ADP abit/NOUN forward/ADV and/CCONJ put/VERB up/ADP left/ADJ hand/NOUN to/PART show/VERB a/DET sign/NOUN of/ADP anger/NOUN#0.0#0.0
-person is making a hand gesture with his left hand.#person/NOUN is/AUX make/VERB a/DET hand/NOUN gesture/NOUN with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0

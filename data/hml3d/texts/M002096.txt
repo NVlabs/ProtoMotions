@@ -1,3 +1,0 @@
-a person takes a big step forward#a/DET person/NOUN take/VERB a/DET big/ADJ step/NOUN forward/ADV#0.0#0.0
-one step forward to the right.#one/NUM step/NOUN forward/ADV to/ADP the/DET right/NOUN#0.0#0.0
-he cautiously steps over something.#he/PRON cautiously/ADV step/VERB over/ADP something/PRON#0.0#0.0

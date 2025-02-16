@@ -1,3 +1,0 @@
-he throws very hard#he/PRON throw/VERB very/ADV hard/ADV#0.0#0.0
-the person threw something hard with the left hand.#the/DET person/NOUN throw/VERB something/PRON hard/ADJ with/ADP the/DET left/ADJ hand/NOUN#0.0#0.0
-a man stand still and then throws something with his right arm.#a/DET man/NOUN stand/NOUN still/ADV and/CCONJ then/ADV throw/VERB something/PRON with/ADP his/DET right/ADJ arm/NOUN#0.0#0.0

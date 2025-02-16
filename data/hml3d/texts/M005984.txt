@@ -1,3 +1,0 @@
-walking in a circular pattern.#walk/VERB in/ADP a/DET circular/ADJ pattern/NOUN#0.0#0.0
-a person walks with something in their left hands in a counterclockwise fashion.#a/DET person/NOUN walk/VERB with/ADP something/PRON in/ADP their/DET left/ADJ hand/NOUN in/ADP a/DET counterclockwise/ADJ fashion/NOUN#0.0#0.0
-a person carries something on their left shoulder.#a/DET person/NOUN carry/VERB something/PRON on/ADP their/DET left/ADJ shoulder/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person steps off of an object with their right foot.#a/DET person/NOUN step/VERB off/ADP of/ADP an/DET object/NOUN with/ADP their/DET right/ADJ foot/NOUN#0.0#0.0
-a person takes a large step diagonally.#a/DET person/NOUN take/VERB a/DET large/ADJ step/NOUN diagonally/ADV#0.0#0.0
-a person taking a step leading with the right leg#a/DET person/NOUN take/VERB a/DET step/NOUN lead/VERB with/ADP the/DET right/ADJ leg/NOUN#0.0#0.0

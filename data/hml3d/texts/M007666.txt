@@ -1,3 +1,0 @@
-the person lifts his left hand up and puts it back down.#the/DET person/NOUN lift/VERB his/DET left/ADJ hand/NOUN up/ADP and/CCONJ put/VERB it/PRON back/ADV down/ADP#0.0#0.0
-a person holds out their left hand.#a/DET person/NOUN hold/VERB out/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-from a stationary position a person raises their left hand shoulder height and back to their side.#from/ADP a/DET stationary/ADJ position/NOUN a/DET person/NOUN raise/VERB their/DET left/ADJ hand/NOUN shoulder/NOUN height/NOUN and/CCONJ back/ADV to/ADP their/DET side/NOUN#0.0#0.0

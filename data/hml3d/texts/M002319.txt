@@ -1,3 +1,0 @@
-a person who waved with there right arm#a/DET person/NOUN who/PRON wave/VERB with/ADP there/ADV right/ADJ arm/NOUN#0.0#0.0
-a person waving with right arm.#a/DET person/NOUN wave/VERB with/ADP right/ADJ arm/NOUN#0.0#0.0
-a person waves with their right hand.#a/DET person/NOUN wave/VERB with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0

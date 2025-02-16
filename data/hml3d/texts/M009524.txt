@@ -1,3 +1,0 @@
-a person walks towards the camera and then pivots on their right foot to go towards the back.#a/DET person/NOUN walk/VERB towards/ADP the/DET camera/NOUN and/CCONJ then/ADV pivot/NOUN on/ADP their/DET right/ADJ foot/NOUN to/PART go/VERB towards/ADP the/DET back/NOUN#0.0#0.0
-the person walks forward, turns to their left, and walks back.#the/DET person/NOUN walk/VERB forward/ADV turn/VERB to/ADP their/DET left/NOUN and/CCONJ walk/VERB back/ADV#0.0#0.0
-walks forward in the opposite direction of camera.#walk/VERB forward/ADV in/ADP the/DET opposite/ADJ direction/NOUN of/ADP camera/NOUN#0.0#0.0

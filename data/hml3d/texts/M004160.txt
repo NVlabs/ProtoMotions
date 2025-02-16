@@ -1,3 +1,0 @@
-a person wipes in a circular motion with right hand.#a/DET person/NOUN wipe/VERB in/ADP a/DET circular/ADJ motion/NOUN with/ADP right/ADJ hand/NOUN#0.0#0.0
-a person wipes something in front of them in a clockwise fashion.#a/DET person/NOUN wipe/VERB something/PRON in/ADP front/NOUN of/ADP them/PRON in/ADP a/DET clockwise/ADJ fashion/NOUN#0.0#0.0
-standing with the right arm making a stirring motion clockwise.#stand/VERB with/ADP the/DET right/ADJ arm/NOUN make/VERB a/DET stirring/ADJ motion/NOUN clockwise/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person stomps the ground with their right foot.#a/DET person/NOUN stomp/VERB the/DET ground/NOUN with/ADP their/DET right/ADJ foot/NOUN#0.0#0.0
-person starts out standing then leans to the left and stomps his right foot.#person/NOUN start/VERB out/ADP stand/VERB then/ADV lean/VERB to/ADP the/DET left/NOUN and/CCONJ stomp/VERB his/DET right/ADJ foot/NOUN#nan#nan
-a person stomps with their right foot.#a/DET person/NOUN stomp/VERB with/ADP their/DET right/ADJ foot/NOUN#0.0#0.0

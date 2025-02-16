@@ -1,3 +1,0 @@
-the person does a yoga pose with their leg high in the air#the/DET person/NOUN does/AUX a/DET yoga/NOUN pose/VERB with/ADP their/DET leg/NOUN high/ADV in/ADP the/DET air/NOUN#0.0#0.0
-a person balances on their right leg and holds their left leg up in the air with their left hand#a/DET person/NOUN balance/VERB on/ADP their/DET right/ADJ leg/NOUN and/CCONJ hold/VERB their/DET left/ADJ leg/NOUN up/ADP in/ADP the/DET air/NOUN with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a person stands on their right foot, grabbing and bending their left leg upwards.#a/DET person/NOUN stand/VERB on/ADP their/DET right/ADJ foot/NOUN grab/VERB and/CCONJ bend/VERB their/DET left/ADJ leg/NOUN upwards/ADV#0.0#0.0

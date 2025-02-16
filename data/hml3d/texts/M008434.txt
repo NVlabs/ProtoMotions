@@ -1,3 +1,0 @@
-this person kicks high with the right leg.#this/DET person/NOUN kick/VERB high/ADJ with/ADP the/DET right/ADJ leg/NOUN#0.0#0.0
-a person side kicks with their right foot.#a/DET person/NOUN side/NOUN kick/VERB with/ADP their/DET right/ADJ foot/NOUN#0.0#0.0
-the figure stands swaying back and forth for a moment then kicks his right leg forward then resumes standing#the/DET figure/NOUN stand/VERB sway/VERB back/ADV and/CCONJ forth/ADV for/ADP a/DET moment/NOUN then/ADV kick/VERB his/DET right/ADJ leg/NOUN forward/ADV then/ADV resume/VERB standing/NOUN#0.0#0.0

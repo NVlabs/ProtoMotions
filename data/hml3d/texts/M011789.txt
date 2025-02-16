@@ -1,3 +1,0 @@
-the man is doing exercises with his left arm.#the/DET man/NOUN is/AUX do/VERB exercise/NOUN with/ADP his/DET left/ADJ arm/NOUN#0.0#0.0
-a person brings their left hand and arm above them while resting their right hand on their hip.#a/DET person/NOUN bring/VERB their/DET left/ADJ hand/NOUN and/CCONJ arm/NOUN above/ADP them/PRON while/SCONJ rest/VERB their/DET right/ADJ hand/NOUN on/ADP their/DET hip/NOUN#0.0#0.0
-the person stretches their left arm to warm up#the/DET person/NOUN stretch/VERB their/DET left/ADJ arm/NOUN to/PART warm/VERB up/ADP#0.0#0.0

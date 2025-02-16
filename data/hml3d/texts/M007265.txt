@@ -1,3 +1,0 @@
-the person is doing something with his left hand .#the/DET person/NOUN is/AUX do/VERB something/PRON with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
-a man gently stretches his left hand out in front of him multiple times.#a/DET man/NOUN gently/ADV stretch/VERB his/DET left/ADJ hand/NOUN out/ADP in/ADP front/NOUN of/ADP him/PRON multiple/ADJ time/NOUN#0.0#0.0
-a person raises his left hand, lowers it, raises it again, then lowers it while lowering both shoulders.#a/DET person/NOUN raise/VERB his/DET left/ADJ hand/NOUN lower/VERB it/PRON raise/VERB it/PRON again/ADV then/ADV lower/VERB it/PRON while/SCONJ lower/VERB both/DET shoulder/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person, slowly walked forward, and after made circle with left hand#a/DET person/NOUN slowly/ADV walk/VERB forward/ADV and/CCONJ after/ADP make/VERB circle/NOUN with/ADP left/ADJ hand/NOUN#0.0#0.0
-a person walks forward and slaps his left hand on it, while tapping his right food#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ slap/VERB his/DET left/ADJ hand/NOUN on/ADP it/PRON while/SCONJ tap/VERB his/DET right/ADJ food/NOUN#0.0#0.0
-this person walks forward then stops and waves his left hand in circles.#this/DET person/NOUN walk/VERB forward/ADV then/ADV stop/VERB and/CCONJ wave/VERB his/DET left/ADJ hand/NOUN in/ADP circle/NOUN#0.0#0.0

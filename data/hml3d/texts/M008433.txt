@@ -1,3 +1,0 @@
-a person waves with right arm, then left arm#a/DET person/NOUN wave/VERB with/ADP right/ADJ arm/NOUN then/ADV left/VERB arm/NOUN#0.0#0.0
-a person waves right then left.#a/DET person/NOUN wave/VERB right/ADV then/ADV left/VERB#0.0#0.0
-person waves with right hand then with left hand#person/NOUN wave/VERB with/ADP right/ADJ hand/NOUN then/ADV with/ADP left/ADJ hand/NOUN#0.0#0.0

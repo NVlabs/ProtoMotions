@@ -1,3 +1,0 @@
-the figure is running on a diagonal.#the/DET figure/NOUN is/AUX run/VERB on/ADP a/DET diagonal/ADJ#0.0#0.0
-the person jogs into the right#the/DET person/NOUN jog/VERB into/ADP the/DET right/NOUN#0.0#0.0
-a person runs straight forward.#a/DET person/NOUN run/VERB straight/ADV forward/ADV#0.0#0.0

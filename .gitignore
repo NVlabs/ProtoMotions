@@ -1,2 +1,10 @@
 */babel/*.json
 .idea
+*__pycache__*
+*.egg-info
+outputs/*
+rendered_images/*
+*tmp*
+results/*
+.DS_Store
+**/.DS_Store

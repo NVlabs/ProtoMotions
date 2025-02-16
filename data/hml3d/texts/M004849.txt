@@ -1,3 +1,0 @@
-person lifting an imaginary object from their right and placing it on the left.#person/NOUN lift/VERB an/DET imaginary/ADJ object/NOUN from/ADP their/DET right/NOUN and/CCONJ place/VERB it/PRON on/ADP the/DET left/NOUN#0.0#0.0
-a person picks something up to their right with both hands, places it upleft, then places it back down.#a/DET person/NOUN pick/VERB something/PRON up/ADP to/ADP their/DET right/NOUN with/ADP both/DET hand/NOUN place/VERB it/PRON upleft/VERB then/ADV place/VERB it/PRON back/ADV down/ADV#0.0#0.0
-a person picks something up, holds to to theor left, then pits ot down.#a/DET person/NOUN pick/VERB something/PRON up/ADP hold/VERB to/ADP to/ADP theor/PROPN left/VERB then/ADV pit/VERB ot/ADV down/ADV#0.0#0.0

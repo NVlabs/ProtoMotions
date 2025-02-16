@@ -1,3 +1,0 @@
-he stays still then moves#he/PRON stay/VERB still/ADV then/ADV move/VERB#0.0#0.0
-a man/woman taking a step leading with his/her left foot#a/DET man/NOUN woman/NOUN take/VERB a/DET step/NOUN lead/VERB with/ADP his/DET her/DET left/ADJ foot/NOUN#0.0#0.0
-a figure takes a step forward with their left foot.#a/DET figure/NOUN take/VERB a/DET step/NOUN forward/ADV with/ADP their/DET left/ADJ foot/NOUN#0.0#0.0

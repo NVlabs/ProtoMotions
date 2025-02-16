@@ -1,3 +1,0 @@
-a person squats down and picks something up from the ground with their left hand. they then stand back up.#a/DET person/NOUN squat/VERB down/ADP and/CCONJ pick/VERB something/PRON up/ADP from/ADP the/DET ground/NOUN with/ADP their/DET left/ADJ hand/NOUN they/PRON then/ADV stand/VERB back/ADV up/ADV#0.0#0.0
-a person squats and picks up an object from the ground.#a/DET person/NOUN squat/VERB and/CCONJ pick/VERB up/ADP an/DET object/NOUN from/ADP the/DET ground/NOUN#0.0#0.0
-a person steps forward with their right foot, leans over, and picks something up with their left hand.#a/DET person/NOUN step/VERB forward/ADV with/ADP their/DET right/ADJ foot/NOUN lean/VERB over/ADV and/CCONJ pick/VERB something/PRON up/ADP with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0

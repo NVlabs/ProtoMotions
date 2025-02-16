@@ -1,3 +1,0 @@
-a person makes short hops from side to side moving from right to left.#a/DET person/NOUN make/VERB short/ADJ hop/NOUN from/ADP side/NOUN to/ADP side/VERB move/VERB from/ADP right/NOUN to/ADP left/NOUN#0.0#0.0
-person is jumping and pacing themselves back and forth while facing forward.#person/NOUN is/AUX jump/VERB and/CCONJ pace/VERB themselves/PRON back/ADV and/CCONJ forth/ADV while/SCONJ face/VERB forward/ADV#0.0#0.0
-a person moving side to side, similar to a hockey player protecting the goal.#a/DET person/NOUN move/VERB side/NOUN to/ADP side/VERB similar/ADJ to/ADP a/DET hockey/NOUN player/NOUN protect/VERB the/DET goal/NOUN#0.0#0.0

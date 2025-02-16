@@ -1,3 +1,0 @@
-a person walks towards the leftside.#a/DET person/NOUN walk/VERB towards/ADP the/DET leftside/NOUN#0.0#0.0
-a person walks from one wall to the wall to his left in a counterclockwise motion.#a/DET person/NOUN walk/VERB from/ADP one/NUM wall/NOUN to/ADP the/DET wall/NOUN to/ADP his/DET left/NOUN in/ADP a/DET counterclockwise/ADJ motion/NOUN#0.0#0.0
-walkin and turned right#walkin/ADJ and/CCONJ turn/VERB right/ADV#0.0#0.0

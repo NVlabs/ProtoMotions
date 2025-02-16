@@ -1,3 +1,0 @@
-a person walks and turns right.#a/DET person/NOUN walk/VERB and/CCONJ turn/VERB right/ADJ#0.0#0.0
-person walks with arms to side forward the starts to curve to their right in shape of 1/4 circle.#person/NOUN walk/VERB with/ADP arm/NOUN to/PART side/VERB forward/ADV the/DET start/NOUN to/PART curve/VERB to/ADP their/DET right/NOUN in/ADP shape/NOUN of/ADP circle/NOUN#0.0#0.0
-person walks forward and to the right for 4 steps#person/NOUN walk/VERB forward/ADV and/CCONJ to/ADP the/DET right/NOUN for/ADP step/NOUN#0.0#0.0

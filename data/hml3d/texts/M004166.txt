@@ -1,3 +1,0 @@
-person walks forward and makes a counterclockwise motion with hands, and then moves to the right side.#person/NOUN walk/VERB forward/ADV and/CCONJ make/VERB a/DET counterclockwise/ADJ motion/NOUN with/ADP hand/NOUN and/CCONJ then/ADV move/VERB to/ADP the/DET right/ADJ side/NOUN#0.0#0.0
-a person is acting like a dog with their hands up at chest level and hopping around.#a/DET person/NOUN is/AUX act/VERB like/SCONJ a/DET dog/NOUN with/ADP their/DET hand/NOUN up/ADP at/ADP chest/NOUN level/NOUN and/CCONJ hop/VERB around/ADV#0.0#0.0
-a man walks cautiously forward, opens something, and then walks to the right.#a/DET man/NOUN walk/VERB cautiously/ADV forward/ADV open/VERB something/PRON and/CCONJ then/ADV walk/VERB to/ADP the/DET right/NOUN#0.0#0.0

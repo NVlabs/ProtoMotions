@@ -1,3 +1,0 @@
-a person does the chicken dance.#a/DET person/NOUN does/AUX the/DET chicken/NOUN dance/NOUN#0.0#0.0
-someone flapping their arms and moving their body to the right and left like a chicken.#someone/PRON flap/VERB their/DET arm/NOUN and/CCONJ move/VERB their/DET body/NOUN to/ADP the/DET right/NOUN and/CCONJ left/VERB like/SCONJ a/DET chicken/NOUN#0.0#0.0
-a person flaps their arms back and forward repeatedly before letting them down.#a/DET person/NOUN flap/VERB their/DET arm/NOUN back/ADV and/CCONJ forward/ADV repeatedly/ADV before/ADP let/VERB them/PRON down/ADP#0.0#0.0

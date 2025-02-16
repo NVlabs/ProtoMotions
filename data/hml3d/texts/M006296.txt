@@ -1,3 +1,0 @@
-a man crosses his left leg over his right leg.#a/DET man/NOUN cross/VERB his/DET left/ADJ leg/NOUN over/ADP his/DET right/ADJ leg/NOUN#0.0#0.0
-a person puts their left leg up and over their right leg.#a/DET person/NOUN put/VERB their/DET left/ADJ leg/NOUN up/ADV and/CCONJ over/ADP their/DET right/ADJ leg/NOUN#0.0#0.0
-the person was standing up posing with his legs crossed.#the/DET person/NOUN was/AUX stand/VERB up/ADP pose/VERB with/ADP his/DET leg/NOUN cross/VERB#0.0#0.0

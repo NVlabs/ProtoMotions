@@ -1,3 +1,0 @@
-the person is side stepping.#the/DET person/NOUN is/AUX side/NOUN step/VERB#0.0#0.0
-person facing forward does 5 small slow steps to the left then 5 slow steps to the  right#person/NOUN face/VERB forward/ADV does/AUX small/ADJ slow/ADJ step/NOUN to/ADP the/DET left/NOUN then/ADV slow/ADJ step/NOUN to/ADP the/DET right/NOUN#0.0#0.0
-standing to the left side#stand/VERB to/ADP the/DET left/ADJ side/NOUN#0.0#0.0

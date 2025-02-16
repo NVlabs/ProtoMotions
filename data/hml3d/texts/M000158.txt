@@ -1,3 +1,0 @@
-person quickly moves to their right like avoiding something#person/NOUN quickly/ADV move/VERB to/ADP their/DET right/NOUN like/INTJ avoid/VERB something/PRON#0.0#0.0
-a person jumps to the side, then stands still.#a/DET person/NOUN jump/VERB to/ADP the/DET side/NOUN then/ADV stand/VERB still/ADV#0.0#0.0
-a man takes a large quick step to his right then stops.#a/DET man/NOUN take/VERB a/DET large/ADJ quick/ADJ step/NOUN to/ADP his/DET right/NOUN then/ADV stop/VERB#0.0#0.0

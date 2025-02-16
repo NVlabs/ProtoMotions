@@ -1,3 +1,0 @@
-a person is stepping to the left at a backward angle.#a/DET person/NOUN is/AUX step/VERB to/ADP the/DET left/NOUN at/ADP a/DET backward/ADJ angle/NOUN#0.0#0.0
-a person, with their arms held up and bent towards the person at the elbow, side-steps carefully to the right hand side.#a/DET person/NOUN with/ADP their/DET arm/NOUN hold/VERB up/ADP and/CCONJ bend/VERB towards/ADP the/DET person/NOUN at/ADP the/DET elbow/PROPN sidestep/VERB carefully/ADV to/ADP the/DET right/ADJ hand/NOUN side/NOUN#0.0#0.0
-a man side steps to the left and then side steps to the right.#a/DET man/NOUN side/NOUN step/NOUN to/ADP the/DET left/NOUN and/CCONJ then/ADV side/NOUN step/NOUN to/ADP the/DET right/NOUN#0.0#0.0

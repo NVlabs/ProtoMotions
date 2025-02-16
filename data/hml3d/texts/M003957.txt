@@ -1,3 +1,0 @@
-a person walks and touches something with his right hand.#a/DET person/NOUN walk/VERB and/CCONJ touch/VERB something/PRON with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0
-a person walks forward holding onto right rail with right hand.#a/DET person/NOUN walk/VERB forward/ADV hold/VERB onto/ADP right/ADJ rail/NOUN with/ADP right/ADJ hand/NOUN#0.0#0.0
-a man walks foward with a limping motion, he does this whilst supporting himself with his right arm agains a platform.#a/DET man/NOUN walk/VERB foward/ADJ with/ADP a/DET limping/NOUN motion/NOUN he/PRON does/AUX this/DET whilst/SCONJ support/VERB himself/PRON with/ADP his/DET right/ADJ arm/NOUN again/VERB a/DET platform/NOUN#0.0#0.0

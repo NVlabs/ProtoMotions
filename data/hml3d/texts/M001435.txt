@@ -1,3 +1,0 @@
-a person takes a book from a shelf with his right hand.#a/DET person/NOUN take/VERB a/DET book/NOUN from/ADP a/DET shelf/NOUN with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0
-a person picking up something with their right hand.#a/DET person/NOUN pick/VERB up/ADP something/PRON with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0
-a person slowly extends their right arm forward, then drops it back to a neutral stance.#a/DET person/NOUN slowly/ADV extend/VERB their/DET right/ADJ arm/NOUN forward/ADV then/ADV drop/VERB it/PRON back/ADV to/ADP a/DET neutral/ADJ stance/NOUN#0.0#0.0

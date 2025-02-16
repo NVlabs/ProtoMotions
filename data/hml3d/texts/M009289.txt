@@ -1,3 +1,0 @@
-the person walked forward and leaned over the table.#the/DET person/NOUN walk/VERB forward/ADV and/CCONJ lean/VERB over/ADP the/DET table/NOUN#0.0#0.0
-person walks forward, leans on table and reaches up for an item#person/NOUN walk/VERB forward/ADV lean/NOUN on/ADP table/NOUN and/CCONJ reach/VERB up/ADP for/ADP an/DET item/NOUN#0.0#0.0
-a person leans forward on their right leg while reaching forward with their left arm, then stands back up.#a/DET person/NOUN lean/VERB forward/ADV on/ADP their/DET right/ADJ leg/NOUN while/SCONJ reach/VERB forward/ADV with/ADP their/DET left/ADJ arm/NOUN then/ADV stand/VERB back/ADV up/ADV#0.0#0.0

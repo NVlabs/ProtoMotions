@@ -1,8 +1,0 @@
-# @package _global_
-
-defaults:
-  - /algo: mimic
-  - /env: mimic
-  - /opt/disable_discriminator  # Default mimic experiments don't use the discriminator
-
-experiment_name: mimic

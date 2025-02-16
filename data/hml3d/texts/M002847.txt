@@ -1,3 +1,0 @@
-a person steps forward with left leg walking in a circle counterclockwise motion swinging arms and returns to their original standing point#a/DET person/NOUN step/VERB forward/ADV with/ADP left/ADJ leg/NOUN walk/VERB in/ADP a/DET circle/NOUN counterclockwise/NOUN motion/NOUN swinge/VERB arm/NOUN and/CCONJ return/NOUN to/ADP their/DET original/ADJ standing/NOUN point/NOUN#0.0#0.0
-person is walking in a counterclockwise direction, in a seemingly normal stance#person/NOUN is/AUX walk/VERB in/ADP a/DET counterclockwise/ADJ direction/NOUN in/ADP a/DET seemingly/ADV normal/ADJ stance/NOUN#0.0#0.0
-the person is walking in a circle.#the/DET person/NOUN is/AUX walk/VERB in/ADP a/DET circle/NOUN#0.0#0.0

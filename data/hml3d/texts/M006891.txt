@@ -1,3 +1,0 @@
-a person steps to the left and then leans backward, looking towards the right.#a/DET person/NOUN step/VERB to/ADP the/DET left/NOUN and/CCONJ then/ADV lean/VERB backward/ADV look/VERB towards/ADP the/DET right/NOUN#0.0#0.0
-a person shifts to the right then left and takes a step backwards#a/DET person/NOUN shift/VERB to/ADP the/DET right/NOUN then/ADV left/VERB and/CCONJ take/VERB a/DET step/NOUN backwards/ADV#0.0#0.0
-a person leans to the right side then leans to the left and then puts their right foot back#a/DET person/NOUN lean/VERB to/ADP the/DET right/ADJ side/NOUN then/ADV lean/VERB to/ADP the/DET left/NOUN and/CCONJ then/ADV put/VERB their/DET right/ADJ foot/NOUN back/ADV#0.0#0.0

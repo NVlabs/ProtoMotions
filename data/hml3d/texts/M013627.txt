@@ -1,3 +1,0 @@
-person walks forward while turning 90 degrees to the left#person/NOUN walk/VERB forward/ADV while/SCONJ turn/VERB degree/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-a person, facing us, left foot first, walks in counterclockwise quarter circle#a/DET person/NOUN face/VERB us/PRON left/VERB foot/NOUN first/ADV walk/VERB in/ADP counterclockwise/ADJ quarter/NOUN circle/NOUN#0.0#0.0
-a man steps forward then arcs 45 degrees to the right and steps forward#a/DET man/NOUN step/VERB forward/ADV then/ADV arcs/NUM degree/NOUN to/ADP the/DET right/NOUN and/CCONJ step/NOUN forward/ADV#0.0#0.0

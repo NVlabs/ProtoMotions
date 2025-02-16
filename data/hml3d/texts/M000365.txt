@@ -1,2 +1,0 @@
-a person walks straight then turn to its right then walks straight again.#a/DET person/NOUN walk/VERB straight/ADV then/ADV turn/VERB to/ADP its/DET right/NOUN then/ADV walk/VERB straight/ADV again/ADV#0.0#0.0
-without stopping, a person walks a few steps forward then makes a sharp right turn and continues walking a few more steps.#without/ADP stop/VERB a/DET person/NOUN walk/VERB a/DET few/ADJ step/NOUN forward/ADV then/ADV make/VERB a/DET sharp/ADJ right/ADJ turn/NOUN and/CCONJ continue/VERB walk/VERB a/DET few/ADJ more/ADJ step/NOUN#0.0#0.0

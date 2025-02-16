@@ -1,3 +1,0 @@
-the person is walking around the bend to the left.#the/DET person/NOUN is/AUX walk/VERB around/ADP the/DET bend/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-a person walks forward and veers to the right, then stops.#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ veer/NOUN to/ADP the/DET right/NOUN then/ADV stop/VERB#0.0#0.0
-a person walks at a right bend.#a/DET person/NOUN walk/VERB at/ADP a/DET right/ADJ bend/NOUN#0.0#0.0

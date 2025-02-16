@@ -1,3 +1,0 @@
-a person waves lazily with their left hand#a/DET person/NOUN wave/VERB lazily/ADV with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a person waves with the left hand.#a/DET person/NOUN wave/VERB with/ADP the/DET left/ADJ hand/NOUN#0.0#0.0
-the man is moving forward#the/DET man/NOUN is/AUX move/VERB forward/ADV#0.0#0.0

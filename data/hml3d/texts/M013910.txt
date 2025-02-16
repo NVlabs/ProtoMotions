@@ -1,3 +1,0 @@
-a person is walking and gets pushed to the left#a/DET person/NOUN is/AUX walk/VERB and/CCONJ get/VERB push/VERB to/ADP the/DET left/NOUN#0.0#0.0
-a standing person walks forward then to their left side slowly then stepping forward and waking in front of them#a/DET stand/VERB person/NOUN walk/VERB forward/ADV then/ADV to/ADP their/DET left/ADJ side/NOUN slowly/ADV then/ADV step/VERB forward/ADV and/CCONJ wake/VERB in/ADP front/NOUN of/ADP them/PRON#0.0#0.0
-this person walks forward then stumbles left and right.#this/DET person/NOUN walk/VERB forward/ADV then/ADV stumble/NOUN left/VERB and/CCONJ right/INTJ#0.0#0.0

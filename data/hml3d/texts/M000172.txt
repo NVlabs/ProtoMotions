@@ -1,3 +1,0 @@
-a person makes a big motion with their right arm#a/DET person/NOUN make/VERB a/DET big/ADJ motion/NOUN with/ADP their/DET right/ADJ arm/NOUN#0.0#0.0
-a person tiltes their body to their left while raising their right arm all the way up and swatting it forward.#a/DET person/NOUN tilt/VERB their/DET body/NOUN to/ADP their/DET left/NOUN while/SCONJ raise/VERB their/DET right/ADJ arm/NOUN all/DET the/DET way/NOUN up/ADV and/CCONJ swat/VERB it/PRON forward/ADV#0.0#0.0
-the figure swings its arm as if it is swinging a tennis racquet.#the/DET figure/NOUN swing/VERB its/DET arm/NOUN as/SCONJ if/SCONJ it/PRON is/AUX swinge/VERB a/DET tennis/NOUN racquet/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-this person appears to cough in his left hand then takes a drink of something.#this/DET person/NOUN appear/VERB to/ADP cough/NOUN in/ADP his/DET left/ADJ hand/NOUN then/ADV take/VERB a/DET drink/NOUN of/ADP something/PRON#0.0#0.0
-the person places its right hand up as if to cover its mouth#the/DET person/NOUN place/VERB its/DET right/ADJ hand/NOUN up/ADP as/SCONJ if/SCONJ to/PART cover/VERB its/DET mouth/NOUN#0.0#0.0
-a person blows a kiss, pauses for several moments, before making a drinking motion.#a/DET person/NOUN blow/VERB a/DET kiss/NOUN pause/VERB for/ADP several/ADJ moment/NOUN before/ADP make/VERB a/DET drinking/NOUN motion/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person is moving their hips in a circular motion with their arms strechted outward to the sides#a/DET person/NOUN is/AUX move/VERB their/DET hip/NOUN in/ADP a/DET circular/ADJ motion/NOUN with/ADP their/DET arm/NOUN strechte/VERB outward/ADV to/ADP the/DET side/NOUN#0.0#0.0
-the person is moving their upper body to the right and left.#the/DET person/NOUN is/AUX move/VERB their/DET upper/ADJ body/NOUN to/ADP the/DET right/NOUN and/CCONJ left/VERB#0.0#0.0
-the man is moving his hips in a circular motion.#the/DET man/NOUN is/AUX move/VERB his/DET hip/NOUN in/ADP a/DET circular/ADJ motion/NOUN#0.0#0.0

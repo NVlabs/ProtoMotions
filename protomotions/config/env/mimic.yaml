@@ -1,0 +1,103 @@
+# @package _global_
+
+defaults:
+  - base_env
+  - /motion_manager/mimic_manager
+
+# Env structure
+env:
+  _target_: protomotions.envs.mimic.env.Mimic
+  config:
+    state_init: Data
+    # Simulation params
+    mimic_residual_control: False
+    max_episode_length: 1000
+
+    ## Termination
+    enable_height_termination: False
+
+    ### Respawn related params
+    mimic_early_termination: null
+
+    mimic_reward_config:
+      positive_constant: 0
+      relative_kb_pos: False
+
+      add_rr_to_lr: True
+      rt_ignore_height: True
+      mean_before_exp: True
+
+      component_weights:
+        gr_rew_w: 0.0
+        lr_rew_w: 0.55
+        gt_rew_w: 0.0
+        rt_rew_w: 0.0
+        rv_rew_w: 0.0
+        rav_rew_w: 0.0
+        gv_rew_w: 0.1
+        gav_rew_w: 0.1
+        kb_rew_w: 0.15
+        dv_rew_w: 0.15
+        rh_rew_w: 0.1
+        pow_rew_w: 0.0002
+
+      component_coefficients:
+        gt_rew_c: -1
+        rt_rew_c: -30
+        rv_rew_c: -0.5
+        rav_rew_c: -0.1
+        gv_rew_c: -0.01
+        gav_rew_c: -0.01
+        kb_rew_c: -10
+        gr_rew_c: -0.1
+        lr_rew_c: -0.2
+        dv_rew_c: -0.002
+        rh_rew_c: -100
+
+    mimic_phase_obs:
+      enabled: False
+
+    mimic_target_pose:
+      enabled: False
+      type: max-coords
+      with_time: True
+      num_future_steps: 1
+      num_obs_per_target_pose: ${.base_num_obs_per_target_pose}
+      base_num_obs_per_target_pose: ${eval:${.num_obs_per_joint}*${robot.num_bodies}+1*${.with_time}}
+      num_obs_per_joint: 18
+
+    masked_mimic:
+      enabled: false
+      masked_mimic_masking:
+        joint_masking:
+          masked_mimic_time_gap_probability: 0.1
+
+          time_gap_mask_min_steps: 1
+          time_gap_mask_max_steps: ${eval:${env.config.mimic_target_pose.num_future_steps}+1}
+
+          with_conditioning_time_gap_mask_max_steps: ${eval:${.time_gap_mask_max_steps}*4}
+          with_conditioning_max_gap_probability: 0.2
+
+          masked_mimic_repeat_mask_probability: 0.98
+          masked_mimic_fixed_conditioning: null
+
+          force_max_conditioned_bodies_prob: 0.1
+          force_small_num_conditioned_bodies_prob: 0.1
+
+        # Target pose is a single long-term condition on a random subset of joints
+        target_pose_visible_prob: 0.2
+
+        # Text conditioning
+        motion_text_embeddings_visible_prob: 0
+
+      masked_mimic_target_pose:
+        num_obs_per_sparse_target_pose: ${eval:${.num_obs_per_target_pose}*${eval:${len:${robot.trackable_bodies_subset}}+1}//${robot.num_bodies}+${eval:${len:${robot.trackable_bodies_subset}}+1}*2+2}
+        num_future_steps: 10
+        num_obs_per_joint: 24
+        num_obs_per_target_pose: ${eval:${.num_obs_per_joint}*${robot.num_bodies}}
+      motion_text_embeddings:
+        enabled: false
+        embedding_dim: 512
+      historical_obs:
+#        num_historical_stored_steps: 120  # How much history do we remember
+        num_historical_conditioned_steps: 15  # We subsample from the history to condition on

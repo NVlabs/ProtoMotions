@@ -1,3 +1,0 @@
-a person walks in a rectangular pattern.#a/DET person/NOUN walk/VERB in/ADP a/DET rectangular/ADJ pattern/NOUN#0.0#0.0
-a person walks to the left, walks forward, then walks to the right, and walks forward.#a/DET person/NOUN walk/VERB to/ADP the/DET left/NOUN walk/VERB forward/ADV then/ADV walk/VERB to/ADP the/DET right/NOUN and/CCONJ walk/VERB forward/ADV#0.0#0.0
-a person walks forward, turns right, walks forward, turns right, and then walks forward some more.#a/DET person/NOUN walk/VERB forward/ADV turn/VERB right/ADJ walk/VERB forward/ADV turn/VERB right/ADJ and/CCONJ then/ADV walk/VERB forward/ADV some/DET more/ADV#0.0#0.0

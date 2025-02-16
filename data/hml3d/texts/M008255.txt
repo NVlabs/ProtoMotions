@@ -1,3 +1,0 @@
-the person pets the dog on its head#the/DET person/NOUN pet/VERB the/DET dog/NOUN on/ADP its/DET head/NOUN#0.0#0.0
-a person  leans down and rubs something with their left arm.#a/DET person/NOUN lean/VERB down/ADP and/CCONJ rub/VERB something/PRON with/ADP their/DET left/ADJ arm/NOUN#0.0#0.0
-the person is drying off his left arm.#the/DET person/NOUN is/AUX dry/VERB off/ADP his/DET left/ADJ arm/NOUN#0.0#0.0

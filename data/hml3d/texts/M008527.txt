@@ -1,3 +1,0 @@
-a person touches their hair with their left hand.#a/DET person/NOUN touch/VERB their/DET hair/NOUN with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a person brushes hair with left hand.#a/DET person/NOUN brush/VERB hair/NOUN with/ADP left/ADJ hand/NOUN#0.0#0.0
-person lifts left arm to head and puts it back down#person/NOUN lift/VERB left/VERB arm/NOUN to/PART head/VERB and/CCONJ put/VERB it/PRON back/ADV down/ADP#0.0#0.0

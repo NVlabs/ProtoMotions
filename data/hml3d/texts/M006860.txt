@@ -1,3 +1,0 @@
-jogging backwards slowly once.#jog/VERB backwards/ADV slowly/ADV once/ADV#0.0#0.0
-a person is dancing in a circle while facing forward.#a/DET person/NOUN is/AUX dance/VERB in/ADP a/DET circle/NOUN while/SCONJ face/VERB forward/ADV#0.0#0.0
-this person jogs to the right then the left.#this/DET person/NOUN jog/VERB to/ADP the/DET right/NOUN then/ADV the/DET left/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-person hold arms up and stumbles forward into the left.#person/NOUN hold/VERB arm/NOUN up/ADP and/CCONJ stumble/VERB forward/ADV into/ADP the/DET left/NOUN#0.0#0.0
-a person is shaky and stubbles around.#a/DET person/NOUN is/AUX shaky/ADJ and/CCONJ stubble/NOUN around/ADV#0.0#0.0
-walking forward and then to the right.#walk/VERB forward/ADV and/CCONJ then/ADV to/ADP the/DET right/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a man stirs something anti-clock wise with his right hand.#a/DET man/NOUN stir/VERB something/PRON anticlock/NOUN wise/ADJ with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0
-a person raises their right hand and moves it in horizontal clockwise circles#a/DET person/NOUN raise/VERB their/DET right/ADJ hand/NOUN and/CCONJ move/VERB it/PRON in/ADP horizontal/ADJ clockwise/NOUN circle/NOUN#1.0#9.0
-a person stirs something in a bowl with their right hand#a/DET person/NOUN stir/VERB something/PRON in/ADP a/DET bowl/NOUN with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0

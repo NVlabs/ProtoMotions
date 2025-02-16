@@ -1,3 +1,0 @@
-this person is jogging right to left and back again.#this/DET person/NOUN is/AUX jog/VERB right/ADV to/ADP left/NOUN and/CCONJ back/ADV again/ADV#0.0#0.0
-the person is jogging back-and-forth.#the/DET person/NOUN is/AUX jog/VERB backandforth/PROPN#0.0#0.0
-a person ran into left and right directions#a/DET person/NOUN run/VERB into/ADP left/ADJ and/CCONJ right/ADJ direction/NOUN#0.0#0.0

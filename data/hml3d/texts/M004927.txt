@@ -1,3 +1,0 @@
-a person bends over and touches something with his left hand.#a/DET person/NOUN bend/VERB over/ADP and/CCONJ touch/VERB something/PRON with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
-a person touches ground with left hand.#a/DET person/NOUN touch/VERB ground/NOUN with/ADP left/ADJ hand/NOUN#0.0#0.0
-the legs takes a slight kneel while the left hand touches the ground.#the/DET leg/NOUN take/VERB a/DET slight/ADJ kneel/NOUN while/SCONJ the/DET left/ADJ hand/NOUN touch/VERB the/DET ground/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person walks forward and immediately makes a left hand turn.#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ immediately/ADV make/VERB a/DET left/ADJ hand/NOUN turn/NOUN#0.0#0.0
-a person walks to the left.#a/DET person/NOUN walk/VERB to/ADP the/DET left/NOUN#0.0#0.0
-a person uses their legs to walk in a counterclockwise direction but does not go all the way.#a/DET person/NOUN use/VERB their/DET leg/NOUN to/PART walk/VERB in/ADP a/DET counterclockwise/ADJ direction/NOUN but/CCONJ does/AUX not/PART go/VERB all/DET the/DET way/NOUN#0.0#0.0

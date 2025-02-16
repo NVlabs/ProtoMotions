@@ -1,3 +1,0 @@
-figure walks forward then turns a quarter turn right and repeats two times in a rectangular space.#figure/NOUN walk/VERB forward/ADV then/ADV turn/VERB a/DET quarter/NOUN turn/VERB right/ADV and/CCONJ repeat/VERB two/NUM time/NOUN in/ADP a/DET rectangular/ADJ space/NOUN#0.0#0.0
-a person walks in a near complete clockwise square.#a/DET person/NOUN walk/VERB in/ADP a/DET near/ADJ complete/ADJ clockwise/NOUN square/NOUN#0.0#0.0
-a person slowly walks around in a rectangular shape, stopping before making a turn each time.#a/DET person/NOUN slowly/ADV walk/VERB around/ADV in/ADP a/DET rectangular/ADJ shape/NOUN stop/VERB before/ADP make/VERB a/DET turn/NOUN each/DET time/NOUN#0.0#10.0

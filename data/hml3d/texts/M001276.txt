@@ -1,3 +1,0 @@
-a person climbs a set of 4 stairs, left foot first.#a/DET person/NOUN climb/VERB a/DET set/NOUN of/ADP stair/NOUN left/VERB foot/NOUN first/ADV#0.0#0.0
-the person is stepping on step stones.#the/DET person/NOUN is/AUX step/VERB on/ADP step/NOUN stone/NOUN#0.0#0.0
-someone is walking up 4 steps starting with their left foot.#someone/PRON is/AUX walk/VERB up/ADP step/NOUN start/VERB with/ADP their/DET left/ADJ foot/NOUN#0.0#0.0

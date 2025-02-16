@@ -1,3 +1,0 @@
-person cartwheels from right to left#person/NOUN cartwheel/VERB from/ADP right/NOUN to/ADP left/ADV#0.0#0.0
-a person walks forward and does a cartwheel, but almost falls and then walks in a half-circle.#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ does/AUX a/DET cartwheel/NOUN but/CCONJ almost/ADV fall/VERB and/CCONJ then/ADV walk/VERB in/ADP a/DET halfcircle/NOUN#0.0#0.0
-a person does a cartwheel and then walks in a circle to the left.#a/DET person/NOUN does/AUX a/DET cartwheel/NOUN and/CCONJ then/ADV walk/VERB in/ADP a/DET circle/NOUN to/ADP the/DET left/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person balances on his right foot with arms outstretched. he swings his left foot from the side to the front of his body.#a/DET person/NOUN balance/VERB on/ADP his/DET right/ADJ foot/NOUN with/ADP arm/NOUN outstretche/VERB he/PRON swing/VERB his/DET left/ADJ foot/NOUN from/ADP the/DET side/NOUN to/ADP the/DET front/NOUN of/ADP his/DET body/NOUN#0.0#0.0
-a person raised the left leg and both hands while balancing#a/DET person/NOUN raise/VERB the/DET left/ADJ leg/NOUN and/CCONJ both/DET hand/NOUN while/SCONJ balance/VERB#0.0#7.0
-person slowly moves left leg forward and holds pose with arms stretched at the side.#person/NOUN slowly/ADV move/VERB left/VERB leg/NOUN forward/ADV and/CCONJ hold/VERB pose/VERB with/ADP arm/NOUN stretch/VERB at/ADP the/DET side/NOUN#0.0#0.0

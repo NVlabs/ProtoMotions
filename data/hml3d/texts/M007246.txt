@@ -1,3 +1,0 @@
-a person is smelling their right armpit.#a/DET person/NOUN is/AUX smell/VERB their/DET right/ADJ armpit/NOUN#0.0#0.0
-a person with their right hand above their head, is moving it around, then ends with a t-pose.#a/DET person/NOUN with/ADP their/DET right/ADJ hand/NOUN above/ADP their/DET head/NOUN is/AUX move/VERB it/PRON around/ADV then/ADV end/VERB with/ADP a/DET tpose/NOUN#0.0#0.0
-a person stading with right hand raised over head bent at the elbow, then extending both ars out to the side#a/DET person/NOUN stade/VERB with/ADP right/ADJ hand/NOUN raise/VERB over/ADP head/NOUN bent/ADJ at/ADP the/DET elbow/NOUN then/ADV extend/VERB both/DET ars/NOUN out/SCONJ to/ADP the/DET side/NOUN#0.0#0.0

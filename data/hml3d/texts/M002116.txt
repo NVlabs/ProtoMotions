@@ -1,3 +1,0 @@
-a person walks to the left the walks back to the right.#a/DET person/NOUN walk/VERB to/ADP the/DET left/NOUN the/DET walk/NOUN back/ADV to/ADP the/DET right/NOUN#0.0#0.0
-a person walks in a curved line, turns around, and walks back in the same line.#a/DET person/NOUN walk/VERB in/ADP a/DET curved/ADJ line/NOUN turn/VERB around/ADV and/CCONJ walk/VERB back/ADV in/ADP the/DET same/ADJ line/NOUN#0.0#0.0
-a person walks forward and to his left, in a semicircle, and then walks back.#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ to/ADP his/DET left/NOUN in/ADP a/DET semicircle/NOUN and/CCONJ then/ADV walk/VERB back/ADV#0.0#0.0

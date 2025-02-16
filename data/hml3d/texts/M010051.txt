@@ -1,3 +1,0 @@
-a person walks right diagonally, turns left walks a few steps then walks back and stands facing forward.#a/DET person/NOUN walk/VERB right/ADV diagonally/ADV turn/VERB left/VERB walk/VERB a/DET few/ADJ step/NOUN then/ADV walk/VERB back/ADV and/CCONJ stand/VERB face/VERB forward/ADV#0.0#0.0
-a man passing from right to left#a/DET man/NOUN pass/VERB from/ADP right/NOUN to/ADP left/ADV#0.0#8.0
-the person paces back and forth from right to left#the/DET person/NOUN pace/VERB back/ADV and/CCONJ forth/ADV from/ADP right/NOUN to/ADP left/ADV#0.0#0.0

@@ -1,3 +1,0 @@
-the person is picking something up tilting it on its side.#the/DET person/NOUN is/AUX pick/VERB something/PRON up/ADP tilt/VERB it/PRON on/ADP its/DET side/NOUN#0.0#0.0
-person squats a little raises both hands in a box position moves to left and then right#person/NOUN squat/VERB a/DET little/ADJ raise/NOUN both/DET hand/NOUN in/ADP a/DET box/NOUN position/NOUN move/NOUN to/ADP left/VERB and/CCONJ then/ADV right/ADJ#0.0#0.0
-a person picking it up something on the right, putting it up to the left, and then placing it back to place.#a/DET person/NOUN pick/VERB it/PRON up/ADP something/PRON on/ADP the/DET right/NOUN put/VERB it/PRON up/ADP to/ADP the/DET left/NOUN and/CCONJ then/ADV place/VERB it/PRON back/ADV to/ADP place/NOUN#0.0#0.0

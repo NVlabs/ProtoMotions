@@ -1,3 +1,0 @@
-a person recovers balance after push to right,#a/DET person/NOUN recover/NOUN balance/NOUN after/ADP push/NOUN to/ADP right/ADJ#0.0#0.0
-a figure quickly sidesteps to the left#a/DET figure/NOUN quickly/ADV sidestep/VERB to/ADP the/DET left/NOUN#0.0#0.0
-a figure shuffles right starting with hi right foot first then comes to a stop#a/DET figure/NOUN shuffle/VERB right/ADV start/VERB with/ADP hi/INTJ right/ADJ foot/NOUN first/ADV then/ADV come/VERB to/ADP a/DET stop/NOUN#0.0#0.0

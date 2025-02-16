@@ -1,3 +1,0 @@
-a person lifts a large object up at waist height from their right and places it back down to their left.#a/DET person/NOUN lift/VERB a/DET large/ADJ object/NOUN up/ADP at/ADP waist/NOUN height/NOUN from/ADP their/DET right/NOUN and/CCONJ place/VERB it/PRON back/ADV down/ADP to/ADP their/DET left/NOUN#0.0#0.0
-a person picks up something on their right and moves it to their left.#a/DET person/NOUN pick/VERB up/ADP something/PRON on/ADP their/DET right/NOUN and/CCONJ move/VERB it/PRON to/ADP their/DET left/NOUN#0.0#0.0
-man slowly moves object from right to left#man/NOUN slowly/ADV move/VERB object/NOUN from/ADP right/NOUN to/ADP left/ADV#0.0#0.0

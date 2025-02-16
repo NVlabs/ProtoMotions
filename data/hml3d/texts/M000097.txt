@@ -1,3 +1,0 @@
-a man with his right arm raised walk counterclockwise.#a/DET man/NOUN with/ADP his/DET right/ADJ arm/NOUN raise/VERB walk/NOUN counterclockwise/NOUN#0.0#0.0
-person has their right hand up on their head like they bumped it and are walking in a circle#person/NOUN has/AUX their/DET right/ADJ hand/NOUN up/ADP on/ADP their/DET head/NOUN like/SCONJ they/PRON bump/VERB it/PRON and/CCONJ are/AUX walk/VERB in/ADP a/DET circle/NOUN#0.0#0.0
-a man walks in a counterclockwise circle carrying something on his right shoulder.#a/DET man/NOUN walk/VERB in/ADP a/DET counterclockwise/ADJ circle/NOUN carry/VERB something/PRON on/ADP his/DET right/ADJ shoulder/NOUN#0.0#0.0

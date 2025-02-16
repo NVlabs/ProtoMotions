@@ -1,3 +1,0 @@
-a person stands, swaying and stumbling before looking at their right wrist.#a/DET person/NOUN stand/VERB sway/VERB and/CCONJ stumble/VERB before/ADP look/VERB at/ADP their/DET right/ADJ wrist/NOUN#0.0#0.0
-a person appears to be stumbling around, then attempts to look at the watch on their right hand.#a/DET person/NOUN appear/VERB to/PART be/AUX stumble/VERB around/ADV then/ADV attempt/VERB to/PART look/VERB at/ADP the/DET watch/NOUN on/ADP their/DET right/ADJ hand/NOUN#0.0#0.0
-a person teeters back and forth on their feet as if on a boat and then grabs their right arm.#a/DET person/NOUN teeter/VERB back/ADV and/CCONJ forth/ADV on/ADP their/DET foot/NOUN as/SCONJ if/SCONJ on/ADP a/DET boat/NOUN and/CCONJ then/ADV grab/VERB their/DET right/ADJ arm/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person swings his left arm.#a/DET person/NOUN swing/VERB his/DET left/ADJ arm/NOUN#0.0#0.0
-a person throws an object with their left hand and then catches an object with both hands.#a/DET person/NOUN throw/VERB an/DET object/NOUN with/ADP their/DET left/ADJ hand/NOUN and/CCONJ then/ADV catch/VERB an/DET object/NOUN with/ADP both/DET hand/NOUN#0.0#0.0
-the person is casting a fishing rod#the/DET person/NOUN is/AUX cast/VERB a/DET fishing/NOUN rod/NOUN#0.0#0.0

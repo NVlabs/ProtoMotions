@@ -1,3 +1,0 @@
-man walking in a circle to his left (counterclockwise)#man/NOUN walk/VERB in/ADP a/DET circle/NOUN to/ADP his/DET left/NOUN counterclockwise/NOUN#0.0#0.0
-a person walks in a counterclockwise circle.#a/DET person/NOUN walk/VERB in/ADP a/DET counterclockwise/ADJ circle/NOUN#0.0#0.0
-a person quickly paces while looking down.#a/DET person/NOUN quickly/ADV pace/VERB while/SCONJ look/VERB down/ADV#0.0#0.0

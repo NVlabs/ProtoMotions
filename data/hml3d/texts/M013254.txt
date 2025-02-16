@@ -1,3 +1,0 @@
-man slowly walks turning left and widening the circle#man/NOUN slowly/ADV walk/VERB turn/VERB left/VERB and/CCONJ widen/VERB the/DET circle/NOUN#0.0#0.0
-a person walks around the room in a counterclockwise position.#a/DET person/NOUN walk/VERB around/ADP the/DET room/NOUN in/ADP a/DET counterclockwise/ADJ position/NOUN#0.0#0.0
-person is walking towards the left.#person/NOUN is/AUX walk/VERB towards/ADP the/DET left/NOUN#0.0#0.0

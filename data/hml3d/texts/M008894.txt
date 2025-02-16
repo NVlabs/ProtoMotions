@@ -1,3 +1,0 @@
-a person rolls their left ankle around.#a/DET person/NOUN roll/VERB their/DET left/ADJ ankle/NOUN around/ADV#0.0#0.0
-this person moves the left leg in a small circular motion.#this/DET person/NOUN move/VERB the/DET left/ADJ leg/NOUN in/ADP a/DET small/ADJ circular/ADJ motion/NOUN#0.0#0.0
-the person is twisting his left ankle.#the/DET person/NOUN is/AUX twist/VERB his/DET left/ADJ ankle/NOUN#0.0#0.0

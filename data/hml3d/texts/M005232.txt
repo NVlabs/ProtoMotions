@@ -1,2 +1,0 @@
-a person walks several steps forward.#a/DET person/NOUN walk/VERB several/ADJ step/NOUN forward/ADV#0.0#0.0
-beginning with the left foot, a person takes six steps forward and stops.#begin/VERB with/ADP the/DET left/ADJ foot/NOUN a/DET person/NOUN take/VERB six/NUM step/NOUN forward/ADV and/CCONJ stop/NOUN#0.0#0.0

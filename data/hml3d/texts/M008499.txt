@@ -1,3 +1,0 @@
-he does push recovery left#he/PRON does/AUX push/VERB recovery/NOUN left/VERB#0.0#0.0
-a person walking diagonally from left to right and switching back to left#a/DET person/NOUN walk/VERB diagonally/ADV from/ADP left/NOUN to/ADP right/NOUN and/CCONJ switch/VERB back/ADV to/ADP left/ADJ#0.0#0.0
-a man walks slowly and staggers to the right in a zig zag shape and then stops.#a/DET man/NOUN walk/VERB slowly/ADV and/CCONJ stagger/NOUN to/ADP the/DET right/NOUN in/ADP a/DET zig/X zag/X shape/NOUN and/CCONJ then/ADV stop/VERB#0.0#0.0

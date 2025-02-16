@@ -1,3 +1,0 @@
-a person holds something in his hands, then walks to the left, sits down and rights his right foot up to hold it with his hands.#a/DET person/NOUN hold/VERB something/PRON in/ADP his/DET hand/NOUN then/ADV walk/VERB to/ADP the/DET left/NOUN sit/VERB down/ADV and/CCONJ right/VERB his/DET right/ADJ foot/NOUN up/ADP to/PART hold/VERB it/PRON with/ADP his/DET hand/NOUN#0.0#0.0
-person wrings hands and moves to left and bends leg to tie shoe.#person/NOUN wrings/PROPN hand/NOUN and/CCONJ move/NOUN to/PART left/NOUN and/CCONJ bend/VERB leg/NOUN to/PART tie/VERB shoe/NOUN#0.0#0.0
-a person side steps then sits down#a/DET person/NOUN side/NOUN step/NOUN then/ADV sit/VERB down/ADP#0.0#0.0

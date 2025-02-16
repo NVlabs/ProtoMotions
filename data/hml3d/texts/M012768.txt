@@ -1,3 +1,0 @@
-a person moves left shoulder inwards, then moves to throw punch with left fist.#a/DET person/NOUN move/VERB left/VERB shoulder/NOUN inward/NOUN then/ADV move/VERB to/PART throw/VERB punch/NOUN with/ADP left/ADJ fist/NOUN#0.0#5.0
-a person does a jab.#a/DET person/NOUN does/AUX a/DET jab/NOUN#0.0#0.0
-a person punches with their left hand#a/DET person/NOUN punch/VERB with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0

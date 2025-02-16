@@ -1,3 +1,0 @@
-a person seems to be playing the guitar#a/DET person/NOUN seem/VERB to/PART be/AUX play/VERB the/DET guitar/NOUN#0.0#0.0
-a person plays guitar and strums with right hand.#a/DET person/NOUN play/VERB guitar/NOUN and/CCONJ strum/VERB with/ADP right/ADJ hand/NOUN#0.0#0.0
-a person playing the guitar, strumming on the right#a/DET person/NOUN play/VERB the/DET guitar/NOUN strum/VERB on/ADP the/DET right/NOUN#0.0#0.0

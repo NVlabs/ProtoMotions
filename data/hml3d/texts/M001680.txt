@@ -1,3 +1,0 @@
-a person walks in a curve to their right, at a steady/somewhat quick pace.#a/DET person/NOUN walk/VERB in/ADP a/DET curve/NOUN to/ADP their/DET right/NOUN at/ADP a/DET steady/ADJ somewhat/ADV quick/ADJ pace/NOUN#0.0#0.0
-the person walked around the bend to the right.#the/DET person/NOUN walk/VERB around/ADP the/DET bend/NOUN to/ADP the/DET right/NOUN#0.0#0.0
-a man walks from side to side while holding his left forearm with right hand, and then walks back.#a/DET man/NOUN walk/VERB from/ADP side/NOUN to/PART side/NOUN while/SCONJ hold/VERB his/DET left/ADJ forearm/NOUN with/ADP right/ADJ hand/NOUN and/CCONJ then/ADV walk/VERB back/ADV#0.0#0.0

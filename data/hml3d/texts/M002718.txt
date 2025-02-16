@@ -1,3 +1,0 @@
-a person lunges forward bending their right knee and elbow.#a/DET person/NOUN lunge/VERB forward/ADV bend/VERB their/DET right/ADJ knee/NOUN and/CCONJ elbow/NOUN#0.0#0.0
-he lunges his right arm#he/PRON lunge/VERB his/DET right/ADJ arm/NOUN#0.0#0.0
-a person kneels three times to the left#a/DET person/NOUN kneel/VERB three/NUM time/NOUN to/ADP the/DET left/NOUN#0.0#0.0

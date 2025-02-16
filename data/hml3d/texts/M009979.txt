@@ -1,3 +1,0 @@
-person appears to wipe some thing with their left hand.#person/NOUN appear/VERB to/PART wipe/VERB some/DET thing/NOUN with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a person walks forward and makes a waving motion twice with his left arm, and repeats the movement one more time.#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ make/VERB a/DET waving/ADJ motion/NOUN twice/ADV with/ADP his/DET left/ADJ arm/NOUN and/CCONJ repeat/VERB the/DET movement/NOUN one/NUM more/ADJ time/NOUN#0.0#0.0
-a person steps forward slightly then waves with its left hand.#a/DET person/NOUN step/VERB forward/ADV slightly/ADV then/ADV wave/NOUN with/ADP its/DET left/ADJ hand/NOUN#0.0#0.0

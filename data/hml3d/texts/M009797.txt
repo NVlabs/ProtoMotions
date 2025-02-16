@@ -1,3 +1,0 @@
-a person steps over something.#a/DET person/NOUN step/VERB over/ADP something/PRON#0.0#0.0
-a person walks forward taking longer strides with his right leg.#a/DET person/NOUN walk/VERB forward/ADV take/VERB longer/ADJ stride/NOUN with/ADP his/DET right/ADJ leg/NOUN#0.0#0.0
-a person walking takes a long step and keeps walking#a/DET person/NOUN walk/VERB take/VERB a/DET long/ADJ step/NOUN and/CCONJ keep/VERB walk/VERB#0.0#0.0

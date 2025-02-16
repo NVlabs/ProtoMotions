@@ -1,3 +1,0 @@
-a person picking something up from the right and then placing it left#a/DET person/NOUN pick/VERB something/PRON up/ADP from/ADP the/DET right/NOUN and/CCONJ then/ADV place/VERB it/PRON left/VERB#0.0#0.0
-a person reaches form something on the right and moves it to the left.#a/DET person/NOUN reach/VERB form/NOUN something/PRON on/ADP the/DET right/NOUN and/CCONJ move/VERB it/PRON to/ADP the/DET left/NOUN#0.0#6.0
-a person picks something up and pours it out then sets it down again.#a/DET person/NOUN pick/VERB something/PRON up/ADP and/CCONJ pour/VERB it/PRON out/ADP then/ADV set/VERB it/PRON down/ADP again/ADV#0.0#0.0

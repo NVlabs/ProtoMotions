@@ -1,3 +1,0 @@
-a person lifts their left arm, to their head, then to the left before dropping the arm again.#a/DET person/NOUN lift/VERB their/DET left/ADJ arm/NOUN to/ADP their/DET head/NOUN then/ADV to/ADP the/DET left/NOUN before/ADP drop/VERB the/DET arm/NOUN again/ADV#0.0#0.0
-a man lifts his left arm from his side, raising it up over his head in a wide circle before bringing it back to his side.#a/DET man/NOUN lift/VERB his/DET left/ADJ arm/NOUN from/ADP his/DET side/NOUN raise/VERB it/PRON up/ADP over/ADP his/DET head/NOUN in/ADP a/DET wide/ADJ circle/NOUN before/ADP bring/VERB it/PRON back/ADV to/ADP his/DET side/NOUN#0.0#0.0
-a person moves his left arm in the air.#a/DET person/NOUN move/VERB his/DET left/ADJ arm/NOUN in/ADP the/DET air/NOUN#0.0#0.0

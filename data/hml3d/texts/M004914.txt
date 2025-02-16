@@ -1,3 +1,0 @@
-a person doing a roundhouse kick with the right leg.#a/DET person/NOUN do/VERB a/DET roundhouse/NOUN kick/NOUN with/ADP the/DET right/ADJ leg/NOUN#0.0#0.0
-the man did a karate kick forward.#the/DET man/NOUN did/AUX a/DET karate/NOUN kick/VERB forward/ADV#0.0#0.0
-the person karate kicks with their right leg#the/DET person/NOUN karate/NOUN kick/VERB with/ADP their/DET right/ADJ leg/NOUN#0.0#0.0

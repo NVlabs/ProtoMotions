@@ -1,3 +1,0 @@
-a person sprints to his right.#a/DET person/NOUN sprint/VERB to/ADP his/DET right/NOUN#0.0#0.0
-a person running diagonally to the right side.#a/DET person/NOUN run/VERB diagonally/ADV to/ADP the/DET right/ADJ side/NOUN#0.0#0.0
-a person runs forward while curving to their right.#a/DET person/NOUN run/VERB forward/ADV while/SCONJ curve/VERB to/ADP their/DET right/NOUN#0.0#0.0

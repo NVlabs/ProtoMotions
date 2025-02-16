@@ -1,3 +1,0 @@
-a person hops on their right foot then their left#a/DET person/NOUN hop/VERB on/ADP their/DET right/ADJ foot/NOUN then/ADV their/DET left/NOUN#0.0#0.0
-a man is alternating hopping on one foot.#a/DET man/NOUN is/AUX alternate/VERB hopping/NOUN on/ADP one/NUM foot/NOUN#0.0#0.0
-the person is jumping on their right leg.#the/DET person/NOUN is/AUX jump/VERB on/ADP their/DET right/ADJ leg/NOUN#0.0#0.0

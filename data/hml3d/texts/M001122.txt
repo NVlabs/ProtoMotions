@@ -1,3 +1,0 @@
-person crosses arms and scratches right elbow#person/NOUN cross/VERB arm/NOUN and/CCONJ scratch/VERB right/ADV elbow/NOUN#0.0#0.0
-the person is touching arm.#the/DET person/NOUN is/AUX touching/ADJ arm/NOUN#0.0#0.0
-folds arms and then puts them by side#fold/NOUN arm/NOUN and/CCONJ then/ADV put/VERB them/PRON by/ADP side/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person runs forward quickly.#a/DET person/NOUN run/VERB forward/ADV quickly/ADV#0.0#0.0
-a person jogs forward, and begins shifting right.#a/DET person/NOUN jog/VERB forward/ADV and/CCONJ begin/VERB shift/VERB right/ADV#0.0#0.0
-the person sprints forward and curves to their right.#the/DET person/NOUN sprint/VERB forward/ADV and/CCONJ curve/VERB to/ADP their/DET right/NOUN#0.0#0.0

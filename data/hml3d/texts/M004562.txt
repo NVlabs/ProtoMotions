@@ -1,3 +1,0 @@
-a person lunges forwards on their right leg, stands, and lunges on their left leg.#a/DET person/NOUN lunge/VERB forwards/ADV on/ADP their/DET right/ADJ leg/NOUN stand/VERB and/CCONJ lunge/VERB on/ADP their/DET left/ADJ leg/NOUN#0.0#0.0
-a person does a lunge with right foot leading, then another lunge with the left foot leading#a/DET person/NOUN does/AUX a/DET lunge/NOUN with/ADP right/ADJ foot/NOUN lead/VERB then/ADV another/DET lunge/NOUN with/ADP the/DET left/ADJ foot/NOUN leading/NOUN#3.0#10.0
-the person is walking around.#the/DET person/NOUN is/AUX walk/VERB around/ADV#0.0#0.0

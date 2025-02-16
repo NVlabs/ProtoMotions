@@ -1,3 +1,0 @@
-a person takes a long, slow step to the front, on a diagonal slant to their left.#a/DET person/NOUN take/VERB a/DET long/ADJ slow/ADJ step/NOUN to/ADP the/DET front/NOUN on/ADP a/DET diagonal/ADJ slant/NOUN to/ADP their/DET left/NOUN#0.0#0.0
-a person takes a large step diagonally to the right over a large object#a/DET person/NOUN take/VERB a/DET large/ADJ step/NOUN diagonally/ADV to/ADP the/DET right/NOUN over/ADP a/DET large/ADJ object/NOUN#0.0#0.0
-a person takes a long stride diagonally to their left almost like they were stepping over a large object.#a/DET person/NOUN take/VERB a/DET long/ADJ stride/NOUN diagonally/ADV to/ADP their/DET left/NOUN almost/ADV like/SCONJ they/PRON were/AUX step/VERB over/ADP a/DET large/ADJ object/NOUN#0.0#0.0

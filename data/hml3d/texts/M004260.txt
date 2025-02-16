@@ -1,3 +1,0 @@
-the stick figure its stretching.#the/DET stick/NOUN figure/NOUN its/DET stretching/NOUN#0.0#0.0
-a man turns to the right and reaches up to grab something with his right hands.#a/DET man/NOUN turn/VERB to/ADP the/DET right/NOUN and/CCONJ reach/VERB up/ADP to/PART grab/VERB something/PRON with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0
-a person throws a punch with their right hand.#a/DET person/NOUN throw/VERB a/DET punch/NOUN with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0

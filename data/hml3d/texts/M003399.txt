@@ -1,3 +1,0 @@
-a person being pushed to their left#a/DET person/NOUN being/AUX push/VERB to/ADP their/DET left/NOUN#0.0#0.0
-a man side steps to the right.#a/DET man/NOUN side/NOUN step/NOUN to/ADP the/DET right/NOUN#0.0#0.0
-a person steps to the left.#a/DET person/NOUN step/VERB to/ADP the/DET left/NOUN#0.0#0.0

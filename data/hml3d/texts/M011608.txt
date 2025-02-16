@@ -1,3 +1,0 @@
-a person walks in a counterclockwise semi-circle#a/DET person/NOUN walk/VERB in/ADP a/DET counterclockwise/NOUN semicircle/NOUN#0.0#0.0
-a person walking in a circle.#a/DET person/NOUN walk/VERB in/ADP a/DET circle/NOUN#0.0#0.0
-a person walks forward while their right and left hands swing in an alternating motion at their sides, and then turns to the left to walk in a semicircle.#a/DET person/NOUN walk/VERB forward/ADV while/SCONJ their/DET right/NOUN and/CCONJ left/ADJ hand/NOUN swing/VERB in/ADP an/DET alternating/ADJ motion/NOUN at/ADP their/DET side/NOUN and/CCONJ then/ADV turn/VERB to/ADP the/DET left/NOUN to/PART walk/VERB in/ADP a/DET semicircle/NOUN#0.0#0.0

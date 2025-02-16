@@ -1,3 +1,0 @@
-throwing something while standing still.#throw/VERB something/PRON while/SCONJ stand/VERB still/ADV#0.0#0.0
-this person throws with his left hand then catches with both hands.#this/DET person/NOUN throw/VERB with/ADP his/DET left/ADJ hand/NOUN then/ADV catch/VERB with/ADP both/DET hand/NOUN#0.0#0.0
-across the body, then pivots to the left and seems to catch something in both hands, then returns to a standing position.#across/ADP the/DET body/NOUN then/ADV pivot/NOUN to/ADP the/DET left/NOUN and/CCONJ seem/VERB to/PART catch/VERB something/PRON in/ADP both/DET hand/NOUN then/ADV return/VERB to/ADP a/DET standing/ADJ position/NOUN#0.0#0.0

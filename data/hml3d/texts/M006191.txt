@@ -1,3 +1,0 @@
-a man stands tall and shuffles horizontally to his right.#a/DET man/NOUN stand/VERB tall/ADJ and/CCONJ shuffle/NOUN horizontally/ADV to/ADP his/DET right/NOUN#0.0#0.0
-a person is side stepping to their right#a/DET person/NOUN is/AUX side/NOUN step/VERB to/ADP their/DET right/NOUN#0.0#0.0
-the person is sliding back-and-forth from the right to the left#the/DET person/NOUN is/AUX slide/VERB backandforth/ADV from/ADP the/DET right/NOUN to/ADP the/DET left/NOUN#0.0#0.0

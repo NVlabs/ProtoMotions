@@ -1,3 +1,0 @@
-a person with its hand raised, gets down on to its knees.#a/DET person/NOUN with/ADP its/DET hand/NOUN raise/VERB get/VERB down/ADV on/ADP to/ADP its/DET knee/NOUN#0.0#0.0
-a man goes from having his hands up ready to fight with left foot forward, to kneeling on his right leg, right hand back, and left hand on the ground.#a/DET man/NOUN go/VERB from/ADP have/VERB his/DET hand/NOUN up/ADV ready/ADJ to/PART fight/VERB with/ADP left/ADJ foot/NOUN forward/ADV to/ADP kneel/VERB on/ADP his/DET right/ADJ leg/NOUN right/ADJ hand/NOUN back/ADV and/CCONJ left/VERB hand/NOUN on/ADP the/DET ground/NOUN#0.0#0.0
-person goes from standing to kneeling#person/NOUN go/VERB from/ADP stand/VERB to/ADP kneel/VERB#0.0#0.0

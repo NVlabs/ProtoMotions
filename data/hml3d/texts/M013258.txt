@@ -1,3 +1,0 @@
-a figure gestures rapidly with their right hand then sits#a/DET figure/NOUN gesture/VERB rapidly/ADV with/ADP their/DET right/ADJ hand/NOUN then/ADV sit/VERB#0.0#0.0
-a person sits down, putting his weight on his left hand first.#a/DET person/NOUN sit/VERB down/ADV put/VERB his/DET weight/NOUN on/ADP his/DET left/ADJ hand/NOUN first/ADV#0.0#0.0
-person moves into a seated position#person/NOUN move/VERB into/ADP a/DET seated/ADJ position/NOUN#0.0#0.0

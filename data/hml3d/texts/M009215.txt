@@ -1,3 +1,0 @@
-the person is posing looking down.#the/DET person/NOUN is/AUX pose/VERB look/VERB down/ADV#0.0#0.0
-the figure sways very gently but stands still and is looking down slowly turning their head from left to right.#the/DET figure/NOUN sway/VERB very/ADV gently/ADV but/CCONJ stand/VERB still/ADV and/CCONJ is/AUX look/VERB down/ADV slowly/ADV turn/VERB their/DET head/NOUN from/ADP left/VERB to/ADP right/NOUN#0.0#0.0
-a man standing moves his head slowly from the right side to the left side.#a/DET man/NOUN stand/VERB move/VERB his/DET head/NOUN slowly/ADV from/ADP the/DET right/ADJ side/NOUN to/ADP the/DET left/ADJ side/NOUN#0.0#0.0

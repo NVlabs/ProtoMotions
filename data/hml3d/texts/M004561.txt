@@ -1,3 +1,0 @@
-he lifts dumbbell with right arm#he/PRON lift/VERB dumbbell/PROPN with/ADP right/ADJ arm/NOUN#0.0#0.0
-a person bends their arms at the elbow repeatedly#a/DET person/NOUN bend/VERB their/DET arm/NOUN at/ADP the/DET elbow/NOUN repeatedly/ADV#0.0#0.0
-a person lifting a dumbbell with their right hand#a/DET person/NOUN lift/VERB a/DET dumbbell/NOUN with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0

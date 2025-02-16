@@ -1,3 +1,0 @@
-a person is walking around and falling over slightly#a/DET person/NOUN is/AUX walk/VERB around/ADV and/CCONJ fall/VERB over/ADP slightly/ADV#0.0#0.0
-a person staggers to their right and then left.#a/DET person/NOUN stagger/VERB to/ADP their/DET right/NOUN and/CCONJ then/ADV left/VERB#0.0#0.0
-he clumsily steps forward to his right, lefts himself, and continues towards forward, angling left and under control.#he/PRON clumsily/ADV step/VERB forward/ADV to/ADP his/DET right/NOUN left/VERB himself/PRON and/CCONJ continue/VERB towards/ADP forward/ADV angle/VERB left/ADJ and/CCONJ under/ADP control/NOUN#0.0#0.0

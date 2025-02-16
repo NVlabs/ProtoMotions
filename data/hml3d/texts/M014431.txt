@@ -1,3 +1,0 @@
-a person walking to the left and then to the right and then to the middle#a/DET person/NOUN walk/VERB to/ADP the/DET left/NOUN and/CCONJ then/ADV to/ADP the/DET right/NOUN and/CCONJ then/ADV to/ADP the/DET middle/NOUN#0.0#0.0
-a person walks slowly to the left, then right, and stops in the center#a/DET person/NOUN walk/VERB slowly/ADV to/ADP the/DET left/NOUN then/ADV right/INTJ and/CCONJ stop/VERB in/ADP the/DET center/NOUN#0.0#0.0
-a person who is pacing back and forth.#a/DET person/NOUN who/PRON is/AUX pace/VERB back/ADV and/CCONJ forth/ADV#0.0#0.0

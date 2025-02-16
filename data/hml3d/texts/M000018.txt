@@ -1,3 +1,0 @@
-a person sways right and shakes their left hip, then sways left and shakes their right hip.#a/DET person/NOUN sway/VERB right/ADV and/CCONJ shake/VERB their/DET left/ADJ hip/NOUN then/ADV sway/VERB left/VERB and/CCONJ shake/VERB their/DET right/ADJ hip/NOUN#0.0#0.0
-he wiggles his left leg back and forth and then shifts to his right leg and does the same motion#he/PRON wiggle/VERB his/DET left/ADJ leg/NOUN back/ADV and/CCONJ forth/ADV and/CCONJ then/ADV shift/VERB to/ADP his/DET right/ADJ leg/NOUN and/CCONJ does/AUX the/DET same/ADJ motion/NOUN#0.0#0.0
-a person swivels their left leg then their right leg#a/DET person/NOUN swivel/VERB their/DET left/ADJ leg/NOUN then/ADV their/DET right/ADJ leg/NOUN#0.0#0.0

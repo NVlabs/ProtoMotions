@@ -1,3 +1,0 @@
-a man bouces from right to left repeatedly.#a/DET man/NOUN bouce/VERB from/ADP right/NOUN to/ADP left/VERB repeatedly/ADV#0.0#0.0
-a person jumps around strangely#a/DET person/NOUN jump/VERB around/ADV strangely/ADV#0.0#0.0
-a person laterally skip jumps from side-to-side three times.#a/DET person/NOUN laterally/ADV skip/VERB jump/VERB from/ADP sidetoside/NOUN three/NUM time/NOUN#0.0#0.0

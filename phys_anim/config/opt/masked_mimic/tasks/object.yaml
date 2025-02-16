@@ -1,8 +1,0 @@
-# @package _global_
-
-env:
-  _target_: phys_anim.envs.masked_mimic.tasks.object_interaction.${backbone}.MaskedMimicObjectHumanoid
-
-algo:
-  config:
-    eval_metric_keys: ["cartesian_err", "gt_err", "dv_rew", "kb_rew", "lr_rew", "rv_rew", "rav_rew", "gr_err", "gr_err_degrees", "distance_to_object_position", "success_object_position"]

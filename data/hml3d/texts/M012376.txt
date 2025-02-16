@@ -1,3 +1,0 @@
-the person is boxing with the left arm.#the/DET person/NOUN is/AUX box/VERB with/ADP the/DET left/ADJ arm/NOUN#0.0#0.0
-man has his left foot in front of his right foot and leans forward while he moves his arm in an overhand throwing motion#man/NOUN has/AUX his/DET left/ADJ foot/NOUN in/ADP front/NOUN of/ADP his/DET right/ADJ foot/NOUN and/CCONJ lean/VERB forward/ADV while/SCONJ he/PRON move/VERB his/DET arm/NOUN in/ADP an/DET overhand/NOUN throwing/NOUN motion/NOUN#0.0#0.0
-person throws a punch with left arm.#person/NOUN throw/VERB a/DET punch/NOUN with/ADP left/ADJ arm/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-person grabs something with the left hand and puts it into their rights hand, they step to the side and bend down to grab something with their left hand#person/NOUN grab/VERB something/PRON with/ADP the/DET left/ADJ hand/NOUN and/CCONJ put/VERB it/PRON into/ADP their/DET right/NOUN hand/NOUN they/PRON step/VERB to/ADP the/DET side/NOUN and/CCONJ bend/VERB down/ADP to/PART grab/VERB something/PRON with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a person picks something up twice.#a/DET person/NOUN pick/VERB something/PRON up/ADV twice/ADV#0.0#0.0
-person reach down to pick some thing up with his left arm.#person/NOUN reach/VERB down/ADP to/PART pick/VERB some/DET thing/NOUN up/ADP with/ADP his/DET left/ADJ arm/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person running then quickly taking a step to their right.#a/DET person/NOUN run/VERB then/ADV quickly/ADV take/VERB a/DET step/NOUN to/ADP their/DET right/NOUN#0.0#0.0
-person runs forward and side steps right once#person/NOUN run/VERB forward/ADV and/CCONJ side/NOUN step/NOUN right/ADV once/ADV#0.0#0.0
-figure appears to be avoiding an object while running#figure/NOUN appear/VERB to/PART be/AUX avoid/VERB an/DET object/NOUN while/SCONJ run/VERB#0.0#0.0

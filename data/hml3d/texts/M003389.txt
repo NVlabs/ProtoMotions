@@ -1,3 +1,0 @@
-a person hops on his left foot and then turns in place in a counter counterclockwise circle.#a/DET person/NOUN hop/VERB on/ADP his/DET left/ADJ foot/NOUN and/CCONJ then/ADV turn/VERB in/ADP place/NOUN in/ADP a/DET counter/ADJ counterclockwise/PROPN circle/NOUN#0.0#0.0
-robot is standing on his left hand start jumping and turned his back.#robot/PROPN is/AUX stand/VERB on/ADP his/DET left/ADJ hand/NOUN start/NOUN jump/VERB and/CCONJ turn/VERB his/DET back/NOUN#0.0#0.0
-the person is walking around.#the/DET person/NOUN is/AUX walk/VERB around/ADV#0.0#0.0

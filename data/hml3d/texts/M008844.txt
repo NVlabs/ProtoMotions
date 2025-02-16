@@ -1,3 +1,0 @@
-person quickly runs forward into their right.#person/NOUN quickly/ADV run/VERB forward/ADV into/ADP their/DET right/NOUN#0.0#0.0
-person was running to the right.#person/NOUN was/AUX run/VERB to/ADP the/DET right/NOUN#0.0#0.0
-a person runs forward then turn right as their running.#a/DET person/NOUN run/VERB forward/ADV then/ADV turn/VERB right/ADV as/SCONJ their/DET running/NOUN#0.0#0.0

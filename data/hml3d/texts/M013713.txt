@@ -1,3 +1,0 @@
-a person avoids something, dodging to their left.#a/DET person/NOUN avoid/VERB something/PRON dodge/VERB to/ADP their/DET left/NOUN#0.0#0.0
-the person was driving to the left.#the/DET person/NOUN was/AUX drive/VERB to/ADP the/DET left/NOUN#0.0#0.0
-a person leans over his body with both hands in the air.#a/DET person/NOUN lean/VERB over/ADP his/DET body/NOUN with/ADP both/DET hand/NOUN in/ADP the/DET air/NOUN#0.0#0.0

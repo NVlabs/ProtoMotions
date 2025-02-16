@@ -1,0 +1,28 @@
+# @package _global_
+
+agent:
+  config:
+    modules:
+      mlp_mimic_target_pose_model:
+        _target_: protomotions.agents.common.common.Flatten
+        num_in: ${eval:${env.config.mimic_target_pose.num_future_steps}*${env.config.mimic_target_pose.num_obs_per_target_pose}}
+        num_out: ${.num_in}
+        config:
+          obs_key: mimic_target_poses
+          normalize_obs: True
+          norm_clamp_value: 5
+
+    model:
+      config:
+        critic:
+          config:
+            input_models:
+              mimic_target_poses: ${agent.config.modules.mlp_mimic_target_pose_model}
+
+    extra_inputs:
+      mimic_target_poses: true
+
+env:
+  config:
+    mimic_target_pose:
+      enabled: true

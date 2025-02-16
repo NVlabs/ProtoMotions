@@ -1,3 +1,0 @@
-a person raises a foot, and then stomps it back down.#a/DET person/NOUN raise/VERB a/DET foot/NOUN and/CCONJ then/ADV stomp/VERB it/PRON back/ADV down/ADV#0.0#0.0
-a person rased the right leg#a/DET person/NOUN rase/VERB the/DET right/ADJ leg/NOUN#0.0#0.0
-this person lift his right leg quickly.#this/DET person/NOUN lift/VERB his/DET right/ADJ leg/NOUN quickly/ADV#0.0#0.0

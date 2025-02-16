@@ -1,3 +1,0 @@
-a person lifting up their left shoulder.#a/DET person/NOUN lift/VERB up/ADP their/DET left/ADJ shoulder/NOUN#0.0#0.0
-a person twists to the left#a/DET person/NOUN twist/VERB to/ADP the/DET left/NOUN#0.0#0.0
-person looks as if they hurt their leg on something#person/NOUN look/VERB as/SCONJ if/SCONJ they/PRON hurt/VERB their/DET leg/NOUN on/ADP something/PRON#0.0#0.0

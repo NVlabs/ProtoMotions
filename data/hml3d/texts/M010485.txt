@@ -1,3 +1,0 @@
-a person is dancing in a circle counterclockwise#a/DET person/NOUN is/AUX dance/VERB in/ADP a/DET circle/NOUN counterclockwise/NOUN#0.0#0.0
-a person dancing and walking in a circular motion.#a/DET person/NOUN dance/VERB and/CCONJ walk/VERB in/ADP a/DET circular/ADJ motion/NOUN#0.0#0.0
-a person dances in a circle to the left while waving their left arm.#a/DET person/NOUN dance/VERB in/ADP a/DET circle/NOUN to/ADP the/DET left/ADJ while/SCONJ wave/VERB their/DET left/ADJ arm/NOUN#0.0#0.0

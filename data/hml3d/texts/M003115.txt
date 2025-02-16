@@ -1,3 +1,0 @@
-a person swings their left arm around and round, more than once.#a/DET person/NOUN swing/VERB their/DET left/ADJ arm/NOUN around/ADV and/CCONJ round/VERB more/ADJ than/SCONJ once/ADV#0.0#2.0
-he pretends to dig directally#he/PRON pretend/VERB to/PART dig/VERB directally/ADV#0.0#0.0
-rotate left arm forward 3 times and then backwards 4 times.  next rotate right arm forward 3 times.#rotate/VERB left/ADJ arm/NOUN forward/ADV time/NOUN and/CCONJ then/ADV backwards/ADP time/NOUN next/ADJ rotate/NOUN right/ADJ arm/NOUN forward/ADV time/NOUN#0.0#0.0

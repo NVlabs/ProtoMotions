@@ -1,3 +1,0 @@
-person is looking around slowly.#person/NOUN is/AUX look/VERB around/ADV slowly/ADV#0.0#0.0
-a person leans on their right foot and rotates their left shoulder back, looking up and to the left.#a/DET person/NOUN lean/VERB on/ADP their/DET right/ADJ foot/NOUN and/CCONJ rotate/VERB their/DET left/ADJ shoulder/NOUN back/ADV look/VERB up/ADP and/CCONJ to/ADP the/DET left/NOUN#0.0#0.0
-a figure stands idle before slowly turning the upper body clockwise#a/DET figure/NOUN stand/VERB idle/ADJ before/ADP slowly/ADV turn/VERB the/DET upper/ADJ body/NOUN clockwise/NOUN#0.0#0.0

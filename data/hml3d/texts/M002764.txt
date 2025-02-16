@@ -1,3 +1,0 @@
-a person is walking in a counterclockwise circle.#a/DET person/NOUN is/AUX walk/VERB in/ADP a/DET counterclockwise/ADJ circle/NOUN#0.0#0.0
-person nearly walks in a full circle counterclockwise#person/NOUN nearly/ADV walk/VERB in/ADP a/DET full/ADJ circle/NOUN counterclockwise/NOUN#0.0#0.0
-a person in the process of walking in circle who stopped 3/4 way through it#a/DET person/NOUN in/ADP the/DET process/NOUN of/ADP walk/VERB in/ADP circle/NOUN who/PRON stop/VERB way/NOUN through/ADP it/PRON#0.0#0.0

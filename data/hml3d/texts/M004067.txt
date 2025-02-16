@@ -1,3 +1,0 @@
-a person reaches forward with the left hand and then lets their arm drop to their side.#a/DET person/NOUN reach/VERB forward/ADV with/ADP the/DET left/ADJ hand/NOUN and/CCONJ then/ADV let/VERB their/DET arm/NOUN drop/VERB to/ADP their/DET side/NOUN#0.0#2.0
-facing front, a person makes the throwing motion with their left arm.#face/VERB front/ADV a/DET person/NOUN make/VERB the/DET throwing/NOUN motion/NOUN with/ADP their/DET left/ADJ arm/NOUN#0.0#0.0
-he puts his hand forward#he/PRON put/VERB his/DET hand/NOUN forward/ADV#0.0#0.0

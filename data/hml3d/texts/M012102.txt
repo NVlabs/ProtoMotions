@@ -1,3 +1,0 @@
-person lifts left leg and left arm then brings right arm to face area#person/NOUN lift/VERB left/VERB leg/NOUN and/CCONJ left/ADJ arm/NOUN then/ADV bring/VERB right/ADJ arm/NOUN to/PART face/NOUN area/NOUN#0.0#0.0
-the person was using an upper left#the/DET person/NOUN was/AUX use/VERB an/DET upper/ADJ left/NOUN#0.0#0.0
-a person stands on his right foot and leans over as he makes a pushing motion with his arms,#a/DET person/NOUN stand/VERB on/ADP his/DET right/ADJ foot/NOUN and/CCONJ lean/VERB over/ADP as/SCONJ he/PRON make/VERB a/DET pushing/ADJ motion/NOUN with/ADP his/DET arm/NOUN#0.0#0.0

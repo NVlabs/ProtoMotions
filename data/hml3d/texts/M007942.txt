@@ -1,3 +1,0 @@
-person is walking in a half circle towards the left#person/NOUN is/AUX walk/VERB in/ADP a/DET half/ADJ circle/NOUN towards/ADP the/DET left/NOUN#0.0#0.0
-the person is walking in a curve to the left.#the/DET person/NOUN is/AUX walk/VERB in/ADP a/DET curve/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-a person walks slightly forward and towards the left.#a/DET person/NOUN walk/VERB slightly/ADV forward/ADV and/CCONJ towards/ADP the/DET left/NOUN#0.0#0.0

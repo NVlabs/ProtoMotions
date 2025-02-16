@@ -1,3 +1,0 @@
-a person begins walking with their right foot, takes a couple of steps, turns towards the right and takes a couple more steps and stands still.#a/DET person/NOUN begin/VERB walk/VERB with/ADP their/DET right/ADJ foot/NOUN take/VERB a/DET couple/NOUN of/ADP step/NOUN turn/VERB towards/ADP the/DET right/NOUN and/CCONJ take/VERB a/DET couple/NOUN more/ADJ step/NOUN and/CCONJ stand/VERB still/ADV#0.0#0.0
-a person walks towards the right side..#a/DET person/NOUN walk/VERB towards/ADP the/DET right/ADJ side/NOUN#0.0#0.0
-person walks forward and to the right#person/NOUN walk/VERB forward/ADV and/CCONJ to/ADP the/DET right/NOUN#0.0#0.0

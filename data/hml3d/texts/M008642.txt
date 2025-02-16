@@ -1,3 +1,0 @@
-person is doing kicking motions with right leg#person/NOUN is/AUX do/VERB kick/VERB motion/NOUN with/ADP right/ADJ leg/NOUN#0.0#0.0
-a person has their right hand on a railing and lifts, bend and stretches out their right leg.#a/DET person/NOUN has/AUX their/DET right/ADJ hand/NOUN on/ADP a/DET railing/NOUN and/CCONJ lift/NOUN bend/VERB and/CCONJ stretch/VERB out/ADP their/DET right/ADJ leg/NOUN#0.0#0.0
-a person kicks their right foot around while standing on their left leg.#a/DET person/NOUN kick/VERB their/DET right/ADJ foot/NOUN around/ADV while/SCONJ stand/VERB on/ADP their/DET left/ADJ leg/NOUN#0.0#0.0

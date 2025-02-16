@@ -1,3 +1,0 @@
-a person stepping from right to left#a/DET person/NOUN step/VERB from/ADP right/NOUN to/ADP left/ADV#0.0#0.0
-a man moves to the right and then to the left making a straight line.#a/DET man/NOUN move/VERB to/ADP the/DET right/NOUN and/CCONJ then/ADV to/ADP the/DET left/NOUN make/VERB a/DET straight/ADJ line/NOUN#0.0#0.0
-a person takes a half step forward, then starts walking sideways to the right, stops, then walks sideways to the left.#a/DET person/NOUN take/VERB a/DET half/ADJ step/NOUN forward/ADV then/ADV start/VERB walk/VERB sideways/ADV to/ADP the/DET right/NOUN stop/NOUN then/ADV walk/VERB sideways/ADV to/ADP the/DET left/NOUN#0.0#0.0

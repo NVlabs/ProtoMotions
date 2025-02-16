@@ -1,3 +1,0 @@
-a man walks around in a circle.#a/DET man/NOUN walk/VERB around/ADV in/ADP a/DET circle/NOUN#0.0#0.0
-the man walks in a counterclockwise circle to the left.#the/DET man/NOUN walk/VERB in/ADP a/DET counterclockwise/ADJ circle/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-a man walks in a counter counterclockwise complete racetrack shape#a/DET man/NOUN walk/VERB in/ADP a/DET counter/NOUN counterclockwise/NOUN complete/ADJ racetrack/NOUN shape/NOUN#0.0#0.0

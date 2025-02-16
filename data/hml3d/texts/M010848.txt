@@ -1,3 +1,0 @@
-a person walks in a large squiggly line to their right.#a/DET person/NOUN walk/VERB in/ADP a/DET large/ADJ squiggly/ADV line/NOUN to/ADP their/DET right/NOUN#0.0#0.0
-the person walks in a s-shape and stop.#the/DET person/NOUN walk/VERB in/ADP a/DET sshape/NOUN and/CCONJ stop/VERB#0.0#0.0
-this person slowly walks from left to right then turns to go back.#this/DET person/NOUN slowly/ADV walk/VERB from/ADP left/VERB to/ADP right/NOUN then/ADV turn/VERB to/PART go/VERB back/ADV#0.0#0.0

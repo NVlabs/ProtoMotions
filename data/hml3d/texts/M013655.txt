@@ -1,3 +1,0 @@
-a person throwing punches with both arms.#a/DET person/NOUN throw/VERB punch/NOUN with/ADP both/DET arm/NOUN#0.0#0.0
-a person slowly punches with their right hand and then slowly punches with their left hand#a/DET person/NOUN slowly/ADV punch/VERB with/ADP their/DET right/ADJ hand/NOUN and/CCONJ then/ADV slowly/ADV punch/VERB with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a figure calmly boxes right to left.#a/DET figure/NOUN calmly/ADV box/VERB right/ADJ to/ADP left/NOUN#0.0#0.0

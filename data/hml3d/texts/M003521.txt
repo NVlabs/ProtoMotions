@@ -1,3 +1,0 @@
-a person walks and sits down.#a/DET person/NOUN walk/VERB and/CCONJ sit/VERB down/ADP#0.0#0.0
-a person walks to the left on a diagonal path and then sits down.#a/DET person/NOUN walk/VERB to/ADP the/DET left/NOUN on/ADP a/DET diagonal/ADJ path/NOUN and/CCONJ then/ADV sit/VERB down/ADP#0.0#0.0
-a person walks forward and to the left then sits down on something.#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ to/ADP the/DET left/NOUN then/ADV sit/VERB down/ADP on/ADP something/PRON#0.0#0.0

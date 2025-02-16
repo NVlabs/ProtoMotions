@@ -1,3 +1,0 @@
-a person walks slowly in diagonal#a/DET person/NOUN walk/VERB slowly/ADV in/ADP diagonal/ADJ#0.0#0.0
-robot walking forward from left and ended up at right.#robot/PROPN walk/VERB forward/ADV from/ADP left/ADJ and/CCONJ end/VERB up/ADP at/ADP right/ADV#0.0#0.0
-stiffly walks down stairs with no emotion or additional movements.#stiffly/PROPN walk/VERB down/ADP stair/NOUN with/ADP no/DET emotion/NOUN or/CCONJ additional/ADJ movement/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-person slides to the right in a smooth motion#person/NOUN slide/VERB to/ADP the/DET right/NOUN in/ADP a/DET smooth/ADJ motion/NOUN#0.0#0.0
-a person who is standing with is arms by his sides takes a long step to his right, leading with his right leg.#a/DET person/NOUN who/PRON is/AUX stand/VERB with/ADP is/AUX arm/NOUN by/ADP his/DET side/NOUN take/VERB a/DET long/ADJ step/NOUN to/ADP his/DET right/NOUN lead/VERB with/ADP his/DET right/ADJ leg/NOUN#0.0#0.0
-a figure sidesteps to the right#a/DET figure/NOUN sidestep/VERB to/ADP the/DET right/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-the sim appears to be to be "pump faking" a baseball, before throwing it.#the/DET sim/PROPN appear/VERB to/PART be/AUX to/PART be/AUX pump/VERB fake/VERB a/DET baseball/NOUN before/ADP throw/VERB it/PRON#0.0#9.0
-the person moves their left hand back and forth several times before throwing an object.#the/DET person/NOUN move/VERB their/DET left/ADJ hand/NOUN back/ADV and/CCONJ forth/ADV several/ADJ time/NOUN before/ADP throw/VERB an/DET object/NOUN#0.0#0.0
-the person was getting ready to do an upper left.#the/DET person/NOUN was/AUX get/VERB ready/ADJ to/PART do/AUX an/DET upper/ADJ left/NOUN#0.0#0.0

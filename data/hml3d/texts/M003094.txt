@@ -1,3 +1,0 @@
-the person is holding his hand in front of his face.#the/DET person/NOUN is/AUX hold/VERB his/DET hand/NOUN in/ADP front/NOUN of/ADP his/DET face/NOUN#0.0#0.0
-a person lifts left hand to face.#a/DET person/NOUN lift/VERB left/VERB hand/NOUN to/ADP face/NOUN#0.0#0.0
-a person holds a mirror up to his face with his left hand.#a/DET person/NOUN hold/VERB a/DET mirror/NOUN up/ADP to/ADP his/DET face/NOUN with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0

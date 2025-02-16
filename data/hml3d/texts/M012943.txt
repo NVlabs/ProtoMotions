@@ -1,3 +1,0 @@
-right arm flexed from up and down by waist and then right arm raised over head.#right/ADJ arm/NOUN flex/VERB from/ADP up/ADP and/CCONJ down/ADV by/ADP waist/NOUN and/CCONJ then/ADV right/ADJ arm/NOUN raise/VERB over/ADP head/NOUN#0.0#0.0
-this person appears to be lifting something with his right hand.#this/DET person/NOUN appear/VERB to/PART be/AUX lift/VERB something/PRON with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0
-a person is lifting weights with their right hand.#a/DET person/NOUN is/AUX lift/VERB weight/NOUN with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0

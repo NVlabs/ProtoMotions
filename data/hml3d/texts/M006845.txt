@@ -1,3 +1,0 @@
-a figure moves a glass left to right across a table.#a/DET figure/NOUN move/VERB a/DET glass/NOUN left/VERB to/ADP right/ADV across/ADP a/DET table/NOUN#0.0#0.0
-a person who wiped something from left to right#a/DET person/NOUN who/PRON wipe/VERB something/PRON from/ADP left/ADJ to/ADP right/ADJ#0.0#0.0
-a figure steps forward then moves an item from the right of a surface to the left with their right hand#a/DET figure/NOUN step/VERB forward/ADV then/ADV move/VERB an/DET item/NOUN from/ADP the/DET right/NOUN of/ADP a/DET surface/NOUN to/ADP the/DET left/NOUN with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-the person moves slowly, leaning their upper body toward the right side, moves his left hand as if brushing something of his leg and kicks the left leg out slightly.#the/DET person/NOUN move/VERB slowly/ADV lean/VERB their/DET upper/ADJ body/NOUN toward/ADP the/DET right/ADJ side/NOUN move/VERB his/DET left/ADJ hand/NOUN as/SCONJ if/SCONJ brush/VERB something/PRON of/ADP his/DET leg/NOUN and/CCONJ kick/VERB the/DET left/ADJ leg/NOUN out/ADP slightly/ADV#0.0#0.0
-person is sitting down and looking around#person/NOUN is/AUX sit/VERB down/ADP and/CCONJ look/VERB around/ADV#0.0#0.0
-a man is sitting and has the reflexes checked in his left knee.#a/DET man/NOUN is/AUX sit/VERB and/CCONJ has/AUX the/DET reflex/NOUN check/VERB in/ADP his/DET left/ADJ knee/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-person stands still and moves hips in a counterclockwise position#person/NOUN stand/VERB still/ADV and/CCONJ move/VERB hip/NOUN in/ADP a/DET counterclockwise/ADJ position/NOUN#0.0#0.0
-a man swings his chest around counterclockwise, and then swings his hips around counterclockwise.#a/DET man/NOUN swing/VERB his/DET chest/NOUN around/ADP counterclockwise/NOUN and/CCONJ then/ADV swing/VERB his/DET hip/NOUN around/ADP counterclockwise/NOUN#0.0#0.0
-the person is doing a hip exercise.#the/DET person/NOUN is/AUX do/VERB a/DET hip/NOUN exercise/NOUN#0.0#0.0

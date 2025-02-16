@@ -1,3 +1,0 @@
-hi cindy drinking a bottle with his right hand.#hi/INTJ cindy/PROPN drink/VERB a/DET bottle/NOUN with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0
-a person raises something to their face with their right hand.#a/DET person/NOUN raise/VERB something/PRON to/ADP their/DET face/NOUN with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0
-a person drinks a beverage using his right hand#a/DET person/NOUN drink/VERB a/DET beverage/NOUN use/VERB his/DET right/ADJ hand/NOUN#0.0#0.0

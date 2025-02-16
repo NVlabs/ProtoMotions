@@ -1,3 +1,0 @@
-a figure stretches its arms and then its legs#a/DET figure/NOUN stretch/VERB its/DET arm/NOUN and/CCONJ then/ADV its/DET leg/NOUN#0.0#0.0
-a person stretches their arms out to the side.#a/DET person/NOUN stretch/VERB their/DET arm/NOUN out/SCONJ to/ADP the/DET side/NOUN#0.0#0.0
-a man stretches out his arms and then stretches his left leg.#a/DET man/NOUN stretch/VERB out/ADP his/DET arm/NOUN and/CCONJ then/ADV stretch/VERB his/DET left/ADJ leg/NOUN#0.0#0.0

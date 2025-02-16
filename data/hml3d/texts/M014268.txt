@@ -1,3 +1,0 @@
-a person waves with their left hand#a/DET person/NOUN wave/VERB with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-stickman's left hand waving five times with full motion from elbow to hand extensions.#stickman/PROPN left/ADJ hand/NOUN wave/VERB five/NUM time/NOUN with/ADP full/ADJ motion/NOUN from/ADP elbow/NOUN to/ADP hand/NOUN extension/NOUN#0.0#8.0
-a person who is standing with his arms by his sides raises his left arm and waves five times before returning his arm to his side.#a/DET person/NOUN who/PRON is/AUX stand/VERB with/ADP his/DET arm/NOUN by/ADP his/DET side/NOUN raise/VERB his/DET left/ADJ arm/NOUN and/CCONJ wave/NOUN five/NUM time/NOUN before/ADP return/VERB his/DET arm/NOUN to/ADP his/DET side/NOUN#0.0#0.0

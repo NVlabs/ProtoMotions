@@ -1,3 +1,0 @@
-a person is using his right arm to repeatedly lift a dumbbell, bending his arm at the elbow.#a/DET person/NOUN is/AUX use/VERB his/DET right/ADJ arm/NOUN to/PART repeatedly/ADV lift/VERB a/DET dumbbell/NOUN bend/VERB his/DET arm/NOUN at/ADP the/DET elbow/NOUN#0.0#0.0
-a person rapidly lifts their right forearm multiple times.#a/DET person/NOUN rapidly/ADV lift/VERB their/DET right/ADJ forearm/NOUN multiple/ADJ time/NOUN#0.0#0.0
-the man is waving with his right hand.#the/DET man/NOUN is/AUX wave/VERB with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0

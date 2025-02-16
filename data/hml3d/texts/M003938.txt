@@ -1,3 +1,0 @@
-a person walks forward the the left then shift right before turning around.#a/DET person/NOUN walk/VERB forward/ADV the/DET the/DET left/NOUN then/ADV shift/VERB right/ADV before/ADP turn/VERB around/ADV#0.0#0.0
-person takes two steps towards right, pivots left, takes three more steps, pauses and turns left, then takes a step.#person/NOUN take/VERB two/NUM step/NOUN towards/ADP right/ADJ pivot/NOUN left/VERB take/VERB three/NUM more/ADJ step/NOUN pause/VERB and/CCONJ turn/VERB left/VERB then/ADV take/VERB a/DET step/NOUN#0.0#0.0
-a person walks diagonally to the left, and then the right- in a zig zag motion#a/DET person/NOUN walk/VERB diagonally/ADV to/ADP the/DET left/NOUN and/CCONJ then/ADV the/DET right/NOUN in/ADP a/DET zig/X zag/X motion/NOUN#0.0#0.0

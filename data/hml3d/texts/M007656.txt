@@ -1,3 +1,0 @@
-a person sits down legs crossed#a/DET person/NOUN sit/VERB down/ADP leg/NOUN cross/VERB#0.0#0.0
-the man takes a cross-legged seat on the floor then stands back up#the/DET man/NOUN take/VERB a/DET crosslegged/ADJ seat/NOUN on/ADP the/DET floor/NOUN then/ADV stand/VERB back/ADV up/ADV#0.0#0.0
-person goes to sit down with right leg crossed over the left, then proceeds to stand up.#person/NOUN go/VERB to/PART sit/VERB down/ADP with/ADP right/ADJ leg/NOUN cross/VERB over/ADP the/DET left/NOUN then/ADV proceed/VERB to/PART stand/VERB up/ADP#0.0#0.0

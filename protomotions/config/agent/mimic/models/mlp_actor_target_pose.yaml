@@ -1,0 +1,31 @@
+# @package _global_
+
+agent:
+  config:
+    modules:
+      mlp_mimic_target_pose_model:
+        _target_: protomotions.agents.common.common.Flatten
+        _recursive_: False
+        num_in: ${eval:${env.config.mimic_target_pose.num_future_steps}*${env.config.mimic_target_pose.num_obs_per_target_pose}}
+        num_out: ${.num_in}
+        config:
+          normalize_obs: True
+          norm_clamp_value: 5
+          obs_key: mimic_target_poses
+
+    model:
+      config:
+        actor:
+          config:
+            mu_model:
+              config:
+                input_models:
+                  mimic_target_poses: ${agent.config.modules.mlp_mimic_target_pose_model}
+
+    extra_inputs:
+      mimic_target_poses: true  # we create as a dict to ensure hydra combines with other extra_inputs
+
+env:
+  config:
+    mimic_target_pose:
+      enabled: True

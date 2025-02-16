@@ -1,3 +1,0 @@
-the person is sat down and their arms are shaking#the/DET person/NOUN is/AUX sit/VERB down/ADP and/CCONJ their/DET arm/NOUN are/AUX shake/VERB#0.0#0.0
-a person appears to be driving something.#a/DET person/NOUN appear/VERB to/PART be/AUX drive/VERB something/PRON#0.0#0.0
-a person is squatting and starts to move their arms up and down, alternating between right and left#a/DET person/NOUN is/AUX squat/VERB and/CCONJ start/VERB to/PART move/VERB their/DET arm/NOUN up/ADV and/CCONJ down/ADV alternate/VERB between/ADP right/NOUN and/CCONJ left/VERB#0.0#0.0

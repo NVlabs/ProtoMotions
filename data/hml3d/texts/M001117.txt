@@ -1,3 +1,0 @@
-a person is sitting with his right hand in the air.#a/DET person/NOUN is/AUX sit/VERB with/ADP his/DET right/ADJ hand/NOUN in/ADP the/DET air/NOUN#0.0#0.0
-a person sitting raises their right hand slightly to their face#a/DET person/NOUN sit/VERB raise/VERB their/DET right/ADJ hand/NOUN slightly/ADV to/ADP their/DET face/NOUN#0.0#0.0
-a man sits and waves his right hand around in the air close to his face.#a/DET man/NOUN sit/VERB and/CCONJ wave/VERB his/DET right/ADJ hand/NOUN around/ADV in/ADP the/DET air/NOUN close/ADJ to/ADP his/DET face/NOUN#0.0#0.0

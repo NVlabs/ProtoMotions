@@ -1,3 +1,0 @@
-a person paces side to side#a/DET person/NOUN pace/VERB side/NOUN to/PART side/VERB#0.0#0.0
-a figure paces confidently back and forth#a/DET figure/NOUN pace/VERB confidently/ADV back/ADV and/CCONJ forth/ADV#0.0#0.0
-he wandered right and left about the same place.#he/PRON wander/VERB right/ADV and/CCONJ left/VERB about/ADP the/DET same/ADJ place/NOUN#0.0#0.0

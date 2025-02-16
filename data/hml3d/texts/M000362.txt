@@ -1,3 +1,0 @@
-a person leans and then makes a side stomping motion.#a/DET person/NOUN lean/VERB and/CCONJ then/ADV make/VERB a/DET side/NOUN stomping/NOUN motion/NOUN#0.0#0.0
-a person stomps with their left foot.#a/DET person/NOUN stomp/VERB with/ADP their/DET left/ADJ foot/NOUN#0.0#0.0
-a person standing in place picks up left foot and stomps it down.#a/DET person/NOUN stand/VERB in/ADP place/NOUN pick/NOUN up/ADP left/ADJ foot/NOUN and/CCONJ stomp/VERB it/PRON down/ADP#0.0#0.0

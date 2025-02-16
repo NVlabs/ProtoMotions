@@ -1,3 +1,0 @@
-person walk diagnally while holding on to something with both hands.#person/NOUN walk/VERB diagnally/ADV while/SCONJ hold/VERB on/ADP to/ADP something/PRON with/ADP both/DET hand/NOUN#0.0#0.0
-a person slowly walked forward in left direction while grabbing something#a/DET person/NOUN slowly/ADV walk/VERB forward/ADV in/ADP left/ADJ direction/NOUN while/SCONJ grab/VERB something/PRON#0.0#0.0
-a man walks slowly with both hands on railing.#a/DET man/NOUN walk/VERB slowly/ADV with/ADP both/DET hand/NOUN on/ADP rail/VERB#0.0#0.0

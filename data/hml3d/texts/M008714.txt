@@ -1,3 +1,0 @@
-a person walks forward making a gradual 90° turn towards the left.#a/DET person/NOUN walk/VERB forward/ADV make/VERB a/DET gradual/ADJ turn/VERB towards/ADP the/DET left/NOUN#0.0#0.0
-the body walks in a slight bend from right to left.#the/DET body/NOUN walk/VERB in/ADP a/DET slight/ADJ bend/NOUN from/ADP right/NOUN to/ADP left/NOUN#0.0#0.0
-a person walks to his left.#a/DET person/NOUN walk/VERB to/ADP his/DET left/NOUN#0.0#0.0

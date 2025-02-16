@@ -1,3 +1,0 @@
-walks in a wide counterclockwise circle.#walk/VERB in/ADP a/DET wide/ADJ counterclockwise/NOUN circle/NOUN#0.0#0.0
-a person walks slowly counterclockwise, in the pattern of a semi-circle.#a/DET person/NOUN walk/VERB slowly/ADV counterclockwise/ADJ in/ADP the/DET pattern/NOUN of/ADP a/DET semicircle/NOUN#0.0#0.0
-figure walks with relaxed swinging arms forward in a large leftward arc for about a half circle, then checks, turns slightly left and walks straight forward.#figure/NOUN walk/VERB with/ADP relaxed/ADJ swinge/VERB arm/NOUN forward/ADV in/ADP a/DET large/ADJ leftward/NOUN arc/NOUN for/ADP about/ADV a/DET half/ADJ circle/NOUN then/ADV check/NOUN turn/VERB slightly/ADV left/VERB and/CCONJ walk/VERB straight/ADV forward/ADV#0.0#0.0

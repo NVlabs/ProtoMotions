@@ -1,3 +1,0 @@
-a person is pushed to the left then walks back right.#a/DET person/NOUN is/AUX push/VERB to/ADP the/DET left/NOUN then/ADV walk/VERB back/ADV right/ADV#0.0#0.0
-the person steps back 2 steps and comes forward 2 steps.#the/DET person/NOUN step/VERB back/ADV step/NOUN and/CCONJ come/VERB forward/ADV step/NOUN#0.0#0.0
-a person shuffels to the right, right foot behind left then back to center.#a/DET person/NOUN shuffel/VERB to/ADP the/DET right/ADJ right/ADJ foot/NOUN behind/ADP left/VERB then/ADV back/ADV to/ADP center/NOUN#0.0#0.0

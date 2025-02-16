@@ -1,3 +1,0 @@
-this person steps forward and grabs an item then moves his left arm up and down.#this/DET person/NOUN step/VERB forward/ADV and/CCONJ grab/VERB an/DET item/NOUN then/ADV move/VERB his/DET left/ADJ arm/NOUN up/ADV and/CCONJ down/ADV#0.0#0.0
-a person walks forward and then with left hand looks to be nailing something with a hammer#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ then/ADV with/ADP left/ADJ hand/NOUN look/NOUN to/PART be/AUX nail/VERB something/PRON with/ADP a/DET hammer/NOUN#0.0#0.0
-a person stepped forward and start to scratch something with left hand#a/DET person/NOUN step/VERB forward/ADV and/CCONJ start/VERB to/PART scratch/VERB something/PRON with/ADP left/ADJ hand/NOUN#0.0#0.0

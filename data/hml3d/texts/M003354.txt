@@ -1,3 +1,0 @@
-the person is standing in place.#the/DET person/NOUN is/AUX stand/VERB in/ADP place/NOUN#0.0#0.0
-a person gracefully performs a contemporary dance.#a/DET person/NOUN gracefully/ADV perform/VERB a/DET contemporary/ADJ dance/NOUN#0.0#0.0
-a person with their right leg behind their left leg lifts their left hand then brings it down.#a/DET person/NOUN with/ADP their/DET right/ADJ leg/NOUN behind/ADP their/DET left/ADJ leg/NOUN lift/VERB their/DET left/ADJ hand/NOUN then/ADV bring/VERB it/PRON down/ADP#0.0#3.0

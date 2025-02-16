@@ -1,3 +1,0 @@
-a man mimes boxing punches.#a/DET man/NOUN mime/VERB box/VERB punch/NOUN#0.0#0.0
-person using right hsnd to mouth then raises  left hand above there head side on#person/NOUN use/VERB right/ADV hsnd/PROPN to/ADP mouth/PROPN then/ADV raise/VERB left/ADJ hand/NOUN above/ADP there/PRON head/VERB side/NOUN on/ADP#0.0#0.0
-a person slowly hooks their left arm in a punch motion#a/DET person/NOUN slowly/ADV hook/VERB their/DET left/ADJ arm/NOUN in/ADP a/DET punch/NOUN motion/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-the person was pushed from the left side.#the/DET person/NOUN was/AUX push/VERB from/ADP the/DET left/ADJ side/NOUN#0.0#0.0
-the sim is standing still then pushes towards their right side leading with their left foot.#the/DET sim/PROPN is/AUX stand/VERB still/ADV then/ADV push/VERB towards/ADP their/DET right/ADJ side/NOUN lead/VERB with/ADP their/DET left/ADJ foot/NOUN#0.0#9.0
-a figure takes one short step to the right.#a/DET figure/NOUN take/VERB one/NUM short/ADJ step/NOUN to/ADP the/DET right/NOUN#0.0#10.0

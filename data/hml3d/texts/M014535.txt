@@ -1,3 +1,0 @@
-a person appears to have severe arm pain holding and slouching their left shoulder.#a/DET person/NOUN appear/VERB to/PART have/AUX severe/ADJ arm/NOUN pain/NOUN holding/NOUN and/CCONJ slouch/VERB their/DET left/ADJ shoulder/NOUN#0.0#0.0
-person holding their left bicep with their right hand swaying and stumbling from side to side.#person/NOUN hold/VERB their/DET left/ADJ bicep/NOUN with/ADP their/DET right/ADJ hand/NOUN swaying/NOUN and/CCONJ stumble/VERB from/ADP side/NOUN to/ADP side/NOUN#0.0#10.0
-a person has injured their arm#a/DET person/NOUN has/AUX injure/VERB their/DET arm/NOUN#0.0#0.0

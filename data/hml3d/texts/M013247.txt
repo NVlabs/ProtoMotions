@@ -1,3 +1,0 @@
-a person uses both hands to lift an object at waist height, moves it to the left, then puts it down.#a/DET person/NOUN use/VERB both/DET hand/NOUN to/PART lift/VERB an/DET object/NOUN at/ADP waist/NOUN height/NOUN move/VERB it/PRON to/ADP the/DET left/NOUN then/ADV put/VERB it/PRON down/ADP#0.0#0.0
-someone picks up an object and moves it from right to left.#someone/PRON pick/VERB up/ADP an/DET object/NOUN and/CCONJ move/VERB it/PRON from/ADP right/NOUN to/ADP left/NOUN#0.0#0.0
-a person moving something from the right side to the left side#a/DET person/NOUN move/VERB something/PRON from/ADP the/DET right/ADJ side/NOUN to/ADP the/DET left/ADJ side/NOUN#0.0#0.0

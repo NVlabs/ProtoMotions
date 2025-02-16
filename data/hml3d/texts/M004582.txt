@@ -1,3 +1,0 @@
-a person takes two steps forward then turns to the right and takes two more steps.#a/DET person/NOUN take/VERB two/NUM step/NOUN forward/ADV then/ADV turn/VERB to/ADP the/DET right/NOUN and/CCONJ take/VERB two/NUM more/ADJ step/NOUN#0.0#0.0
-a person walks forward then turns to their left, continuing to walk.#a/DET person/NOUN walk/VERB forward/ADV then/ADV turn/VERB to/ADP their/DET left/NOUN continue/VERB to/PART walk/VERB#0.0#0.0
-a man walks forwards while taking a gradual left turn.#a/DET man/NOUN walk/VERB forwards/ADV while/SCONJ take/VERB a/DET gradual/ADJ left/ADJ turn/NOUN#0.0#0.0

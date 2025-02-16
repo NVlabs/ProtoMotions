@@ -1,3 +1,0 @@
-a persons walks to the left#a/DET person/NOUN walk/VERB to/ADP the/DET left/NOUN#0.0#0.0
-a person walks slowly to the left.#a/DET person/NOUN walk/VERB slowly/ADV to/ADP the/DET left/NOUN#0.0#0.0
-the person walks by turning to the left#the/DET person/NOUN walk/VERB by/ADP turn/VERB to/ADP the/DET left/NOUN#0.0#0.0

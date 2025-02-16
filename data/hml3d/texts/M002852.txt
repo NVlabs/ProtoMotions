@@ -1,3 +1,0 @@
-a slow gallop in a counterclockwise circle then sits down on the ground.#a/DET slow/ADJ gallop/NOUN in/ADP a/DET counterclockwise/PROPN circle/NOUN then/ADV sit/VERB down/ADP on/ADP the/DET ground/NOUN#0.0#0.0
-a man moves counterclockwise while jumping side to side then sits down.#a/DET man/NOUN move/VERB counterclockwise/NOUN while/SCONJ jump/VERB side/NOUN to/PART side/VERB then/ADV sit/VERB down/ADP#0.0#0.0
-someone skips in a circle to their right before falling backwards.#someone/PRON skip/VERB in/ADP a/DET circle/NOUN to/ADP their/DET right/NOUN before/ADP fall/VERB backwards/ADV#0.0#0.0

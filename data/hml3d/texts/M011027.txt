@@ -1,3 +1,0 @@
-a person appears to be dancing#a/DET person/NOUN appear/VERB to/PART be/AUX dance/VERB#0.0#0.0
-person jigs right to left in a happy motion swaying arms right to left and bending legs up and down#person/NOUN jigs/PROPN right/ADV to/ADP left/VERB in/ADP a/DET happy/ADJ motion/NOUN sway/VERB arm/NOUN right/ADJ to/ADP left/VERB and/CCONJ bend/VERB leg/NOUN up/ADV and/CCONJ down/ADP#0.0#0.0
-a person side steps to the right and left while dancing.#a/DET person/NOUN side/NOUN step/NOUN to/ADP the/DET right/NOUN and/CCONJ left/VERB while/SCONJ dance/VERB#0.0#0.0

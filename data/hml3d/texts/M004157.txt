@@ -1,3 +1,0 @@
-a man kicks with his left leg and then kicks with his right leg.#a/DET man/NOUN kick/VERB with/ADP his/DET left/ADJ leg/NOUN and/CCONJ then/ADV kick/VERB with/ADP his/DET right/ADJ leg/NOUN#0.0#0.0
-a person stands from the ground, takes right foot up, sets back down, does the same on the left side.#a/DET person/NOUN stand/VERB from/ADP the/DET ground/NOUN take/VERB right/ADJ foot/NOUN up/ADV set/VERB back/ADV down/ADV does/AUX the/DET same/ADJ on/ADP the/DET left/ADJ side/NOUN#0.0#3.0
-kicking back with left foot then the right foot, one at the time#kick/VERB back/ADV with/ADP left/ADJ foot/NOUN then/ADV the/DET right/ADJ foot/NOUN one/NUM at/ADP the/DET time/NOUN#0.0#0.0

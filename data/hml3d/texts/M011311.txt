@@ -1,3 +1,0 @@
-a person is walking and then falls to the left but recovers#a/DET person/NOUN is/AUX walk/VERB and/CCONJ then/ADV fall/VERB to/ADP the/DET left/NOUN but/CCONJ recover/NOUN#0.0#0.0
-a person who seems to be pushed to the left#a/DET person/NOUN who/PRON seem/VERB to/PART be/AUX push/VERB to/ADP the/DET left/NOUN#0.0#0.0
-a person slowly walked forward in left direction and after in right direction#a/DET person/NOUN slowly/ADV walk/VERB forward/ADV in/ADP left/ADJ direction/NOUN and/CCONJ after/ADP in/ADP right/ADJ direction/NOUN#0.0#0.0

@@ -1,2 +1,0 @@
-a person walks to their right for 10 steps and then turns around.#a/DET person/NOUN walk/VERB to/ADP their/DET right/NOUN for/ADP step/NOUN and/CCONJ then/ADV turn/VERB around/ADV#0.0#0.0
-this person walks right then turns to walk back to the left.#this/DET person/NOUN walk/VERB right/ADV then/ADV turn/VERB to/PART walk/VERB back/ADV to/ADP the/DET left/NOUN#0.0#0.0

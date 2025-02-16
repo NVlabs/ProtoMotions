@@ -1,3 +1,0 @@
-a person kicks with his left leg.#a/DET person/NOUN kick/VERB with/ADP his/DET left/ADJ leg/NOUN#0.0#0.0
-a person kicks with their left leg.#a/DET person/NOUN kick/VERB with/ADP their/DET left/ADJ leg/NOUN#0.0#0.0
-the person was standing up doing a back kick#the/DET person/NOUN was/AUX stand/VERB up/ADP do/VERB a/DET back/ADJ kick/NOUN#0.0#0.0

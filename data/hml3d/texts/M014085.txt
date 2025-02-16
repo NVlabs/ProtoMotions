@@ -1,3 +1,0 @@
-a man turns and kicks at something low on the ground with his right leg#a/DET man/NOUN turn/VERB and/CCONJ kick/VERB at/ADP something/PRON low/ADJ on/ADP the/DET ground/NOUN with/ADP his/DET right/ADJ leg/NOUN#0.0#0.0
-a person turns to the right and makes a low kick with their left leg.#a/DET person/NOUN turn/VERB to/ADP the/DET right/NOUN and/CCONJ make/VERB a/DET low/ADJ kick/NOUN with/ADP their/DET left/ADJ leg/NOUN#0.0#0.0
-a person kicks with their left foot#a/DET person/NOUN kick/VERB with/ADP their/DET left/ADJ foot/NOUN#0.0#0.0

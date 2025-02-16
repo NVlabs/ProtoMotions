@@ -1,3 +1,0 @@
-a person makes a digging motion and throwing debris over left shoulder.#a/DET person/NOUN make/VERB a/DET dig/VERB motion/NOUN and/CCONJ throw/VERB debris/NOUN over/ADP left/ADJ shoulder/NOUN#0.0#0.0
-a figure digs with a shovel#a/DET figure/NOUN dig/VERB with/ADP a/DET shovel/NOUN#0.0#0.0
-shoveling something while standing still.#shovel/VERB something/PRON while/SCONJ stand/VERB still/ADV#0.0#0.0

@@ -1,3 +1,0 @@
-walking forward then slightly bending down at waist and touching a surface from left to right#walk/VERB forward/ADV then/ADV slightly/ADV bend/VERB down/ADP at/ADP waist/NOUN and/CCONJ touch/VERB a/DET surface/NOUN from/ADP left/VERB to/ADP right/ADJ#0.0#0.0
-a person walks forward and picks something up#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ pick/VERB something/PRON up/ADP#0.0#0.0
-the person is wiping something with a sponge.#the/DET person/NOUN is/AUX wipe/VERB something/PRON with/ADP a/DET sponge/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person rotates trunk to right  twice then one time to his left#a/DET person/NOUN rotate/VERB trunk/NOUN to/PART right/ADJ twice/ADV then/ADV one/NUM time/NOUN to/ADP his/DET left/NOUN#0.0#0.0
-a man looks around while standing still.#a/DET man/NOUN look/VERB around/ADP while/SCONJ stand/VERB still/ADV#0.0#0.0
-a person drops their arms in a defeated way, and then looks over their right shoulder twice before looking over their left shoulder.#a/DET person/NOUN drop/VERB their/DET arm/NOUN in/ADP a/DET defeat/VERB way/NOUN and/CCONJ then/ADV look/VERB over/ADP their/DET right/ADJ shoulder/NOUN twice/ADV before/ADP look/VERB over/ADP their/DET left/ADJ shoulder/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person walks at a moderate pace forward and to the left.#a/DET person/NOUN walk/VERB at/ADP a/DET moderate/ADJ pace/NOUN forward/ADV and/CCONJ to/ADP the/DET left/NOUN#0.0#0.0
-person person is walking towards the left.#person/NOUN person/NOUN is/AUX walk/VERB towards/ADP the/DET left/NOUN#0.0#0.0
-a person who is standing with his hands by his sides takes one step forward, turns toward his left and takes another two steps and stops.#a/DET person/NOUN who/PRON is/AUX stand/VERB with/ADP his/DET hand/NOUN by/ADP his/DET side/NOUN take/VERB one/NUM step/NOUN forward/ADV turn/VERB toward/ADP his/DET left/NOUN and/CCONJ take/VERB another/DET two/NUM step/NOUN and/CCONJ stop/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person takes a couple steps forward and then staggers to their left, recovering then walking to there front right.#a/DET person/NOUN take/VERB a/DET couple/NOUN step/NOUN forward/ADV and/CCONJ then/ADV stagger/VERB to/ADP their/DET left/NOUN recover/VERB then/ADV walk/VERB to/ADP there/ADV front/VERB right/ADV#0.0#0.0
-the person was pushed from the right but did not fall.#the/DET person/NOUN was/AUX push/VERB from/ADP the/DET right/NOUN but/CCONJ did/AUX not/PART fall/VERB#0.0#0.0
-walking in a random pattern.#walk/VERB in/ADP a/DET random/ADJ pattern/NOUN#0.0#0.0

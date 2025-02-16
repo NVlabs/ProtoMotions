@@ -1,3 +1,0 @@
-a person standing and raising the left arms and making gestures.#a/DET person/NOUN stand/VERB and/CCONJ raise/VERB the/DET left/ADJ arm/NOUN and/CCONJ make/VERB gesture/NOUN#0.0#0.0
-the person gestures with their left hand.#the/DET person/NOUN gesture/VERB with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a person is gesturing with their left hand#a/DET person/NOUN is/AUX gesture/VERB with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0

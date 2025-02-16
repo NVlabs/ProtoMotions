@@ -1,3 +1,0 @@
-a person takes a step forward with their right foot#a/DET person/NOUN take/VERB a/DET step/NOUN forward/ADV with/ADP their/DET right/ADJ foot/NOUN#1.0#4.0
-walking diagonally then stopping.#walk/VERB diagonally/ADV then/ADV stop/VERB#0.0#0.0
-a person taking a huge step with their right leg#a/DET person/NOUN take/VERB a/DET huge/ADJ step/NOUN with/ADP their/DET right/ADJ leg/NOUN#0.0#0.0

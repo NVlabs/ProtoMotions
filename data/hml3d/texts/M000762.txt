@@ -1,3 +1,0 @@
-a person picks something up to the right at table height and moves it to table height on their left.#a/DET person/NOUN pick/VERB something/PRON up/ADP to/ADP the/DET right/NOUN at/ADP table/NOUN height/NOUN and/CCONJ move/VERB it/PRON to/PART table/VERB height/NOUN on/ADP their/DET left/NOUN#0.0#4.0
-a man reaches to pick something up on his right, moves it to his left, and sets it down.#a/DET man/NOUN reach/VERB to/PART pick/VERB something/PRON up/ADP on/ADP his/DET right/NOUN move/VERB it/PRON to/ADP his/DET left/NOUN and/CCONJ set/VERB it/PRON down/ADP#0.0#0.0
-a man picks something up from the right and places it on the left.#a/DET man/NOUN pick/VERB something/PRON up/ADP from/ADP the/DET right/NOUN and/CCONJ place/VERB it/PRON on/ADP the/DET left/NOUN#0.0#0.0

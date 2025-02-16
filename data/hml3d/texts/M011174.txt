@@ -1,3 +1,0 @@
-a person moves right shoulder backwards, then left shoulder backwards. person then takes a step backwards with left foot, then right foot, and finally left foot.#a/DET person/NOUN move/VERB right/ADJ shoulder/NOUN backwards/ADV then/ADV left/VERB shoulder/NOUN backwards/ADV person/NOUN then/ADV take/VERB a/DET step/NOUN backwards/ADV with/ADP left/ADJ foot/NOUN then/ADV right/ADJ foot/NOUN and/CCONJ finally/ADV left/VERB foot/NOUN#0.0#0.0
-a person walks backwards slowly.#a/DET person/NOUN walk/VERB backwards/ADV slowly/ADV#0.0#0.0
-a person shifts to the right then left before stepping backwards.#a/DET person/NOUN shift/VERB to/ADP the/DET right/NOUN then/ADV left/VERB before/ADV step/VERB backwards/ADV#0.0#0.0

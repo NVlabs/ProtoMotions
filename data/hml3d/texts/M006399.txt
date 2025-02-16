@@ -1,3 +1,0 @@
-a man lunges forward and kicks with his left foot.#a/DET man/NOUN lunge/VERB forward/ADV and/CCONJ kick/VERB with/ADP his/DET left/ADJ foot/NOUN#0.0#0.0
-a man kicks forward with his left leg, while moving forward.#a/DET man/NOUN kick/VERB forward/ADV with/ADP his/DET left/ADJ leg/NOUN while/SCONJ move/VERB forward/ADV#0.0#0.0
-the person does one kick towards the left#the/DET person/NOUN does/AUX one/NUM kick/VERB towards/ADP the/DET left/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-the person drinks the last of the milk using their right hand#the/DET person/NOUN drink/VERB the/DET last/ADJ of/ADP the/DET milk/NOUN use/VERB their/DET right/ADJ hand/NOUN#0.0#0.0
-person opens bottle and drinks it#person/NOUN open/VERB bottle/NOUN and/CCONJ drink/VERB it/PRON#0.0#0.0
-person opens a container using left hand and proceed to intake content while holding with right hand#person/NOUN open/VERB a/DET container/NOUN use/VERB left/VERB hand/NOUN and/CCONJ proceed/VERB to/PART intake/VERB content/NOUN while/SCONJ hold/VERB with/ADP right/ADJ hand/NOUN#0.0#0.0

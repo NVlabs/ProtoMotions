@@ -1,3 +1,0 @@
-a person kicks their right leg back. they balance on one leg and swings the right leg towards the front of their body with the knee bent. they are balancing an item on their foot.#a/DET person/NOUN kick/VERB their/DET right/ADJ leg/NOUN back/ADV they/PRON balance/VERB on/ADP one/NUM leg/NOUN and/CCONJ swing/VERB the/DET right/ADJ leg/NOUN towards/ADP the/DET front/NOUN of/ADP their/DET body/NOUN with/ADP the/DET knee/NOUN bent/NOUN they/PRON are/AUX balance/VERB an/DET item/NOUN on/ADP their/DET foot/NOUN#0.0#0.0
-a person start to kick with left leg#a/DET person/NOUN start/VERB to/PART kick/VERB with/ADP left/ADJ leg/NOUN#0.0#0.0
-a person is swinging his left leg around#a/DET person/NOUN is/AUX swinge/VERB his/DET left/ADJ leg/NOUN around/ADV#0.0#0.0

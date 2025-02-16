@@ -1,3 +1,0 @@
-a person walks counter counterclockwise for a lap#a/DET person/NOUN walk/VERB counter/ADJ counterclockwise/NOUN for/ADP a/DET lap/NOUN#0.0#0.0
-a person walks in almost a perfect circle.#a/DET person/NOUN walk/VERB in/ADP almost/ADV a/DET perfect/ADJ circle/NOUN#0.0#0.0
-a man walks counterclockwise in a circle.#a/DET man/NOUN walk/VERB counterclockwise/NOUN in/ADP a/DET circle/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person leans slightly to their left using their left arm. person begins to walk diagonally towards the lower left area of the screen.#a/DET person/NOUN lean/VERB slightly/ADV to/ADP their/DET left/NOUN use/VERB their/DET left/ADJ arm/NOUN person/NOUN begin/VERB to/PART walk/VERB diagonally/ADV towards/ADP the/DET lower/ADJ left/ADJ area/NOUN of/ADP the/DET screen/NOUN#0.0#0.0
-someone leans down on the left side and starts walking#someone/PRON lean/VERB down/ADP on/ADP the/DET left/ADJ side/NOUN and/CCONJ start/VERB walk/VERB#0.0#0.0
-person bends a little to the left and then walks forward#person/NOUN bend/VERB a/DET little/ADJ to/ADP the/DET left/NOUN and/CCONJ then/ADV walk/VERB forward/ADV#0.0#0.0

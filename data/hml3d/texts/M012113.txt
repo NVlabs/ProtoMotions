@@ -1,3 +1,0 @@
-the person step to the left to steps and then step back to the last four steps and stopped.#the/DET person/NOUN step/VERB to/ADP the/DET left/NOUN to/ADP step/NOUN and/CCONJ then/ADV step/VERB back/ADV to/ADP the/DET last/ADJ four/NUM step/NOUN and/CCONJ stop/VERB#0.0#0.0
-a man side steps to his left, and then side steps to his right.#a/DET man/NOUN side/NOUN step/NOUN to/ADP his/DET left/NOUN and/CCONJ then/ADV side/VERB step/NOUN to/ADP his/DET right/NOUN#0.0#0.0
-person is sidestepping in both directions#person/NOUN is/AUX sidestep/VERB in/ADP both/DET direction/NOUN#0.0#0.0

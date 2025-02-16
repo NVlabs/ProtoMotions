@@ -1,3 +1,0 @@
-a person waves with their left hand.#a/DET person/NOUN wave/VERB with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a person who is standing with his hands by his sides raises his left arm and vigorously waves his left hand to the center, to his left and to his right.#a/DET person/NOUN who/PRON is/AUX stand/VERB with/ADP his/DET hand/NOUN by/ADP his/DET side/NOUN raise/VERB his/DET left/ADJ arm/NOUN and/CCONJ vigorously/ADV wave/VERB his/DET left/ADJ hand/NOUN to/ADP the/DET center/NOUN to/ADP his/DET left/NOUN and/CCONJ to/ADP his/DET right/NOUN#0.0#0.0
-a person is waving vigourusly#a/DET person/NOUN is/AUX wave/VERB vigourusly/ADV#0.0#0.0

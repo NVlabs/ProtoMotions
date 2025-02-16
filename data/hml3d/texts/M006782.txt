@@ -1,3 +1,0 @@
-a person walks down stairs while holding onto the railing with their right hand.#a/DET person/NOUN walk/VERB down/ADP stair/NOUN while/SCONJ hold/VERB onto/ADP the/DET railing/NOUN with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0
-walking forward then stopping.#walk/VERB forward/ADV then/ADV stop/VERB#0.0#0.0
-the person is holding onto the rail walking downstairs#the/DET person/NOUN is/AUX hold/VERB onto/ADP the/DET rail/NOUN walk/VERB downstairs/ADV#0.0#0.0

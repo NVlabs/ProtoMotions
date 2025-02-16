@@ -1,3 +1,0 @@
-a person has both hands together.#a/DET person/NOUN has/AUX both/DET hand/NOUN together/ADV#0.0#0.0
-a person uses left hand to slice object.#a/DET person/NOUN use/VERB left/ADJ hand/NOUN to/PART slice/VERB object/NOUN#0.0#0.0
-a person holds something with their right hand and slices at it with their left.#a/DET person/NOUN hold/VERB something/PRON with/ADP their/DET right/ADJ hand/NOUN and/CCONJ slice/NOUN at/ADP it/PRON with/ADP their/DET left/NOUN#0.0#0.0

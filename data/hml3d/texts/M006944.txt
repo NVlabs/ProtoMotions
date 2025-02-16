@@ -1,3 +1,0 @@
-a person moves their left hand; right, left, up and down.#a/DET person/NOUN move/VERB their/DET left/ADJ hand/NOUN right/INTJ left/VERB up/ADV and/CCONJ down/ADV#0.0#0.0
-the person who does arms straight out and then it’s doing something with their left hand in front of their face.#the/DET person/NOUN who/PRON does/AUX arm/NOUN straight/ADV out/ADV and/CCONJ then/ADV it/PRON do/VERB something/PRON with/ADP their/DET left/ADJ hand/NOUN in/ADP front/NOUN of/ADP their/DET face/NOUN#0.0#0.0
-a man raises their left hand and gestures around.#a/DET man/NOUN raise/VERB their/DET left/ADJ hand/NOUN and/CCONJ gesture/VERB around/ADV#0.0#0.0

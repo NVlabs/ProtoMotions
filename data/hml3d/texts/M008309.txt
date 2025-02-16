@@ -1,3 +1,0 @@
-person runninng to left side curves right while running with arms held at 90 degree angles at waist#person/NOUN runninng/PROPN to/ADP left/ADJ side/NOUN curve/NOUN right/ADV while/SCONJ run/VERB with/ADP arm/NOUN hold/VERB at/ADP degree/NOUN angle/NOUN at/ADP waist/NOUN#0.0#0.0
-a person is running quickly and making a left turn.#a/DET person/NOUN is/AUX run/VERB quickly/ADV and/CCONJ make/VERB a/DET left/ADJ turn/NOUN#0.0#0.0
-man running in 45 degree angle.#man/NOUN run/VERB in/ADP degree/NOUN angle/NOUN#0.0#0.0

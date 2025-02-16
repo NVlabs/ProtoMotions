@@ -1,3 +1,0 @@
-a person flings an object with their left hand then showcases something with both hands.#a/DET person/NOUN fling/VERB an/DET object/NOUN with/ADP their/DET left/ADJ hand/NOUN then/ADV showcase/VERB something/PRON with/ADP both/DET hand/NOUN#0.0#0.0
-a person throws an object over his shoulder#a/DET person/NOUN throw/VERB an/DET object/NOUN over/ADP his/DET shoulder/NOUN#4.0#5.0
-a person raised the rigth hand and grabbed something with right hand#a/DET person/NOUN raise/VERB the/DET rigth/ADJ hand/NOUN and/CCONJ grab/VERB something/PRON with/ADP right/ADJ hand/NOUN#0.0#0.0

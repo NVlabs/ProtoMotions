@@ -1,3 +1,0 @@
-a person swings his right foot forward, leaning on his left leg.#a/DET person/NOUN swing/VERB his/DET right/ADJ foot/NOUN forward/ADV lean/VERB on/ADP his/DET left/ADJ leg/NOUN#0.0#0.0
-a person swings their right foot forward and their arms to the right.#a/DET person/NOUN swing/VERB their/DET right/ADJ foot/NOUN forward/ADV and/CCONJ their/DET arm/NOUN to/ADP the/DET right/NOUN#0.0#0.0
-a person extends their right foot forward.#a/DET person/NOUN extend/VERB their/DET right/ADJ foot/NOUN forward/ADV#0.0#0.0

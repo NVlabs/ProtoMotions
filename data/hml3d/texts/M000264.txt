@@ -1,3 +1,0 @@
-a man drops to the ground and begins crawling on his knees, first to the left, then to the right.#a/DET man/NOUN drop/VERB to/ADP the/DET ground/NOUN and/CCONJ begin/VERB crawl/VERB on/ADP his/DET knee/NOUN first/ADV to/ADP the/DET left/NOUN then/ADV to/ADP the/DET right/NOUN#0.0#0.0
-a person crawls in a forward direction and then turns clockwise#a/DET person/NOUN crawl/VERB in/ADP a/DET forward/ADJ direction/NOUN and/CCONJ then/ADV turn/VERB clockwise/NOUN#0.0#0.0
-a man gets on knees and craws right diagonally back and forth.#a/DET man/NOUN get/VERB on/ADP knee/NOUN and/CCONJ craw/NOUN right/ADV diagonally/ADV back/ADV and/CCONJ forth/ADV#0.0#0.0

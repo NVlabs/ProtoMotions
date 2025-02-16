@@ -1,3 +1,0 @@
-a person moving right and left briskly.#a/DET person/NOUN move/VERB right/ADV and/CCONJ left/VERB briskly/ADV#0.0#0.0
-a person aggressively walks forward.#a/DET person/NOUN aggressively/ADV walk/VERB forward/ADV#0.0#0.0
-a person skips across the ground until reaching the other side with their left foot extended.#a/DET person/NOUN skip/VERB across/ADP the/DET ground/NOUN until/ADP reach/VERB the/DET other/ADJ side/NOUN with/ADP their/DET left/ADJ foot/NOUN extend/VERB#0.0#0.0

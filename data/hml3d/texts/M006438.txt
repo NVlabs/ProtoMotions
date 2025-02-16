@@ -1,3 +1,0 @@
-a person runs towards his left.#a/DET person/NOUN run/VERB towards/ADP his/DET left/NOUN#0.0#0.0
-a person sprints along a curved path and quickly slows to a stop#a/DET person/NOUN sprint/VERB along/ADP a/DET curved/ADJ path/NOUN and/CCONJ quickly/ADV slow/VERB to/ADP a/DET stop/NOUN#0.0#0.0
-runs from top left to bottom right before slowing down to a stop#run/NOUN from/ADP top/ADJ left/NOUN to/ADP bottom/NOUN right/ADV before/ADP slow/VERB down/ADP to/ADP a/DET stop/NOUN#0.0#0.0

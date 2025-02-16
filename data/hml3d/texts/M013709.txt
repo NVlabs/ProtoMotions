@@ -1,3 +1,0 @@
-a man clumsily turns to the left while fidgeting his hands.#a/DET man/NOUN clumsily/ADV turn/VERB to/ADP the/DET left/ADJ while/SCONJ fidget/VERB his/DET hand/NOUN#0.0#0.0
-the man pats the ball and winds up to throw.#the/DET man/NOUN pat/VERB the/DET ball/NOUN and/CCONJ wind/VERB up/ADP to/PART throw/VERB#0.0#0.0
-the person is going to sit down#the/DET person/NOUN is/AUX go/VERB to/PART sit/VERB down/ADP#0.0#0.0

@@ -1,3 +1,0 @@
-the person is walking around.#the/DET person/NOUN is/AUX walk/VERB around/ADV#0.0#0.0
-a person walks in a wide clockwise circle.#a/DET person/NOUN walk/VERB in/ADP a/DET wide/ADJ clockwise/NOUN circle/NOUN#0.0#0.0
-a person taking relaxed and confident steps forward.#a/DET person/NOUN take/VERB relaxed/ADJ and/CCONJ confident/ADJ step/NOUN forward/ADV#0.0#0.0

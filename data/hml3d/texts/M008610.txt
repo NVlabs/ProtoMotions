@@ -1,3 +1,0 @@
-man walks in a counterclockwise circle, with his arms at his sides at all times.#man/NOUN walk/VERB in/ADP a/DET counterclockwise/ADJ circle/NOUN with/ADP his/DET arm/NOUN at/ADP his/DET side/NOUN at/ADP all/DET time/NOUN#0.0#0.0
-a person walks in a circle at a steady pace with their head slightly tilted downwards.#a/DET person/NOUN walk/VERB in/ADP a/DET circle/NOUN at/ADP a/DET steady/ADJ pace/NOUN with/ADP their/DET head/NOUN slightly/ADV tilt/VERB downwards/ADV#0.0#0.0
-a person walks in a circle, counterclockwise..#a/DET person/NOUN walk/VERB in/ADP a/DET circle/NOUN counterclockwise/PROPN#0.0#0.0

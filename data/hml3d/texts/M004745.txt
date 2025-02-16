@@ -1,3 +1,0 @@
-a person leans to the left pouring something with the right hand to the left hand.#a/DET person/NOUN lean/VERB to/ADP the/DET left/ADJ pour/VERB something/PRON with/ADP the/DET right/ADJ hand/NOUN to/ADP the/DET left/ADJ hand/NOUN#0.0#0.0
-a person standing upleft working on something directly in front of them with both hands and then steps away to examine what they are working on#a/DET person/NOUN stand/VERB upleft/ADJ work/VERB on/ADP something/PRON directly/ADV in/ADP front/NOUN of/ADP them/PRON with/ADP both/DET hand/NOUN and/CCONJ then/ADV step/VERB away/ADV to/PART examine/VERB what/PRON they/PRON are/AUX work/VERB on/ADP#0.0#0.0
-a person standing leaning forward.#a/DET person/NOUN stand/VERB lean/VERB forward/ADV#0.0#0.0

@@ -1,3 +1,0 @@
-a figure walks towards a wall and stares, confined.#a/DET figure/NOUN walk/VERB towards/ADP a/DET wall/NOUN and/CCONJ stare/NOUN confine/VERB#0.0#4.0
-walking in a diagonal line.#walk/VERB in/ADP a/DET diagonal/ADJ line/NOUN#0.0#0.0
-a person walks in a curve to the left.#a/DET person/NOUN walk/VERB in/ADP a/DET curve/NOUN to/ADP the/DET left/NOUN#0.0#0.0

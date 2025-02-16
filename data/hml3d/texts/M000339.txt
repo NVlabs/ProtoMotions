@@ -1,3 +1,0 @@
-the person starts in a wide standing position, swings right leg behind and around back to the wide standing position.#the/DET person/NOUN start/VERB in/ADP a/DET wide/ADJ standing/NOUN position/NOUN swing/VERB right/ADJ leg/NOUN behind/ADV and/CCONJ around/ADV back/ADV to/ADP the/DET wide/ADJ standing/NOUN position/NOUN#0.0#0.0
-a person spins and kicks with its right leg.#a/DET person/NOUN spin/VERB and/CCONJ kick/NOUN with/ADP its/DET right/ADJ leg/NOUN#0.0#0.0
-a person performs a standing back kick.#a/DET person/NOUN perform/VERB a/DET stand/VERB back/ADV kick/NOUN#0.0#0.0

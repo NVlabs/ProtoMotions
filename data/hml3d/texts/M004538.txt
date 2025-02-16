@@ -1,3 +1,0 @@
-man picks something to the left up using left arm examines then replaces it#man/NOUN pick/VERB something/PRON to/ADP the/DET left/NOUN up/ADP use/VERB left/ADJ arm/NOUN examine/NOUN then/ADV replace/VERB it/PRON#0.0#0.0
-person take a step backward and answers the phone and hangs up and turn to the left.#person/NOUN take/VERB a/DET step/NOUN backward/ADV and/CCONJ answer/VERB the/DET phone/NOUN and/CCONJ hang/VERB up/ADP and/CCONJ turn/VERB to/ADP the/DET left/NOUN#0.0#0.0
-a man picks something up and puts it near his head before putting it back down.#a/DET man/NOUN pick/VERB something/PRON up/ADP and/CCONJ put/VERB it/PRON near/SCONJ his/DET head/NOUN before/ADP put/VERB it/PRON back/ADV down/ADV#0.0#0.0

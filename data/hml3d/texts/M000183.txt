@@ -1,3 +1,0 @@
-a person jumps, spins completely around in a circle an lands.#a/DET person/NOUN jump/VERB spin/VERB completely/ADV around/ADV in/ADP a/DET circle/NOUN an/DET land/NOUN#0.0#0.0
-a man jumps and spins clockwise.#a/DET man/NOUN jump/VERB and/CCONJ spin/VERB clockwise/VERB#0.0#0.0
-a man jumps straight up while spinning in a counter counterclockwise motion then stumbles slightly to his right hand side.#a/DET man/NOUN jump/VERB straight/ADV up/ADV while/SCONJ spin/VERB in/ADP a/DET counter/ADJ counterclockwise/NOUN motion/NOUN then/ADV stumble/VERB slightly/ADV to/ADP his/DET right/ADJ hand/NOUN side/NOUN#0.0#0.0

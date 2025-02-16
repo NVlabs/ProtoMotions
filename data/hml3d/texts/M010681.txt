@@ -1,3 +1,0 @@
-a figure rubs their torso and right leg.#a/DET figure/NOUN rub/VERB their/DET torso/NOUN and/CCONJ right/ADJ leg/NOUN#0.0#0.0
-this person appears to unzip pants.#this/DET person/NOUN appear/VERB to/ADP unzip/VERB pant/NOUN#0.0#0.0
-a person puts their left hand in front of their pelvis and moves it down.#a/DET person/NOUN put/VERB their/DET left/ADJ hand/NOUN in/ADP front/NOUN of/ADP their/DET pelvi/NOUN and/CCONJ move/VERB it/PRON down/ADP#0.0#0.0

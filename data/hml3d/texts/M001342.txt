@@ -1,3 +1,0 @@
-a man stretches his left arm.#a/DET man/NOUN stretch/VERB his/DET left/ADJ arm/NOUN#0.0#0.0
-a person stretching their left arm#a/DET person/NOUN stretch/VERB their/DET left/ADJ arm/NOUN#0.0#0.0
-a man stretches his left arm across his body supported by his right arm.#a/DET man/NOUN stretch/VERB his/DET left/ADJ arm/NOUN across/ADP his/DET body/NOUN support/VERB by/ADP his/DET right/ADJ arm/NOUN#0.0#0.0

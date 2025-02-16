@@ -1,3 +1,0 @@
-a person standing up looks around panically by snapping their neck in different directions.#a/DET person/NOUN stand/VERB up/ADP look/NOUN around/ADP panically/ADV by/ADP snap/VERB their/DET neck/NOUN in/ADP different/ADJ direction/NOUN#0.0#0.0
-a person looks hesitantly around, shifting in their arms to cower as they do.#a/DET person/NOUN look/VERB hesitantly/ADV around/ADV shift/VERB in/ADP their/DET arm/NOUN to/ADP cower/NOUN as/SCONJ they/PRON do/AUX#0.0#0.0
-a man is standing still turning to the right and left.#a/DET man/NOUN is/AUX stand/VERB still/ADV turn/VERB to/ADP the/DET right/NOUN and/CCONJ left/VERB#0.0#0.0

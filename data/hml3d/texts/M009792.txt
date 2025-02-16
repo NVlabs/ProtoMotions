@@ -1,3 +1,0 @@
-person raises left arm and waves in greeting.#person/NOUN raise/VERB left/VERB arm/NOUN and/CCONJ wave/NOUN in/ADP greeting/NOUN#0.0#0.0
-a person raises their hand and waves.#a/DET person/NOUN raise/VERB their/DET hand/NOUN and/CCONJ wave/NOUN#0.0#0.0
-a person waves with their left hand.#a/DET person/NOUN wave/VERB with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0

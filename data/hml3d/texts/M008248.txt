@@ -1,3 +1,0 @@
-a person takes a step forward#a/DET person/NOUN take/VERB a/DET step/NOUN forward/ADV#0.0#0.0
-a person steps down with his left fooot#a/DET person/NOUN step/VERB down/ADP with/ADP his/DET left/ADJ fooot/NOUN#0.0#0.0
-a person steps over something.#a/DET person/NOUN step/VERB over/ADP something/PRON#0.0#0.0

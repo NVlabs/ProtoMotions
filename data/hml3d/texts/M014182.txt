@@ -1,3 +1,0 @@
-a person walking gets pushed to the right.#a/DET person/NOUN walk/VERB get/VERB push/VERB to/ADP the/DET right/NOUN#0.0#0.0
-a person walks forward and then stumbles to his right#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ then/ADV stumble/VERB to/ADP his/DET right/NOUN#0.0#0.0
-he pushes recovery left then stops#he/PRON push/VERB recovery/NOUN left/VERB then/ADV stop/VERB#0.0#0.0

@@ -1,3 +1,0 @@
-the person is walking in a counter counterclockwise circle.#the/DET person/NOUN is/AUX walk/VERB in/ADP a/DET counter/ADJ counterclockwise/PROPN circle/NOUN#0.0#0.0
-a person who is standing with his hands by his sides takes eight steps in a counterclockwise direction and stops.#a/DET person/NOUN who/PRON is/AUX stand/VERB with/ADP his/DET hand/NOUN by/ADP his/DET side/NOUN take/VERB eight/NUM step/NOUN in/ADP a/DET counterclockwise/ADJ direction/NOUN and/CCONJ stop/NOUN#0.0#0.0
-the man is walking in counterclockwise#the/DET man/NOUN is/AUX walk/VERB in/ADP counterclockwise/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person is doing a guitar playing motion with their arms then puts their hands down.#a/DET person/NOUN is/AUX do/VERB a/DET guitar/NOUN play/VERB motion/NOUN with/ADP their/DET arm/NOUN then/ADV put/VERB their/DET hand/NOUN down/ADP#0.0#0.0
-the man is strumming his guitar.#the/DET man/NOUN is/AUX strum/VERB his/DET guitar/NOUN#0.0#0.0
-a person strums a guitar with his right hand.#a/DET person/NOUN strum/VERB a/DET guitar/NOUN with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0

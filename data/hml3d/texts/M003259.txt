@@ -1,3 +1,0 @@
-a person side steps to the right and then to the left.#a/DET person/NOUN side/NOUN step/NOUN to/ADP the/DET right/NOUN and/CCONJ then/ADV to/ADP the/DET left/NOUN#0.0#0.0
-person is side stepping.#person/NOUN is/AUX side/NOUN step/VERB#0.0#0.0
-person moves sideways from right to left and then from left to right#person/NOUN move/VERB sideways/ADV from/ADP right/NOUN to/ADP left/VERB and/CCONJ then/ADV from/ADP left/NOUN to/ADP right/ADJ#0.0#0.0

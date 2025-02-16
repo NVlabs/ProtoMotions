@@ -1,3 +1,0 @@
-a man leans forward on his right leg and does a slow uppercut with his left hand, then steps back.#a/DET man/NOUN lean/VERB forward/ADV on/ADP his/DET right/ADJ leg/NOUN and/CCONJ does/AUX a/DET slow/ADJ uppercut/NOUN with/ADP his/DET left/ADJ hand/NOUN then/ADV step/VERB back/ADV#0.0#0.0
-a person steps back and gets ready to throw something.#a/DET person/NOUN step/VERB back/ADV and/CCONJ get/VERB ready/ADJ to/PART throw/VERB something/PRON#0.0#0.0
-a person punches with their right hand.#a/DET person/NOUN punch/VERB with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0

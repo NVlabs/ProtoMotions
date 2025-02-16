@@ -1,3 +1,0 @@
-a person slides to their left.#a/DET person/NOUN slide/VERB to/ADP their/DET left/NOUN#0.0#0.0
-a figure quickly sidesteps to their left#a/DET figure/NOUN quickly/ADV sidestep/VERB to/ADP their/DET left/NOUN#0.0#0.0
-the person takes a big side step to the left#the/DET person/NOUN take/VERB a/DET big/ADJ side/NOUN step/NOUN to/ADP the/DET left/NOUN#0.0#0.0

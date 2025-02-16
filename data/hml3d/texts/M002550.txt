@@ -1,3 +1,0 @@
-a person walks forward in an askew line.#a/DET person/NOUN walk/VERB forward/ADV in/ADP an/DET askew/ADJ line/NOUN#0.0#0.0
-he walks straddling something, then clumsily walks around another object.#he/PRON walk/VERB straddle/VERB something/PRON then/ADV clumsily/ADV walk/VERB around/ADP another/DET object/NOUN#0.0#0.0
-a person walks forward with wide steps right, left, right, left,  right left, then right with the left foot  and left with the right#a/DET person/NOUN walk/VERB forward/ADV with/ADP wide/ADJ step/NOUN right/ADV left/VERB right/INTJ left/VERB right/ADV left/VERB then/ADV right/ADV with/ADP the/DET left/ADJ foot/NOUN and/CCONJ left/VERB with/ADP the/DET right/NOUN#0.0#0.0

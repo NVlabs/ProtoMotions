@@ -1,3 +1,0 @@
-a man walks foward, turns to the right in a c -shape and  then stops.#a/DET man/NOUN walk/VERB foward/ADJ turn/VERB to/ADP the/DET right/NOUN in/ADP a/DET c/NOUN shape/NOUN and/CCONJ then/ADV stop/VERB#0.0#0.0
-a person walks forward, stops, and then begins to turn around.#a/DET person/NOUN walk/VERB forward/ADV stop/NOUN and/CCONJ then/ADV begin/VERB to/PART turn/VERB around/ADP#0.0#0.0
-a man walking forward and turns right#a/DET man/NOUN walk/VERB forward/ADV and/CCONJ turn/VERB right/ADJ#0.0#0.0

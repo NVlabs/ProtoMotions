@@ -1,3 +1,0 @@
-a man uses his left arm to unzip his pants#a/DET man/NOUN use/VERB his/DET left/ADJ arm/NOUN to/PART unzip/VERB his/DET pant/NOUN#0.0#0.0
-a person moves their left hand in a downward gesture.#a/DET person/NOUN move/VERB their/DET left/ADJ hand/NOUN in/ADP a/DET downward/ADJ gesture/NOUN#0.0#0.0
-a person undoes trousers with left hand.#a/DET person/NOUN undo/VERB trouser/NOUN with/ADP left/ADJ hand/NOUN#0.0#0.0

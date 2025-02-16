@@ -1,3 +1,0 @@
-the person is boxing with his left and right hand.#the/DET person/NOUN is/AUX box/VERB with/ADP his/DET left/ADJ and/CCONJ right/ADJ hand/NOUN#0.0#0.0
-a person is swing their fists.#a/DET person/NOUN is/AUX swe/VERB their/DET fist/NOUN#0.0#0.0
-a person punches with their left hand then their right hand#a/DET person/NOUN punch/VERB with/ADP their/DET left/ADJ hand/NOUN then/ADV their/DET right/ADJ hand/NOUN#0.0#0.0

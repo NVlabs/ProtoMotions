@@ -1,3 +1,0 @@
-a person walk sidewalk to left direction#a/DET person/NOUN walk/NOUN sidewalk/NOUN to/ADP left/ADJ direction/NOUN#0.0#0.0
-a person moves to the left side and stops#a/DET person/NOUN move/VERB to/ADP the/DET left/ADJ side/NOUN and/CCONJ stop/NOUN#0.0#0.0
-a person is standing and starts walking sideways.#a/DET person/NOUN is/AUX stand/VERB and/CCONJ start/NOUN walk/VERB sideways/ADV#0.0#6.0

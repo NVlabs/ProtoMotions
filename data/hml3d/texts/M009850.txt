@@ -1,3 +1,0 @@
-stepping forward left leg first then swatting left hand downward from head level#step/VERB forward/ADV left/VERB leg/NOUN first/ADV then/ADV swat/VERB left/ADJ hand/NOUN downward/ADV from/ADP head/NOUN level/NOUN#0.0#0.0
-a person walks forward then lifts their left arm to spank someone twice.#a/DET person/NOUN walk/VERB forward/ADV then/ADV lift/VERB their/DET left/ADJ arm/NOUN to/ADP spank/PROPN someone/PRON twice/ADV#0.0#0.0
-the man is making gestures#the/DET man/NOUN is/AUX make/VERB gesture/NOUN#0.0#0.0

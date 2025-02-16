@@ -1,3 +1,0 @@
-pushed to side once.#push/VERB to/PART side/VERB once/ADV#0.0#0.0
-a person quickly side-steps to the left.#a/DET person/NOUN quickly/ADV sidestep/VERB to/ADP the/DET left/NOUN#0.0#0.0
-person slides to their left side.#person/NOUN slide/VERB to/ADP their/DET left/ADJ side/NOUN#0.0#0.0

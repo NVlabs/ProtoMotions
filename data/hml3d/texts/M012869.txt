@@ -1,3 +1,0 @@
-a person walks forward, spins right, and walks back.#a/DET person/NOUN walk/VERB forward/ADV spin/VERB right/ADJ and/CCONJ walk/VERB back/ADV#0.0#0.0
-a person takes two steps forward, pivots on their right leg, turns right 180 degrees and walks forward two steps.#a/DET person/NOUN take/VERB two/NUM step/NOUN forward/ADV pivot/NOUN on/ADP their/DET right/ADJ leg/NOUN turn/VERB right/ADJ degree/NOUN and/CCONJ walk/VERB forward/ADV two/NUM step/NOUN#0.0#0.0
-a person walks forward and then pivots on his right food and walks back the way he came.#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ then/ADV pivot/NOUN on/ADP his/DET right/ADJ food/NOUN and/CCONJ walk/VERB back/ADV the/DET way/NOUN he/PRON come/VERB#0.0#0.0

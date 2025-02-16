@@ -1,3 +1,0 @@
-a person leans to his left and stretches his arm.#a/DET person/NOUN lean/VERB to/ADP his/DET left/NOUN and/CCONJ stretch/VERB his/DET arm/NOUN#0.0#0.0
-a person raises their hand and bends to the side then begins to lower their hand.#a/DET person/NOUN raise/VERB their/DET hand/NOUN and/CCONJ bend/VERB to/ADP the/DET side/NOUN then/ADV begin/VERB to/PART lower/VERB their/DET hand/NOUN#0.0#0.0
-the sim has their right arm raised, appearing to stretch their body towards their left side.#the/DET sim/PROPN has/AUX their/DET right/ADJ arm/NOUN raise/VERB appear/VERB to/PART stretch/VERB their/DET body/NOUN towards/ADP their/DET left/ADJ side/NOUN#0.0#2.0

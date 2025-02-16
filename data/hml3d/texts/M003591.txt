@@ -1,3 +1,0 @@
-the person is stretching something.#the/DET person/NOUN is/AUX stretch/VERB something/PRON#0.0#0.0
-overhead throw from left hand#overhead/ADJ throw/VERB from/ADP left/ADJ hand/NOUN#0.0#0.0
-a man recoils his left arm in a backward, then forward motion as through throwing a ball.#a/DET man/NOUN recoil/VERB his/DET left/ADJ arm/NOUN in/ADP a/DET backward/ADJ then/ADV forward/ADV motion/NOUN as/SCONJ through/ADP throw/VERB a/DET ball/NOUN#0.0#0.0

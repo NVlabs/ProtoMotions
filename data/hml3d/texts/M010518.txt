@@ -1,3 +1,0 @@
-a person drinks with their left hand.#a/DET person/NOUN drink/VERB with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-figure appears to be drinking from it's left hand#figure/NOUN appear/VERB to/PART be/AUX drink/VERB from/ADP it/PRON left/VERB hand/NOUN#0.0#0.0
-right hand goes over head#right/ADJ hand/NOUN go/VERB over/ADP head/NOUN#0.0#0.0

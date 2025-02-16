@@ -1,3 +1,0 @@
-a man walks from right to left dragging his left leg.#a/DET man/NOUN walk/VERB from/ADP right/NOUN to/ADP left/VERB drag/VERB his/DET left/ADJ leg/NOUN#0.0#0.0
-a person limps as they walk forward, then they turn and keep walking#a/DET person/NOUN limp/VERB as/SCONJ they/PRON walk/VERB forward/ADV then/ADV they/PRON turn/VERB and/CCONJ keep/VERB walk/VERB#0.0#0.0
-a person shuffles forwards with their left leg stiffened out.#a/DET person/NOUN shuffle/VERB forwards/ADV with/ADP their/DET left/ADJ leg/NOUN stiffen/VERB out/ADP#0.0#0.0

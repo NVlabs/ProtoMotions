@@ -1,3 +1,0 @@
-a person walks slightly left and walks forward.#a/DET person/NOUN walk/VERB slightly/ADV left/VERB and/CCONJ walk/VERB forward/ADV#0.0#0.0
-a person walks to the left, and then keeps going to a slight right.#a/DET person/NOUN walk/VERB to/ADP the/DET left/NOUN and/CCONJ then/ADV keep/VERB go/VERB to/ADP a/DET slight/ADJ right/NOUN#0.0#0.0
-a person attempts to avoid colliding into another person by swiftly moving to his left and then moving back to his right as he continues walking.#a/DET person/NOUN attempt/VERB to/PART avoid/VERB collide/VERB into/ADP another/DET person/NOUN by/ADP swiftly/ADV move/VERB to/ADP his/DET left/NOUN and/CCONJ then/ADV move/VERB back/ADV to/ADP his/DET right/NOUN as/SCONJ he/PRON continue/VERB walk/VERB#0.0#0.0

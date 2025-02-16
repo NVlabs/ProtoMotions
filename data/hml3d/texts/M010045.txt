@@ -1,3 +1,0 @@
-a person bends one arm at the elbow and moves their hand in a semi-circle back and forth#a/DET person/NOUN bend/VERB one/NUM arm/NOUN at/ADP the/DET elbow/NOUN and/CCONJ move/VERB their/DET hand/NOUN in/ADP a/DET semicircle/NOUN back/ADV and/CCONJ forth/ADV#0.0#0.0
-figure appears to be lifting weights#figure/NOUN appear/VERB to/PART be/AUX lift/VERB weight/NOUN#0.0#0.0
-person is standing and lifting a weight with left hand#person/NOUN is/AUX stand/VERB and/CCONJ lift/VERB a/DET weight/NOUN with/ADP left/ADJ hand/NOUN#0.0#0.0

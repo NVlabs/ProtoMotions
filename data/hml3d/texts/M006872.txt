@@ -1,3 +1,0 @@
-a person is stretching their legs to the left.#a/DET person/NOUN is/AUX stretch/VERB their/DET leg/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-a person squats to the left side while swinging left arm.#a/DET person/NOUN squat/VERB to/ADP the/DET left/ADJ side/NOUN while/SCONJ swinge/VERB left/ADJ arm/NOUN#0.0#0.0
-a person takes a wide, defensive stance.#a/DET person/NOUN take/VERB a/DET wide/ADJ defensive/ADJ stance/NOUN#0.0#0.0

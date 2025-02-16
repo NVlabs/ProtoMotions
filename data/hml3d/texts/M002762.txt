@@ -1,3 +1,0 @@
-a man moves an object back and forth with his left hand.#a/DET man/NOUN move/VERB an/DET object/NOUN back/ADV and/CCONJ forth/ADV with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
-a person is bent over extending their left arm back and forth in front of them.#a/DET person/NOUN is/AUX bent/ADJ over/ADP extend/VERB their/DET left/ADJ arm/NOUN back/ADV and/CCONJ forth/ADV in/ADP front/NOUN of/ADP them/PRON#0.0#0.0
-the person was ironing some thing with his left arm.#the/DET person/NOUN was/AUX iron/VERB some/DET thing/NOUN with/ADP his/DET left/ADJ arm/NOUN#0.0#0.0

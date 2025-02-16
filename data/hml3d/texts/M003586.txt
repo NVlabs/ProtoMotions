@@ -1,3 +1,0 @@
-a man walks forward in a circle before stopping.#a/DET man/NOUN walk/VERB forward/ADV in/ADP a/DET circle/NOUN before/ADP stop/VERB#0.0#0.0
-person is walking slowly in a counterclockwise position swaying arms#person/NOUN is/AUX walk/VERB slowly/ADV in/ADP a/DET counterclockwise/ADJ position/NOUN sway/VERB arm/NOUN#0.0#0.0
-a person is walking in a counterclockwise circle.#a/DET person/NOUN is/AUX walk/VERB in/ADP a/DET counterclockwise/ADJ circle/NOUN#0.0#0.0

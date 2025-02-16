@@ -1,3 +1,0 @@
-person moves forward two  steps then turns left two steps#person/NOUN move/VERB forward/ADV two/NUM step/NOUN then/ADV turn/VERB left/VERB two/NUM step/NOUN#0.0#0.0
-the stick figure is walking to his left forming a j.#the/DET stick/NOUN figure/NOUN is/AUX walk/VERB to/ADP his/DET left/NOUN form/VERB a/DET#0.0#0.0
-a person walks sideways .#a/DET person/NOUN walk/VERB sideways/ADV#0.0#0.0

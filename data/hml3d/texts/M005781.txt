@@ -1,3 +1,0 @@
-a man walks clockwise in a circle.#a/DET man/NOUN walk/VERB clockwise/VERB in/ADP a/DET circle/NOUN#0.0#7.0
-a person walks clockwise and then steps side-to-side.#a/DET person/NOUN walk/VERB clockwise/NOUN and/CCONJ then/ADV step/VERB sidetoside/ADV#0.0#0.0
-the man walks in a counterclockwise circle then steps back then forward.#the/DET man/NOUN walk/VERB in/ADP a/DET counterclockwise/ADJ circle/NOUN then/ADV step/VERB back/ADV then/ADV forward/ADV#0.0#0.0

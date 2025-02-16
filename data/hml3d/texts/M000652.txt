@@ -1,3 +1,0 @@
-a person aggressively throwing various types of kicks.#a/DET person/NOUN aggressively/ADV throw/VERB various/ADJ type/NOUN of/ADP kick/NOUN#0.0#0.0
-the person is kicking something.#the/DET person/NOUN is/AUX kick/VERB something/PRON#0.0#0.0
-she kicks forward with her right foot, steps back, kicks sideways with her right foot, gestures with her right hand, and again kicks sideways with her right foot.#she/PRON kick/VERB forward/ADV with/ADP her/DET right/ADJ foot/NOUN step/VERB back/ADV kick/VERB sideways/ADV with/ADP her/DET right/ADJ foot/NOUN gesture/VERB with/ADP her/DET right/ADJ hand/NOUN and/CCONJ again/ADV kick/VERB sideways/ADV with/ADP her/DET right/ADJ foot/NOUN#0.0#0.0

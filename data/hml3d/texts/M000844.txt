@@ -1,3 +1,0 @@
-a person rotating down to the ground and reaching with one arm.#a/DET person/NOUN rotate/VERB down/ADP to/ADP the/DET ground/NOUN and/CCONJ reach/VERB with/ADP one/NUM arm/NOUN#0.0#0.0
-the person is moving something around.#the/DET person/NOUN is/AUX move/VERB something/PRON around/ADV#0.0#0.0
-a person begins standing upleft, then turns the body to the left while squating down with the right arm almost touching the floor.#a/DET person/NOUN begin/VERB stand/VERB upleft/ADJ then/ADV turn/VERB the/DET body/NOUN to/ADP the/DET left/ADJ while/SCONJ squat/VERB down/ADP with/ADP the/DET right/ADJ arm/NOUN almost/ADV touch/VERB the/DET floor/NOUN#0.0#0.0

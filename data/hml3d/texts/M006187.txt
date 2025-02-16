@@ -1,3 +1,0 @@
-a person performs two over-arm swipes.#a/DET person/NOUN perform/VERB two/NUM overarm/ADJ swipe/NOUN#0.0#0.0
-the person is playing tennis.#the/DET person/NOUN is/AUX play/VERB tennis/NOUN#0.0#0.0
-a man uses his left hand to throw a football.#a/DET man/NOUN use/VERB his/DET left/ADJ hand/NOUN to/PART throw/VERB a/DET football/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-man has his hands above his head and leans from one side to the other by bending his waist and then bends forward.#man/NOUN has/AUX his/DET hand/NOUN above/ADP his/DET head/NOUN and/CCONJ lean/VERB from/ADP one/NUM side/NOUN to/ADP the/DET other/ADJ by/ADP bend/VERB his/DET waist/NOUN and/CCONJ then/ADV bend/VERB forward/ADV#0.0#0.0
-a person stretches left, right and down.#a/DET person/NOUN stretch/VERB left/VERB right/INTJ and/CCONJ down/ADV#0.0#0.0
-a person is stretching his body to the right and left.#a/DET person/NOUN is/AUX stretch/VERB his/DET body/NOUN to/ADP the/DET right/NOUN and/CCONJ left/VERB#0.0#0.0

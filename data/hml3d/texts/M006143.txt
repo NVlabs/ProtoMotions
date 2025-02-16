@@ -1,3 +1,0 @@
-a person performing a left handed straight punch#a/DET person/NOUN perform/VERB a/DET left/ADJ handed/ADJ straight/ADJ punch/NOUN#0.0#0.0
-a person punches with his left hand.#a/DET person/NOUN punch/VERB with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
-a person turns slightly to the right, then extends their left arm rapidly at head height.#a/DET person/NOUN turn/VERB slightly/ADV to/ADP the/DET right/NOUN then/ADV extend/VERB their/DET left/ADJ arm/NOUN rapidly/ADV at/ADP head/NOUN height/ADV#0.0#0.0

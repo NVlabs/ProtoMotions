@@ -1,3 +1,0 @@
-walking back and forth.#walk/VERB back/ADV and/CCONJ forth/ADV#0.0#0.0
-person paces to the right, the left, and then the right again, moving in a curved line.#person/NOUN pace/VERB to/ADP the/DET right/NOUN the/DET left/NOUN and/CCONJ then/ADV the/DET right/NOUN again/ADV move/VERB in/ADP a/DET curved/ADJ line/NOUN#0.0#0.0
-person walks forward and starts walking in a wavy pattern like a mountain.#person/NOUN walk/VERB forward/ADV and/CCONJ start/VERB walk/VERB in/ADP a/DET wavy/ADJ pattern/NOUN like/SCONJ a/DET mountain/NOUN#0.0#0.5

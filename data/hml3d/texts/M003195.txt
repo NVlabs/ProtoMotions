@@ -1,3 +1,0 @@
-a person is standing and steps backwards.#a/DET person/NOUN is/AUX stand/VERB and/CCONJ step/NOUN backwards/ADV#0.0#0.0
-a man takes a step back, slightly to the left#a/DET man/NOUN take/VERB a/DET step/NOUN back/ADV slightly/ADV to/ADP the/DET left/NOUN#0.0#0.0
-a person steps backwards slowly.#a/DET person/NOUN step/VERB backwards/ADV slowly/ADV#0.0#0.0

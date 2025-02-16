@@ -1,3 +1,0 @@
-the person is completely still with his right arm up.#the/DET person/NOUN is/AUX completely/ADV still/ADV with/ADP his/DET right/ADJ arm/NOUN up/ADP#0.0#0.0
-the man takes his right hand, raises it, and then lowers it towards his hips.#the/DET man/NOUN take/VERB his/DET right/ADJ hand/NOUN raise/VERB it/PRON and/CCONJ then/ADV lower/VERB it/PRON towards/ADP his/DET hip/NOUN#7.0#9.0
-a person is sitting on a bench. they look to their right. they look to their left. they check the time.#a/DET person/NOUN is/AUX sit/VERB on/ADP a/DET bench/NOUN they/PRON look/VERB to/ADP their/DET right/NOUN they/PRON look/VERB to/ADP their/DET left/NOUN they/PRON check/VERB the/DET time/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person takes a big step to the side.#a/DET person/NOUN take/VERB a/DET big/ADJ step/NOUN to/ADP the/DET side/NOUN#0.0#0.0
-a standing person is pushed to their right and stumbles, catching themselves with their left foot.#a/DET stand/VERB person/NOUN is/AUX push/VERB to/ADP their/DET right/NOUN and/CCONJ stumble/NOUN catch/VERB themselves/PRON with/ADP their/DET left/ADJ foot/NOUN#0.0#0.0
-a person takes a step directly to their right#a/DET person/NOUN take/VERB a/DET step/NOUN directly/ADV to/ADP their/DET right/NOUN#0.0#0.0

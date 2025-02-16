@@ -1,3 +1,0 @@
-this person walks forward then quickly turns left to walk back.#this/DET person/NOUN walk/VERB forward/ADV then/ADV quickly/ADV turn/VERB left/VERB to/PART walk/VERB back/ADV#0.0#0.0
-the man turns left fast#the/DET man/NOUN turn/VERB left/VERB fast/ADV#0.0#0.0
-the person is walking and turn left.#the/DET person/NOUN is/AUX walk/VERB and/CCONJ turn/VERB left/ADV#0.0#0.0

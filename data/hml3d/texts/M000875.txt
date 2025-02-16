@@ -1,3 +1,0 @@
-the person is walking sideways to the right and then as they reach the end they go back#the/DET person/NOUN is/AUX walk/VERB sideways/ADV to/ADP the/DET right/NOUN and/CCONJ then/ADV as/SCONJ they/PRON reach/VERB the/DET end/NOUN they/PRON go/VERB back/ADV#0.0#0.0
-a person cross steps to the right and then back to the left.#a/DET person/NOUN cross/VERB step/NOUN to/ADP the/DET right/NOUN and/CCONJ then/ADV back/ADV to/ADP the/DET left/NOUN#0.0#0.0
-a person walks backwards, pauses, and then walks forward again#a/DET person/NOUN walk/VERB backwards/ADV pause/NOUN and/CCONJ then/ADV walk/VERB forward/ADV again/ADV#0.0#0.0

@@ -1,3 +1,0 @@
-a person waves with their left hand, then waves with their right.#a/DET person/NOUN wave/VERB with/ADP their/DET left/ADJ hand/NOUN then/ADV wave/VERB with/ADP their/DET right/NOUN#0.0#0.0
-the sim is standing, swaying waving both hands the right after the left several times.#the/DET sim/PROPN is/AUX stand/VERB sway/VERB wave/VERB both/DET hand/NOUN the/DET right/NOUN after/ADP the/DET left/ADJ several/ADJ time/NOUN#0.0#10.0
-a person waves his right hand while pivoting from one leg to the other then does the same with his left hand.#a/DET person/NOUN wave/VERB his/DET right/ADJ hand/NOUN while/SCONJ pivot/VERB from/ADP one/NUM leg/NOUN to/ADP the/DET other/ADJ then/ADV does/AUX the/DET same/ADJ with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0

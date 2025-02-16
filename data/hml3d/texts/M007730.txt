@@ -1,3 +1,0 @@
-a man throws a fake punch.#a/DET man/NOUN throw/VERB a/DET fake/ADJ punch/NOUN#0.0#0.0
-a person punches out left and then right.#a/DET person/NOUN punch/VERB out/ADP left/ADV and/CCONJ then/ADV right/INTJ#0.0#0.0
-a person hit with left and after right hands#a/DET person/NOUN hit/VERB with/ADP left/ADJ and/CCONJ after/ADP right/ADJ hand/NOUN#0.0#0.0

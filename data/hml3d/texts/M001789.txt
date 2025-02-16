@@ -1,3 +1,0 @@
-a person steps up and left in one motion.#a/DET person/NOUN step/VERB up/ADP and/CCONJ left/VERB in/ADP one/NUM motion/NOUN#0.0#0.0
-a person takes one step diagonally to the left.#a/DET person/NOUN take/VERB one/NUM step/NOUN diagonally/ADV to/ADP the/DET left/NOUN#0.0#0.0
-a person steps towards the left while moving forward.#a/DET person/NOUN step/VERB towards/ADP the/DET left/ADJ while/SCONJ move/VERB forward/ADV#0.0#0.0

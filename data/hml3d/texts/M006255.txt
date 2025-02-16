@@ -1,3 +1,0 @@
-a person jogs to his left and then back to his right#a/DET person/NOUN jog/VERB to/ADP his/DET left/NOUN and/CCONJ then/ADV back/ADV to/ADP his/DET right/NOUN#0.0#0.0
-the person is jogging back-and-forth.#the/DET person/NOUN is/AUX jog/VERB backandforth/PROPN#0.0#0.0
-a person runs side to side#a/DET person/NOUN run/VERB side/NOUN to/PART side/VERB#0.0#0.0

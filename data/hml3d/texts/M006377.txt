@@ -1,3 +1,0 @@
-a standing person raises their left arm and waves.#a/DET stand/VERB person/NOUN raise/VERB their/DET left/ADJ arm/NOUN and/CCONJ wave/NOUN#0.0#0.0
-a person raises their left hand and makes a waving motion.#a/DET person/NOUN raise/VERB their/DET left/ADJ hand/NOUN and/CCONJ make/VERB a/DET waving/ADJ motion/NOUN#0.0#0.0
-the person is waving with his left arm.#the/DET person/NOUN is/AUX wave/VERB with/ADP his/DET left/ADJ arm/NOUN#0.0#0.0

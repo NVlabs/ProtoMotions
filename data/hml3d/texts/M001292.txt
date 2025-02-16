@@ -1,3 +1,0 @@
-a person lunges to his left while shaking his left hand.#a/DET person/NOUN lunge/VERB to/ADP his/DET left/NOUN while/SCONJ shake/VERB his/DET left/ADJ hand/NOUN#0.0#0.0
-a person has their legs spread and leans back toward their left side, while holding their arms up slightly.#a/DET person/NOUN has/AUX their/DET leg/NOUN spread/VERB and/CCONJ lean/VERB back/ADV toward/ADP their/DET left/ADJ side/NOUN while/SCONJ hold/VERB their/DET arm/NOUN up/ADV slightly/ADV#0.0#0.0
-a person is stretching their left leg.#a/DET person/NOUN is/AUX stretch/VERB their/DET left/ADJ leg/NOUN#0.0#0.0

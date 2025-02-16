@@ -1,3 +1,0 @@
-a person is sitting down and moves his left arm around.#a/DET person/NOUN is/AUX sit/VERB down/ADP and/CCONJ move/VERB his/DET left/ADJ arm/NOUN around/ADP#0.0#0.0
-a man sitting down and grabbing something with his left hand.#a/DET man/NOUN sit/VERB down/ADP and/CCONJ grab/VERB something/PRON with/ADP his/DET left/ADJ hand/NOUN#0.0#10.0
-a person sits down and raises their left arm to their chest then drops it.#a/DET person/NOUN sit/VERB down/ADP and/CCONJ raise/VERB their/DET left/ADJ arm/NOUN to/ADP their/DET chest/NOUN then/ADV drop/VERB it/PRON#0.0#0.0

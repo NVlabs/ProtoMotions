@@ -1,3 +1,0 @@
-a man jogging hastily, steps to his left and stops.#a/DET man/NOUN jog/VERB hastily/ADV step/VERB to/ADP his/DET left/NOUN and/CCONJ stop/NOUN#0.0#0.0
-a person walks forward and then left#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ then/ADV left/VERB#0.0#0.0
-this person walks toward the front then turns left.#this/DET person/NOUN walk/VERB toward/ADP the/DET front/NOUN then/ADV turn/VERB left/VERB#0.0#0.0

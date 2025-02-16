@@ -1,3 +1,0 @@
-a person steps to the left#a/DET person/NOUN step/VERB to/ADP the/DET left/NOUN#0.0#0.0
-a person step to the left.#a/DET person/NOUN step/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-a person standing and takes a steps right.#a/DET person/NOUN stand/VERB and/CCONJ take/VERB a/DET step/NOUN right/ADJ#0.0#0.0

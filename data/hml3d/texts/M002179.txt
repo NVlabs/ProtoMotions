@@ -1,3 +1,0 @@
-person kicks forward with their right leg, with their arms in front of them#person/NOUN kick/VERB forward/ADV with/ADP their/DET right/ADJ leg/NOUN with/ADP their/DET arm/NOUN in/ADP front/NOUN of/ADP them/PRON#0.0#0.0
-a person performs a kick with their right leg.#a/DET person/NOUN perform/VERB a/DET kick/NOUN with/ADP their/DET right/ADJ leg/NOUN#0.0#0.0
-a person kicks his right leg and then stands in a karate position.#a/DET person/NOUN kick/VERB his/DET right/ADJ leg/NOUN and/CCONJ then/ADV stand/VERB in/ADP a/DET karate/NOUN position/NOUN#0.0#0.0

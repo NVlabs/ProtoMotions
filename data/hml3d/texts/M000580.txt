@@ -1,3 +1,0 @@
-looks like he walks through a door to turn to the left and go straight forward#look/VERB like/SCONJ he/PRON walk/VERB through/ADP a/DET door/NOUN to/PART turn/VERB to/ADP the/DET left/NOUN and/CCONJ go/VERB straight/ADV forward/ADV#0.0#0.0
-a man first walks forward and then to the left.#a/DET man/NOUN first/ADV walk/VERB forward/ADV and/CCONJ then/ADV to/ADP the/DET left/NOUN#0.0#0.0
-person leads left then right feet forward in right to left half circle then stops#person/NOUN lead/VERB left/VERB then/ADV right/ADJ foot/NOUN forward/ADV in/ADP right/NOUN to/PART left/VERB half/ADJ circle/NOUN then/ADV stop/VERB#0.0#0.0

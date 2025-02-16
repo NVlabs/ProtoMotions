@@ -1,3 +1,0 @@
-person walks forward and curves to the left.#person/NOUN walk/VERB forward/ADV and/CCONJ curve/VERB to/ADP the/DET left/NOUN#0.0#0.0
-a person walks in an arc to the left then stops.#a/DET person/NOUN walk/VERB in/ADP an/DET arc/NOUN to/ADP the/DET left/NOUN then/ADV stop/VERB#0.0#0.0
-a person walks to the left.#a/DET person/NOUN walk/VERB to/ADP the/DET left/NOUN#0.0#0.0

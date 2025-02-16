@@ -1,3 +1,0 @@
-a person has a bent arm at the left side, then brings the left arm over their head#a/DET person/NOUN has/AUX a/DET bent/ADJ arm/NOUN at/ADP the/DET left/ADJ side/NOUN then/ADV bring/VERB the/DET left/ADJ arm/NOUN over/ADP their/DET head/NOUN#0.0#0.0
-a person makes a sweeping motion high into the air with their left arm.#a/DET person/NOUN make/VERB a/DET sweeping/ADJ motion/NOUN high/ADV into/ADP the/DET air/NOUN with/ADP their/DET left/ADJ arm/NOUN#0.0#0.0
-person stands still and throws something over to there right#person/NOUN stand/VERB still/ADV and/CCONJ throw/VERB something/PRON over/ADP to/ADP there/ADV right/ADV#0.0#0.0

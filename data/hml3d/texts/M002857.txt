@@ -1,3 +1,0 @@
-a person is performing a side stepping dance.#a/DET person/NOUN is/AUX perform/VERB a/DET side/NOUN stepping/ADJ dance/NOUN#0.0#0.0
-a person doges left and right.#a/DET person/NOUN dog/VERB left/VERB and/CCONJ right/INTJ#0.0#0.0
-dodges kaiwa with turning left and right#dodge/NOUN kaiwa/VERB with/ADP turn/VERB left/ADV and/CCONJ right/ADJ#0.0#0.0

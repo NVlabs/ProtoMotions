@@ -1,2 +1,0 @@
-person takes steps moving to his right a few steps.#person/NOUN take/VERB step/NOUN move/VERB to/ADP his/DET right/NOUN a/DET few/ADJ step/NOUN#0.0#0.0
-person walks slightly to their right casually#person/NOUN walk/VERB slightly/ADV to/ADP their/DET right/NOUN casually/ADV#0.0#0.0

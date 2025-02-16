@@ -1,3 +1,0 @@
-a person kicks something with their left foot twice.#a/DET person/NOUN kick/VERB something/PRON with/ADP their/DET left/ADJ foot/NOUN twice/ADV#0.0#0.0
-a man kicks twice with his left leg with the second kick being more forceful.#a/DET man/NOUN kick/VERB twice/ADV with/ADP his/DET left/ADJ leg/NOUN with/ADP the/DET second/ADJ kick/NOUN being/AUX more/ADV forceful/ADJ#0.0#0.0
-a person kicks their left leg twice#a/DET person/NOUN kick/VERB their/DET left/ADJ leg/NOUN twice/ADV#0.0#0.0

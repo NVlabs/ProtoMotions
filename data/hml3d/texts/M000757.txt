@@ -1,3 +1,0 @@
-person puts his left arm out to the side and swings it back and forth as if encouraging#person/NOUN put/VERB his/DET left/ADJ arm/NOUN out/ADP to/ADP the/DET side/NOUN and/CCONJ swing/VERB it/PRON back/ADV and/CCONJ forth/ADV as/SCONJ if/SCONJ encouraging/ADJ#0.0#0.0
-a person walks forward, making circular motions with their left hand.#a/DET person/NOUN walk/VERB forward/ADV make/VERB circular/ADJ motion/NOUN with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a person walks forward whilst rotating their left arm clockwise.#a/DET person/NOUN walk/VERB forward/ADV whilst/SCONJ rotate/VERB their/DET left/ADJ arm/NOUN clockwise/NOUN#0.0#0.0

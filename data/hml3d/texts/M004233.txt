@@ -1,3 +1,0 @@
-a person takes four strides forward and then stops.#a/DET person/NOUN take/VERB four/NUM stride/NOUN forward/ADV and/CCONJ then/ADV stop/VERB#0.0#0.0
-a man walks forward veering to the right.#a/DET man/NOUN walk/VERB forward/ADV veer/VERB to/ADP the/DET right/NOUN#0.0#0.0
-a person walks in a diagonal line from left to right#a/DET person/NOUN walk/VERB in/ADP a/DET diagonal/ADJ line/NOUN from/ADP left/VERB to/ADP right/ADJ#0.0#0.0

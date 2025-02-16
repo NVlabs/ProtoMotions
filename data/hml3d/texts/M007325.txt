@@ -1,3 +1,0 @@
-a person who is standing with his arms away from his sides, raises his arms, leans right and swings his left arm above his head two times.#a/DET person/NOUN who/PRON is/AUX stand/VERB with/ADP his/DET arm/NOUN away/ADV from/ADP his/DET side/NOUN raise/VERB his/DET arm/NOUN lean/VERB right/ADV and/CCONJ swing/VERB his/DET left/ADJ arm/NOUN above/ADP his/DET head/NOUN two/NUM time/NOUN#0.0#0.0
-the person is moving his arm to the right.#the/DET person/NOUN is/AUX move/VERB his/DET arm/NOUN to/ADP the/DET right/NOUN#0.0#0.0
-a person stretches their left arm above their head.#a/DET person/NOUN stretch/VERB their/DET left/ADJ arm/NOUN above/ADP their/DET head/NOUN#0.0#0.0

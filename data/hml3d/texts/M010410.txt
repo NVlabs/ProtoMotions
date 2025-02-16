@@ -1,3 +1,0 @@
-this person walks slowly around to the left then turns and stumbles to the right.#this/DET person/NOUN walk/VERB slowly/ADV around/ADV to/ADP the/DET left/NOUN then/ADV turn/VERB and/CCONJ stumble/VERB to/ADP the/DET right/NOUN#0.0#0.0
-a person walks slight to the right, turns around and walks to the left.#a/DET person/NOUN walk/VERB slight/ADJ to/ADP the/DET right/NOUN turn/VERB around/ADV and/CCONJ walk/VERB to/ADP the/DET left/NOUN#0.0#0.0
-a person walking around and then being pushed from behind#a/DET person/NOUN walk/VERB around/ADV and/CCONJ then/ADV being/AUX push/VERB from/ADP behind/ADV#0.0#0.0

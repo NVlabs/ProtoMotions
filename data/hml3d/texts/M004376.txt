@@ -1,3 +1,0 @@
-a man is standing up straight and scratches the top of his head with his left hand#a/DET man/NOUN is/AUX stand/VERB up/ADP straight/ADV and/CCONJ scratch/VERB the/DET top/NOUN of/ADP his/DET head/NOUN with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
-a person raises their left hand to their head and scratches something before placing it back down beside them.#a/DET person/NOUN raise/VERB their/DET left/ADJ hand/NOUN to/ADP their/DET head/NOUN and/CCONJ scratch/VERB something/PRON before/ADP place/VERB it/PRON back/ADV down/ADP beside/ADP them/PRON#0.0#0.0
-a person bends left elbow, bringing their hand above shoulder.#a/DET person/NOUN bend/VERB left/VERB elbow/PROPN bring/VERB their/DET hand/NOUN above/ADP shoulder/NOUN#0.0#0.0

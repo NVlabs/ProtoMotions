@@ -1,3 +1,0 @@
-a person is walking in a counterclockwise motion.#a/DET person/NOUN is/AUX walk/VERB in/ADP a/DET counterclockwise/ADJ motion/NOUN#0.0#0.0
-a person is walking at a steady pace in a complete circle and then starts to run counterclockwise#a/DET person/NOUN is/AUX walk/VERB at/ADP a/DET steady/ADJ pace/NOUN in/ADP a/DET complete/ADJ circle/NOUN and/CCONJ then/ADV start/VERB to/PART run/VERB counterclockwise/PROPN#0.0#0.0
-walking in a circle then stoppping.#walk/VERB in/ADP a/DET circle/NOUN then/ADV stopppe/VERB#0.0#0.0

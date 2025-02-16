@@ -1,3 +1,0 @@
-a man walks in a counterclockwise circle.#a/DET man/NOUN walk/VERB in/ADP a/DET counterclockwise/ADJ circle/NOUN#0.0#0.0
-the person walks in a counterclockwise circle#the/DET person/NOUN walk/VERB in/ADP a/DET counterclockwise/ADJ circle/NOUN#0.0#0.0
-the person walks around in a circle with their elbows bent inward slightly.#the/DET person/NOUN walk/VERB around/ADV in/ADP a/DET circle/NOUN with/ADP their/DET elbow/NOUN bent/ADJ inward/ADV slightly/ADV#0.0#0.0

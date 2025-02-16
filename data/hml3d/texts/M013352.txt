@@ -1,3 +1,0 @@
-a person slowly walked forward in left direction#a/DET person/NOUN slowly/ADV walk/VERB forward/ADV in/ADP left/ADJ direction/NOUN#0.0#0.0
-a person bends to the left#a/DET person/NOUN bend/VERB to/ADP the/DET left/NOUN#0.0#0.0
-the person is walking towards the left.#the/DET person/NOUN is/AUX walk/VERB towards/ADP the/DET left/NOUN#0.0#0.0

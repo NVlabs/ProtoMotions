@@ -1,3 +1,0 @@
-person is walking in a l shape#person/NOUN is/AUX walk/VERB in/ADP a/DET l/NOUN shape/NOUN#0.0#0.0
-a man walks forward then turns left after a short pause#a/DET man/NOUN walk/VERB forward/ADV then/ADV turn/VERB left/VERB after/ADP a/DET short/ADJ pause/NOUN#0.0#0.0
-a person walks forward, pauses, turns left and continues walking.#a/DET person/NOUN walk/VERB forward/ADV pause/NOUN turn/VERB left/VERB and/CCONJ continue/VERB walk/VERB#0.0#0.0

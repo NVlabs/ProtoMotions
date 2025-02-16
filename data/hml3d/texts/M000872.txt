@@ -1,3 +1,0 @@
-a man side steps to the left.#a/DET man/NOUN side/NOUN step/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-a person strafes one step to the left, our right.#a/DET person/NOUN strafe/VERB one/NUM step/NOUN to/ADP the/DET left/NOUN our/DET right/NOUN#0.0#3.0
-a person while standing takes and step sideways.#a/DET person/NOUN while/SCONJ stand/VERB take/NOUN and/CCONJ step/VERB sideways/ADV#0.0#0.0

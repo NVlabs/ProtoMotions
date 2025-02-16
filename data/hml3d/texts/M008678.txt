@@ -1,3 +1,0 @@
-swinging left arm in petting motion.#swinge/VERB left/ADJ arm/NOUN in/ADP petting/NOUN motion/NOUN#0.0#0.0
-a person is scrubbing back and forth with his left hand.#a/DET person/NOUN is/AUX scrub/VERB back/ADV and/CCONJ forth/ADV with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
-a person is holding something with their right arm while wiping it down with their left.#a/DET person/NOUN is/AUX hold/VERB something/PRON with/ADP their/DET right/ADJ arm/NOUN while/SCONJ wipe/VERB it/PRON down/ADP with/ADP their/DET left/NOUN#0.0#0.0

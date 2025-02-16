@@ -1,3 +1,0 @@
-a person runs forward with a left curve#a/DET person/NOUN run/VERB forward/ADV with/ADP a/DET left/ADJ curve/NOUN#0.0#0.0
-a person runs forward while turning to their left.#a/DET person/NOUN run/VERB forward/ADV while/SCONJ turn/VERB to/ADP their/DET left/NOUN#0.0#0.0
-a person runs to the rright#a/DET person/NOUN run/VERB to/ADP the/DET rright/NOUN#0.0#0.0

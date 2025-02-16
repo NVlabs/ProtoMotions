@@ -1,3 +1,0 @@
-a person walks in a circle, placing left foot in the circle.#a/DET person/NOUN walk/VERB in/ADP a/DET circle/NOUN place/VERB left/ADJ foot/NOUN in/ADP the/DET circle/NOUN#0.0#0.0
-person is walking in a circle#person/NOUN is/AUX walk/VERB in/ADP a/DET circle/NOUN#0.0#0.0
-a person walking in a circular motion.#a/DET person/NOUN walk/VERB in/ADP a/DET circular/ADJ motion/NOUN#0.0#0.0

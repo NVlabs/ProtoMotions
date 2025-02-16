@@ -1,3 +1,0 @@
-person slowly takes step forward.#person/NOUN slowly/ADV take/VERB step/NOUN forward/ADV#0.0#0.0
-person walks forward very slowly#person/NOUN walk/VERB forward/ADV very/ADV slowly/ADV#0.0#0.0
-.a person walks forward slowly.#person/NOUN walk/VERB forward/ADV slowly/ADV#0.0#0.0

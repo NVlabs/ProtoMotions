@@ -1,3 +1,0 @@
-a person walks forward, stumbles to their right, corrects and continues walking forward.#a/DET person/NOUN walk/VERB forward/ADV stumble/NOUN to/ADP their/DET right/NOUN correct/VERB and/CCONJ continue/VERB walk/VERB forward/ADV#0.0#0.0
-the person was pushed to the left but did not fall.#the/DET person/NOUN was/AUX push/VERB to/ADP the/DET left/NOUN but/CCONJ did/AUX not/PART fall/VERB#0.0#0.0
-a person walks forward, appeared to be pushed from the left, and then kept walking forward.#a/DET person/NOUN walk/VERB forward/ADV appear/VERB to/PART be/AUX push/VERB from/ADP the/DET left/NOUN and/CCONJ then/ADV keep/VERB walk/VERB forward/ADV#0.0#0.0

@@ -1,3 +1,0 @@
-a person jumps up and down 3 times landing dominantly on their left foot.#a/DET person/NOUN jump/VERB up/ADV and/CCONJ down/ADV time/NOUN land/VERB dominantly/ADV on/ADP their/DET left/ADJ foot/NOUN#0.0#0.0
-a man hops three times in a row.#a/DET man/NOUN hop/VERB three/NUM time/NOUN in/ADP a/DET row/NOUN#0.0#0.0
-person jumps with both legs three times and right hand moves slightly by a wrist action#person/NOUN jump/VERB with/ADP both/DET leg/NOUN three/NUM time/NOUN and/CCONJ right/ADJ hand/NOUN move/VERB slightly/ADV by/ADP a/DET wrist/NOUN action/NOUN#0.0#0.0

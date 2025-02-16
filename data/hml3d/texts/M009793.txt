@@ -1,3 +1,0 @@
-a person that is shaking their right hand and moving the left near their head#a/DET person/NOUN that/DET is/AUX shake/VERB their/DET right/ADJ hand/NOUN and/CCONJ move/VERB the/DET left/NOUN near/SCONJ their/DET head/NOUN#0.0#0.0
-a person shakily lifts up their arms with bend elbows in front of their body towards the face.#a/DET person/NOUN shakily/ADV lift/VERB up/ADP their/DET arm/NOUN with/ADP bend/NOUN elbow/NOUN in/ADP front/NOUN of/ADP their/DET body/NOUN towards/ADP the/DET face/NOUN#0.0#0.0
-a person standing moving left arm in an upward motion .#a/DET person/NOUN stand/VERB move/VERB left/ADJ arm/NOUN in/ADP an/DET upward/ADJ motion/NOUN#0.0#0.0

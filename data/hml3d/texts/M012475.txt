@@ -1,3 +1,0 @@
-a person does an aggressive shuffle back and forth#a/DET person/NOUN does/AUX an/DET aggressive/ADJ shuffle/NOUN back/ADV and/CCONJ forth/ADV#0.0#0.0
-the person was doing horizontal jumps back-and-forth.#the/DET person/NOUN was/AUX do/VERB horizontal/ADJ jumps/PROPN backandforth/PROPN#0.0#0.0
-a person uses their legs to shuffle back and forth from left to right. during this motion the person's body shifts left and right as well.#a/DET person/NOUN use/VERB their/DET leg/NOUN to/PART shuffle/VERB back/ADV and/CCONJ forth/ADV from/ADP left/VERB to/ADP right/NOUN during/ADP this/DET motion/NOUN the/DET person/NOUN body/NOUN shift/NOUN left/VERB and/CCONJ right/ADV as/ADV well/ADV#0.0#0.0

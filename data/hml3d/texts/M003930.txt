@@ -1,3 +1,0 @@
-a person is standing and uses their left arm to punch upwards.#a/DET person/NOUN is/AUX stand/VERB and/CCONJ use/VERB their/DET left/ADJ arm/NOUN to/PART punch/VERB upwards/ADV#0.0#0.0
-a person swings his bent left arm upward while slightly moving his hips.#a/DET person/NOUN swing/VERB his/DET bent/ADJ left/ADJ arm/NOUN upward/ADV while/SCONJ slightly/ADV move/VERB his/DET hip/NOUN#0.0#0.0
-a man gestures with his right hand upward.#a/DET man/NOUN gesture/VERB with/ADP his/DET right/ADJ hand/NOUN upward/ADV#0.0#0.0

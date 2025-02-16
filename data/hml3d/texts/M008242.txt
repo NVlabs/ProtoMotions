@@ -1,3 +1,0 @@
-a person flattens their dress and starts to curtsey.#a/DET person/NOUN flatten/VERB their/DET dress/NOUN and/CCONJ start/VERB to/PART curtsey/VERB#0.0#0.0
-person reaches with right arm and unzips their pants.#person/NOUN reach/VERB with/ADP right/ADJ arm/NOUN and/CCONJ unzip/VERB their/DET pant/NOUN#0.0#0.0
-a person adjusts his crotch with his right hand.#a/DET person/NOUN adjust/VERB his/DET crotch/NOUN with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0

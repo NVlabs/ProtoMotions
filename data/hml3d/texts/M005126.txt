@@ -1,3 +1,0 @@
-a person walks bending towards his right#a/DET person/NOUN walk/VERB bend/VERB towards/ADP his/DET right/NOUN#0.0#5.0
-a person walks forward and to the right before coming to a stop.#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ to/ADP the/DET right/NOUN before/ADP come/VERB to/ADP a/DET stop/NOUN#0.0#0.0
-moving right side on the floor.#move/VERB right/ADJ side/NOUN on/ADP the/DET floor/NOUN#0.0#0.0

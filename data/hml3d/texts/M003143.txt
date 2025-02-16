@@ -1,3 +1,0 @@
-a person walks in a s shaped line.#a/DET person/NOUN walk/VERB in/ADP a/DET s/PROPN shaped/ADJ line/NOUN#0.0#0.0
-a person is walking in a figure of eight#a/DET person/NOUN is/AUX walk/VERB in/ADP a/DET figure/NOUN of/ADP eight/NUM#0.0#0.0
-the person starts to walk to the left then turns right in a zig zag motion#the/DET person/NOUN start/VERB to/PART walk/VERB to/ADP the/DET left/NOUN then/ADV turn/VERB right/ADV in/ADP a/DET zig/X zag/X motion/NOUN#0.0#0.0

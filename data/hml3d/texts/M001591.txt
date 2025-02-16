@@ -1,3 +1,0 @@
-a person with arms down and relaxed makes a forward upward motion with left arm.#a/DET person/NOUN with/ADP arm/NOUN down/ADV and/CCONJ relaxed/ADJ make/VERB a/DET forward/ADV upward/ADJ motion/NOUN with/ADP left/ADJ arm/NOUN#0.0#0.0
-a man is lifting his left arm.#a/DET man/NOUN is/AUX lift/VERB his/DET left/ADJ arm/NOUN#0.0#0.0
-a person sticks their left hand up#a/DET person/NOUN stick/VERB their/DET left/ADJ hand/NOUN up/ADP#0.0#0.0

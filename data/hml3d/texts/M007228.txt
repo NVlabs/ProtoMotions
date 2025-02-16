@@ -1,3 +1,0 @@
-a person stands only on their right leg.#a/DET person/NOUN stand/VERB only/ADV on/ADP their/DET right/ADJ leg/NOUN#0.0#0.0
-standing on one foot then the other.#stand/VERB on/ADP one/NUM foot/NOUN then/ADV the/DET other/ADJ#0.0#0.0
-person stands on right leg and twists body.#person/NOUN stand/VERB on/ADP right/ADJ leg/NOUN and/CCONJ twist/NOUN body/NOUN#0.0#0.0

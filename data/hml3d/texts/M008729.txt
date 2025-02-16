@@ -1,3 +1,0 @@
-a person raised the left hand#a/DET person/NOUN raise/VERB the/DET left/ADJ hand/NOUN#0.0#0.0
-the person was throwing with the left hand.#the/DET person/NOUN was/AUX throw/VERB with/ADP the/DET left/ADJ hand/NOUN#0.0#0.0
-a person standing stretches left hand up#a/DET person/NOUN stand/VERB stretch/NOUN left/VERB hand/VERB up/ADP#0.0#0.0

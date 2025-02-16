@@ -1,3 +1,0 @@
-the man trudges in a counterclockwise circle.#the/DET man/NOUN trudge/VERB in/ADP a/DET counterclockwise/ADJ circle/NOUN#0.0#0.0
-a person walks forwards and back with both arms hanging#a/DET person/NOUN walk/VERB forwards/ADV and/CCONJ back/ADV with/ADP both/DET arm/NOUN hanging/NOUN#0.0#0.0
-the person is walking all slumped over exhausted.#the/DET person/NOUN is/AUX walk/VERB all/DET slump/VERB over/ADP exhausted/ADJ#0.0#0.0

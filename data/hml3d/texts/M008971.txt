@@ -1,3 +1,0 @@
-a person walks around in a circle.#a/DET person/NOUN walk/VERB around/ADV in/ADP a/DET circle/NOUN#0.0#0.0
-a person walks in a small, clockwise circle, three times, while crossing one foot over the other.#a/DET person/NOUN walk/VERB in/ADP a/DET small/ADJ clockwise/ADJ circle/NOUN three/NUM time/NOUN while/SCONJ cross/VERB one/NUM foot/NOUN over/ADP the/DET other/ADJ#0.0#0.0
-the body side steps one foot over the other in a clockwise circle.#the/DET body/NOUN side/NOUN step/VERB one/NUM foot/NOUN over/ADP the/DET other/ADJ in/ADP a/DET clockwise/ADJ circle/NOUN#0.0#0.0

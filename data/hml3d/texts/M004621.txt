@@ -1,3 +1,0 @@
-slowly swinging the arms forward as the body walks slowly.#slowly/ADV swinge/VERB the/DET arm/NOUN forward/ADV as/SCONJ the/DET body/NOUN walk/VERB slowly/ADV#0.0#0.0
-a stick figure walks from upper right to lower left#a/DET stick/NOUN figure/NOUN walk/VERB from/ADP upper/ADJ right/NOUN to/PART lower/VERB left/ADV#0.0#0.0
-a person walks slightly in a left diagonal direction while holding his left arm still#a/DET person/NOUN walk/VERB slightly/ADV in/ADP a/DET left/ADJ diagonal/ADJ direction/NOUN while/SCONJ hold/VERB his/DET left/ADJ arm/NOUN still/ADV#0.0#0.0

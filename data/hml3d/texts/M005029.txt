@@ -1,3 +1,0 @@
-this person is raising his left knee then right knee and doing swats.#this/DET person/NOUN is/AUX raise/VERB his/DET left/ADJ knee/NOUN then/ADV right/INTJ knee/NOUN and/CCONJ do/VERB swat/NOUN#0.0#0.0
-the person is exercising doing knee lifts.#the/DET person/NOUN is/AUX exercise/VERB do/VERB knee/NOUN lift/NOUN#0.0#0.0
-a person does an elbow to opposite knee touch#a/DET person/NOUN does/AUX an/DET elbow/NOUN to/ADP opposite/ADJ knee/NOUN touch/NOUN#0.0#5.0

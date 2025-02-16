@@ -1,3 +1,0 @@
-a person slowly kicks their left foot forward then puts it back and stands still, with feet shoulder width apart.#a/DET person/NOUN slowly/ADV kick/VERB their/DET left/ADJ foot/NOUN forward/ADV then/ADV put/VERB it/PRON back/ADV and/CCONJ stand/VERB still/ADV with/ADP foot/NOUN shoulder/VERB width/NOUN apart/ADV#0.0#0.0
-a person kicks and swings their left leg.#a/DET person/NOUN kick/VERB and/CCONJ swing/VERB their/DET left/ADJ leg/NOUN#0.0#0.0
-person cakes left foot forward.#person/NOUN cake/VERB left/VERB foot/NOUN forward/ADV#0.0#0.0

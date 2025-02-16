@@ -1,3 +1,0 @@
-a man is playing a violin.#a/DET man/NOUN is/AUX play/VERB a/DET violin/NOUN#0.0#8.0
-someone hold heads in hands and bend to the right, trying to dodge something.#someone/PRON hold/VERB head/NOUN in/ADP hand/NOUN and/CCONJ bend/VERB to/ADP the/DET right/NOUN try/VERB to/PART dodge/VERB something/PRON#0.0#0.0
-a person bends his right hand till elbow and brings his left hand across right hand.#a/DET person/NOUN bend/VERB his/DET right/ADJ hand/NOUN till/SCONJ elbow/NOUN and/CCONJ bring/VERB his/DET left/ADJ hand/NOUN across/ADP right/ADJ hand/NOUN#0.0#0.0

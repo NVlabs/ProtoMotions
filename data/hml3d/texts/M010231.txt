@@ -1,3 +1,0 @@
-a person walks straight then walks in a diagonal line to the left.#a/DET person/NOUN walk/VERB straight/ADV then/ADV walk/VERB in/ADP a/DET diagonal/ADJ line/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-a person walks to his left and stops.#a/DET person/NOUN walk/VERB to/ADP his/DET left/NOUN and/CCONJ stop/NOUN#0.0#0.0
-a person walks forward and then turns to walk in a curve to the left.#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ then/ADV turn/VERB to/PART walk/VERB in/ADP a/DET curve/NOUN to/ADP the/DET left/NOUN#0.0#0.0

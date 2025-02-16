@@ -1,3 +1,0 @@
-a person is lunging forward.#a/DET person/NOUN is/AUX lunge/VERB forward/ADV#0.0#0.0
-a person is lunging forwards with his left hand and leg three times#a/DET person/NOUN is/AUX lunge/VERB forwards/ADV with/ADP his/DET left/ADJ hand/NOUN and/CCONJ leg/NOUN three/NUM time/NOUN#0.0#0.0
-this person steps forward and bends at the left knee.#this/DET person/NOUN step/VERB forward/ADV and/CCONJ bend/VERB at/ADP the/DET left/ADJ knee/NOUN#0.0#0.0

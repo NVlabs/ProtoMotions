@@ -1,0 +1,65 @@
+# @package _global_
+
+agent:
+  config:
+    model:
+      config:
+        actor:
+          _target_: protomotions.agents.ppo.model.PPOActor
+          _recursive_: False
+          num_out: ${robot.number_of_actions}
+          config:
+            actor_logstd: -2.9
+            mu_model:
+              _target_: protomotions.agents.common.transformer.Transformer
+              _recursive_: False
+              num_out: ${robot.number_of_actions}
+              config:
+                transformer_token_size: ${.latent_dim}
+                latent_dim: 512
+                ff_size: 1024
+                num_layers: 4
+                num_heads: 4
+                dropout: 0
+
+                activation: relu
+                use_layer_norm: false
+
+                input_models:
+                  obs_mlp:
+                    _target_: protomotions.agents.common.mlp.MLP_WithNorm
+                    _recursive_: False
+                    num_in: ${robot.self_obs_size}
+                    num_out: ${...transformer_token_size}
+                    config:
+                      mask_key: null
+                      obs_key: self_obs
+                      normalize_obs: True
+                      norm_clamp_value: 5
+                      layers:
+                        - units: 256
+                          activation: relu
+                          use_layer_norm: false
+                        - units: 256
+                          activation: relu
+                          use_layer_norm: false
+                output_model:
+                  _target_: protomotions.agents.common.mlp.MLP
+                  _recursive_: False
+                  num_in: ${..transformer_token_size}
+                  num_out: ${robot.number_of_actions}
+                  config:
+                    layers:
+                      - units: 1024
+                        activation: relu
+                        use_layer_norm: false
+                      - units: 1024
+                        activation: relu
+                        use_layer_norm: false
+                      - units: 1024
+                        activation: relu
+                        use_layer_norm: false
+
+        actor_optimizer:
+          _target_: torch.optim.Adam
+          lr: 2e-5

@@ -1,3 +1,0 @@
-the person is doing something at the counter and moving it to the left.#the/DET person/NOUN is/AUX do/VERB something/PRON at/ADP the/DET counter/NOUN and/CCONJ move/VERB it/PRON to/ADP the/DET left/NOUN#0.0#0.0
-a person presses things in front of them with their left hand.#a/DET person/NOUN press/VERB thing/NOUN in/ADP front/NOUN of/ADP them/PRON with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a person touches things in front of them with their left arm.#a/DET person/NOUN touch/VERB thing/NOUN in/ADP front/NOUN of/ADP them/PRON with/ADP their/DET left/ADJ arm/NOUN#0.0#0.0

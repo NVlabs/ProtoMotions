@@ -1,3 +1,0 @@
-a standing person lifts their right hand and slowly touches their head#a/DET stand/VERB person/NOUN lift/VERB their/DET right/ADJ hand/NOUN and/CCONJ slowly/ADV touch/VERB their/DET head/NOUN#0.0#0.0
-person stands still and lifts left hand to face and mouth area#person/NOUN stand/VERB still/ADV and/CCONJ lift/VERB left/VERB hand/NOUN to/ADP face/NOUN and/CCONJ mouth/NOUN area/NOUN#0.0#0.0
-person is scratching their head.#person/NOUN is/AUX scratch/VERB their/DET head/NOUN#1.0#2.0

@@ -1,3 +1,0 @@
-man joins hands and cracks left wrist.#man/PROPN join/VERB hand/NOUN and/CCONJ crack/NOUN left/VERB wrist/NOUN#0.0#0.0
-a person adjusts their watch with their right hand.#a/DET person/NOUN adjust/VERB their/DET watch/NOUN with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0
-a person standing uses their right hand to quickly touch something on the left wrist.#a/DET person/NOUN stand/VERB use/VERB their/DET right/ADJ hand/NOUN to/PART quickly/ADV touch/VERB something/PRON on/ADP the/DET left/ADJ wrist/NOUN#0.0#0.0

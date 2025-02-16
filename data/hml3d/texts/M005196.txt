@@ -1,3 +1,0 @@
-a person stayed on the place and after raised left hand#a/DET person/NOUN stay/VERB on/ADP the/DET place/NOUN and/CCONJ after/ADP raise/VERB left/ADJ hand/NOUN#0.0#0.0
-toon is standing still raising their left hand and motioning as to coordinate a musical band.#toon/PROPN is/AUX stand/VERB still/ADV raise/VERB their/DET left/ADJ hand/NOUN and/CCONJ motioning/NOUN as/SCONJ to/PART coordinate/VERB a/DET musical/ADJ band/NOUN#0.0#10.0
-the person waives their left hand around and finally brings both hands together.#the/DET person/NOUN waive/VERB their/DET left/ADJ hand/NOUN around/ADP and/CCONJ finally/ADV bring/VERB both/DET hand/NOUN together/ADV#0.0#0.0

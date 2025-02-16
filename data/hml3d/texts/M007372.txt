@@ -1,3 +1,0 @@
-a person kneels over and touches something with his right hand.#a/DET person/NOUN kneel/VERB over/ADP and/CCONJ touch/VERB something/PRON with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0
-walking diagonally then bending down.#walk/VERB diagonally/ADV then/ADV bend/VERB down/ADP#0.0#0.0
-a person kneels while holding their left knee.#a/DET person/NOUN kneel/VERB while/SCONJ hold/VERB their/DET left/ADJ knee/NOUN#0.0#0.0

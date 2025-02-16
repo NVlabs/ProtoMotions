@@ -1,3 +1,0 @@
-the man throws punches with both hands.#the/DET man/NOUN throw/VERB punch/NOUN with/ADP both/DET hand/NOUN#0.0#0.0
-subject is stretching with left arm, then the right arm.#subject/PROPN is/AUX stretch/VERB with/ADP left/ADJ arm/NOUN then/ADV the/DET right/ADJ arm/NOUN#0.0#0.0
-the person is boxing to the right and the left#the/DET person/NOUN is/AUX box/VERB to/ADP the/DET right/NOUN and/CCONJ the/DET left/NOUN#0.0#0.0

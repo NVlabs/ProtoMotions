@@ -1,3 +1,0 @@
-someone working out the left arm#someone/PRON work/VERB out/ADP the/DET left/ADJ arm/NOUN#0.0#0.0
-someone reaches to the right side with their left hand three times getting lower each time.#someone/PRON reach/VERB to/ADP the/DET right/ADJ side/NOUN with/ADP their/DET left/ADJ hand/NOUN three/NUM time/NOUN get/VERB lower/ADJ each/DET time/NOUN#0.0#0.0
-a man reaches to his right three times, grabbing objects and bringing them to his left side.#a/DET man/NOUN reach/VERB to/ADP his/DET right/ADJ three/NUM time/NOUN grab/VERB object/NOUN and/CCONJ bring/VERB them/PRON to/ADP his/DET left/ADJ side/NOUN#0.0#0.0

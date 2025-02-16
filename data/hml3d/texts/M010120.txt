@@ -1,3 +1,0 @@
-a man walks to his right.#a/DET man/NOUN walk/VERB to/ADP his/DET right/NOUN#0.0#0.0
-a person briskly walks and comes to an abrupt stop#a/DET person/NOUN briskly/ADV walk/VERB and/CCONJ come/VERB to/ADP an/DET abrupt/ADJ stop/NOUN#0.0#0.0
-a person person walks to the right side.#a/DET person/NOUN person/NOUN walk/VERB to/ADP the/DET right/ADJ side/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person makes a "fast break" motion, zig-zagging briefly from right to left then darting forward to the left.#a/DET person/NOUN make/VERB a/DET fast/ADJ break/NOUN motion/NOUN zigzag/VERB briefly/ADV from/ADP right/NOUN to/ADP left/VERB then/ADV dart/VERB forward/ADV to/ADP the/DET left/NOUN#0.0#0.0
-the person quickly runs off.#the/DET person/NOUN quickly/ADV run/VERB off/ADP#0.0#0.0
-a person who is poised to run steps to his right with is right foot and dashes to his left.#a/DET person/NOUN who/PRON is/AUX poise/VERB to/PART run/VERB step/NOUN to/ADP his/DET right/NOUN with/ADP is/AUX right/ADJ foot/NOUN and/CCONJ dash/VERB to/ADP his/DET left/NOUN#0.0#0.0

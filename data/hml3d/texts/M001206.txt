@@ -1,3 +1,0 @@
-the person is wiping the table with the left hand in a circular motion.#the/DET person/NOUN is/AUX wipe/VERB the/DET table/NOUN with/ADP the/DET left/ADJ hand/NOUN in/ADP a/DET circular/ADJ motion/NOUN#0.0#0.0
-a person wiping something something with their left hand#a/DET person/NOUN wipe/VERB something/PRON something/PRON with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a person moves their arm in a circle in front of them#a/DET person/NOUN move/VERB their/DET arm/NOUN in/ADP a/DET circle/NOUN in/ADP front/NOUN of/ADP them/PRON#0.0#0.0

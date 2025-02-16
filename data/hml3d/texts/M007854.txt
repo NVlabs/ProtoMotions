@@ -1,3 +1,0 @@
-person has right hand cupped and held against the head while waving with the left hand.#person/NOUN has/AUX right/ADJ hand/NOUN cup/VERB and/CCONJ hold/VERB against/ADP the/DET head/NOUN while/SCONJ wave/VERB with/ADP the/DET left/ADJ hand/NOUN#0.0#0.0
-a person puts their right hand to their mouth to call and waves with their left hand.#a/DET person/NOUN put/VERB their/DET right/ADJ hand/NOUN to/ADP their/DET mouth/NOUN to/PART call/VERB and/CCONJ wave/NOUN with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-right hand up to face and left hand waving#right/ADJ hand/VERB up/ADP to/PART face/VERB and/CCONJ left/VERB hand/NOUN wave/VERB#0.0#0.0

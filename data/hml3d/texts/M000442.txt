@@ -1,3 +1,0 @@
-someone throws baseball down the plate#someone/PRON throw/VERB baseball/NOUN down/ADP the/DET plate/NOUN#0.0#0.0
-a person throws something with their left arm#a/DET person/NOUN throw/VERB something/PRON with/ADP their/DET left/ADJ arm/NOUN#0.0#0.0
-the person imitates throwing something with their left hand, the movement is choppy#the/DET person/NOUN imitate/VERB throw/VERB something/PRON with/ADP their/DET left/ADJ hand/NOUN the/DET movement/NOUN is/AUX choppy/ADJ#0.0#0.0

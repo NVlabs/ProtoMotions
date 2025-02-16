@@ -1,3 +1,0 @@
-the left and right arms extend up above the left shoulder.#the/DET left/ADJ and/CCONJ right/ADJ arm/NOUN extend/VERB up/ADP above/ADP the/DET left/ADJ shoulder/NOUN#0.0#0.0
-a person puts both arms into the air.#a/DET person/NOUN put/VERB both/DET arm/NOUN into/ADP the/DET air/NOUN#0.0#0.0
-a man raises his fists above his shoulders in a fighting position, facing the right side of the screen.#a/DET man/NOUN raise/VERB his/DET fist/NOUN above/ADP his/DET shoulder/NOUN in/ADP a/DET fighting/NOUN position/NOUN face/VERB the/DET right/ADJ side/NOUN of/ADP the/DET screen/NOUN#0.0#0.0

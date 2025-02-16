@@ -1,3 +1,0 @@
-a person walks in a curved line.#a/DET person/NOUN walk/VERB in/ADP a/DET curved/ADJ line/NOUN#0.0#0.0
-a person walks in a curved angle then stops.#a/DET person/NOUN walk/VERB in/ADP a/DET curved/ADJ angle/NOUN then/ADV stop/VERB#0.0#0.0
-a man walks and turns to the left.#a/DET man/NOUN walk/VERB and/CCONJ turn/VERB to/ADP the/DET left/NOUN#0.0#0.0

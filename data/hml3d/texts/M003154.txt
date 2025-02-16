@@ -1,3 +1,0 @@
-a person raises their left hand then switches to raising the right.#a/DET person/NOUN raise/VERB their/DET left/ADJ hand/NOUN then/ADV switch/VERB to/ADP raise/VERB the/DET right/NOUN#0.0#0.0
-a man alternates lifting his left and right arms above his head.#a/DET man/NOUN alternate/NOUN lift/VERB his/DET left/ADJ and/CCONJ right/ADJ arm/NOUN above/ADP his/DET head/NOUN#0.0#0.0
-a person reaches up with the right then the left.#a/DET person/NOUN reach/VERB up/ADP with/ADP the/DET right/NOUN then/ADV the/DET left/NOUN#0.0#0.0

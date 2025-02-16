@@ -1,3 +1,0 @@
-this person is waving his left hand.#this/DET person/NOUN is/AUX wave/VERB his/DET left/ADJ hand/NOUN#0.0#0.0
-a person standing with his arms to his sides raises his left arm and waves his arm, twice.#a/DET person/NOUN stand/VERB with/ADP his/DET arm/NOUN to/ADP his/DET side/NOUN raise/VERB his/DET left/ADJ arm/NOUN and/CCONJ wave/VERB his/DET arm/NOUN twice/ADV#0.0#0.0
-a person uses his left arm to wave back and forth.#a/DET person/NOUN use/VERB his/DET left/ADJ arm/NOUN to/PART wave/VERB back/ADV and/CCONJ forth/ADV#0.0#0.0

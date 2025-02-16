@@ -1,0 +1,12 @@
+# @package _global_
+
+motion_manager:
+  ### Respawn related params
+  motion_sampling:
+    init_start_prob: 0.15
+    init_random_prob: 0.05
+
+  dynamic_sampling:
+    enabled: True
+    dynamic_weight_max: null
+    bucket_width: 2.0

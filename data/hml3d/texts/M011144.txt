@@ -1,3 +1,0 @@
-someone is posing woth their left leg out straight, their left are bent 90 degrees, and their right arm fully extended with their right hand anove their head.#someone/PRON is/AUX pose/VERB woth/ADJ their/DET left/ADJ leg/NOUN out/ADP straight/ADV their/DET left/NOUN are/AUX bent/ADJ degree/NOUN and/CCONJ their/DET right/ADJ arm/NOUN fully/ADV extend/VERB with/ADP their/DET right/ADJ hand/NOUN anove/VERB their/DET head/NOUN#0.0#0.0
-person is making a pose#person/NOUN is/AUX make/VERB a/DET pose/NOUN#0.0#0.0
-a figure dances with their arms in the air.#a/DET figure/NOUN dance/VERB with/ADP their/DET arm/NOUN in/ADP the/DET air/NOUN#0.0#0.0

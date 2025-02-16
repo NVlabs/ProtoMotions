@@ -1,3 +1,0 @@
-a person walks in a circle to the left holding backpack with both hands behind back.#a/DET person/NOUN walk/VERB in/ADP a/DET circle/NOUN to/ADP the/DET left/ADJ hold/VERB backpack/NOUN with/ADP both/DET hand/NOUN behind/ADV back/ADV#0.0#0.0
-walking in counterclockwise circle with the arms behind the back.#walk/VERB in/ADP counterclockwise/PROPN circle/NOUN with/ADP the/DET arm/NOUN behind/ADP the/DET back/NOUN#0.0#0.0
-the person is carrying something behind back.#the/DET person/NOUN is/AUX carry/VERB something/PRON behind/ADP back/ADV#0.0#0.0

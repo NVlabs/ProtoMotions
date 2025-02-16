@@ -1,3 +1,0 @@
-a person in a sitting position with his hands forward adjusts a steering wheel right and left.#a/DET person/NOUN in/ADP a/DET sit/VERB position/NOUN with/ADP his/DET hand/NOUN forward/ADV adjust/VERB a/DET steering/NOUN wheel/NOUN right/ADV and/CCONJ left/VERB#0.0#0.0
-a person is crouching while alternating each arm up and down.#a/DET person/NOUN is/AUX crouch/VERB while/SCONJ alternate/VERB each/DET arm/NOUN up/ADV and/CCONJ down/ADV#0.0#0.0
-a person is squatting and shaking his raised hands above his head.#a/DET person/NOUN is/AUX squat/VERB and/CCONJ shake/VERB his/DET raise/VERB hand/NOUN above/ADP his/DET head/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-the person is waving hello to someone.#the/DET person/NOUN is/AUX wave/VERB hello/INTJ to/ADP someone/PRON#0.0#0.0
-a person waves with his right hand.#a/DET person/NOUN wave/VERB with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0
-the person waves to their friend#the/DET person/NOUN wave/VERB to/ADP their/DET friend/NOUN#0.0#0.0

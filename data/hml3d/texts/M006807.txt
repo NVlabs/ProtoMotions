@@ -1,3 +1,0 @@
-a person grabbed something with left and right hand and put it somewhere#a/DET person/NOUN grab/VERB something/PRON with/ADP left/ADJ and/CCONJ right/ADJ hand/NOUN and/CCONJ put/VERB it/PRON somewhere/ADV#0.0#0.0
-a man lifts something from his right to his left#a/DET man/NOUN lift/VERB something/PRON from/ADP his/DET right/NOUN to/ADP his/DET left/NOUN#0.0#0.0
-man moves something from his right to left#man/PROPN move/VERB something/PRON from/ADP his/DET right/NOUN to/ADP left/ADV#0.0#0.0

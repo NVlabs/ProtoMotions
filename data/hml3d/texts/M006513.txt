@@ -1,3 +1,0 @@
-a person walks diagonally to the left#a/DET person/NOUN walk/VERB diagonally/ADV to/ADP the/DET left/NOUN#0.0#0.0
-a person casually walks forward and toward their left.#a/DET person/NOUN casually/ADV walk/VERB forward/ADV and/CCONJ toward/ADP their/DET left/NOUN#0.0#0.0
-a person slowly walks forward while turning to their left.#a/DET person/NOUN slowly/ADV walk/VERB forward/ADV while/SCONJ turn/VERB to/ADP their/DET left/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-this person raises his left arm as if to check his watch.#this/DET person/NOUN raise/VERB his/DET left/ADJ arm/NOUN as/SCONJ if/SCONJ to/PART check/VERB his/DET watch/NOUN#0.0#0.0
-a person puts his left arm up to his chest#a/DET person/NOUN put/VERB his/DET left/ADJ arm/NOUN up/ADP to/ADP his/DET chest/NOUN#0.0#0.0
-a person is standing upleft and lifts their left arm which appears they are looking at their wrist.#a/DET person/NOUN is/AUX stand/VERB upleft/ADJ and/CCONJ lift/VERB their/DET left/ADJ arm/NOUN which/DET appear/VERB they/PRON are/AUX look/VERB at/ADP their/DET wrist/NOUN#0.0#0.0

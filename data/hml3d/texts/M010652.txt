@@ -1,3 +1,0 @@
-a man hops on one foot with his right leg.#a/DET man/NOUN hop/VERB on/ADP one/NUM foot/NOUN with/ADP his/DET right/ADJ leg/NOUN#0.0#0.0
-person is jumping on one leg#person/NOUN is/AUX jump/VERB on/ADP one/NUM leg/NOUN#0.0#0.0
-the person is jumping on his right leg.#the/DET person/NOUN is/AUX jump/VERB on/ADP his/DET right/ADJ leg/NOUN#0.0#0.0

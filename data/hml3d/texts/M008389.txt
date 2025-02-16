@@ -1,3 +1,0 @@
-person is waving hi with the left hand.#person/NOUN is/AUX wave/VERB hi/INTJ with/ADP the/DET left/ADJ hand/NOUN#0.0#0.0
-a person waves with their left hand.#a/DET person/NOUN wave/VERB with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a man is standing on the ground and starts waving to someone across#a/DET man/NOUN is/AUX stand/VERB on/ADP the/DET ground/NOUN and/CCONJ start/VERB wave/VERB to/ADP someone/PRON across/ADP#0.0#0.0

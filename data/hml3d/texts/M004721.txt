@@ -1,3 +1,0 @@
-a man walks forward to the left.#a/DET man/NOUN walk/VERB forward/ADV to/ADP the/DET left/NOUN#0.0#0.0
-a person walking and then turning to their right#a/DET person/NOUN walk/VERB and/CCONJ then/ADV turn/VERB to/ADP their/DET right/NOUN#0.0#0.0
-a man walk one fourth of the oval towards right#a/DET man/NOUN walk/VERB one/NUM fourth/NOUN of/ADP the/DET oval/NOUN towards/ADP right/ADV#0.0#0.0

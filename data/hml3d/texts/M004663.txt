@@ -1,3 +1,0 @@
-a person walks in circle with its left arm raised#a/DET person/NOUN walk/VERB in/ADP circle/NOUN with/ADP its/DET left/ADJ arm/NOUN raise/VERB#0.0#0.0
-a person walking around talking on phone#a/DET person/NOUN walk/VERB around/ADP talk/VERB on/ADP phone/NOUN#0.0#0.0
-person moves counterclockwise full circle holding something with left hand above neck level#person/NOUN move/VERB counterclockwise/VERB full/ADJ circle/NOUN hold/VERB something/PRON with/ADP left/ADJ hand/NOUN above/ADP neck/NOUN level/NOUN#0.0#0.0

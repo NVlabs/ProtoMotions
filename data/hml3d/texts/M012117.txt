@@ -1,3 +1,0 @@
-a person lifting their right arm up#a/DET person/NOUN lift/VERB their/DET right/ADJ arm/NOUN up/ADP#0.0#0.0
-raising hand towards head.#raise/VERB hand/NOUN towards/ADP head/NOUN#0.0#0.0
-a person touches head with right hand.#a/DET person/NOUN touch/VERB head/NOUN with/ADP right/ADJ hand/NOUN#0.0#0.0

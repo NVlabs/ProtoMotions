@@ -1,3 +1,0 @@
-a person walks down, throws left hand up and walks off to the left.#a/DET person/NOUN walk/VERB down/ADV throw/VERB left/ADJ hand/NOUN up/ADP and/CCONJ walk/VERB off/ADP to/ADP the/DET left/NOUN#0.0#0.0
-a person walks forward, waves his left hand then walks to the left.#a/DET person/NOUN walk/VERB forward/ADV wave/VERB his/DET left/ADJ hand/NOUN then/ADV walk/VERB to/ADP the/DET left/NOUN#0.0#0.0
-a person walks forward, raises their left hand in a wave, and then turns to their left.#a/DET person/NOUN walk/VERB forward/ADV raise/VERB their/DET left/ADJ hand/NOUN in/ADP a/DET wave/NOUN and/CCONJ then/ADV turn/VERB to/ADP their/DET left/NOUN#0.0#0.0

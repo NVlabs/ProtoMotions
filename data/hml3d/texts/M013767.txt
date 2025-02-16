@@ -1,3 +1,0 @@
-a man jumps and spins around.#a/DET man/NOUN jump/VERB and/CCONJ spin/VERB around/ADV#0.0#0.0
-the man jumps and spins counterclockwise in the air.#the/DET man/NOUN jump/VERB and/CCONJ spin/VERB counterclockwise/NOUN in/ADP the/DET air/NOUN#0.0#0.0
-a figure stands hesitantly, then jumps and spins/twists in the air#a/DET figure/NOUN stand/VERB hesitantly/ADV then/ADV jump/VERB and/CCONJ spin/NOUN twist/NOUN in/ADP the/DET air/NOUN#0.0#0.0

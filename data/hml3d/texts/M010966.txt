@@ -1,3 +1,0 @@
-a person places their hands together then release their hands.#a/DET person/NOUN place/VERB their/DET hand/NOUN together/ADV then/ADV release/VERB their/DET hand/NOUN#0.0#0.0
-a person scratches his left wrist with his right hand.#a/DET person/NOUN scratch/VERB his/DET left/ADJ wrist/NOUN with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0
-a person checks the watch on the left arm.#a/DET person/NOUN check/VERB the/DET watch/NOUN on/ADP the/DET left/ADJ arm/NOUN#0.0#0.0

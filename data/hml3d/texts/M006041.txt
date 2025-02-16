@@ -1,3 +1,0 @@
-the man walks in a clockwise semicircle.#the/DET man/NOUN walk/VERB in/ADP a/DET clockwise/NOUN semicircle/NOUN#0.0#0.0
-a person walks in a counter counterclockwise circle#a/DET person/NOUN walk/VERB in/ADP a/DET counter/ADJ counterclockwise/PROPN circle/NOUN#0.0#0.0
-a man walks clockwise in a circle repeatedly.#a/DET man/NOUN walk/VERB clockwise/VERB in/ADP a/DET circle/NOUN repeatedly/ADV#0.0#0.0

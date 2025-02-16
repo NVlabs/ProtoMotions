@@ -1,3 +1,0 @@
-a figure sprints forward confidently#a/DET figure/NOUN sprint/NOUN forward/ADV confidently/ADV#0.0#0.0
-a person runs straight forward#a/DET person/NOUN run/VERB straight/ADV forward/ADV#0.0#0.0
-person is running in right diagonal straight line#person/NOUN is/AUX run/VERB in/ADP right/ADJ diagonal/ADJ straight/ADJ line/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-the man puts his right hand on top of his head.#the/DET man/NOUN put/VERB his/DET right/ADJ hand/NOUN on/ADP top/NOUN of/ADP his/DET head/NOUN#0.0#0.0
-a man raises his left arm.#a/DET man/NOUN raise/VERB his/DET left/ADJ arm/NOUN#0.0#0.0
-a person scratch its head with the left arm#a/DET person/NOUN scratch/VERB its/DET head/NOUN with/ADP the/DET left/ADJ arm/NOUN#0.0#0.0

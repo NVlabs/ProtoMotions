@@ -1,3 +1,0 @@
-a person in a t shape, bends down to the left and back up.#a/DET person/NOUN in/ADP a/DET t/NOUN shape/NOUN bend/VERB down/ADP to/ADP the/DET left/NOUN and/CCONJ back/VERB up/ADV#0.0#0.0
-the person tilts to their left with outstretched arms.#the/DET person/NOUN tilt/VERB to/ADP their/DET left/NOUN with/ADP outstretched/ADJ arm/NOUN#0.0#0.0
-bends down from the waist to the left.#bend/VERB down/ADP from/ADP the/DET waist/NOUN to/ADP the/DET left/NOUN#0.0#0.0

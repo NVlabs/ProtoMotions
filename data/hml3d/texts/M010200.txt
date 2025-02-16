@@ -1,3 +1,0 @@
-a person leans to his left while balancing himself mainly with his left leg as his right leg is unsteady.#a/DET person/NOUN lean/VERB to/ADP his/DET left/NOUN while/SCONJ balance/VERB himself/PRON mainly/ADV with/ADP his/DET left/ADJ leg/NOUN as/SCONJ his/DET right/ADJ leg/NOUN is/AUX unsteady/ADJ#0.0#0.0
-a person raises their right leg then sets it back down.#a/DET person/NOUN raise/VERB their/DET right/ADJ leg/NOUN then/ADV set/VERB it/PRON back/ADV down/ADV#0.0#5.0
-a person brushes something off in front of them with their right foot.#a/DET person/NOUN brush/VERB something/PRON off/ADP in/ADP front/NOUN of/ADP them/PRON with/ADP their/DET right/ADJ foot/NOUN#0.0#0.0

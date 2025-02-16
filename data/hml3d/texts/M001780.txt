@@ -1,3 +1,0 @@
-a person waves for someone to come over then waves normally.#a/DET person/NOUN wave/VERB for/ADP someone/PRON to/PART come/VERB over/ADP then/ADV wave/NOUN normally/ADV#0.0#0.0
-the person was waving someone forward with his left arm.#the/DET person/NOUN was/AUX wave/VERB someone/PRON forward/ADV with/ADP his/DET left/ADJ arm/NOUN#0.0#0.0
-a person signaling a vehicle in reverse to keep going, then to stop, to keep going, and finally to stop.#a/DET person/NOUN signal/VERB a/DET vehicle/NOUN in/ADP reverse/NOUN to/PART keep/VERB go/VERB then/ADV to/PART stop/VERB to/PART keep/VERB go/VERB and/CCONJ finally/ADV to/PART stop/VERB#0.0#0.0

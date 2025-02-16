@@ -1,3 +1,0 @@
-a person bends to the right, reaches and swings right to make a wiping motion.#a/DET person/NOUN bend/VERB to/ADP the/DET right/NOUN reach/VERB and/CCONJ swing/NOUN right/ADV to/PART make/VERB a/DET wiping/ADJ motion/NOUN#0.0#0.0
-a person bends over to their left to grab something and then moves to their left to scrub or brush something with their left hand#a/DET person/NOUN bend/VERB over/ADP to/ADP their/DET left/NOUN to/PART grab/VERB something/PRON and/CCONJ then/ADV move/VERB to/ADP their/DET left/NOUN to/ADP scrub/NOUN or/CCONJ brush/VERB something/PRON with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-this person is washing the dishes.#this/DET person/NOUN is/AUX wash/VERB the/DET dish/NOUN#0.0#0.0

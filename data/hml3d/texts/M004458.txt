@@ -1,3 +1,0 @@
-person moves forward and extends the left leg and kicks something to the front#person/NOUN move/VERB forward/ADV and/CCONJ extend/VERB the/DET left/ADJ leg/NOUN and/CCONJ kick/VERB something/PRON to/ADP the/DET front/NOUN#0.0#0.0
-a man aggressively kicks an object to the left using his rigjt foot.#a/DET man/NOUN aggressively/ADV kick/VERB an/DET object/NOUN to/ADP the/DET left/NOUN use/VERB his/DET rigjt/NOUN foot/NOUN#0.0#0.0
-a man kicks to the right with his left foot and tyrns his whole body to the right.#a/DET man/NOUN kick/VERB to/ADP the/DET right/NOUN with/ADP his/DET left/ADJ foot/NOUN and/CCONJ tyrn/VERB his/DET whole/ADJ body/NOUN to/ADP the/DET right/NOUN#0.0#0.0

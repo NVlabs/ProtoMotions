@@ -1,3 +1,0 @@
-a person standing up waves with their left arm in a large motion.#a/DET person/NOUN stand/VERB up/ADP wave/NOUN with/ADP their/DET left/ADJ arm/NOUN in/ADP a/DET large/ADJ motion/NOUN#0.0#0.0
-a person waves with their left hand above their head.#a/DET person/NOUN wave/VERB with/ADP their/DET left/ADJ hand/NOUN above/ADP their/DET head/NOUN#0.0#0.0
-robot is waving its left hand#robot/PROPN is/AUX wave/VERB its/DET left/ADJ hand/NOUN#0.0#0.0

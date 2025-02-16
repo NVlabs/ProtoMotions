@@ -1,3 +1,0 @@
-person lifts left leg and does two kicks.#person/NOUN lift/VERB left/VERB leg/NOUN and/CCONJ does/AUX two/NUM kick/NOUN#0.0#0.0
-someone is kicking forward#someone/PRON is/AUX kick/VERB forward/ADV#0.0#0.0
-a man is trying to kick the door down.#a/DET man/NOUN is/AUX try/VERB to/PART kick/VERB the/DET door/NOUN down/ADV#0.0#0.0

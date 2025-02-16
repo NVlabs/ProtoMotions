@@ -1,3 +1,0 @@
-the person as walking fairly slowly.#the/DET person/NOUN as/SCONJ walk/VERB fairly/ADV slowly/ADV#0.0#0.0
-a man walks slowly forward, then turns back in the direction from whence he came.#a/DET man/NOUN walk/VERB slowly/ADV forward/ADV then/ADV turn/VERB back/ADV in/ADP the/DET direction/NOUN from/ADP whence/NOUN he/PRON come/VERB#0.0#0.0
-a person walks to the right very slowly.#a/DET person/NOUN walk/VERB to/ADP the/DET right/NOUN very/ADV slowly/ADV#0.0#0.0

@@ -1,3 +1,0 @@
-a person raises their left forearm and waves.#a/DET person/NOUN raise/VERB their/DET left/ADJ forearm/NOUN and/CCONJ wave/NOUN#0.0#2.0
-a persoon scratches their head with their left hand.#a/DET persoon/NOUN scratch/VERB their/DET head/NOUN with/ADP their/DET left/ADJ hand/NOUN#0.0#2.0
-person raises forarm shouder height#person/NOUN raise/VERB forarm/PROPN shouder/NOUN height/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-takes a step forward while left hand goes above the right hand in a circle motion and vice versa , then the left hand goes towards the head, and back down.#take/VERB a/DET step/NOUN forward/ADV while/SCONJ left/ADJ hand/NOUN go/VERB above/ADP the/DET right/ADJ hand/NOUN in/ADP a/DET circle/NOUN motion/NOUN and/CCONJ vice/NOUN versa/ADV then/ADV the/DET left/ADJ hand/NOUN go/VERB towards/ADP the/DET head/NOUN and/CCONJ back/ADV down/ADV#0.0#0.0
-this person stands stills and looks to be making a drink.#this/DET person/NOUN stand/VERB still/NOUN and/CCONJ look/VERB to/PART be/AUX make/VERB a/DET drink/NOUN#0.0#0.0
-using hands to wipe something#use/VERB hand/NOUN to/PART wipe/VERB something/PRON#0.0#0.0

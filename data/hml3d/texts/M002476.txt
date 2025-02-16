@@ -1,3 +1,0 @@
-a person skips back and forth down a line#a/DET person/NOUN skip/VERB back/ADV and/CCONJ forth/ADV down/ADP a/DET line/NOUN#0.0#0.0
-a person walks sideways to the right taking two steps before spinning counter counterclockwise, repetlats the steps moving to the left and spinning counterclockwise a total of four times.#a/DET person/NOUN walk/VERB sideways/ADV to/ADP the/DET right/NOUN take/VERB two/NUM step/NOUN before/ADP spin/VERB counter/NOUN counterclockwise/NOUN repetlat/VERB the/DET step/NOUN move/VERB to/ADP the/DET left/ADJ and/CCONJ spin/VERB counterclockwise/NOUN a/DET total/NOUN of/ADP four/NUM time/NOUN#0.0#0.0
-the person is walking and spinning around.#the/DET person/NOUN is/AUX walk/VERB and/CCONJ spin/VERB around/ADV#0.0#0.0

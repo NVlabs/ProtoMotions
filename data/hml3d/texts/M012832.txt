@@ -1,3 +1,0 @@
-a person walks in a circle to the left.#a/DET person/NOUN walk/VERB in/ADP a/DET circle/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-a person who is standing with his arms by his sides takes eight steps in a clockwise motion and stops.#a/DET person/NOUN who/PRON is/AUX stand/VERB with/ADP his/DET arm/NOUN by/ADP his/DET side/NOUN take/VERB eight/NUM step/NOUN in/ADP a/DET clockwise/ADJ motion/NOUN and/CCONJ stop/NOUN#0.0#0.0
-a person walks 3/4s of a counterclockwise circle.#a/DET person/NOUN walk/VERB of/ADP a/DET counterclockwise/ADJ circle/NOUN#0.0#0.0

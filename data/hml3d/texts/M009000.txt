@@ -1,3 +1,0 @@
-a person walks in a large arc to their left.#a/DET person/NOUN walk/VERB in/ADP a/DET large/ADJ arc/NOUN to/ADP their/DET left/NOUN#0.0#0.0
-a person walks in a quarter circle to their left with the right leg stiffer than the other#a/DET person/NOUN walk/VERB in/ADP a/DET quarter/NOUN circle/NOUN to/ADP their/DET left/NOUN with/ADP the/DET right/ADJ leg/NOUN stiffer/ADJ than/SCONJ the/DET other/ADJ#0.0#0.0
-a person walks to the left.#a/DET person/NOUN walk/VERB to/ADP the/DET left/NOUN#0.0#0.0

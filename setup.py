@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(
-    name="phys_anim",
+    name="protomotions",
     version="0.1",
-    packages=["phys_anim"],
+    packages=["protomotions"],
 )

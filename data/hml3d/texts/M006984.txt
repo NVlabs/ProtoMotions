@@ -1,3 +1,0 @@
-the person is walking in a counter  clock wise circle#the/DET person/NOUN is/AUX walk/VERB in/ADP a/DET counter/NOUN clock/NOUN wise/ADJ circle/NOUN#0.0#0.0
-a person walks in a clockwise circle.#a/DET person/NOUN walk/VERB in/ADP a/DET clockwise/ADJ circle/NOUN#0.0#0.0
-a person is walking in a counter counterclockwise circle.#a/DET person/NOUN is/AUX walk/VERB in/ADP a/DET counter/ADJ counterclockwise/PROPN circle/NOUN#0.0#0.0

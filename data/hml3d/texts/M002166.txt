@@ -1,3 +1,0 @@
-a man raises his left arm the lowers it.#a/DET man/NOUN raise/VERB his/DET left/ADJ arm/NOUN the/DET lower/NOUN it/PRON#0.0#0.0
-persons takes a beverage and drinks it with left hand#person/NOUN take/VERB a/DET beverage/NOUN and/CCONJ drink/VERB it/PRON with/ADP left/ADJ hand/NOUN#0.0#0.0
-he raises his left hand to his head and then puts it down.#he/PRON raise/VERB his/DET left/ADJ hand/NOUN to/ADP his/DET head/NOUN and/CCONJ then/ADV put/VERB it/PRON down/ADP#0.0#0.0

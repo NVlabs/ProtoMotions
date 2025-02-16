@@ -1,3 +1,0 @@
-person is walking in a unbalanced manner#person/NOUN is/AUX walk/VERB in/ADP a/DET unbalanced/ADJ manner/NOUN#0.0#0.0
-a person leans to the right then walks in a left diagonal.#a/DET person/NOUN lean/VERB to/ADP the/DET right/NOUN then/ADV walk/VERB in/ADP a/DET left/ADJ diagonal/ADJ#0.0#0.0
-a person walks to the left.#a/DET person/NOUN walk/VERB to/ADP the/DET left/NOUN#0.0#0.0

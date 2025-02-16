@@ -1,3 +1,0 @@
-person throws a right jab#person/NOUN throw/VERB a/DET right/ADJ jab/NOUN#0.0#0.0
-the figure does a right jab.#the/DET figure/NOUN does/AUX a/DET right/ADJ jab/NOUN#0.0#0.0
-this person is in standing position and brings both hands to chest and pushes out right hand and right leg out quickly then brings them back in to standing position.#this/DET person/NOUN is/AUX in/ADP stand/VERB position/NOUN and/CCONJ bring/VERB both/DET hand/NOUN to/PART chest/VERB and/CCONJ push/VERB out/ADP right/ADJ hand/NOUN and/CCONJ right/ADJ leg/NOUN out/ADP quickly/ADV then/ADV bring/VERB them/PRON back/ADV in/ADV to/ADP standing/NOUN position/NOUN#0.0#0.0

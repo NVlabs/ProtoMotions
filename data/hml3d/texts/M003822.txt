@@ -1,3 +1,0 @@
-a person walks anti counterclockwise in a semi circle then jumps twice#a/DET person/NOUN walk/VERB anti/ADJ counterclockwise/NOUN in/ADP a/DET semi/ADJ circle/NOUN then/ADV jump/VERB twice/ADV#0.0#0.0
-a person walking and turning counter counterclockwise and then leaping straight in the air.#a/DET person/NOUN walk/VERB and/CCONJ turn/VERB counter/NOUN counterclockwise/NOUN and/CCONJ then/ADV leap/VERB straight/ADV in/ADP the/DET air/NOUN#0.0#0.0
-a man walks down, turns to his right, then walks back up and hops 2 times.#a/DET man/NOUN walk/VERB down/ADV turn/VERB to/ADP his/DET right/NOUN then/ADV walk/VERB back/ADV up/ADV and/CCONJ hop/VERB time/NOUN#0.0#0.0

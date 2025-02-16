@@ -1,3 +1,0 @@
-a man throws something twice with good motion#a/DET man/NOUN throw/VERB something/PRON twice/ADJ with/ADP good/ADJ motion/NOUN#0.0#0.0
-a man throwing with his left arm in slow motion twice.#a/DET man/NOUN throw/VERB with/ADP his/DET left/ADJ arm/NOUN in/ADP slow/ADJ motion/NOUN twice/ADV#0.0#0.0
-a man throws with his right hand, crouches, and throws with his right hand again.#a/DET man/NOUN throw/VERB with/ADP his/DET right/ADJ hand/NOUN crouch/NOUN and/CCONJ throw/NOUN with/ADP his/DET right/ADJ hand/NOUN again/ADV#0.0#0.0

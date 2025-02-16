@@ -1,3 +1,0 @@
-person is walking normally in a circle#person/NOUN is/AUX walk/VERB normally/ADV in/ADP a/DET circle/NOUN#0.0#0.0
-a person takes eight steps forming a complete circle#a/DET person/NOUN take/VERB eight/NUM step/NOUN form/VERB a/DET complete/ADJ circle/NOUN#0.0#0.0
-a person walks in a clockwise circle.#a/DET person/NOUN walk/VERB in/ADP a/DET clockwise/ADJ circle/NOUN#0.0#0.0

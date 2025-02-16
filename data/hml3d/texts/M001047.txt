@@ -1,3 +1,0 @@
-a person air kicks with his left feet and right feet.#a/DET person/NOUN air/NOUN kick/NOUN with/ADP his/DET left/ADJ foot/NOUN and/CCONJ right/ADJ foot/NOUN#0.0#0.0
-a man kicks forward with his left leg and backward with his right leg.#a/DET man/NOUN kick/VERB forward/ADV with/ADP his/DET left/ADJ leg/NOUN and/CCONJ backward/ADJ with/ADP his/DET right/ADJ leg/NOUN#0.0#0.0
-a person kicks outward with his left foot, then his right foot.#a/DET person/NOUN kick/VERB outward/ADV with/ADP his/DET left/ADJ foot/NOUN then/ADV his/DET right/ADJ foot/NOUN#0.0#0.0

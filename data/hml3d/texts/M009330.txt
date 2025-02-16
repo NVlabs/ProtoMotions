@@ -1,3 +1,0 @@
-he is balancing himself on his right foot.#he/PRON is/AUX balance/VERB himself/PRON on/ADP his/DET right/ADJ foot/NOUN#0.0#0.0
-this person balances on the right leg.#this/DET person/NOUN balance/VERB on/ADP the/DET right/ADJ leg/NOUN#0.0#0.0
-a person is balancing on one leg and swinging the other around#a/DET person/NOUN is/AUX balance/VERB on/ADP one/NUM leg/NOUN and/CCONJ swinge/VERB the/DET other/ADJ around/ADV#0.0#0.0

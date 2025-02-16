@@ -1,3 +1,0 @@
-a person who is standing reaches back with his right arm and swings it forward and upwards.#a/DET person/NOUN who/PRON is/AUX stand/VERB reach/VERB back/ADV with/ADP his/DET right/ADJ arm/NOUN and/CCONJ swing/VERB it/PRON forward/ADV and/CCONJ upwards/ADV#0.0#0.0
-a person is boxing and moves his right hand upwards.#a/DET person/NOUN is/AUX box/VERB and/CCONJ move/VERB his/DET right/ADJ hand/NOUN upwards/ADV#0.0#0.0
-this person reaches right then swings his arm to the left.#this/DET person/NOUN reach/VERB right/ADV then/ADV swing/VERB his/DET arm/NOUN to/ADP the/DET left/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-person moves forward and lifts left leg knee height and balances#person/NOUN move/VERB forward/ADV and/CCONJ lift/VERB left/VERB leg/PROPN knee/NOUN height/NOUN and/CCONJ balance/NOUN#0.0#0.0
-a person takes three steps forward and then lifts their left foot up onto an object.#a/DET person/NOUN take/VERB three/NUM step/NOUN forward/ADV and/CCONJ then/ADV lift/VERB their/DET left/ADJ foot/NOUN up/ADP onto/ADP an/DET object/NOUN#0.0#0.0
-a person walks forward with his right foot first, steps in something with his left foot and lifts it into the air.#a/DET person/NOUN walk/VERB forward/ADV with/ADP his/DET right/ADJ foot/NOUN first/ADV step/NOUN in/ADP something/PRON with/ADP his/DET left/ADJ foot/NOUN and/CCONJ lift/VERB it/PRON into/ADP the/DET air/NOUN#0.0#0.0

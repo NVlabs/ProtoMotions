@@ -1,3 +1,0 @@
-a person quickly walks backwards and to the side#a/DET person/NOUN quickly/ADV walk/VERB backwards/ADV and/CCONJ to/ADP the/DET side/NOUN#0.0#0.0
-this person steps backward to the left then forward to the right.#this/DET person/NOUN step/VERB backward/ADV to/ADP the/DET left/NOUN then/ADV forward/ADV to/ADP the/DET right/NOUN#0.0#0.0
-a person loses his balance and falls to the right. he regains his balance and moves back to his original position.#a/DET person/NOUN lose/VERB his/DET balance/NOUN and/CCONJ fall/VERB to/ADP the/DET right/NOUN he/PRON regain/VERB his/DET balance/NOUN and/CCONJ move/VERB back/ADV to/ADP his/DET original/ADJ position/NOUN#0.0#0.0

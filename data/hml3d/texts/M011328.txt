@@ -1,3 +1,0 @@
-a man does the charleston.#a/DET man/NOUN does/AUX the/DET charleston/PROPN#0.0#0.0
-the person was dancing the charleston.#the/DET person/NOUN was/AUX dance/VERB the/DET charleston/PROPN#0.0#0.0
-a person did somehting with left and right legs#a/DET person/NOUN did/AUX somehte/VERB with/ADP left/ADJ and/CCONJ right/ADJ leg/NOUN#0.0#7.0

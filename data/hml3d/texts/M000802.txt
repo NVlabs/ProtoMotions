@@ -1,3 +1,0 @@
-person is standing there then moved over and back.#person/NOUN is/AUX stand/VERB there/ADV then/ADV move/VERB over/ADV and/CCONJ back/ADV#0.0#0.0
-a person is pushed slightly to their right, catching themselves with their right foot.#a/DET person/NOUN is/AUX push/VERB slightly/ADV to/ADP their/DET right/NOUN catch/VERB themselves/PRON with/ADP their/DET right/ADJ foot/NOUN#0.0#0.0
-person take a move to the right.#person/NOUN take/VERB a/DET move/NOUN to/ADP the/DET right/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person slowly walks forward while veering to their right.#a/DET person/NOUN slowly/ADV walk/VERB forward/ADV while/SCONJ veer/VERB to/ADP their/DET right/NOUN#0.0#0.0
-the person was walking and stepped over something.#the/DET person/NOUN was/AUX walk/VERB and/CCONJ step/VERB over/ADP something/PRON#0.0#0.0
-a person steps over a hole.#a/DET person/NOUN step/VERB over/ADP a/DET hole/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-robot opened his left arm, start touching handrail and walking forward.#robot/PROPN open/VERB his/DET left/ADJ arm/NOUN start/VERB touch/VERB handrail/NOUN and/CCONJ walk/VERB forward/ADV#0.0#0.0
-a person walks forward while having their left arm out to the side.#a/DET person/NOUN walk/VERB forward/ADV while/SCONJ have/VERB their/DET left/ADJ arm/NOUN out/ADP to/ADP the/DET side/NOUN#0.0#0.0
-a person raises their left hand and walks forward.#a/DET person/NOUN raise/VERB their/DET left/ADJ hand/NOUN and/CCONJ walk/VERB forward/ADV#0.0#0.0

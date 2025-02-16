@@ -1,3 +1,0 @@
-a person stepping backwards, moving in circles to avoid something or someone.#a/DET person/NOUN step/VERB backwards/ADV move/VERB in/ADP circle/NOUN to/PART avoid/VERB something/PRON or/CCONJ someone/PRON#0.0#0.0
-the person walks backwards in a counterclockwise semi circle#the/DET person/NOUN walk/VERB backwards/ADV in/ADP a/DET counterclockwise/NOUN semi/PROPN circle/NOUN#0.0#0.0
-a person carefully walks backwards in a counterclockwise motion.#a/DET person/NOUN carefully/ADV walk/VERB backwards/ADV in/ADP a/DET counterclockwise/ADJ motion/NOUN#0.0#0.0

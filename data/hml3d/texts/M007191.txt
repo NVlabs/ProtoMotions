@@ -1,3 +1,0 @@
-a person raised the left hand, and moved it left and right direction and after raised both hands#a/DET person/NOUN raise/VERB the/DET left/ADJ hand/NOUN and/CCONJ move/VERB it/PRON left/VERB and/CCONJ right/ADJ direction/NOUN and/CCONJ after/ADP raise/VERB both/DET hand/NOUN#0.0#0.0
-a person talks while using left hand.#a/DET person/NOUN talk/VERB while/SCONJ use/VERB left/ADJ hand/NOUN#0.0#0.0
-a person moves their left hand to the right and left as if showing something to people, then moves it up and down.#a/DET person/NOUN move/VERB their/DET left/ADJ hand/NOUN to/ADP the/DET right/NOUN and/CCONJ left/VERB as/SCONJ if/SCONJ show/VERB something/PRON to/ADP people/NOUN then/ADV move/VERB it/PRON up/ADP and/CCONJ down/ADV#0.0#0.0

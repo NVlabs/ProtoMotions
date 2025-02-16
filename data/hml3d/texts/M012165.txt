@@ -1,2 +1,0 @@
-person walks forward then to the left.#person/NOUN walk/VERB forward/ADV then/ADV to/ADP the/DET left/NOUN#0.0#0.0
-a person walks to his left.#a/DET person/NOUN walk/VERB to/ADP his/DET left/NOUN#0.0#0.0

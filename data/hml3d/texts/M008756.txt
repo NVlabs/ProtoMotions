@@ -1,3 +1,0 @@
-the person is waving with his left hand.#the/DET person/NOUN is/AUX wave/VERB with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
-the sim is standing with their left leg extended, bringing their left arm up to make the waving motion.#the/DET sim/PROPN is/AUX stand/VERB with/ADP their/DET left/ADJ leg/NOUN extend/VERB bring/VERB their/DET left/ADJ arm/NOUN up/ADP to/PART make/VERB the/DET wave/VERB motion/NOUN#0.0#0.0
-the person raises their left hand and waves.#the/DET person/NOUN raise/VERB their/DET left/ADJ hand/NOUN and/CCONJ wave/NOUN#0.0#0.0

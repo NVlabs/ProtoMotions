@@ -1,3 +1,0 @@
-a person stands on right leg,  while moving left leg to the back then to the left then to the right then to the back again.#a/DET person/NOUN stand/VERB on/ADP right/ADJ leg/NOUN while/SCONJ move/VERB left/ADJ leg/NOUN to/ADP the/DET back/NOUN then/ADV to/ADP the/DET left/NOUN then/ADV to/ADP the/DET right/NOUN then/ADV to/ADP the/DET back/NOUN again/ADV#0.0#0.0
-person raises left foot and kicks it forward and back.#person/NOUN raise/VERB left/ADJ foot/NOUN and/CCONJ kick/VERB it/PRON forward/ADV and/CCONJ back/ADV#0.0#0.0
-the person is doing a ballet dance.#the/DET person/NOUN is/AUX do/VERB a/DET ballet/NOUN dance/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person moves upper body slightly to the right while raising a bent arm.#a/DET person/NOUN move/VERB upper/ADJ body/NOUN slightly/ADV to/ADP the/DET right/NOUN while/SCONJ raise/VERB a/DET bent/ADJ arm/NOUN#0.0#0.0
-a person punches with left hand#a/DET person/NOUN punch/VERB with/ADP left/ADJ hand/NOUN#0.0#0.0
-a person is standing and covers their mouth.#a/DET person/NOUN is/AUX stand/VERB and/CCONJ cover/VERB their/DET mouth/NOUN#0.0#0.0

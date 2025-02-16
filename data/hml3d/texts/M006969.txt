@@ -1,3 +1,0 @@
-someone cocks their hip to the left and holds out their right hand, palm up, at shoulder level.#someone/PRON cock/VERB their/DET hip/NOUN to/ADP the/DET left/NOUN and/CCONJ hold/VERB out/ADP their/DET right/ADJ hand/NOUN palm/NOUN up/ADP at/ADP shoulder/NOUN level/NOUN#0.0#0.0
-a person signals to wait with left hand.#a/DET person/NOUN signal/VERB to/PART wait/VERB with/ADP left/ADJ hand/NOUN#0.0#0.0
-a person puts forward their left hand to tell a person to wait.#a/DET person/NOUN put/VERB forward/ADV their/DET left/ADJ hand/NOUN to/PART tell/VERB a/DET person/NOUN to/PART wait/VERB#0.0#0.0

@@ -1,3 +1,0 @@
-person is walking very slowly.#person/NOUN is/AUX walk/VERB very/ADV slowly/ADV#0.0#0.0
-a person walks several steps forward.#a/DET person/NOUN walk/VERB several/ADJ step/NOUN forward/ADV#0.0#0.0
-a person walks forward and slightly to their right#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ slightly/ADV to/ADP their/DET right/NOUN#0.0#0.0

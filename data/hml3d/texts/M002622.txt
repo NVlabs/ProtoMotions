@@ -1,3 +1,0 @@
-a person wipes with left hand.#a/DET person/NOUN wipe/VERB with/ADP left/ADJ hand/NOUN#0.0#0.0
-a person is washing something with their red hand and then moves backwards and lifts up its arms#a/DET person/NOUN is/AUX wash/VERB something/PRON with/ADP their/DET red/ADJ hand/NOUN and/CCONJ then/ADV move/VERB backwards/ADV and/CCONJ lift/VERB up/ADP its/DET arm/NOUN#0.0#0.0
-man uses one arm circular motion steps back sticks arms out#man/NOUN use/VERB one/NUM arm/NOUN circular/ADJ motion/NOUN step/VERB back/ADV stick/NOUN arm/NOUN out/ADP#0.0#0.0

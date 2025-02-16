@@ -1,3 +1,0 @@
-a person is standing and then makes a stomping gesture.#a/DET person/NOUN is/AUX stand/VERB and/CCONJ then/ADV make/VERB a/DET stomping/NOUN gesture/NOUN#0.0#0.0
-a man stomps his right leg.#a/DET man/NOUN stomp/VERB his/DET right/ADJ leg/NOUN#0.0#0.0
-i see someone stomps their right feet once#i/PRON see/VERB someone/PRON stomp/VERB their/DET right/ADJ foot/NOUN once/ADV#0.0#0.0

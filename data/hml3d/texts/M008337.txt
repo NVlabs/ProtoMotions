@@ -1,3 +1,0 @@
-person runs to the right, then to the left, then back to the right. appears to be jogging#person/NOUN run/VERB to/ADP the/DET right/NOUN then/ADV to/ADP the/DET left/NOUN then/ADV back/ADV to/ADP the/DET right/NOUN appear/VERB to/PART be/AUX jog/VERB#0.0#0.0
-a person runs to the right, to the left, and to the right#a/DET person/NOUN run/VERB to/ADP the/DET right/NOUN to/ADP the/DET left/NOUN and/CCONJ to/ADP the/DET right/NOUN#0.0#0.0
-a person runs to the left, then back to the right and then back to centre. a blue line shows their movements.#a/DET person/NOUN run/VERB to/ADP the/DET left/NOUN then/ADV back/ADV to/ADP the/DET right/NOUN and/CCONJ then/ADV back/ADV to/ADP centre/NOUN a/DET blue/ADJ line/NOUN show/VERB their/DET movement/NOUN#0.0#0.0

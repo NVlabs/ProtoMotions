@@ -1,3 +1,0 @@
-the person throws something with its red arm.#the/DET person/NOUN throw/VERB something/PRON with/ADP its/DET red/ADJ arm/NOUN#0.0#0.0
-the person is throwing with his left hand.#the/DET person/NOUN is/AUX throw/VERB with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
-a person throwed something with left hand#a/DET person/NOUN throw/VERB something/PRON with/ADP left/ADJ hand/NOUN#0.0#0.0

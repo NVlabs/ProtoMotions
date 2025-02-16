@@ -1,3 +1,0 @@
-person is standing up moving objects.#person/NOUN is/AUX stand/VERB up/ADP move/VERB object/NOUN#0.0#0.0
-a person allears to move an object from right to left.#a/DET person/NOUN allear/VERB to/PART move/VERB an/DET object/NOUN from/ADP right/NOUN to/ADP left/NOUN#0.0#0.0
-the person picks something up and puts it to their left#the/DET person/NOUN pick/VERB something/PRON up/ADP and/CCONJ put/VERB it/PRON to/ADP their/DET left/NOUN#0.0#0.0

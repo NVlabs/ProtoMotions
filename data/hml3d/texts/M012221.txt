@@ -1,3 +1,0 @@
-the person raises their left arm#the/DET person/NOUN raise/VERB their/DET left/ADJ arm/NOUN#0.0#0.0
-someone with their arms by their side raises their left arm in front of them before lowering it back to their side.#someone/PRON with/ADP their/DET arm/NOUN by/ADP their/DET side/NOUN raise/VERB their/DET left/ADJ arm/NOUN in/ADP front/NOUN of/ADP them/PRON before/ADP lower/VERB it/PRON back/ADV to/ADP their/DET side/NOUN#0.0#0.0
-the person put out his left hand for a shake#the/DET person/NOUN put/VERB out/ADP his/DET left/ADJ hand/NOUN for/ADP a/DET shake/NOUN#0.0#0.0

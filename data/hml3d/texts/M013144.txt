@@ -1,3 +1,0 @@
-person walks forward and turned left.#person/NOUN walk/VERB forward/ADV and/CCONJ turn/VERB left/ADV#0.0#0.0
-a person steps forward twirls around to his left and steps backward.#a/DET person/NOUN step/VERB forward/ADV twirl/NOUN around/ADP to/ADP his/DET left/NOUN and/CCONJ step/VERB backward/ADV#0.0#0.0
-a man takes a couple steps forward, then spins around, sweeping his left arm as he steps back to his original position.#a/DET man/NOUN take/VERB a/DET couple/NOUN step/NOUN forward/ADV then/ADV spin/VERB around/ADV sweep/VERB his/DET left/ADJ arm/NOUN as/SCONJ he/PRON step/VERB back/ADV to/ADP his/DET original/ADJ position/NOUN#0.0#0.0

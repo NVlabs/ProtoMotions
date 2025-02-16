@@ -1,3 +1,0 @@
-a man stands still for two seconds.#a/DET man/NOUN stand/VERB still/ADV for/ADP two/NUM second/NOUN#0.0#0.0
-a person takes a small step forward with their left foot, while their arms swing gently by their sides.#a/DET person/NOUN take/VERB a/DET small/ADJ step/NOUN forward/ADV with/ADP their/DET left/ADJ foot/NOUN while/SCONJ their/DET arm/NOUN swing/VERB gently/ADV by/ADP their/DET side/NOUN#0.0#0.0
-the left leg move forward and stops on the ground next to the right leg.#the/DET left/ADJ leg/NOUN move/VERB forward/ADV and/CCONJ stop/VERB on/ADP the/DET ground/NOUN next/ADV to/ADP the/DET right/ADJ leg/NOUN#0.0#0.0

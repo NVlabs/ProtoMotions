@@ -1,3 +1,0 @@
-touches right hand to left shoulder, and then left hand to right shoulder twice.#touch/VERB right/ADJ hand/NOUN to/ADP left/ADJ shoulder/NOUN and/CCONJ then/ADV left/VERB hand/NOUN to/ADP right/ADJ shoulder/NOUN twice/ADV#0.0#0.0
-the man looks at himself in a mirror.#the/DET man/NOUN look/VERB at/ADP himself/PRON in/ADP a/DET mirror/NOUN#0.0#0.0
-a person places their left hand on their chest, removes their hand, then places it on their chest again.#a/DET person/NOUN place/VERB their/DET left/ADJ hand/NOUN on/ADP their/DET chest/NOUN remove/VERB their/DET hand/NOUN then/ADV place/VERB it/PRON on/ADP their/DET chest/NOUN again/ADV#1.0#10.0

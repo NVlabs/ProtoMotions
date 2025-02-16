@@ -1,3 +1,0 @@
-a person is walking forward from one end to the other and then turns around and returns.#a/DET person/NOUN is/AUX walk/VERB forward/ADV from/ADP one/NUM end/NOUN to/ADP the/DET other/ADJ and/CCONJ then/ADV turn/VERB around/ADV and/CCONJ return/NOUN#0.0#0.0
-he turns right forward directally#he/PRON turn/VERB right/ADV forward/ADV directally/ADV#0.0#0.0
-a person walks and turns right to walk back the same way.#a/DET person/NOUN walk/VERB and/CCONJ turn/VERB right/ADJ to/PART walk/VERB back/ADV the/DET same/ADJ way/NOUN#0.0#0.0

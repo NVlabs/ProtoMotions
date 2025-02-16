@@ -1,3 +1,0 @@
-the person stumbles around while holding their right leg.#the/DET person/NOUN stumble/VERB around/ADV while/SCONJ hold/VERB their/DET right/ADJ leg/NOUN#0.0#0.0
-the man drags his leg around in pain.#the/DET man/NOUN drag/VERB his/DET leg/NOUN around/ADP in/ADP pain/NOUN#0.0#0.0
-this person, bent over, is dragging his right leg while trying to walk.#this/DET person/NOUN bent/ADJ over/ADP is/AUX drag/VERB his/DET right/ADJ leg/NOUN while/SCONJ try/VERB to/PART walk/VERB#0.0#0.0

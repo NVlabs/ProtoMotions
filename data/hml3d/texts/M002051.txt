@@ -1,3 +1,0 @@
-a person is side stepping#a/DET person/NOUN is/AUX side/NOUN step/VERB#0.0#0.0
-a person slowly moving to the left direction and after moving t right direction#a/DET person/NOUN slowly/ADV move/VERB to/ADP the/DET left/ADJ direction/NOUN and/CCONJ after/ADP move/VERB t/NOUN right/ADJ direction/NOUN#0.0#0.0
-the man moves to his left then to his right#the/DET man/NOUN move/VERB to/ADP his/DET left/NOUN then/ADV to/ADP his/DET right/NOUN#0.0#0.0

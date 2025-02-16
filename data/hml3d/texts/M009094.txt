@@ -1,3 +1,0 @@
-a man sits and eats with his right hand.#a/DET man/NOUN sit/VERB and/CCONJ eat/VERB with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0
-someone squats low to the ground and eats with their right hand.#someone/PRON squat/VERB low/ADV to/ADP the/DET ground/NOUN and/CCONJ eat/VERB with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0
-a lounging person eats with their right hand.#a/DET lounge/VERB person/NOUN eat/VERB with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0

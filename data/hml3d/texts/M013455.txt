@@ -1,3 +1,0 @@
-the left hand is thrown fast forward as the right foot takes a step forward.#the/DET left/ADJ hand/NOUN is/AUX throw/VERB fast/ADV forward/ADV as/SCONJ the/DET right/ADJ foot/NOUN take/VERB a/DET step/NOUN forward/ADV#0.0#0.0
-someone throwing something fairly hard#someone/PRON throw/VERB something/PRON fairly/ADV hard/ADV#0.0#0.0
-a person throwing something with lots of force.#a/DET person/NOUN throw/VERB something/PRON with/ADP lot/NOUN of/ADP force/NOUN#0.0#0.0

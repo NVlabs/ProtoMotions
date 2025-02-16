@@ -1,2 +1,0 @@
-a man walks in a quarter circle to the left#a/DET man/NOUN walk/VERB in/ADP a/DET quarter/NOUN circle/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-a man steps forward, turning slightly to his right as he walks.#a/DET man/NOUN step/VERB forward/ADV turn/VERB slightly/ADV to/ADP his/DET right/NOUN as/SCONJ he/PRON walk/VERB#0.0#0.0

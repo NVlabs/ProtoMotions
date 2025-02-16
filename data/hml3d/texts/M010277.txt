@@ -1,3 +1,0 @@
-a person walks in a counterclockwise circle.#a/DET person/NOUN walk/VERB in/ADP a/DET counterclockwise/ADJ circle/NOUN#0.0#0.0
-the man walks in a counterclockwise direction in a circle and then stops three fourths of the way.#the/DET man/NOUN walk/VERB in/ADP a/DET counterclockwise/ADJ direction/NOUN in/ADP a/DET circle/NOUN and/CCONJ then/ADV stop/VERB three/NUM fourth/NOUN of/ADP the/DET way/NOUN#0.0#0.0
-a person quickly walks in an incomplete circle.#a/DET person/NOUN quickly/ADV walk/VERB in/ADP an/DET incomplete/ADJ circle/NOUN#0.0#0.0

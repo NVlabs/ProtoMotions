@@ -1,3 +1,0 @@
-the person is walking forward and turning right.#the/DET person/NOUN is/AUX walk/VERB forward/ADV and/CCONJ turn/VERB right/ADV#0.0#0.0
-the man walks to the right#the/DET man/NOUN walk/VERB to/ADP the/DET right/NOUN#0.0#0.0
-the man walked forward and made a wide right turn.#the/DET man/NOUN walk/VERB forward/ADV and/CCONJ make/VERB a/DET wide/ADJ right/ADJ turn/NOUN#0.0#0.0

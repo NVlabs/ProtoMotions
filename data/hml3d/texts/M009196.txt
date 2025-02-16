@@ -1,3 +1,0 @@
-a man waves twice with his right hand.#a/DET man/NOUN wave/VERB twice/ADV with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0
-this person waves using his right arm.#this/DET person/NOUN wave/VERB use/VERB his/DET right/ADJ arm/NOUN#0.0#0.0
-the sim waves with their right hand.#the/DET sim/ADJ wave/NOUN with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0

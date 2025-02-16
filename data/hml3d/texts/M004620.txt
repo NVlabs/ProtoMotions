@@ -1,3 +1,0 @@
-a person stepping back diagonally.#a/DET person/NOUN step/VERB back/ADV diagonally/ADV#0.0#0.0
-a person sidestepping to their back-left.#a/DET person/NOUN sidestep/VERB to/ADP their/DET backleft/NOUN#0.0#0.0
-a person steps back with their right foot.#a/DET person/NOUN step/VERB back/ADV with/ADP their/DET right/ADJ foot/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-starting from the bottom right, a person walks a lazy almost full circle around the screen.#start/VERB from/ADP the/DET bottom/NOUN right/NOUN a/DET person/NOUN walk/VERB a/DET lazy/NOUN almost/ADV full/ADJ circle/NOUN around/ADP the/DET screen/NOUN#0.0#0.0
-the man walks in a clockwise circle#the/DET man/NOUN walk/VERB in/ADP a/DET clockwise/NOUN circle/NOUN#0.0#0.0
-a person walks in a clockwise oval.#a/DET person/NOUN walk/VERB in/ADP a/DET clockwise/NOUN oval/NOUN#0.0#0.0

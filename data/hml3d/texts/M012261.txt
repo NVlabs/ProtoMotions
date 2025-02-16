@@ -1,3 +1,0 @@
-a person walks and turns to the left.#a/DET person/NOUN walk/VERB and/CCONJ turn/VERB to/ADP the/DET left/NOUN#0.0#0.0
-person walks forward and to the left (counterclockwise)#person/NOUN walk/VERB forward/ADV and/CCONJ to/ADP the/DET left/ADJ counterclockwise/NOUN#0.0#0.0
-the person in the video walks in a curve.#the/DET person/NOUN in/ADP the/DET video/NOUN walk/VERB in/ADP a/DET curve/NOUN#0.0#0.0

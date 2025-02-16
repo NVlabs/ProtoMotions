@@ -1,3 +1,0 @@
-this person waves with his right hand.#this/DET person/NOUN wave/VERB with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0
-a person waves with right hand.#a/DET person/NOUN wave/VERB with/ADP right/ADJ hand/NOUN#0.0#0.0
-a person raises their right hand, waves then takes a step forward#a/DET person/NOUN raise/VERB their/DET right/ADJ hand/NOUN wave/NOUN then/ADV take/VERB a/DET step/NOUN forward/ADV#0.0#0.0

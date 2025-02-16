@@ -1,3 +1,0 @@
-slowly wake on the right side.#slowly/ADV wake/VERB on/ADP the/DET right/ADJ side/NOUN#0.0#0.0
-a man walks to the right side and stands.#a/DET man/NOUN walk/VERB to/ADP the/DET right/ADJ side/NOUN and/CCONJ stand/VERB#0.0#0.0
-a person walks forward and to the left.#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ to/ADP the/DET left/NOUN#0.0#0.0

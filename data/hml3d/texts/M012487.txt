@@ -1,3 +1,0 @@
-a person is pushed from the right and recovers balance.#a/DET person/NOUN is/AUX push/VERB from/ADP the/DET right/NOUN and/CCONJ recover/NOUN balance/VERB#0.0#0.0
-a person who is standing with his arms by his sides sidesteps to his left, stops and then sidesteps slightly to his right.#a/DET person/NOUN who/PRON is/AUX stand/VERB with/ADP his/DET arm/NOUN by/ADP his/DET side/NOUN sidestep/VERB to/ADP his/DET left/NOUN stop/VERB and/CCONJ then/ADV sidestep/VERB slightly/ADV to/ADP his/DET right/NOUN#0.0#0.0
-walking quickly in a sideways pattern.#walk/VERB quickly/ADV in/ADP a/DET sideways/NOUN pattern/NOUN#0.0#0.0

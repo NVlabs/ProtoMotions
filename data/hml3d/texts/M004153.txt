@@ -1,3 +1,0 @@
-a figure repeatedly turns towards the left hand side#a/DET figure/NOUN repeatedly/ADV turn/VERB towards/ADP the/DET left/ADJ hand/NOUN side/NOUN#0.0#0.0
-a person looking to there left then shifting to their right.#a/DET person/NOUN look/VERB to/ADP there/ADV left/VERB then/ADV shift/VERB to/ADP their/DET right/NOUN#0.0#0.0
-a person stands while swinging their arms to the side.#a/DET person/NOUN stand/VERB while/SCONJ swinge/VERB their/DET arm/NOUN to/ADP the/DET side/NOUN#0.0#0.0

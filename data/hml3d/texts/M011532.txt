@@ -1,3 +1,0 @@
-a person lifts his right and left arm into the air.#a/DET person/NOUN lift/VERB his/DET right/NOUN and/CCONJ left/ADJ arm/NOUN into/ADP the/DET air/NOUN#0.0#0.0
-a person moving arms up and down#a/DET person/NOUN move/VERB arm/NOUN up/ADV and/CCONJ down/ADP#0.0#0.0
-man gently lifted up right arm then then lift up left arm.#man/PROPN gently/ADV lift/VERB up/ADP right/ADJ arm/NOUN then/ADV then/ADV lift/VERB up/ADP left/ADJ arm/NOUN#0.0#0.0

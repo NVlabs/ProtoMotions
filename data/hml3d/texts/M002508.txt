@@ -1,3 +1,0 @@
-a figure raises his left arm and aggressively points with this left index finger#a/DET figure/NOUN raise/VERB his/DET left/ADJ arm/NOUN and/CCONJ aggressively/ADV point/VERB with/ADP this/DET left/ADJ index/NOUN finger/NOUN#0.0#0.0
-the person is standing and lifts his left arm.#the/DET person/NOUN is/AUX stand/VERB and/CCONJ lift/VERB his/DET left/ADJ arm/NOUN#0.0#0.0
-takes a small step foreword with left foot. raises left hand and arm. shakes left hand quickly, as if rubbing a wall.#take/VERB a/DET small/ADJ step/NOUN foreword/NOUN with/ADP left/ADJ foot/NOUN raise/VERB left/ADJ hand/NOUN and/CCONJ arm/NOUN shake/VERB left/VERB hand/NOUN quickly/ADV as/SCONJ if/SCONJ rub/VERB a/DET wall/NOUN#0.0#10.0

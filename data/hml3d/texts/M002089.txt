@@ -1,3 +1,0 @@
-a man walks in a large curvy, zig zag type fashion.#a/DET man/NOUN walk/VERB in/ADP a/DET large/ADJ curvy/NOUN zig/VERB zag/X type/NOUN fashion/NOUN#0.0#0.0
-a person steps over an obstacle, walks a short distance right then turns left and walks left then turns right and walks some distance to the right and stops#a/DET person/NOUN step/VERB over/ADP an/DET obstacle/NOUN walk/VERB a/DET short/ADJ distance/NOUN right/ADV then/ADV turn/VERB left/VERB and/CCONJ walk/VERB left/VERB then/ADV turn/VERB right/ADJ and/CCONJ walk/VERB some/DET distance/NOUN to/ADP the/DET right/NOUN and/CCONJ stop/VERB#0.0#0.0
-walking in a snake pattern motion starting at the left side.#walk/VERB in/ADP a/DET snake/NOUN pattern/NOUN motion/NOUN start/VERB at/ADP the/DET left/ADJ side/NOUN#0.0#0.0

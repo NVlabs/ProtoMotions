@@ -1,3 +1,0 @@
-kicking foot while standing.#kick/VERB foot/NOUN while/SCONJ stand/VERB#0.0#0.0
-a person lightly kicks with their left and right leg.#a/DET person/NOUN lightly/ADV kick/VERB with/ADP their/DET left/NOUN and/CCONJ right/ADJ leg/NOUN#0.0#0.0
-a man swings his right leg in front of him and then his left leg.#a/DET man/NOUN swing/VERB his/DET right/ADJ leg/NOUN in/ADP front/NOUN of/ADP him/PRON and/CCONJ then/ADV his/DET left/ADJ leg/NOUN#0.0#0.0

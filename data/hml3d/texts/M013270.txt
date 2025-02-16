@@ -1,3 +1,0 @@
-a person is walking forward and slightly to the right.#a/DET person/NOUN is/AUX walk/VERB forward/ADV and/CCONJ slightly/ADV to/ADP the/DET right/NOUN#0.0#0.0
-a person walks, then stops#a/DET person/NOUN walk/VERB then/ADV stop/VERB#0.0#0.0
-the person is upleft while walking forward#the/DET person/NOUN is/AUX upleft/ADJ while/SCONJ walk/VERB forward/ADV#0.0#0.0

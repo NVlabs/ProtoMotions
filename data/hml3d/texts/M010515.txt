@@ -1,3 +1,0 @@
-a person walks forward in a counter counterclockwise motion then counterclockwise mothion.#a/DET person/NOUN walk/VERB forward/ADV in/ADP a/DET counter/ADJ counterclockwise/NOUN motion/NOUN then/ADV counterclockwise/VERB mothion/NOUN#0.0#0.0
-person walks in the shape of an s.#person/NOUN walk/VERB in/ADP the/DET shape/NOUN of/ADP an/DET#0.0#0.0
-a person slowly walked in right direction and left direction#a/DET person/NOUN slowly/ADV walk/VERB in/ADP right/ADJ direction/NOUN and/CCONJ left/ADJ direction/NOUN#0.0#0.0

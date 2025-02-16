@@ -1,3 +1,0 @@
-a person stirs something with his left hand.#a/DET person/NOUN stir/VERB something/PRON with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
-the left hand stirs in a big circle.#the/DET left/ADJ hand/NOUN stir/NOUN in/ADP a/DET big/ADJ circle/NOUN#0.0#0.0
-the stick figure moving his left arm in a circle.#the/DET stick/NOUN figure/NOUN move/VERB his/DET left/ADJ arm/NOUN in/ADP a/DET circle/NOUN#0.0#0.0

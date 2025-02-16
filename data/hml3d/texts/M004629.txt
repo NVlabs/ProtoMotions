@@ -1,3 +1,0 @@
-he stirs with his left hand#he/PRON stir/VERB with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
-uses left arm to open something#use/VERB left/VERB arm/NOUN to/PART open/VERB something/PRON#0.0#4.0
-person waves hand stomach height#person/NOUN wave/VERB hand/PROPN stomach/NOUN height/ADV#0.0#0.0

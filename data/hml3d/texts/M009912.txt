@@ -1,3 +1,0 @@
-a person walks in a zig-zag pattern.#a/DET person/NOUN walk/VERB in/ADP a/DET zigzag/NOUN pattern/NOUN#0.0#0.0
-a man walks forward in a right and left zig zag pattern.#a/DET man/NOUN walk/VERB forward/ADV in/ADP a/DET right/NOUN and/CCONJ left/VERB zig/NOUN zag/X pattern/NOUN#0.0#0.0
-a person walking in curving manner#a/DET person/NOUN walk/VERB in/ADP curve/VERB manner/NOUN#0.0#0.0

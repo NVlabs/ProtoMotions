@@ -1,3 +1,0 @@
-a person raises their left arm and strums with their right and looks to their left.#a/DET person/NOUN raise/VERB their/DET left/ADJ arm/NOUN and/CCONJ strum/NOUN with/ADP their/DET right/NOUN and/CCONJ look/VERB to/ADP their/DET left/NOUN#0.0#0.0
-the person is grabbing its red arm on the bicep.#the/DET person/NOUN is/AUX grab/VERB its/DET red/ADJ arm/NOUN on/ADP the/DET bicep/NOUN#0.0#0.0
-a person grabbed something with left hand and start shake with right hand#a/DET person/NOUN grab/VERB something/PRON with/ADP left/ADJ hand/NOUN and/CCONJ start/VERB shake/VERB with/ADP right/ADJ hand/NOUN#0.0#0.0

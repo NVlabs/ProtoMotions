@@ -1,3 +1,0 @@
-a person moving right arm up and the left arm up and then kicks left leg up and then return to position.#a/DET person/NOUN move/VERB right/ADJ arm/NOUN up/ADP and/CCONJ the/DET left/ADJ arm/NOUN up/ADP and/CCONJ then/ADV kick/VERB left/VERB leg/NOUN up/ADP and/CCONJ then/ADV return/VERB to/ADP position/NOUN#0.0#0.0
-sit on the floor and moving the legs and hands .#sit/VERB on/ADP the/DET floor/NOUN and/CCONJ move/VERB the/DET leg/NOUN and/CCONJ hand/NOUN#0.0#0.0
-a person is sitting down and turning something at head level.#a/DET person/NOUN is/AUX sit/VERB down/ADP and/CCONJ turn/VERB something/PRON at/ADP head/NOUN level/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-the person balances on their left toe, then switches to the right and spins in a circle#the/DET person/NOUN balance/VERB on/ADP their/DET left/ADJ toe/NOUN then/ADV switch/VERB to/ADP the/DET right/NOUN and/CCONJ spin/VERB in/ADP a/DET circle/NOUN#0.0#0.0
-a person dances in the style of a ballerina.#a/DET person/NOUN dance/VERB in/ADP the/DET style/NOUN of/ADP a/DET ballerina/NOUN#0.0#0.0
-person is doing a ballet dance move.#person/NOUN is/AUX do/VERB a/DET ballet/NOUN dance/NOUN move/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-person lifts both hands to centre and moves left hand fast against right hand a few times#person/NOUN lift/VERB both/DET hand/NOUN to/ADP centre/NOUN and/CCONJ move/NOUN left/VERB hand/NOUN fast/ADV against/ADP right/ADJ hand/NOUN a/DET few/ADJ time/NOUN#0.0#0.0
-a man is slicing something using his hands.#a/DET man/NOUN is/AUX slice/VERB something/PRON use/VERB his/DET hand/NOUN#0.0#0.0
-a person is shaking thier left hand up and down as if to shake hands. while moving the right hamd aode to side#a/DET person/NOUN is/AUX shake/VERB thier/ADJ left/ADJ hand/NOUN up/ADP and/CCONJ down/ADP as/SCONJ if/SCONJ to/PART shake/VERB hand/NOUN while/SCONJ move/VERB the/DET right/ADJ hamd/NOUN aode/PROPN to/PART side/VERB#0.0#0.0

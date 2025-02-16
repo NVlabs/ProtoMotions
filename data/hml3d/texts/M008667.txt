@@ -1,3 +1,0 @@
-first move the left hand after move the right hand.#first/ADV move/VERB the/DET left/ADJ hand/NOUN after/ADP move/NOUN the/DET right/ADJ hand/NOUN#0.0#0.0
-figure is standing, turns to look left and raises left arm perpendicular to ground, then looks right and raises right arm perpendicular to the ground.#figure/NOUN is/AUX stand/VERB turn/VERB to/PART look/VERB left/VERB and/CCONJ raise/VERB left/VERB arm/NOUN perpendicular/ADJ to/ADP ground/NOUN then/ADV look/VERB right/ADJ and/CCONJ raise/VERB right/ADJ arm/NOUN perpendicular/ADJ to/ADP the/DET ground/NOUN#0.0#0.0
-a man rolls his left shoulder back and then his right shoulder.#a/DET man/NOUN roll/VERB his/DET left/ADJ shoulder/NOUN back/ADV and/CCONJ then/ADV his/DET right/ADJ shoulder/NOUN#0.0#0.0

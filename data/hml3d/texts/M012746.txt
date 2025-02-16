@@ -1,3 +1,0 @@
-person stands still with arms at side and hands swaying slightly.#person/NOUN stand/VERB still/ADV with/ADP arm/NOUN at/ADP side/NOUN and/CCONJ hand/NOUN sway/VERB slightly/ADV#0.0#0.0
-a person stands upleft with arms swinging slightly.#a/DET person/NOUN stand/VERB upleft/ADJ with/ADP arm/NOUN swinge/VERB slightly/ADV#0.0#0.0
-a person stands around and moves their body very slowly.#a/DET person/NOUN stand/VERB around/ADV and/CCONJ move/VERB their/DET body/NOUN very/ADV slowly/ADV#0.0#0.0

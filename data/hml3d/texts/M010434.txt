@@ -1,3 +1,0 @@
-the person to step in to the right clean over something.#the/DET person/NOUN to/PART step/VERB in/ADP to/ADP the/DET right/ADJ clean/ADJ over/ADP something/PRON#0.0#0.0
-stepping to the side once.#step/VERB to/ADP the/DET side/NOUN once/ADV#0.0#0.0
-this person takes a large step to the right.#this/DET person/NOUN take/VERB a/DET large/ADJ step/NOUN to/ADP the/DET right/NOUN#0.0#0.0

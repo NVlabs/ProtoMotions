@@ -1,3 +1,0 @@
-a person walks to his right.#a/DET person/NOUN walk/VERB to/ADP his/DET right/NOUN#0.0#0.0
-a person walks forward while curving to their right.#a/DET person/NOUN walk/VERB forward/ADV while/SCONJ curve/VERB to/ADP their/DET right/NOUN#0.0#0.0
-a man slightly walks to the right.#a/DET man/NOUN slightly/ADV walk/VERB to/ADP the/DET right/NOUN#0.0#0.0

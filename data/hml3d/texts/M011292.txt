@@ -1,3 +1,0 @@
-person stepsdown from a step to a standstill#person/NOUN stepsdown/VERB from/ADP a/DET step/NOUN to/ADP a/DET standstill/NOUN#0.0#0.0
-a person takes a large step with their right leg in a diagonal, forward-right direction.#a/DET person/NOUN take/VERB a/DET large/ADJ step/NOUN with/ADP their/DET right/ADJ leg/NOUN in/ADP a/DET diagonal/ADJ forwardright/NOUN direction/NOUN#0.0#0.0
-the person is walking over a clean floor.#the/DET person/NOUN is/AUX walk/VERB over/ADP a/DET clean/ADJ floor/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person carefully steps to the side, going to their left first and then their right.#a/DET person/NOUN carefully/ADV step/VERB to/ADP the/DET side/NOUN go/VERB to/ADP their/DET left/ADJ first/ADV and/CCONJ then/ADV their/DET right/NOUN#0.0#0.0
-a person awkwardly side steps slowly to the right and then to the left.#a/DET person/NOUN awkwardly/ADV side/ADJ step/NOUN slowly/ADV to/ADP the/DET right/NOUN and/CCONJ then/ADV to/ADP the/DET left/NOUN#0.0#0.0
-a person steps sideways to their left before stepping sideways to their right.#a/DET person/NOUN step/VERB sideways/ADV to/ADP their/DET left/NOUN before/ADP step/VERB sideways/ADV to/ADP their/DET right/NOUN#0.0#0.0

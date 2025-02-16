@@ -1,3 +1,0 @@
-a person gestures wildly with their right and left arms above their head in a "come here" gesture, then raises their arms in a "stop" gesture.#a/DET person/NOUN gesture/VERB wildly/ADV with/ADP their/DET right/ADJ and/CCONJ left/VERB arm/NOUN above/ADP their/DET head/NOUN in/ADP a/DET come/VERB here/ADV gesture/ADJ then/ADV raise/VERB their/DET arm/NOUN in/ADP a/DET stop/NOUN gesture/NOUN#0.0#0.0
-a person swings their arms around while rotating their body.#a/DET person/NOUN swing/VERB their/DET arm/NOUN around/ADV while/SCONJ rotate/VERB their/DET body/NOUN#0.0#0.0
-a person waves at objects in front of them to go past them.#a/DET person/NOUN wave/VERB at/ADP object/NOUN in/ADP front/NOUN of/ADP them/PRON to/PART go/VERB past/ADP them/PRON#0.0#0.0

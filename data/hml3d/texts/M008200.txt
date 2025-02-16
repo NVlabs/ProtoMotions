@@ -1,3 +1,0 @@
-a person swings his left arm.#a/DET person/NOUN swing/VERB his/DET left/ADJ arm/NOUN#0.0#0.0
-the man is throwing something#the/DET man/NOUN is/AUX throw/VERB something/PRON#0.0#0.0
-the left hand throws across the body where the right hand meets it forward and both go back together at the left shoulder.#the/DET left/ADJ hand/NOUN throw/NOUN across/ADP the/DET body/NOUN where/ADV the/DET right/ADJ hand/NOUN meet/VERB it/PRON forward/ADV and/CCONJ both/DET go/VERB back/ADV together/ADV at/ADP the/DET left/ADJ shoulder/NOUN#0.0#0.0

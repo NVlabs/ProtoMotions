@@ -1,3 +1,0 @@
-a person hops from right to left in a circular motion.#a/DET person/NOUN hop/VERB from/ADP right/NOUN to/ADP left/VERB in/ADP a/DET circular/ADJ motion/NOUN#0.0#0.0
-jumping forward on one foot.#jump/VERB forward/ADV on/ADP one/NUM foot/NOUN#0.0#0.0
-a person walks forward then jumps to the left and jumps to the right before making one final jump.#a/DET person/NOUN walk/VERB forward/ADV then/ADV jump/VERB to/ADP the/DET left/NOUN and/CCONJ jump/VERB to/ADP the/DET right/NOUN before/ADP make/VERB one/NUM final/ADJ jump/NOUN#0.0#0.0

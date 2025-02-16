@@ -1,3 +1,0 @@
-a person throws something.#a/DET person/NOUN throw/VERB something/PRON#0.0#0.0
-person throws something forward with left hand.#person/NOUN throw/VERB something/PRON forward/ADV with/ADP left/ADJ hand/NOUN#0.0#0.0
-throwing something while standing.#throw/VERB something/PRON while/SCONJ stand/VERB#0.0#0.0

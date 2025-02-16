@@ -1,3 +1,0 @@
-a person leans left while stretching their right arm.#a/DET person/NOUN lean/VERB left/VERB while/SCONJ stretch/VERB their/DET right/ADJ arm/NOUN#0.0#0.0
-a person doing an overhead reach stretch by extending their right side towards their left side#a/DET person/NOUN do/VERB an/DET overhead/ADJ reach/NOUN stretch/NOUN by/ADP extend/VERB their/DET right/ADJ side/NOUN towards/ADP their/DET left/ADJ side/NOUN#0.0#0.0
-a person doing a left side body leaning stretch or warm up#a/DET person/NOUN do/VERB a/DET left/ADJ side/NOUN body/NOUN lean/VERB stretch/NOUN or/CCONJ warm/VERB up/ADP#0.0#0.0

@@ -1,3 +1,0 @@
-the person is running forward on steppingstones.#the/DET person/NOUN is/AUX run/VERB forward/ADV on/ADP steppingstone/NOUN#0.0#0.0
-a person running at an angle#a/DET person/NOUN run/VERB at/ADP an/DET angle/NOUN#0.0#0.0
-a person quickly hops around to the right and left.#a/DET person/NOUN quickly/ADV hop/VERB around/ADV to/ADP the/DET right/NOUN and/CCONJ left/VERB#0.0#0.0

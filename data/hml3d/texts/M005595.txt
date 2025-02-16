@@ -1,3 +1,0 @@
-a person skips forward on leg then turns left. he does this four times.#a/DET person/NOUN skip/VERB forward/ADV on/ADP leg/NOUN then/ADV turn/VERB left/VERB he/PRON does/AUX this/DET four/NUM time/NOUN#0.0#0.0
-the man jumps 4 times to make a square.#the/DET man/NOUN jump/VERB time/NOUN to/PART make/VERB a/DET square/NOUN#0.0#0.0
-a person runs and jumps in a square.#a/DET person/NOUN run/VERB and/CCONJ jump/VERB in/ADP a/DET square/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person taking a step backward in a left diagonal direction.#a/DET person/NOUN take/VERB a/DET step/NOUN backward/ADV in/ADP a/DET left/ADJ diagonal/ADJ direction/NOUN#0.0#0.0
-the person is standing there.#the/DET person/NOUN is/AUX stand/VERB there/ADV#0.0#0.0
-a man takes a step back to his left.#a/DET man/NOUN take/VERB a/DET step/NOUN back/ADV to/ADP his/DET left/NOUN#0.0#0.0

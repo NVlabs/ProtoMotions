@@ -1,3 +1,0 @@
-a person spins in a tight counterclockwise circle.#a/DET person/NOUN spin/VERB in/ADP a/DET tight/ADJ counterclockwise/NOUN circle/NOUN#0.0#0.0
-a person turns around in a circle.#a/DET person/NOUN turn/VERB around/ADP in/ADP a/DET circle/NOUN#0.0#0.0
-a person spins counterclockwise in a circle.#a/DET person/NOUN spin/VERB counterclockwise/NOUN in/ADP a/DET circle/NOUN#0.0#0.0

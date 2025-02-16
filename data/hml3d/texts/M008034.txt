@@ -1,3 +1,0 @@
-the person is pretending to be an elephant.#the/DET person/NOUN is/AUX pretend/VERB to/PART be/AUX an/DET elephant/NOUN#0.0#0.0
-a person waves their left arm in front of their face and wiggles their body.#a/DET person/NOUN wave/VERB their/DET left/ADJ arm/NOUN in/ADP front/NOUN of/ADP their/DET face/NOUN and/CCONJ wiggle/VERB their/DET body/NOUN#0.0#0.0
-a person doing an elephant impression#a/DET person/NOUN do/VERB an/DET elephant/NOUN impression/NOUN#0.0#0.0

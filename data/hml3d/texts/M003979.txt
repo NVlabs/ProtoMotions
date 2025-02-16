@@ -1,3 +1,0 @@
-a person bends over and touches both of their toes.#a/DET person/NOUN bend/VERB over/ADP and/CCONJ touch/VERB both/DET of/ADP their/DET toe/NOUN#0.0#0.0
-person bends down keeping legs straight  leans to the right then left touching the floor#person/NOUN bend/VERB down/ADV keep/VERB leg/NOUN straight/ADJ lean/NOUN to/ADP the/DET right/NOUN then/ADV left/VERB touch/VERB the/DET floor/NOUN#0.0#0.0
-the person is moving something around.#the/DET person/NOUN is/AUX move/VERB something/PRON around/ADV#0.0#0.0

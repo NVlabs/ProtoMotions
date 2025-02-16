@@ -1,3 +1,0 @@
-a man falls down to his right, then regains balance and stands straight up.#a/DET man/NOUN fall/VERB down/ADP to/ADP his/DET right/NOUN then/ADV regain/VERB balance/NOUN and/CCONJ stand/VERB straight/ADV up/ADV#0.0#0.0
-a man falls towards his left and takes a balancing step.#a/DET man/NOUN fall/VERB towards/ADP his/DET left/NOUN and/CCONJ take/VERB a/DET balancing/NOUN step/NOUN#0.0#0.0
-a person falls to his left.#a/DET person/NOUN fall/VERB to/ADP his/DET left/NOUN#0.0#0.0

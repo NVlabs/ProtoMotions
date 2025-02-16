@@ -1,3 +1,0 @@
-a person swiftly moves to the right then moves to the left#a/DET person/NOUN swiftly/ADV move/VERB to/ADP the/DET right/NOUN then/ADV move/VERB to/ADP the/DET left/NOUN#0.0#0.0
-a person staggers right, then returns to their original position.#a/DET person/NOUN stagger/VERB right/INTJ then/ADV return/VERB to/ADP their/DET original/ADJ position/NOUN#0.0#0.0
-the person walks to their left and back to their right while facing forward#the/DET person/NOUN walk/VERB to/ADP their/DET left/NOUN and/CCONJ back/ADV to/ADP their/DET right/NOUN while/SCONJ face/VERB forward/ADV#0.0#0.0

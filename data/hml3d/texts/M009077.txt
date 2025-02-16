@@ -1,3 +1,0 @@
-a person kicks with their left leg.#a/DET person/NOUN kick/VERB with/ADP their/DET left/ADJ leg/NOUN#0.0#0.0
-person takes a step forward with right leg thens lifts the left leg and swings it to the side of the right leg then steps back to original position#person/NOUN take/VERB a/DET step/NOUN forward/ADV with/ADP right/ADJ leg/NOUN then/NOUN lift/VERB the/DET left/ADJ leg/NOUN and/CCONJ swing/VERB it/PRON to/ADP the/DET side/NOUN of/ADP the/DET right/ADJ leg/NOUN then/ADV step/VERB back/ADV to/ADP original/ADJ position/NOUN#0.0#0.0
-walking forward and kicking foot.#walk/VERB forward/ADV and/CCONJ kick/VERB foot/NOUN#0.0#0.0

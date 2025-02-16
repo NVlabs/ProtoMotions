@@ -1,3 +1,0 @@
-a person waves with their left hand the throws it outward repeatedly, turning to the left as they do.#a/DET person/NOUN wave/VERB with/ADP their/DET left/ADJ hand/NOUN the/DET throw/NOUN it/PRON outward/ADV repeatedly/ADV turn/VERB to/ADP the/DET left/NOUN as/SCONJ they/PRON do/AUX#0.0#0.0
-a person with left hand doing something, while walking forward#a/DET person/NOUN with/ADP left/ADJ hand/NOUN do/VERB something/PRON while/SCONJ walk/VERB forward/ADV#0.0#0.0
-a person waves their left arm several times before stumbling to their left.#a/DET person/NOUN wave/VERB their/DET left/ADJ arm/NOUN several/ADJ time/NOUN before/ADP stumble/VERB to/ADP their/DET left/NOUN#0.0#0.0

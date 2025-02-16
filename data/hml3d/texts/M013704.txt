@@ -1,3 +1,0 @@
-a person takes a step diagonally to their left over an object#a/DET person/NOUN take/VERB a/DET step/NOUN diagonally/ADV to/ADP their/DET left/NOUN over/ADP an/DET object/NOUN#0.0#0.0
-a person slowly stretches their left leg forward before bringing their right foot forward, trying to step over something.#a/DET person/NOUN slowly/ADV stretch/VERB their/DET left/ADJ leg/NOUN forward/ADV before/ADP bring/VERB their/DET right/ADJ foot/NOUN forward/ADV try/VERB to/PART step/VERB over/ADP something/PRON#0.0#0.0
-a person takes a long step forward with their left foot, then brings over their right foot#a/DET person/NOUN take/VERB a/DET long/ADJ step/NOUN forward/ADV with/ADP their/DET left/ADJ foot/NOUN then/ADV bring/VERB over/ADP their/DET right/ADJ foot/NOUN#0.0#0.0

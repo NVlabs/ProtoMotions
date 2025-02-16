@@ -1,3 +1,0 @@
-the person is lifting something with his right arm.#the/DET person/NOUN is/AUX lift/VERB something/PRON with/ADP his/DET right/ADJ arm/NOUN#0.0#0.0
-person stands stagnant while waving their left hand back and forth.#person/NOUN stand/VERB stagnant/ADJ while/SCONJ wave/VERB their/DET left/ADJ hand/NOUN back/ADV and/CCONJ forth/ADV#0.0#0.0
-left hand on the hip while the right hand continuously bending at the elbow back and forth.#left/ADJ hand/NOUN on/ADP the/DET hip/NOUN while/SCONJ the/DET right/ADJ hand/NOUN continuously/ADV bend/VERB at/ADP the/DET elbow/NOUN back/ADV and/CCONJ forth/ADV#0.0#0.0

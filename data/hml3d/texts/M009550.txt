@@ -1,3 +1,0 @@
-a person bounces a ball with left hand.#a/DET person/NOUN bounce/VERB a/DET ball/NOUN with/ADP left/ADJ hand/NOUN#0.0#0.0
-a person makes a vertical waving motion with their left arm#a/DET person/NOUN make/VERB a/DET vertical/ADJ waving/NOUN motion/NOUN with/ADP their/DET left/ADJ arm/NOUN#0.0#0.0
-the person bounces up and down twice while holding their right hand in front of them.#the/DET person/NOUN bounce/VERB up/ADV and/CCONJ down/ADV twice/ADV while/SCONJ hold/VERB their/DET right/ADJ hand/NOUN in/ADP front/NOUN of/ADP them/PRON#0.0#0.0

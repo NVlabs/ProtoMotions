@@ -1,3 +1,0 @@
-the man uses the back side of his right hands to perform a smacking motion in front of him.#the/DET man/NOUN use/VERB the/DET back/ADJ side/NOUN of/ADP his/DET right/ADJ hand/NOUN to/PART perform/VERB a/DET smacking/NOUN motion/NOUN in/ADP front/NOUN of/ADP him/PRON#0.0#0.0
-a person hit something with right hand#a/DET person/NOUN hit/VERB something/PRON with/ADP right/ADJ hand/NOUN#0.0#0.0
-moving from side to side.#move/VERB from/ADP side/NOUN to/ADP side/NOUN#0.0#0.0

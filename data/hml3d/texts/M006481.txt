@@ -1,3 +1,0 @@
-the person walks in a counterclockwise circle#the/DET person/NOUN walk/VERB in/ADP a/DET counterclockwise/ADJ circle/NOUN#0.0#0.0
-the person is walking in a counterclockwise circle.#the/DET person/NOUN is/AUX walk/VERB in/ADP a/DET counterclockwise/ADJ circle/NOUN#0.0#0.0
-moving and create a cricle on the floor.#move/VERB and/CCONJ create/VERB a/DET cricle/NOUN on/ADP the/DET floor/NOUN#0.0#0.0

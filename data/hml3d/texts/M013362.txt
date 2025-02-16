@@ -1,3 +1,0 @@
-a person pivots in a counterclockwise motion while holding both arms up and in fists#a/DET person/NOUN pivot/VERB in/ADP a/DET counterclockwise/ADJ motion/NOUN while/SCONJ hold/VERB both/DET arm/NOUN up/ADV and/CCONJ in/ADP fist/NOUN#0.0#0.0
-he turns around left a lot#he/PRON turn/VERB around/ADV left/VERB a/DET lot/NOUN#0.0#0.0
-the man holds his hand up and turns in a circle to the left.#the/DET man/NOUN hold/VERB his/DET hand/NOUN up/ADP and/CCONJ turn/VERB in/ADP a/DET circle/NOUN to/ADP the/DET left/NOUN#0.0#0.0

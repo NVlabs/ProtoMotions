@@ -1,3 +1,0 @@
-the man walks forward, pivot on the right foot to face other direction, walks back to original starting point.#the/DET man/NOUN walk/VERB forward/ADV pivot/VERB on/ADP the/DET right/ADJ foot/NOUN to/PART face/VERB other/ADJ direction/NOUN walk/VERB back/ADV to/ADP original/ADJ starting/NOUN point/NOUN#0.0#0.0
-a person walks forward spins to the right then walks back#a/DET person/NOUN walk/VERB forward/ADV spin/VERB to/ADP the/DET right/NOUN then/ADV walk/VERB back/ADV#0.0#0.0
-a person walks forward, spins around on his right leg then walks back in the direction he came from#a/DET person/NOUN walk/VERB forward/ADV spin/VERB around/ADV on/ADP his/DET right/ADJ leg/NOUN then/ADV walk/VERB back/ADV in/ADP the/DET direction/NOUN he/PRON come/VERB from/ADP#0.0#0.0

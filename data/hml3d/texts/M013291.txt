@@ -1,3 +1,0 @@
-person jogs on the spot and turns to their left hand side#person/NOUN jog/VERB on/ADP the/DET spot/NOUN and/CCONJ turn/VERB to/ADP their/DET left/ADJ hand/NOUN side/NOUN#0.0#0.0
-a person runs in place moving their arms and legs and partially turns counter counterclockwise#a/DET person/NOUN run/VERB in/ADP place/NOUN move/VERB their/DET arm/NOUN and/CCONJ leg/NOUN and/CCONJ partially/ADV turn/VERB counter/ADJ counterclockwise/NOUN#0.0#0.0
-a person hops to his feet and waves his arms while turning to the left.#a/DET person/NOUN hop/VERB to/ADP his/DET foot/NOUN and/CCONJ wave/VERB his/DET arm/NOUN while/SCONJ turn/VERB to/ADP the/DET left/NOUN#0.0#0.0

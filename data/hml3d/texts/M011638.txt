@@ -1,3 +1,0 @@
-a person jogs a few steps to his left, jogs a few steps to his right, and then jogs a few steps to his left again.#a/DET person/NOUN jog/VERB a/DET few/ADJ step/NOUN to/ADP his/DET left/NOUN jog/VERB a/DET few/ADJ step/NOUN to/ADP his/DET right/NOUN and/CCONJ then/ADV jog/VERB a/DET few/ADJ step/NOUN to/ADP his/DET left/NOUN again/ADV#0.0#0.0
-a man runs from right to left multiple times.#a/DET man/NOUN run/VERB from/ADP right/NOUN to/ADP left/VERB multiple/ADJ time/NOUN#0.0#0.0
-a person jogs left, right, then left again.#a/DET person/NOUN jog/VERB left/VERB right/INTJ then/ADV left/VERB again/ADV#0.0#0.0

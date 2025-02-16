@@ -1,3 +1,0 @@
-pushing hands in and out.#push/VERB hand/NOUN in/ADV and/CCONJ out/ADV#0.0#0.0
-a person steps forward with right leg then punches with right arm.#a/DET person/NOUN step/VERB forward/ADV with/ADP right/ADJ leg/NOUN then/ADV punch/VERB with/ADP right/ADJ arm/NOUN#0.0#6.0
-a person raises their hands, punches once, then lowers their hands.#a/DET person/NOUN raise/VERB their/DET hand/NOUN punch/NOUN once/ADV then/ADV lower/VERB their/DET hand/NOUN#0.0#0.0

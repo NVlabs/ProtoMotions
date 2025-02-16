@@ -1,3 +1,0 @@
-person doing dumbbell lifting exercise#person/NOUN do/VERB dumbbell/PROPN lift/VERB exercise/NOUN#0.0#0.0
-a person piking up the phone#a/DET person/NOUN pike/VERB up/ADP the/DET phone/NOUN#0.0#0.0
-a person twists to the left and picks something up with their left hand.#a/DET person/NOUN twist/VERB to/ADP the/DET left/NOUN and/CCONJ pick/VERB something/PRON up/ADP with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0

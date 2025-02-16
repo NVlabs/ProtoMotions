@@ -1,0 +1,22 @@
+# @package _global_
+
+defaults:
+  - /agent/mimic/agent
+  - /env/mimic
+
+  - /agent/ppo/models/mlp_actor_large
+  - /agent/ppo/models/mlp_critic_large
+  - /agent/mimic/models/mlp_actor_target_pose
+  - /agent/mimic/models/mlp_critic_target_pose
+  # - /terrain/complex
+  # - /agent/ppo/models/mlp_actor_terrain
+  # - /agent/ppo/models/mlp_critic_terrain
+  # # - /scenes/samp
+  - /agent/mimic/options/global_tracking
+  - /agent/mimic/options/early_termination_tracking_err
+  - /agent/mimic/options/dynamic_sampling
+
+env:
+  config:
+    mimic_target_pose:
+      num_future_steps: 15

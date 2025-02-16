@@ -1,3 +1,0 @@
-a person moonwalks in a clockwise hemi-circle#a/DET person/NOUN moonwalk/VERB in/ADP a/DET clockwise/ADJ hemicircle/NOUN#0.0#0.0
-a person does the moon walk.#a/DET person/NOUN does/AUX the/DET moon/NOUN walk/VERB#0.0#0.0
-someone clumsily moonwalks clockwise in a semicircle.#someone/PRON clumsily/ADV moonwalk/VERB clockwise/VERB in/ADP a/DET semicircle/NOUN#0.0#0.0

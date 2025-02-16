@@ -1,3 +1,0 @@
-person stood still lifts right arm two times lifting a dumbell#person/NOUN stand/VERB still/ADV lift/VERB right/ADJ arm/NOUN two/NUM time/NOUN lift/VERB a/DET dumbell/NOUN#0.0#0.0
-a man lifts something with his right hand.#a/DET man/NOUN lift/VERB something/PRON with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0
-a person does dumbell curls with one arm.#a/DET person/NOUN does/AUX dumbell/PROPN curl/NOUN with/ADP one/NUM arm/NOUN#0.0#0.0

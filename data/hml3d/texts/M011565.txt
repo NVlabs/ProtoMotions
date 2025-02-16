@@ -1,3 +1,0 @@
-this person takes a large step to the right then stops and repeats the step.#this/DET person/NOUN take/VERB a/DET large/ADJ step/NOUN to/ADP the/DET right/NOUN then/ADV stop/VERB and/CCONJ repeat/VERB the/DET step/NOUN#0.0#0.0
-a person makes quick wide steps forward, pausing between each one.#a/DET person/NOUN make/VERB quick/ADJ wide/ADJ step/NOUN forward/ADV pause/VERB between/ADP each/DET one/NOUN#0.0#0.0
-a person takes very large steps to the front right.#a/DET person/NOUN take/VERB very/ADV large/ADJ step/NOUN to/ADP the/DET front/ADJ right/ADV#0.0#0.0

@@ -1,3 +1,0 @@
-a person is doing karate kicks.#a/DET person/NOUN is/AUX do/VERB karate/NOUN kick/NOUN#0.0#0.0
-a person aggressively kneeing and kicking.#a/DET person/NOUN aggressively/ADV kneee/VERB and/CCONJ kick/VERB#0.0#0.0
-someone does two left knee raises before doing a full left leg kick in a counter counterclockwise direction.#someone/PRON does/AUX two/NUM left/ADJ knee/NOUN raise/NOUN before/ADP do/VERB a/DET full/ADJ left/ADJ leg/NOUN kick/NOUN in/ADP a/DET counter/ADJ counterclockwise/NOUN direction/NOUN#0.0#0.0

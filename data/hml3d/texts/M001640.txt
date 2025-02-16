@@ -1,3 +1,0 @@
-person looks to be washing a window with both hands#person/NOUN look/VERB to/PART be/AUX wash/VERB a/DET window/NOUN with/ADP both/DET hand/NOUN#0.0#0.0
-a person moves their hands in alternating circular motions#a/DET person/NOUN move/VERB their/DET hand/NOUN in/ADP alternate/VERB circular/ADJ motion/NOUN#0.0#0.0
-person makes alternating left & right hand circles then dribbles a ball.#person/NOUN make/VERB alternate/VERB left/VERB right/ADJ hand/NOUN circle/NOUN then/ADV dribble/VERB a/DET ball/NOUN#0.0#0.0

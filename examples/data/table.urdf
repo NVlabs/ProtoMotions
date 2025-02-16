@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+            <robot name="table">
+                <link name="table">
+                    <visual>
+                        <geometry>
+                            <box size="0.45001497864723206 0.5400180220603943 0.05000000074505806 "/>
+                        </geometry>
+                    </visual>
+                    <collision>
+                        <geometry>
+                            <box size="0.45001497864723206 0.5400180220603943 0.05000000074505806"/>
+                        </geometry>
+                    </collision>
+                </link>
+            </robot>
+            

@@ -1,3 +1,0 @@
-the person was making a gesture with his left hand.#the/DET person/NOUN was/AUX make/VERB a/DET gesture/NOUN with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
-a person raised his left hand and did some jesture with left hand#a/DET person/NOUN raise/VERB his/DET left/ADJ hand/NOUN and/CCONJ did/AUX some/DET jesture/NOUN with/ADP left/ADJ hand/NOUN#0.0#0.0
-left hand is moves up and forward to the left and back down to the side a few times.#left/ADJ hand/NOUN is/AUX move/NOUN up/ADP and/CCONJ forward/ADV to/ADP the/DET left/NOUN and/CCONJ back/ADV down/ADV to/ADP the/DET side/NOUN a/DET few/ADJ time/NOUN#0.0#0.0

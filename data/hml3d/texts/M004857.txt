@@ -1,3 +1,0 @@
-a man grabs his left leg with left hand and extends right arm into an akward stretch#a/DET man/NOUN grab/VERB his/DET left/ADJ leg/NOUN with/ADP left/ADJ hand/NOUN and/CCONJ extend/VERB right/ADJ arm/NOUN into/ADP an/DET akward/NOUN stretch/NOUN#0.0#0.0
-a person is doing the cheerleader scorpion pose.#a/DET person/NOUN is/AUX do/VERB the/DET cheerleader/NOUN scorpion/NOUN pose/NOUN#0.0#0.0
-person raises left leg to hip and uses their left hand to grab left foot and hold#person/NOUN raise/VERB left/VERB leg/NOUN to/ADP hip/NOUN and/CCONJ use/VERB their/DET left/ADJ hand/NOUN to/PART grab/VERB left/ADJ foot/NOUN and/CCONJ hold/VERB#0.0#0.0

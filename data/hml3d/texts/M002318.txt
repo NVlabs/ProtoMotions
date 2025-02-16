@@ -1,3 +1,0 @@
-pacing back and forth from right to left.#pace/VERB back/ADV and/CCONJ forth/ADV from/ADP right/NOUN to/ADP left/NOUN#0.0#0.0
-a person walks back and forth and completes a circle#a/DET person/NOUN walk/VERB back/ADV and/CCONJ forth/ADV and/CCONJ complete/VERB a/DET circle/NOUN#0.0#0.0
-a person turns to their right and starts pacing back and forth a couple times.#a/DET person/NOUN turn/VERB to/ADP their/DET right/NOUN and/CCONJ start/VERB pace/VERB back/ADV and/CCONJ forth/ADV a/DET couple/NOUN time/NOUN#0.0#0.0

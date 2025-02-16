@@ -1,3 +1,0 @@
-a person is walking while moving around his arms.#a/DET person/NOUN is/AUX walk/VERB while/SCONJ move/VERB around/ADP his/DET arm/NOUN#0.0#0.0
-the person in charge to the right whispered something to someone and a jogged back around.#the/DET person/NOUN in/ADP charge/NOUN to/ADP the/DET right/NOUN whisper/VERB something/PRON to/ADP someone/PRON and/CCONJ a/DET jog/VERB back/ADV around/ADV#0.0#0.0
-a person sneaks up and moves something over with their right hand then turns counterclockwise walking back to their original position.#a/DET person/NOUN sneak/VERB up/ADP and/CCONJ move/VERB something/PRON over/ADP with/ADP their/DET right/ADJ hand/NOUN then/ADV turn/VERB counterclockwise/NOUN walk/VERB back/ADV to/ADP their/DET original/ADJ position/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-the person is waving hello with his right hand.#the/DET person/NOUN is/AUX wave/VERB hello/INTJ with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0
-a person waves with their right hand.#a/DET person/NOUN wave/VERB with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0
-waving the blue sided arm very fast for 3 seconds#wave/VERB the/DET blue/ADJ sided/ADJ arm/NOUN very/ADV fast/ADV for/ADP second/NOUN#0.0#3.0

@@ -1,3 +1,0 @@
-a person jumped on the place and kicked with left leg#a/DET person/NOUN jump/VERB on/ADP the/DET place/NOUN and/CCONJ kick/VERB with/ADP left/ADJ leg/NOUN#0.0#6.0
-the man is doing a twistdance#the/DET man/NOUN is/AUX do/VERB a/DET twistdance/NOUN#0.0#0.0
-a person is dancing and twisting at the same time, then turns to the left and does a high kick with his left foot#a/DET person/NOUN is/AUX dance/VERB and/CCONJ twist/VERB at/ADP the/DET same/ADJ time/NOUN then/ADV turn/VERB to/ADP the/DET left/NOUN and/CCONJ does/AUX a/DET high/ADJ kick/NOUN with/ADP his/DET left/ADJ foot/NOUN#0.0#0.0

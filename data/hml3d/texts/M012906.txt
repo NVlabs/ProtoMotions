@@ -1,3 +1,0 @@
-the person is rubbing his belly in a circle.#the/DET person/NOUN is/AUX rub/VERB his/DET belly/NOUN in/ADP a/DET circle/NOUN#0.0#0.0
-a person is standing still and move their right hand and elbow in a clockwise motion.#a/DET person/NOUN is/AUX stand/VERB still/ADV and/CCONJ move/VERB their/DET right/ADJ hand/NOUN and/CCONJ elbow/VERB in/ADP a/DET clockwise/ADJ motion/NOUN#0.0#0.0
-a person makes a counterclockwise circle in front of themselves with their right hand.#a/DET person/NOUN make/VERB a/DET counterclockwise/ADJ circle/NOUN in/ADP front/NOUN of/ADP themselves/PRON with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0

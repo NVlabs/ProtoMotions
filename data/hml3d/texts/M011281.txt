@@ -1,3 +1,0 @@
-the person walks forward doing a dribble kick.#the/DET person/NOUN walk/VERB forward/ADV do/VERB a/DET dribble/ADJ kick/NOUN#0.0#0.0
-the sim steps back before launching forward, making a kicking motion with their left foot twice.#the/DET sim/PROPN step/VERB back/ADV before/ADP launch/VERB forward/ADV make/VERB a/DET kick/VERB motion/NOUN with/ADP their/DET left/ADJ foot/NOUN twice/ADV#0.0#0.0
-the person steps backwards then passes a soccer ball wit their left foot.#the/DET person/NOUN step/VERB backwards/ADV then/ADV pass/VERB a/DET soccer/NOUN ball/NOUN wit/VERB their/DET left/ADJ foot/NOUN#0.0#0.0

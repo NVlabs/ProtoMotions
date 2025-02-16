@@ -1,3 +1,0 @@
-walked from upper left to lower right the turned around and retured to staring point and squatted#walk/VERB from/ADP upper/ADJ left/NOUN to/PART lower/VERB right/ADJ the/DET turn/VERB around/ADP and/CCONJ reture/VERB to/ADP stare/VERB point/NOUN and/CCONJ squat/VERB#0.0#10.0
-a person runs forward, turns and walks back, then squats.#a/DET person/NOUN run/VERB forward/ADV turn/VERB and/CCONJ walk/VERB back/ADV then/ADV squat/NOUN#0.0#0.0
-a person runs in a line then turns and walks back and squats.#a/DET person/NOUN run/VERB in/ADP a/DET line/NOUN then/ADV turn/VERB and/CCONJ walk/VERB back/ADV and/CCONJ squat/NOUN#0.0#0.0

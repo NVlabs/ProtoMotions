@@ -1,3 +1,0 @@
-a man steps to the right steps in a small counterclockwise circle throws right arm then steps in a larger backward counterclockwise circle#a/DET man/NOUN step/VERB to/ADP the/DET right/ADJ step/NOUN in/ADP a/DET small/ADJ counterclockwise/NOUN circle/NOUN throw/VERB right/ADJ arm/NOUN then/ADV step/VERB in/ADP a/DET larger/ADJ backward/ADJ counterclockwise/NOUN circle/NOUN#0.0#0.0
-a person steps back and forth and swats something to the ground#a/DET person/NOUN step/VERB back/ADV and/CCONJ forth/ADV and/CCONJ swat/VERB something/PRON to/ADP the/DET ground/NOUN#0.0#0.0
-a person swats at something#a/DET person/NOUN swat/VERB at/ADP something/PRON#0.0#0.0

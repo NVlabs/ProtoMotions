@@ -1,3 +1,0 @@
-the sim is standing still before extending their left arm up.#the/DET sim/PROPN is/AUX stand/VERB still/ADV before/ADP extend/VERB their/DET left/ADJ arm/NOUN up/ADP#0.0#0.0
-this person lifts his left arm out front and points.#this/DET person/NOUN lift/VERB his/DET left/ADJ arm/NOUN out/ADP front/NOUN and/CCONJ point/NOUN#0.0#0.0
-the person is setting up the subject for a picture.#the/DET person/NOUN is/AUX set/VERB up/ADP the/DET subject/NOUN for/ADP a/DET picture/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-person picks something up with their left hand then walks forward#person/NOUN pick/VERB something/PRON up/ADP with/ADP their/DET left/ADJ hand/NOUN then/ADV walk/VERB forward/ADV#0.0#0.0
-a man picks something up on his left and then walks forwards.#a/DET man/NOUN pick/VERB something/PRON up/ADP on/ADP his/DET left/NOUN and/CCONJ then/ADV walk/VERB forwards/ADV#0.0#0.0
-a person who is walking#a/DET person/NOUN who/PRON is/AUX walk/VERB#0.0#0.0

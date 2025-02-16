@@ -1,3 +1,0 @@
-moving hands and jumping.#move/VERB hand/NOUN and/CCONJ jump/VERB#0.0#0.0
-a person has their right hand on their ear, pumps their left arm.#a/DET person/NOUN has/AUX their/DET right/ADJ hand/NOUN on/ADP their/DET ear/NOUN pump/VERB their/DET left/ADJ arm/NOUN#0.0#0.0
-person holds left hand to mouth and swings right arm before bouncing with both arms facing out happily#person/NOUN hold/VERB left/ADJ hand/NOUN to/ADP mouth/NOUN and/CCONJ swing/VERB right/ADJ arm/NOUN before/ADP bounce/VERB with/ADP both/DET arm/NOUN face/VERB out/ADP happily/ADV#0.0#0.0

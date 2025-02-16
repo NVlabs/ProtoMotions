@@ -1,3 +1,0 @@
-a person walks forward but slightly to the left.#a/DET person/NOUN walk/VERB forward/ADV but/CCONJ slightly/ADV to/ADP the/DET left/NOUN#0.0#0.0
-a person walks fast and veers slightly to their left.#a/DET person/NOUN walk/VERB fast/ADJ and/CCONJ veer/NOUN slightly/ADV to/ADP their/DET left/NOUN#0.0#0.0
-a person walks briskly to their left#a/DET person/NOUN walk/VERB briskly/ADV to/ADP their/DET left/NOUN#0.0#0.0

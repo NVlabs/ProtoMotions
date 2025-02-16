@@ -1,3 +1,0 @@
-person is walking around in a circle.#person/NOUN is/AUX walk/VERB around/ADP in/ADP a/DET circle/NOUN#0.0#0.0
-a person walks left in a circular motion.#a/DET person/NOUN walk/VERB left/VERB in/ADP a/DET circular/ADJ motion/NOUN#0.0#0.0
-a person walks counterclockwise in a circle.#a/DET person/NOUN walk/VERB counterclockwise/NOUN in/ADP a/DET circle/NOUN#0.0#0.0

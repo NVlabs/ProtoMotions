@@ -1,3 +1,0 @@
-a person stepping diagonally to their left#a/DET person/NOUN step/VERB diagonally/ADV to/ADP their/DET left/NOUN#0.0#0.0
-a person steps at an angle forward and to the left.#a/DET person/NOUN step/VERB at/ADP an/DET angle/NOUN forward/ADV and/CCONJ to/ADP the/DET left/NOUN#0.0#0.0
-a person stands still, then suddenly steps forward and to the left, ending in a standing position.#a/DET person/NOUN stand/VERB still/ADV then/ADV suddenly/ADV step/VERB forward/ADV and/CCONJ to/ADP the/DET left/NOUN end/VERB in/ADP a/DET standing/ADJ position/NOUN#0.0#0.0

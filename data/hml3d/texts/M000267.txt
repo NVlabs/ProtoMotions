@@ -1,3 +1,0 @@
-someone abruptly steps backward, seemingly surprised or startled by something.#someone/PRON abruptly/ADV step/VERB backward/ADV seemingly/ADV surprised/ADJ or/CCONJ startle/VERB by/ADP something/PRON#0.0#0.0
-a man walks backwards to the left.#a/DET man/NOUN walk/VERB backwards/ADV to/ADP the/DET left/NOUN#0.0#0.0
-guy move from right to left.#guy/PROPN move/VERB from/ADP right/NOUN to/ADP left/NOUN#0.0#0.0

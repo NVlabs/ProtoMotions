@@ -1,3 +1,0 @@
-a person steps out with left leg, right legs steps in front of left leg, left leg steps, then right leg steps behind left leg.#a/DET person/NOUN step/VERB out/ADP with/ADP left/ADJ leg/NOUN right/ADJ leg/NOUN step/NOUN in/ADP front/NOUN of/ADP left/ADJ leg/NOUN left/VERB leg/NOUN step/NOUN then/ADV right/INTJ leg/NOUN step/NOUN behind/ADP left/ADJ leg/NOUN#0.0#10.0
-a person side steps to the left.#a/DET person/NOUN side/NOUN step/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-a person slowly walked in left direction#a/DET person/NOUN slowly/ADV walk/VERB in/ADP left/ADJ direction/NOUN#0.0#0.0

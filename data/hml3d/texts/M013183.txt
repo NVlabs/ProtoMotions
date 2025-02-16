@@ -1,3 +1,0 @@
-a person pulls his knee to his chest to stretch#a/DET person/NOUN pull/VERB his/DET knee/NOUN to/ADP his/DET chest/NOUN to/PART stretch/VERB#0.0#0.0
-a person balances on their right leg while holding their left leg up#a/DET person/NOUN balance/VERB on/ADP their/DET right/ADJ leg/NOUN while/SCONJ hold/VERB their/DET left/ADJ leg/NOUN up/ADP#0.0#0.0
-the figure pulls and stretches his right leg.#the/DET figure/NOUN pull/VERB and/CCONJ stretch/VERB his/DET right/ADJ leg/NOUN#0.0#0.0

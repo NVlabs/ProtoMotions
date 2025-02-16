@@ -1,0 +1,119 @@
+# @package _global_
+
+defaults:
+  - base
+
+robot:
+  body_names: ['pelvis', 'head', 'left_hip_yaw_link', 'left_hip_roll_link', 'left_hip_pitch_link', 'left_knee_link', 'left_ankle_link', 'left_foot_link', 'right_hip_yaw_link', 'right_hip_roll_link', 'right_hip_pitch_link', 'right_knee_link', 'right_ankle_link', 'right_foot_link', 'torso_link', 'left_shoulder_pitch_link', 'left_shoulder_roll_link', 'left_shoulder_yaw_link', 'left_elbow_link', 'left_arm_end_effector', 'right_shoulder_pitch_link', 'right_shoulder_roll_link', 'right_shoulder_yaw_link', 'right_elbow_link', 'right_arm_end_effector']
+  dof_names: ['left_hip_yaw_joint', 'left_hip_roll_joint', 'left_hip_pitch_joint', 'left_knee_joint', 'left_ankle_joint', 'right_hip_yaw_joint', 'right_hip_roll_joint', 'right_hip_pitch_joint', 'right_knee_joint', 'right_ankle_joint', 'torso_joint', 'left_shoulder_pitch_joint', 'left_shoulder_roll_joint', 'left_shoulder_yaw_joint', 'left_elbow_joint', 'right_shoulder_pitch_joint', 'right_shoulder_roll_joint', 'right_shoulder_yaw_joint', 'right_elbow_joint']
+
+  trackable_bodies_subset: ['pelvis', 'head', 'left_ankle_link', 'right_ankle_link', 'left_arm_end_effector', 'right_arm_end_effector']
+
+  # Observation parameters
+  dof_obs_size: ${eval:${len:${.dof_body_ids}}*6}
+  number_of_actions: 19
+  self_obs_max_coords_size: 373  # ${eval:1+25*(3+6+3+3)-3}
+
+  # Control parameters
+  dof_body_ids: [ 1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 ]
+  dof_effort_limits: [200., 200., 200., 300., 40., 200., 200., 200., 300., 40., 200., 40., 40., 18., 18., 40., 40., 18., 18.]
+  key_bodies: [ "left_foot_link", "right_foot_link", "left_arm_end_effector",  "right_arm_end_effector" ]
+  non_termination_contact_bodies: [ "left_foot_link", "left_ankle_link", "right_foot_link", "right_ankle_link" ]
+  right_foot_name: "right_foot_link"
+  left_foot_name: "left_foot_link"
+  head_body_name: "head"
+
+  init_state:
+    pos: [ 0.0, 0.0, 1.0 ] # x,y,z [m]
+    default_joint_angles: # = target angles [rad] when action = 0.0
+      left_hip_yaw_joint: 0.
+      left_hip_roll_joint: 0
+      left_hip_pitch_joint: -0.4
+      left_knee_joint: 0.8
+      left_ankle_joint: -0.4
+      right_hip_yaw_joint: 0.
+      right_hip_roll_joint: 0
+      right_hip_pitch_joint: -0.4
+      right_knee_joint: 0.8
+      right_ankle_joint: -0.4
+      torso_joint: 0.
+      left_shoulder_pitch_joint: 0.
+      left_shoulder_roll_joint: 0
+      left_shoulder_yaw_joint: 0.
+      left_elbow_joint: 0.
+      right_shoulder_pitch_joint: 0.
+      right_shoulder_roll_joint: 0.0
+      right_shoulder_yaw_joint: 0.
+      right_elbow_joint: 0.
+      head: 0.
+      left_arm_end_effector_joint: 0.
+      right_arm_end_effector_joint: 0.
+      left_foot_link: 0.
+      right_foot_link: 0.
+
+  control:
+    control_type: proportional
+    # PD Drive parameters:
+    stiffness: # [N*m/rad]
+      hip_yaw: 200
+      hip_roll: 200
+      hip_pitch: 200
+      knee: 300
+      ankle: 40
+      torso: 300
+      shoulder: 100
+      elbow: 100
+    damping: # [N*m/rad]  # [N*m*s/rad]
+      hip_yaw: 5
+      hip_roll: 5
+      hip_pitch: 5
+      knee: 6
+      ankle: 2
+      torso: 6
+      shoulder: 2
+      elbow: 2
+    # action scale: target angle = actionScale * action + defaultAngle
+    action_scale: 1.
+    clamp_actions: 100.0
+
+  asset:
+    collapse_fixed_joints: False # merge bodies connected by fixed joints. Specific fixed joints can be kept by adding " <... dont_collapse="true">
+    replace_cylinder_with_capsule: True
+    flip_visual_attachments: False
+    armature: 0.
+    thickness: 0.01
+    max_angular_velocity: 1000.
+    max_linear_velocity: 1000.
+    density: 0.001
+    angular_damping: 0.
+    linear_damping: 0.
+
+    asset_file_name: "urdf/h1.urdf"
+    usd_asset_file_name: "usd/h1/h1.usd"
+    robot_type: h1
+    self_collisions: False
+    default_dof_drive_mode: 3
+
+  sim:
+    isaacgym:
+      fps: 200
+      decimation: 4
+      substeps: 1
+    isaaclab:
+      fps: 200
+      decimation: 4
+    genesis:
+      fps: 200
+      decimation: 4
+      substeps: 1
+
+
+# Override motion lib default to use the adapted H1 variant
+motion_lib:
+  _target_: protomotions.utils.motion_lib_h1.H1_MotionLib
+
+# Override simulation config to use the adapted H1 variant
+env:
+  config:
+    mimic_reset_track:
+      grace_period: 10

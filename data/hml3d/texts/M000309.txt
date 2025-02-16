@@ -1,3 +1,0 @@
-right arm moves in an clockwise motion at waist level.#right/ADJ arm/NOUN move/NOUN in/ADP an/DET clockwise/ADJ motion/NOUN at/ADP waist/ADJ level/NOUN#0.0#0.0
-a person makes some wiping movements with their right hand.#a/DET person/NOUN make/VERB some/DET wipe/VERB movement/NOUN with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0
-this person is wiping something with their right hand.#this/DET person/NOUN is/AUX wipe/VERB something/PRON with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0

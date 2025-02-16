@@ -1,3 +1,0 @@
-person stands in a fighting position and moves feet back and fourth little at  a time#person/NOUN stand/VERB in/ADP a/DET fighting/NOUN position/NOUN and/CCONJ move/VERB foot/NOUN back/ADV and/CCONJ fourth/ADJ little/ADJ at/ADP a/DET time/NOUN#0.0#0.0
-a person is preparing for a fight#a/DET person/NOUN is/AUX prepare/VERB for/ADP a/DET fight/NOUN#0.0#0.0
-the person is turning around to the right.#the/DET person/NOUN is/AUX turn/VERB around/ADP to/ADP the/DET right/NOUN#0.0#0.0

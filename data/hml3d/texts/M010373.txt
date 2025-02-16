@@ -1,3 +1,0 @@
-the man turns to the left and takes 5 steps.#the/DET man/NOUN turn/VERB to/ADP the/DET left/NOUN and/CCONJ take/VERB step/NOUN#0.0#0.0
-a person walks to the left.#a/DET person/NOUN walk/VERB to/ADP the/DET left/NOUN#0.0#0.0
-person turns and takes 5 steps walking to the left#person/NOUN turn/VERB and/CCONJ take/VERB step/NOUN walk/VERB to/ADP the/DET left/NOUN#0.0#0.0

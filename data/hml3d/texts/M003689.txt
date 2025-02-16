@@ -1,3 +1,0 @@
-a person steps forward, turns around to his right, and steps back and stops.#a/DET person/NOUN step/VERB forward/ADV turn/VERB around/ADP to/ADP his/DET right/NOUN and/CCONJ step/VERB back/ADV and/CCONJ stop/VERB#0.0#0.0
-a person walks forward, turns right then walks back.#a/DET person/NOUN walk/VERB forward/ADV turn/VERB right/ADV then/ADV walk/VERB back/ADV#0.0#0.0
-a man walks forward and then turns around and walks back.#a/DET man/NOUN walk/VERB forward/ADV and/CCONJ then/ADV turn/VERB around/ADV and/CCONJ walk/VERB back/ADV#0.0#0.0

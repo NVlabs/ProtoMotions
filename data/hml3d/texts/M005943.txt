@@ -1,3 +1,0 @@
-a person throws his left hand in the air.#a/DET person/NOUN throw/VERB his/DET left/ADJ hand/NOUN in/ADP the/DET air/NOUN#0.0#0.0
-a man throws something overarm.#a/DET man/NOUN throw/VERB something/PRON overarm/ADJ#0.0#0.0
-a person who raises their left arm to throw a item#a/DET person/NOUN who/PRON raise/VERB their/DET left/ADJ arm/NOUN to/PART throw/VERB a/DET item/NOUN#0.0#0.0

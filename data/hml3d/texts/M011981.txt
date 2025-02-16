@@ -1,3 +1,0 @@
-person lifts both hands up shoulder height bend in elbow#person/NOUN lift/VERB both/DET hand/NOUN up/ADP shoulder/NOUN height/NOUN bend/NOUN in/ADP elbow/NOUN#0.0#0.0
-a person drinking something with the right hand#a/DET person/NOUN drink/VERB something/PRON with/ADP the/DET right/ADJ hand/NOUN#0.0#0.0
-a person opens a bottle and drinks it with their right hand.#a/DET person/NOUN open/VERB a/DET bottle/NOUN and/CCONJ drink/VERB it/PRON with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0

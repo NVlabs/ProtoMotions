@@ -1,3 +1,0 @@
-a person stands in place and switches from left foot to right foot for a frw seconds and then stops.#a/DET person/NOUN stand/VERB in/ADP place/NOUN and/CCONJ switch/NOUN from/ADP left/ADJ foot/NOUN to/ADP right/ADJ foot/NOUN for/ADP a/DET frw/NOUN second/NOUN and/CCONJ then/ADV stop/VERB#0.0#0.0
-a person runs on the spot rapidly with their arms held out away from their sides at an angle.#a/DET person/NOUN run/VERB on/ADP the/DET spot/NOUN rapidly/ADV with/ADP their/DET arm/NOUN hold/VERB out/ADP away/ADV from/ADP their/DET side/NOUN at/ADP an/DET angle/NOUN#0.0#0.0
-person is running in place#person/NOUN is/AUX run/VERB in/ADP place/NOUN#0.0#0.0

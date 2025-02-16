@@ -1,3 +1,0 @@
-a person walking and doing a quarter of a circle to the left side.#a/DET person/NOUN walk/VERB and/CCONJ do/VERB a/DET quarter/NOUN of/ADP a/DET circle/NOUN to/ADP the/DET left/ADJ side/NOUN#0.0#0.0
-a person changing their walking path to the left.#a/DET person/NOUN change/VERB their/DET walk/VERB path/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-a person walks forward into a left turn.#a/DET person/NOUN walk/VERB forward/ADV into/ADP a/DET left/ADJ turn/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person walks turning to the left.#a/DET person/NOUN walk/VERB turn/VERB to/ADP the/DET left/NOUN#0.0#0.0
-figure is walking straight and turning right#figure/NOUN is/AUX walk/VERB straight/ADV and/CCONJ turn/VERB right/ADV#4.0#6.0
-someone is walking and then turning to their left#someone/PRON is/AUX walk/VERB and/CCONJ then/ADV turn/VERB to/ADP their/DET left/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person warms up with some jabs and uppercut punches from a standing, stationary position.#a/DET person/NOUN warm/VERB up/ADP with/ADP some/DET jab/NOUN and/CCONJ uppercut/NOUN punch/NOUN from/ADP a/DET standing/ADJ stationary/ADJ position/NOUN#0.0#0.0
-a person throwing jabs right and left.#a/DET person/NOUN throw/VERB jab/NOUN right/ADV and/CCONJ left/VERB#0.0#0.0
-a person throws various punches with both their right and left hands.#a/DET person/NOUN throw/VERB various/ADJ punch/NOUN with/ADP both/CCONJ their/DET right/ADJ and/CCONJ left/VERB hand/NOUN#0.0#0.0

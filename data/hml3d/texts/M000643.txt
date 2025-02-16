@@ -1,3 +1,0 @@
-a man steps to the right and the back to the left.#a/DET man/NOUN step/VERB to/ADP the/DET right/NOUN and/CCONJ the/DET back/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-a person jumping sideways in both direction.#a/DET person/NOUN jump/VERB sideways/ADV in/ADP both/DET direction/NOUN#0.0#0.0
-person steps side to side to the left and then the right, and back to center#person/NOUN step/VERB side/NOUN to/PART side/VERB to/ADP the/DET left/NOUN and/CCONJ then/ADV the/DET right/NOUN and/CCONJ back/ADV to/ADP center/NOUN#0.0#0.0

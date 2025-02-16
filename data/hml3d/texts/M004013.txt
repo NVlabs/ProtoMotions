@@ -1,3 +1,0 @@
-a person reaches for something with his right hand.#a/DET person/NOUN reach/VERB for/ADP something/PRON with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0
-a person stretching their back from twisting and extending arm.#a/DET person/NOUN stretch/VERB their/DET back/NOUN from/ADP twisting/NOUN and/CCONJ extending/NOUN arm/NOUN#0.0#0.0
-a person reaches out in the air with his right arm.#a/DET person/NOUN reach/VERB out/ADP in/ADP the/DET air/NOUN with/ADP his/DET right/ADJ arm/NOUN#0.0#0.0

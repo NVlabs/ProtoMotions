@@ -1,3 +1,0 @@
-a figure jogs lightly in a figure eight#a/DET figure/NOUN jog/VERB lightly/ADV in/ADP a/DET figure/NOUN eight/NUM#0.0#0.0
-the person is running in circles.#the/DET person/NOUN is/AUX run/VERB in/ADP circle/NOUN#0.0#0.0
-a person runs in a counterclockwise circle and then a clockwise circle#a/DET person/NOUN run/VERB in/ADP a/DET counterclockwise/ADJ circle/NOUN and/CCONJ then/ADV a/DET clockwise/NOUN circle/NOUN#0.0#0.0

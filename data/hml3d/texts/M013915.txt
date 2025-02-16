@@ -1,3 +1,0 @@
-the person is jogging back and forth.#the/DET person/NOUN is/AUX jog/VERB back/ADV and/CCONJ forth/ADV#0.0#0.0
-a person ran left side, and after backed to the right, and backed to left#a/DET person/NOUN run/VERB left/VERB side/NOUN and/CCONJ after/ADP back/VERB to/ADP the/DET right/NOUN and/CCONJ back/VERB to/ADP left/VERB#0.0#0.0
-a figure turns then runs to the left, then turns again and runs to the right, in a figure eight pattern#a/DET figure/NOUN turn/VERB then/ADV run/VERB to/ADP the/DET left/NOUN then/ADV turn/VERB again/ADV and/CCONJ run/VERB to/ADP the/DET right/NOUN in/ADP a/DET figure/NOUN eight/NUM pattern/NOUN#0.0#0.0

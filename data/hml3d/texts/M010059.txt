@@ -1,3 +1,0 @@
-starting with the left foot, a person walks downstairs alternating feet for each step.#start/VERB with/ADP the/DET left/ADJ foot/NOUN a/DET person/NOUN walk/VERB downstairs/ADV alternate/VERB foot/NOUN for/ADP each/DET step/NOUN#0.0#0.0
-a man walks straight on to a block of ice and it starts to crack.#a/DET man/NOUN walk/VERB straight/ADV on/ADV to/ADP a/DET block/NOUN of/ADP ice/NOUN and/CCONJ it/PRON start/VERB to/PART crack/VERB#0.0#0.0
-the person is walking down steps.#the/DET person/NOUN is/AUX walk/VERB down/ADP step/NOUN#0.0#0.0

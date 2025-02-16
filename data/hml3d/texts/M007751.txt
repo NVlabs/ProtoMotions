@@ -1,3 +1,0 @@
-it appears as if a walking person trips over something or missteps with their left foot.#it/PRON appear/VERB as/SCONJ if/SCONJ a/DET walk/VERB person/NOUN trip/VERB over/ADP something/PRON or/CCONJ misstep/NOUN with/ADP their/DET left/ADJ foot/NOUN#0.0#0.0
-this person was pushed from behind but did not fall down.#this/DET person/NOUN was/AUX push/VERB from/ADP behind/ADV but/CCONJ did/AUX not/PART fall/VERB down/ADP#0.0#0.0
-person loses balance while walking#person/NOUN lose/VERB balance/NOUN while/SCONJ walk/VERB#0.0#0.0

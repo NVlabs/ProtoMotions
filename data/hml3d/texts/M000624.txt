@@ -1,3 +1,0 @@
-person is moving things around.#person/NOUN is/AUX move/VERB thing/NOUN around/ADV#0.0#0.0
-robot pick something from his right and placed it on his left and then moved back his arms to right.#robot/PROPN pick/VERB something/PRON from/ADP his/DET right/NOUN and/CCONJ place/VERB it/PRON on/ADP his/DET left/NOUN and/CCONJ then/ADV move/VERB back/ADV his/DET arm/NOUN to/ADP right/NOUN#0.0#0.0
-a person reaches for an item to their lower right, lifts the item with both hands, and moves it to their left.#a/DET person/NOUN reach/VERB for/ADP an/DET item/NOUN to/ADP their/DET lower/ADJ right/NOUN lift/VERB the/DET item/NOUN with/ADP both/DET hand/NOUN and/CCONJ move/VERB it/PRON to/ADP their/DET left/NOUN#0.0#0.0

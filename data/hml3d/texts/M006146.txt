@@ -1,3 +1,0 @@
-a person slightly walked on left direcation#a/DET person/NOUN slightly/ADV walk/VERB on/ADP left/ADJ direcation/NOUN#0.0#0.0
-a person stands still then with left leg stepped left.#a/DET person/NOUN stand/VERB still/ADV then/ADV with/ADP left/ADJ leg/NOUN step/VERB left/ADV#0.0#9.0
-a man makes a step to the left side and then stops.#a/DET man/NOUN make/VERB a/DET step/NOUN to/ADP the/DET left/ADJ side/NOUN and/CCONJ then/ADV stop/VERB#0.0#0.0

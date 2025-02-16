@@ -1,3 +1,0 @@
-the person takes a large step towards their left.#the/DET person/NOUN take/VERB a/DET large/ADJ step/NOUN towards/ADP their/DET left/NOUN#0.0#0.0
-a person stands in one place and then gets pushed to the left#a/DET person/NOUN stand/VERB in/ADP one/NUM place/NOUN and/CCONJ then/ADV get/VERB push/VERB to/ADP the/DET left/NOUN#0.0#0.0
-a person moves to his left#a/DET person/NOUN move/VERB to/ADP his/DET left/NOUN#0.0#10.0

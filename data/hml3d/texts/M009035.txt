@@ -1,3 +1,0 @@
-a person is walking up stairs while holding the hand rail.#a/DET person/NOUN is/AUX walk/VERB up/ADP stair/NOUN while/SCONJ hold/VERB the/DET hand/NOUN rail/NOUN#0.0#0.0
-a person is walking up stairs.#a/DET person/NOUN is/AUX walk/VERB up/ADP stair/NOUN#0.0#0.0
-a person walks up several stairs with their left hand on a handrail#a/DET person/NOUN walk/VERB up/ADP several/ADJ stair/NOUN with/ADP their/DET left/ADJ hand/NOUN on/ADP a/DET handrail/NOUN#0.0#0.0

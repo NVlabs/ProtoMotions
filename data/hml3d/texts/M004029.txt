@@ -1,3 +1,0 @@
-person sweeping floor going almost in circle#person/NOUN sweeping/ADJ floor/NOUN go/VERB almost/ADV in/ADP circle/NOUN#0.0#0.0
-a man is sweeping from right to left and then back and around#a/DET man/NOUN is/AUX sweeping/ADJ from/ADP right/NOUN to/ADP left/NOUN and/CCONJ then/ADV back/ADV and/CCONJ around/ADV#0.0#0.0
-a man is sweeping the floor.#a/DET man/NOUN is/AUX sweep/VERB the/DET floor/NOUN#0.0#0.0

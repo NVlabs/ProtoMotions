@@ -1,3 +1,0 @@
-a person jumps sideways directly to their right.#a/DET person/NOUN jump/VERB sideway/NOUN directly/ADV to/ADP their/DET right/NOUN#0.0#0.0
-a person jumps sideways to the left.#a/DET person/NOUN jump/VERB sideways/ADV to/ADP the/DET left/NOUN#0.0#0.0
-a person hops sideways to their right.#a/DET person/NOUN hop/VERB sideways/ADV to/ADP their/DET right/NOUN#0.0#0.0

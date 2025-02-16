@@ -1,3 +1,0 @@
-a person running very fast and then taking turn to their right#a/DET person/NOUN run/VERB very/ADV fast/ADV and/CCONJ then/ADV take/VERB turn/NOUN to/ADP their/DET right/NOUN#0.0#0.0
-a person running and turning to their right.#a/DET person/NOUN run/VERB and/CCONJ turn/VERB to/ADP their/DET right/NOUN#0.0#0.0
-a jogging stick figure turns a looping right#a/DET jog/VERB stick/NOUN figure/NOUN turn/VERB a/DET looping/NOUN right/NOUN#0.0#0.0

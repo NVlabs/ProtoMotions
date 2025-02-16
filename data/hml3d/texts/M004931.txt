@@ -1,3 +1,0 @@
-she moves her left hand up, bending at the elbow, twice.#she/PRON move/VERB her/PRON left/ADJ hand/NOUN up/ADP bend/VERB at/ADP the/DET elbow/NOUN twice/ADV#0.0#0.0
-a man standing still raises his left arm, he does this at his elbow in a motion to bring his hand to his face#a/DET man/NOUN stand/VERB still/ADV raise/VERB his/DET left/ADJ arm/NOUN he/PRON does/AUX this/DET at/ADP his/DET elbow/NOUN in/ADP a/DET motion/NOUN to/PART bring/VERB his/DET hand/NOUN to/ADP his/DET face/NOUN#0.0#0.0
-a person bends their left elbow, lifting their left forearm up and down.#a/DET person/NOUN bend/VERB their/DET left/VERB elbow/NOUN lift/VERB their/DET left/ADJ forearm/NOUN up/ADP and/CCONJ down/ADV#0.0#0.0

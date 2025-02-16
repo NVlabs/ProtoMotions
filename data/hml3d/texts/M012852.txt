@@ -1,3 +1,0 @@
-a person takes two steps backwards.#a/DET person/NOUN take/VERB two/NUM step/NOUN backwards/ADV#0.0#0.0
-a person takes a step backwards, left leg first.#a/DET person/NOUN take/VERB a/DET step/NOUN backwards/ADV left/ADJ leg/NOUN first/ADV#0.0#0.0
-a person takes one step backwards starting with their left foot.#a/DET person/NOUN take/VERB one/NUM step/NOUN backwards/ADV start/VERB with/ADP their/DET left/ADJ foot/NOUN#0.0#0.0

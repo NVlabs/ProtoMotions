@@ -1,3 +1,0 @@
-a person tip toeing forward.#a/DET person/NOUN tip/NOUN toe/VERB forward/ADV#0.0#0.0
-a person casually starts walking forward with their left foot and turns slightly to their right.#a/DET person/NOUN casually/ADV start/VERB walk/VERB forward/ADV with/ADP their/DET left/ADJ foot/NOUN and/CCONJ turn/VERB slightly/ADV to/ADP their/DET right/NOUN#0.0#0.0
-a person walking forward in a curved line.#a/DET person/NOUN walk/VERB forward/ADV in/ADP a/DET curved/ADJ line/NOUN#0.0#0.0

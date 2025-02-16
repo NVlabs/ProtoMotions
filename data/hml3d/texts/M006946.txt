@@ -1,3 +1,0 @@
-a person throws their left arm forward and pulls it back grabbing it with their left hand#a/DET person/NOUN throw/VERB their/DET left/ADJ arm/NOUN forward/ADV and/CCONJ pull/VERB it/PRON back/ADV grab/VERB it/PRON with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a person throws something with their left arm then catches something with both arms#a/DET person/NOUN throw/VERB something/PRON with/ADP their/DET left/ADJ arm/NOUN then/ADV catch/VERB something/PRON with/ADP both/DET arm/NOUN#0.0#0.0
-the sim appears to be throwing an object.#the/DET sim/PROPN appear/VERB to/PART be/AUX throw/VERB an/DET object/NOUN#0.0#0.0

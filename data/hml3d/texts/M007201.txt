@@ -1,2 +1,0 @@
-a person slowly walked forward in left direction#a/DET person/NOUN slowly/ADV walk/VERB forward/ADV in/ADP left/ADJ direction/NOUN#0.0#0.0
-a person skips once whilst jogging forward.#a/DET person/NOUN skip/VERB once/ADV whilst/ADV jog/VERB forward/ADV#0.0#0.0

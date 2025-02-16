@@ -1,3 +1,0 @@
-a person stands casually and shifts their weight from their right foot to left foot#a/DET person/NOUN stand/VERB casually/ADV and/CCONJ shift/VERB their/DET weight/NOUN from/ADP their/DET right/ADJ foot/NOUN to/ADP left/ADJ foot/NOUN#0.0#0.0
-a person looks upwards while swaying somewhat.#a/DET person/NOUN look/VERB upwards/ADV while/SCONJ sway/VERB somewhat/ADV#0.0#0.0
-a person lowers their arms from shoulder height and then shifts their weight from foot to foot.#a/DET person/NOUN lower/VERB their/DET arm/NOUN from/ADP shoulder/NOUN height/NOUN and/CCONJ then/ADV shift/VERB their/DET weight/NOUN from/ADP foot/NOUN to/ADP foot/NOUN#0.0#0.0

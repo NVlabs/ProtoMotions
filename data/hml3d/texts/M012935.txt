@@ -1,3 +1,0 @@
-a person is boxing right and rigght#a/DET person/NOUN is/AUX box/VERB right/ADV and/CCONJ rigght/NOUN#0.0#0.0
-a person punches with left fist.#a/DET person/NOUN punch/VERB with/ADP left/ADJ fist/NOUN#0.0#0.0
-the person is boxing right to the left.#the/DET person/NOUN is/AUX box/VERB right/ADV to/ADP the/DET left/NOUN#0.0#0.0

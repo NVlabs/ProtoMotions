@@ -1,3 +1,0 @@
-a person picks up and answers a phone with their right hand.#a/DET person/NOUN pick/VERB up/ADP and/CCONJ answer/VERB a/DET phone/NOUN with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0
-the man in a seated position makes tight, erratic movements with his right hand. both arms are bent and towards the front of the body#the/DET man/NOUN in/ADP a/DET seated/ADJ position/NOUN make/VERB tight/ADJ erratic/ADJ movement/NOUN with/ADP his/DET right/ADJ hand/NOUN both/DET arm/NOUN are/AUX bent/ADJ and/CCONJ towards/ADP the/DET front/NOUN of/ADP the/DET body/NOUN#0.0#0.0
-a person raises their right hand#a/DET person/NOUN raise/VERB their/DET right/ADJ hand/NOUN#0.0#0.0

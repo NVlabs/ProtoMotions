@@ -1,3 +1,0 @@
-a person washes a window or a wall in front of them with their right hand#a/DET person/NOUN wash/VERB a/DET window/NOUN or/CCONJ a/DET wall/NOUN in/ADP front/NOUN of/ADP them/PRON with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0
-the man is waving to the right#the/DET man/NOUN is/AUX wave/VERB to/ADP the/DET right/NOUN#0.0#0.0
-the person is leaving with his right hand.#the/DET person/NOUN is/AUX leave/VERB with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0

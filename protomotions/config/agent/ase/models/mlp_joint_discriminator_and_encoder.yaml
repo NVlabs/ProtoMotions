@@ -1,0 +1,38 @@
+# @package _global_
+
+agent:
+  config:
+    # Setup discriminator structure
+    model:
+      config:
+        ase_discriminator_encoder:
+          _target_: protomotions.agents.ase.model.ASEDiscriminatorEncoder
+          _recursive_: False
+          num_in: ${eval:${robot.self_obs_size}*${env.config.humanoid_obs.num_historical_steps}}
+          config:
+            ase_parameters:
+              mi_hypersphere_reward_shift: ${agent.config.ase_parameters.mi_hypersphere_reward_shift}
+            trunk:
+              num_out: 512
+              obs_key: historical_self_obs
+              normalize_obs: True
+              norm_clamp_value: 5
+              output_activation: relu
+              layers:
+                - units: 1024
+                  activation: relu
+                  use_layer_norm: false
+                - units: 1024
+                  activation: relu
+                  use_layer_norm: false
+            encoder:
+              _target_: protomotions.agents.ase.model.NormalizedLinearEncoder
+              _recursive_: False
+              num_out: ${agent.config.ase_parameters.latent_dim}
+
+        discriminator_optimizer:
+          _target_: torch.optim.Adam
+          lr: 1e-4
+
+    extra_inputs:
+      historical_self_obs: true  # we create as a dict to ensure hydra combines with other extra_inputs

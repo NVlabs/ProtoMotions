@@ -1,3 +1,0 @@
-a figure lifts the right and then left hand.#a/DET figure/NOUN lift/VERB the/DET right/NOUN and/CCONJ then/ADV left/VERB hand/NOUN#0.0#0.0
-the person is touching head one hand after another.#the/DET person/NOUN is/AUX touching/ADJ head/NOUN one/NUM hand/NOUN after/ADP another/DET#0.0#0.0
-person raises left hand over head and back down, then right hand.#person/NOUN raise/VERB left/VERB hand/NOUN over/ADP head/NOUN and/CCONJ back/VERB down/ADV then/ADV right/ADJ hand/NOUN#0.0#0.0

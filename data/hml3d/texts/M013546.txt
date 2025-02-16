@@ -1,3 +1,0 @@
-this person is seated as if playing the drums.#this/DET person/NOUN is/AUX seat/VERB as/SCONJ if/SCONJ play/VERB the/DET drum/NOUN#0.0#0.0
-a person eats with right hand.#a/DET person/NOUN eat/VERB with/ADP right/ADJ hand/NOUN#0.0#0.0
-a person sitting eats with their right hand.#a/DET person/NOUN sit/VERB eat/VERB with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person is walking forward briskly.#a/DET person/NOUN is/AUX walk/VERB forward/ADV briskly/ADV#0.0#0.0
-the figure plants four steps leading with it's right foot, with a fifth step not planted.#the/DET figure/NOUN plant/VERB four/NUM step/NOUN lead/VERB with/ADP it/PRON right/ADJ foot/NOUN with/ADP a/DET fifth/ADJ step/NOUN not/PART plant/VERB#0.0#0.0
-person is walking without their arms swinging#person/NOUN is/AUX walk/VERB without/ADP their/DET arm/NOUN swinge/VERB#0.0#0.0

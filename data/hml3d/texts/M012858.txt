@@ -1,3 +1,0 @@
-a person walks while bending to the left#a/DET person/NOUN walk/VERB while/SCONJ bend/VERB to/ADP the/DET left/NOUN#0.0#0.0
-the person is walking around the bend to the left.#the/DET person/NOUN is/AUX walk/VERB around/ADP the/DET bend/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-a person walks to the left and stops.#a/DET person/NOUN walk/VERB to/ADP the/DET left/NOUN and/CCONJ stop/NOUN#0.0#0.0

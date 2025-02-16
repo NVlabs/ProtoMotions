@@ -1,3 +1,0 @@
-a person with his right hand elevated raises his right hand twice in a lifting motion.#a/DET person/NOUN with/ADP his/DET right/ADJ hand/NOUN elevated/ADJ raise/VERB his/DET right/ADJ hand/NOUN twice/ADV in/ADP a/DET lifting/NOUN motion/NOUN#0.0#0.0
-while standing still, a person raises their right arm twice.#while/SCONJ stand/VERB still/ADV a/DET person/NOUN raise/VERB their/DET right/ADJ arm/NOUN twice/ADV#0.0#0.0
-a person is standing still while using their hands to describe something.#a/DET person/NOUN is/AUX stand/VERB still/ADV while/SCONJ use/VERB their/DET hand/NOUN to/PART describe/VERB something/PRON#0.0#0.0

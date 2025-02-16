@@ -1,3 +1,0 @@
-a man standing in place scratches his chin with left hand, then bends down to scratch his knee and his ankle.#a/DET man/NOUN stand/VERB in/ADP place/NOUN scratch/VERB his/DET chin/NOUN with/ADP left/ADJ hand/NOUN then/ADV bend/VERB down/ADP to/PART scratch/VERB his/DET knee/NOUN and/CCONJ his/DET ankle/NOUN#0.0#0.0
-the person is waving or touching face.#the/DET person/NOUN is/AUX wave/VERB or/CCONJ touching/ADJ face/NOUN#0.0#0.0
-a person scratches their neck and foot with their right hand.#a/DET person/NOUN scratch/VERB their/DET neck/NOUN and/CCONJ foot/NOUN with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0

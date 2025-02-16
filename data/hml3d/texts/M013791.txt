@@ -1,3 +1,0 @@
-he stepped on step backwards and towards the left.#he/PRON step/VERB on/ADP step/NOUN backwards/ADV and/CCONJ towards/ADP the/DET left/NOUN#0.0#0.0
-a person steps to his left side and back.#a/DET person/NOUN step/VERB to/ADP his/DET left/ADJ side/NOUN and/CCONJ back/NOUN#0.0#0.0
-a person takes a large step back and towards the left.#a/DET person/NOUN take/VERB a/DET large/ADJ step/NOUN back/ADV and/CCONJ towards/ADP the/DET left/NOUN#0.0#0.0

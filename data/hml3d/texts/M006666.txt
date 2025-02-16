@@ -1,3 +1,0 @@
-a person fastly moved in right direction while the hads was raised#a/DET person/NOUN fastly/ADV move/VERB in/ADP right/ADJ direction/NOUN while/SCONJ the/DET had/NOUN was/AUX raise/VERB#0.0#0.0
-person is backing up to the right.#person/NOUN is/AUX back/VERB up/ADP to/ADP the/DET right/NOUN#0.0#0.0
-he is dodging a punch in a fight.#he/PRON is/AUX dodge/VERB a/DET punch/NOUN in/ADP a/DET fight/NOUN#0.0#0.0

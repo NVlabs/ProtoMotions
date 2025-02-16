@@ -1,3 +1,0 @@
-this person steps quickly, one time to the left.#this/DET person/NOUN step/VERB quickly/ADV one/NUM time/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-he takes a quick step to his left as if to avoid something coming at him!#he/PRON take/VERB a/DET quick/ADJ step/NOUN to/ADP his/DET left/NOUN as/SCONJ if/SCONJ to/PART avoid/VERB something/PRON come/VERB at/ADP him/PRON#0.0#0.0
-the man moves to the right#the/DET man/NOUN move/VERB to/ADP the/DET right/NOUN#0.0#0.0

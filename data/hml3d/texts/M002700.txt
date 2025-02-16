@@ -1,3 +1,0 @@
-a man is standing still, then shuffles to the left quickly.#a/DET man/NOUN is/AUX stand/VERB still/ADV then/ADV shuffle/VERB to/ADP the/DET left/NOUN quickly/ADV#0.0#0.0
-person is jumping themselves back from something.#person/NOUN is/AUX jump/VERB themselves/PRON back/ADV from/ADP something/PRON#0.0#0.0
-someone shuffling to the left twice.#someone/PRON shuffle/VERB to/ADP the/DET left/NOUN twice/ADV#0.0#0.0

@@ -1,3 +1,0 @@
-a man is swinging his left arm upwards.#a/DET man/NOUN is/AUX swinge/VERB his/DET left/ADJ arm/NOUN upwards/ADV#0.0#0.0
-stick figure boxes with right hand upward#stick/NOUN figure/NOUN box/NOUN with/ADP right/ADJ hand/NOUN upward/ADV#0.0#0.0
-a person winds up right arm.#a/DET person/NOUN wind/VERB up/ADP right/ADJ arm/NOUN#0.0#0.0

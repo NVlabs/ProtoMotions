@@ -1,3 +1,0 @@
-the sim is walking down the plane, before making a slight left incline.#the/DET sim/PROPN is/AUX walk/VERB down/ADP the/DET plane/NOUN before/ADP make/VERB a/DET slight/ADJ left/ADJ incline/NOUN#0.0#0.0
-a person shuffles forward, and then shuffles their left.#a/DET person/NOUN shuffle/VERB forward/ADV and/CCONJ then/ADV shuffle/VERB their/DET left/NOUN#0.0#0.0
-a person slowly walked forward in right and left direction#a/DET person/NOUN slowly/ADV walk/VERB forward/ADV in/ADP right/NOUN and/CCONJ left/ADJ direction/NOUN#0.0#0.0

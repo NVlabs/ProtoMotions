@@ -1,0 +1,39 @@
+# @package _global_
+
+terrain:
+  # Dummy terrain is a class that inherits from Terrain. It creates a simple and minimal ground mesh.
+  # We require some terrain class to manage spawning, observations and logic. The FlatTerrain should act similarly
+  #   to the default ground mesh.
+  # The opt/terrain config overrides this config to use irregular terrains.
+  _target_: protomotions.envs.base_env.env_utils.terrains.flat_terrain.FlatTerrain
+  config:
+    # Terrain definition
+    terrain_composition: curriculum
+    map_length: 20.
+    map_width: 20.
+    border_size: 40.  # ensure sufficient space from the edges
+    num_levels: 10
+    # default map is 1 sized. The map will grow if scenes are spawned and also based on minim_humanoid_spacing.
+    num_terrains: 1
+    # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete, stepping, poles, flat]
+    terrain_proportions: [ 0., 0., 0., 0., 0., 0., 0., 1. ]
+    slope_threshold: 0.9
+    num_samples_per_axis: 16
+    sample_width: 1
+
+    # The observation model for the terrain will observe the terrain as a 2D grid of height values.
+    # The samples are spaced out on a grid with spacing sample_width*horizontal_scale.
+    # On each axis we have num_samples_per_axis samples.
+    terrain_obs_num_samples: ${eval:${.num_samples_per_axis}**2}
+
+    horizontal_scale: 0.1
+    vertical_scale: 0.005
+    # Scenes are created in a grid. This is the distance between scenes.
+    spacing_between_scenes: 5
+    # For non-scene regions in the terrain, this is the minimal distance between humanoids if spaced out evenly in a grid fashion.
+    # This replaces the "env-spacing" that is usually used in Isaac.
+    minimal_humanoid_spacing: 1
+
+    terrain_path: null
+    load_terrain: False
+    save_terrain: False

@@ -1,3 +1,0 @@
-he walks then shuffles his leg#he/PRON walk/VERB then/ADV shuffle/VERB his/DET leg/NOUN#0.0#0.0
-a man limps in a 3/4th's complete counterclockwise motion.#a/DET man/NOUN limp/VERB in/ADP a/DET complete/ADJ counterclockwise/NOUN motion/NOUN#0.0#0.0
-person drags left leg in a counterclockwise circle#person/NOUN drag/VERB left/VERB leg/NOUN in/ADP a/DET counterclockwise/ADJ circle/NOUN#0.0#0.0

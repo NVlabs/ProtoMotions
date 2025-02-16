@@ -1,3 +1,0 @@
-a person lifts their red arm twice then squats down#a/DET person/NOUN lift/VERB their/DET red/ADJ arm/NOUN twice/ADV then/ADV squat/VERB down/ADP#0.0#0.0
-a man lifts his right hand up twice and then bends foward and touches the ground with the same right hand.#a/DET man/NOUN lift/VERB his/DET right/ADJ hand/NOUN up/ADP twice/ADV and/CCONJ then/ADV bend/VERB foward/ADJ and/CCONJ touch/VERB the/DET ground/NOUN with/ADP the/DET same/ADJ right/ADJ hand/NOUN#0.0#0.0
-the man moves his left hand crouches#the/DET man/NOUN move/VERB his/DET left/ADJ hand/NOUN crouch/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-the person lift their left arm and starts looking at their watch#the/DET person/NOUN lift/VERB their/DET left/ADJ arm/NOUN and/CCONJ start/VERB look/VERB at/ADP their/DET watch/NOUN#0.0#0.0
-the figure lifts his left hand as if looking at his watch.#the/DET figure/NOUN lift/VERB his/DET left/ADJ hand/NOUN as/SCONJ if/SCONJ look/VERB at/ADP his/DET watch/NOUN#0.0#0.0
-a person checks their watch on their left hand.#a/DET person/NOUN check/VERB their/DET watch/NOUN on/ADP their/DET left/ADJ hand/NOUN#0.0#0.0

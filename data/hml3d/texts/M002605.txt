@@ -1,3 +1,0 @@
-a person slides their right food toward their left, then takes three sidesteps right, then retraces their steps crossing their right leg over their left each time.#a/DET person/NOUN slide/VERB their/DET right/ADJ food/NOUN toward/ADP their/DET left/NOUN then/ADV take/VERB three/NUM sidestep/NOUN right/ADJ then/ADV retrace/VERB their/DET step/NOUN cross/VERB their/DET right/ADJ leg/NOUN over/ADP their/DET left/ADJ each/DET time/NOUN#0.0#0.0
-a person sode steps right, then left, the cross feet back left.#a/DET person/NOUN sode/NOUN step/VERB right/ADV then/ADV left/VERB the/DET cross/NOUN foot/NOUN back/ADV left/VERB#0.0#0.0
-a man shuffles from side to side.#a/DET man/NOUN shuffle/VERB from/ADP side/NOUN to/ADP side/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-person leans forward goes onto knees whilst first putting right hand on ground for support and stays on knees#person/NOUN lean/VERB forward/ADV go/VERB onto/ADP knee/NOUN whilst/SCONJ first/ADV put/VERB right/ADJ hand/NOUN on/ADP ground/NOUN for/ADP support/NOUN and/CCONJ stay/VERB on/ADP knee/NOUN#0.0#0.0
-a person kneels down on both knees.#a/DET person/NOUN kneel/VERB down/ADP on/ADP both/DET knee/NOUN#0.0#0.0
-person carefully kneels down. first with left leg, then with the right one.#person/NOUN carefully/ADV kneel/VERB down/ADP first/ADV with/ADP left/ADJ leg/NOUN then/ADV with/ADP the/DET right/ADJ one/NOUN#0.0#0.0

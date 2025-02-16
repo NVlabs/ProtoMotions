@@ -1,3 +1,0 @@
-a person walks straight, loses their balance and runs to the right, and then straightens out.#a/DET person/NOUN walk/VERB straight/ADV lose/VERB their/DET balance/NOUN and/CCONJ run/VERB to/ADP the/DET right/NOUN and/CCONJ then/ADV straighten/VERB out/ADP#0.0#0.0
-a man walks forward and is then pushed to the right.#a/DET man/NOUN walk/VERB forward/ADV and/CCONJ is/AUX then/ADV push/VERB to/ADP the/DET right/NOUN#0.0#0.0
-a person walks forward, dodges to the right, then lefts himself.#a/DET person/NOUN walk/VERB forward/ADV dodge/NOUN to/ADP the/DET right/NOUN then/ADV left/VERB himself/PRON#nan#0.0

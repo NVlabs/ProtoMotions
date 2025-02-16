@@ -1,3 +1,0 @@
-a person grabbed something and throw it with left hand#a/DET person/NOUN grab/VERB something/PRON and/CCONJ throw/VERB it/PRON with/ADP left/ADJ hand/NOUN#0.0#0.0
-a person throws something lackadaisically with their left arm.#a/DET person/NOUN throw/VERB something/PRON lackadaisically/ADV with/ADP their/DET left/ADJ arm/NOUN#0.0#0.0
-a man mimics a throwing motion with his left hand.#a/DET man/NOUN mimic/VERB a/DET throwing/NOUN motion/NOUN with/ADP his/DET left/ADJ hand/NOUN#0.0#3.0

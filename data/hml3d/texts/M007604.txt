@@ -1,3 +1,0 @@
-a man walks forward, turns to his left, and then stops.#a/DET man/NOUN walk/VERB forward/ADV turn/VERB to/ADP his/DET left/NOUN and/CCONJ then/ADV stop/VERB#0.0#0.0
-a person moves his left foot forward then walks to the left, then stops.#a/DET person/NOUN move/VERB his/DET left/ADJ foot/NOUN forward/ADV then/ADV walk/VERB to/ADP the/DET left/NOUN then/ADV stop/VERB#0.0#0.0
-walking forward in a diagonal line.#walk/VERB forward/ADV in/ADP a/DET diagonal/ADJ line/NOUN#0.0#0.0

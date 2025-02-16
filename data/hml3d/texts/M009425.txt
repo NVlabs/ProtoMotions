@@ -1,3 +1,0 @@
-a person lifts their left arm and gestures/points across their body halfway to the right.#a/DET person/NOUN lift/VERB their/DET left/ADJ arm/NOUN and/CCONJ gesture/NOUN point/NOUN across/ADP their/DET body/NOUN halfway/ADV to/ADP the/DET right/NOUN#0.0#0.0
-a person points with their left arm to the right.#a/DET person/NOUN point/VERB with/ADP their/DET left/ADJ arm/NOUN to/ADP the/DET right/NOUN#0.0#0.0
-a person swings his left across his body to shoulder level and back to his side.#a/DET person/NOUN swing/VERB his/DET left/NOUN across/ADP his/DET body/NOUN to/ADP shoulder/NOUN level/NOUN and/CCONJ back/ADV to/ADP his/DET side/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-the person takes six normal size fast steps forward.#the/DET person/NOUN take/VERB six/NUM normal/ADJ size/NOUN fast/ADJ step/NOUN forward/ADV#0.0#0.0
-a person who is walking takes six steps forward.#a/DET person/NOUN who/PRON is/AUX walk/VERB take/VERB six/NUM step/NOUN forward/ADV#0.0#0.0
-person is walking forward slightly to the left.#person/NOUN is/AUX walk/VERB forward/ADV slightly/ADV to/ADP the/DET left/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person uses left hand to put something in its mouth.#a/DET person/NOUN use/VERB left/ADJ hand/NOUN to/PART put/VERB something/PRON in/ADP its/DET mouth/NOUN#0.0#3.0
-a person standing and puts right hand up in air.#a/DET person/NOUN stand/VERB and/CCONJ put/VERB right/ADJ hand/NOUN up/ADP in/ADP air/NOUN#0.0#0.0
-a person stayed on the place and after raised the left hand#a/DET person/NOUN stay/VERB on/ADP the/DET place/NOUN and/CCONJ after/ADP raise/VERB the/DET left/ADJ hand/NOUN#0.0#0.0

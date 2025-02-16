@@ -1,3 +1,0 @@
-the person is walking fast to the left.#the/DET person/NOUN is/AUX walk/VERB fast/ADV to/ADP the/DET left/NOUN#0.0#0.0
-a man evenly walks calmly forward while swinging right and left arms.#a/DET man/NOUN evenly/ADV walk/VERB calmly/ADV forward/ADV while/SCONJ swinge/VERB right/ADV and/CCONJ left/VERB arm/NOUN#0.0#0.0
-a man walks forward briskly, with arms swaying at his sides.#a/DET man/NOUN walk/VERB forward/ADV briskly/ADV with/ADP arm/NOUN sway/VERB at/ADP his/DET side/NOUN#0.0#0.0

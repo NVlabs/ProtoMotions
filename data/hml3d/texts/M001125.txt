@@ -1,3 +1,0 @@
-person lifts left hand to mouth then scratches then left hand scratches right wrist#person/NOUN lift/VERB left/VERB hand/NOUN to/ADP mouth/NOUN then/ADV scratch/VERB then/ADV left/VERB hand/NOUN scratch/VERB right/ADJ wrist/NOUN#0.0#0.0
-a person drinking something, then opens what seems to be a can#a/DET person/NOUN drink/VERB something/PRON then/ADV open/VERB what/PRON seem/VERB to/PART be/AUX a/DET can/NOUN#0.0#0.0
-a person standing in place drinking water with right hand.#a/DET person/NOUN stand/VERB in/ADP place/NOUN drinking/NOUN water/NOUN with/ADP right/ADJ hand/NOUN#0.0#0.0

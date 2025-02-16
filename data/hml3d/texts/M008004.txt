@@ -1,3 +1,0 @@
-the person uses the dumbbell with their left arm#the/DET person/NOUN use/VERB the/DET dumbbell/NOUN with/ADP their/DET left/ADJ arm/NOUN#0.0#0.0
-a person is standing above the ground moving his hand back and forth.#a/DET person/NOUN is/AUX stand/VERB above/ADP the/DET ground/NOUN move/VERB his/DET hand/NOUN back/ADV and/CCONJ forth/ADV#0.0#0.0
-the person folds his right hand all the way like lifting something and unfolds the hand.#the/DET person/NOUN fold/VERB his/DET right/ADJ hand/NOUN all/DET the/DET way/NOUN like/SCONJ lift/VERB something/PRON and/CCONJ unfold/VERB the/DET hand/NOUN#0.0#0.0

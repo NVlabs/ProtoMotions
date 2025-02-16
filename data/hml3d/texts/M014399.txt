@@ -1,3 +1,0 @@
-a man jogs in a very wide clockwise spiral, moving his arms.#a/DET man/NOUN jog/VERB in/ADP a/DET very/ADV wide/ADJ clockwise/NOUN spiral/NOUN move/VERB his/DET arm/NOUN#0.0#0.0
-a person jogs in a clockwise circle.#a/DET person/NOUN jog/VERB in/ADP a/DET clockwise/ADJ circle/NOUN#0.0#0.0
-person is jogging in circular pattern#person/NOUN is/AUX jog/VERB in/ADP circular/ADJ pattern/NOUN#0.0#0.0

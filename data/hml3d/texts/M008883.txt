@@ -1,3 +1,0 @@
-a man plays a violin with his right hand.#a/DET man/NOUN play/VERB a/DET violin/NOUN with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0
-a person lifts up their left arm and touches it with the right#a/DET person/NOUN lift/VERB up/ADP their/DET left/ADJ arm/NOUN and/CCONJ touch/VERB it/PRON with/ADP the/DET right/NOUN#0.0#0.0
-a person raises his left arm, touches his bicep with his right hand and lowers his arms.#a/DET person/NOUN raise/VERB his/DET left/ADJ arm/NOUN touch/VERB his/DET bicep/NOUN with/ADP his/DET right/ADJ hand/NOUN and/CCONJ lower/VERB his/DET arm/NOUN#0.0#0.0

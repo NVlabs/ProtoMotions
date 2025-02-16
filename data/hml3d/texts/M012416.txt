@@ -1,3 +1,0 @@
-a person shuffles forward and throws a roundhouse kick with their left leg.#a/DET person/NOUN shuffle/VERB forward/ADV and/CCONJ throw/VERB a/DET roundhouse/NOUN kick/NOUN with/ADP their/DET left/ADJ leg/NOUN#0.0#0.0
-a person performing a left legged double kick#a/DET person/NOUN perform/VERB a/DET left/ADJ legge/VERB double/ADJ kick/NOUN#0.0#0.0
-this person kicks with his left leg and steps back.#this/DET person/NOUN kick/VERB with/ADP his/DET left/ADJ leg/NOUN and/CCONJ step/VERB back/ADV#0.0#0.0

@@ -1,3 +1,0 @@
-a person waves with their left hand then stops.#a/DET person/NOUN wave/VERB with/ADP their/DET left/ADJ hand/NOUN then/ADV stop/VERB#0.0#0.0
-the person is waving his left arm#the/DET person/NOUN is/AUX wave/VERB his/DET left/ADJ arm/NOUN#0.0#0.0
-a person raises their left arm shoulder height and waves from the side of their head outward, multiple times.#a/DET person/NOUN raise/VERB their/DET left/ADJ arm/NOUN shoulder/NOUN height/NOUN and/CCONJ wave/NOUN from/ADP the/DET side/NOUN of/ADP their/DET head/NOUN outward/ADV multiple/ADJ time/NOUN#0.0#0.0

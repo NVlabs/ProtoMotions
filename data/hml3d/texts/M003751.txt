@@ -1,3 +1,0 @@
-a person placing something from right to left#a/DET person/NOUN place/VERB something/PRON from/ADP right/NOUN to/ADP left/ADV#0.0#0.0
-a man picks something up with both hands and move it to the left.#a/DET man/NOUN pick/VERB something/PRON up/ADP with/ADP both/DET hand/NOUN and/CCONJ move/VERB it/PRON to/ADP the/DET left/NOUN#0.0#0.0
-a person lifts a box from the right side and puts it on the left side#a/DET person/NOUN lift/VERB a/DET box/NOUN from/ADP the/DET right/ADJ side/NOUN and/CCONJ put/VERB it/PRON on/ADP the/DET left/ADJ side/NOUN#0.0#0.0

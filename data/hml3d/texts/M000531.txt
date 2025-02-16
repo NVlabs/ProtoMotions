@@ -1,3 +1,0 @@
-a man moves his hands in front of his face.#a/DET man/NOUN move/VERB his/DET hand/NOUN in/ADP front/NOUN of/ADP his/DET face/NOUN#0.0#0.0
-a person knocks on a door.#a/DET person/NOUN knock/VERB on/ADP a/DET door/NOUN#0.0#0.0
-someone moving his right hand while standing#someone/PRON move/VERB his/DET right/ADJ hand/NOUN while/SCONJ stand/VERB#0.0#0.0

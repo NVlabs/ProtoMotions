@@ -1,3 +1,0 @@
-a person is facing forward without moving.#a/DET person/NOUN is/AUX face/VERB forward/ADV without/ADP move/VERB#0.0#0.0
-the person is standing still.#the/DET person/NOUN is/AUX stand/VERB still/ADV#0.0#0.0
-a person twitches their right hand.#a/DET person/NOUN twitch/VERB their/DET right/ADJ hand/NOUN#0.0#0.0

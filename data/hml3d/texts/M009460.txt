@@ -1,3 +1,0 @@
-person is walking sideways to the right.#person/NOUN is/AUX walk/VERB sideways/ADV to/ADP the/DET right/NOUN#0.0#0.0
-a person moves to the right as if in a confined space (moving their legs side by side)#a/DET person/NOUN move/VERB to/ADP the/DET right/NOUN as/SCONJ if/SCONJ in/ADP a/DET confine/VERB space/NOUN move/VERB their/DET leg/NOUN side/NOUN by/ADP side/NOUN#0.0#0.0
-a man side steps right then side steps back to the left.#a/DET man/NOUN side/NOUN step/NOUN right/ADV then/ADV side/NOUN step/VERB back/ADV to/ADP the/DET left/NOUN#0.0#0.0

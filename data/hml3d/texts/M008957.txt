@@ -1,3 +1,0 @@
-a person walks forward then turns to their right and raises their right arm speaking to somebody#a/DET person/NOUN walk/VERB forward/ADV then/ADV turn/VERB to/ADP their/DET right/NOUN and/CCONJ raise/VERB their/DET right/ADJ arm/NOUN speak/VERB to/ADP somebody/PRON#0.0#0.0
-a person lowers their hands to their sides, walks forward, and then looks at items on their right.#a/DET person/NOUN lower/VERB their/DET hand/NOUN to/ADP their/DET side/NOUN walk/VERB forward/ADV and/CCONJ then/ADV look/VERB at/ADP item/NOUN on/ADP their/DET right/NOUN#0.0#0.0
-a person has his arms extended, brings them down and walks forward#a/DET person/NOUN has/AUX his/DET arm/NOUN extend/VERB bring/VERB them/PRON down/ADP and/CCONJ walk/VERB forward/ADV#0.0#5.0

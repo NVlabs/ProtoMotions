@@ -1,3 +1,0 @@
-persons makes left fist punching motion#person/NOUN make/VERB left/VERB fist/ADJ punching/NOUN motion/NOUN#0.0#0.0
-a person punches with their left hand#a/DET person/NOUN punch/VERB with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-the boxer jabs with his left arm#the/DET boxer/PROPN jabs/PROPN with/ADP his/DET left/ADJ arm/NOUN#0.0#0.0

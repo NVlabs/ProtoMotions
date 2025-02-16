@@ -1,3 +1,0 @@
-a stick figure does punching  moves starting with left arm.#a/DET stick/NOUN figure/NOUN does/AUX punch/VERB move/NOUN start/VERB with/ADP left/ADJ arm/NOUN#0.0#0.0
-a person extends their left hand then their right hand, in a punching motion.#a/DET person/NOUN extend/VERB their/DET left/ADJ hand/NOUN then/ADV their/DET right/ADJ hand/NOUN in/ADP a/DET punching/NOUN motion/NOUN#0.0#0.0
-robot slowly throwing punches with his right and left hand.#robot/PROPN slowly/ADV throw/VERB punch/NOUN with/ADP his/DET right/NOUN and/CCONJ left/VERB hand/NOUN#0.0#0.0

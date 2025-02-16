@@ -1,3 +1,0 @@
-a person walks forward, curving to their right while doing so#a/DET person/NOUN walk/VERB forward/ADV curve/VERB to/ADP their/DET right/NOUN while/SCONJ do/VERB so/ADV#0.0#0.0
-a person starts to walk slowly forward and then heads toward the left#a/DET person/NOUN start/VERB to/PART walk/VERB slowly/ADV forward/ADV and/CCONJ then/ADV head/NOUN toward/ADP the/DET left/NOUN#0.0#0.0
-a person walks forward and diagonally to their right.#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ diagonally/ADV to/ADP their/DET right/NOUN#0.0#0.0

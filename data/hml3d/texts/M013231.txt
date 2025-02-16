@@ -1,3 +1,0 @@
-the man hops 5 times on his right foot.#the/DET man/NOUN hop/VERB time/NOUN on/ADP his/DET right/ADJ foot/NOUN#0.0#0.0
-a person hops in place on his right leg#a/DET person/NOUN hop/VERB in/ADP place/NOUN on/ADP his/DET right/ADJ leg/NOUN#0.0#0.0
-the person is hopping on his right leg.#the/DET person/NOUN is/AUX hop/VERB on/ADP his/DET right/ADJ leg/NOUN#0.0#0.0

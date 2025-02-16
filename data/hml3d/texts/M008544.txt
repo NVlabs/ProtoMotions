@@ -1,3 +1,0 @@
-a person touches their left wrist with their right hand, then lowers their hands back down.#a/DET person/NOUN touch/VERB their/DET left/ADJ wrist/NOUN with/ADP their/DET right/ADJ hand/NOUN then/ADV lower/VERB their/DET hand/NOUN back/ADV down/ADV#0.0#0.0
-person is sitting still to have this photograph taken.#person/NOUN is/AUX sit/VERB still/ADV to/PART have/AUX this/DET photograph/NOUN take/VERB#0.0#0.0
-the boy crawled across the floor and drug his right leg lazily.#the/DET boy/NOUN crawl/VERB across/ADP the/DET floor/NOUN and/CCONJ drug/NOUN his/DET right/ADJ leg/NOUN lazily/ADV#0.0#0.0

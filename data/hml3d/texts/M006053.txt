@@ -1,3 +1,0 @@
-waving arms around randomly quickly.#wave/VERB arm/NOUN around/ADV randomly/ADV quickly/ADV#0.0#0.0
-a person quickly hops from one foot to the other, then quickly makes a clockwise circle with their left forearm, and then makes a jump shot like in basketball.#a/DET person/NOUN quickly/ADV hop/VERB from/ADP one/NUM foot/NOUN to/ADP the/DET other/ADJ then/ADV quickly/ADV make/VERB a/DET clockwise/ADJ circle/NOUN with/ADP their/DET left/ADJ forearm/NOUN and/CCONJ then/ADV make/VERB a/DET jump/NOUN shot/NOUN like/SCONJ in/ADP basketball/NOUN#0.0#0.0
-a person shuffles his feet and then swings his left arm overhead.#a/DET person/NOUN shuffle/VERB his/DET foot/NOUN and/CCONJ then/ADV swing/VERB his/DET left/ADJ arm/NOUN overhead/ADV#0.0#0.0

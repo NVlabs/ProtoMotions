@@ -1,3 +1,0 @@
-a person throws a right punch to someone's gut#a/DET person/NOUN throw/VERB a/DET right/ADJ punch/NOUN to/ADP someone/PRON gut/NOUN#0.0#0.0
-man stands in s defensive stance with left leg in front and right leg behind and punches fast in front of him with his right arm then goes back into his stance.#man/NOUN stand/VERB in/ADP s/PROPN defensive/ADJ stance/NOUN with/ADP left/ADJ leg/NOUN in/ADP front/NOUN and/CCONJ right/ADJ leg/NOUN behind/ADV and/CCONJ punch/NOUN fast/ADV in/ADP front/NOUN of/ADP him/PRON with/ADP his/DET right/ADJ arm/NOUN then/ADV go/VERB back/ADV into/ADP his/DET stance/NOUN#0.0#0.0
-a person hit wth a right hand#a/DET person/NOUN hit/VERB wth/NOUN a/DET right/ADJ hand/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person is leaning forward and making rapid movements with their left arm.#a/DET person/NOUN is/AUX lean/VERB forward/ADV and/CCONJ make/VERB rapid/ADJ movement/NOUN with/ADP their/DET left/ADJ arm/NOUN#0.0#0.0
-a boxer throws a right uppercut.#a/DET boxer/NOUN throw/VERB a/DET right/ADJ uppercut/NOUN#0.0#0.0
-a person is working a machine#a/DET person/NOUN is/AUX work/VERB a/DET machine/NOUN#0.0#0.0

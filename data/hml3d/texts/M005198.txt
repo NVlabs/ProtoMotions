@@ -1,3 +1,0 @@
-taking small steps one foot in front of the other.#take/VERB small/ADJ step/NOUN one/NUM foot/NOUN in/ADP front/NOUN of/ADP the/DET other/ADJ#0.0#0.0
-someone walking up or down steps grabbing and hand rail#someone/PRON walk/VERB up/ADP or/CCONJ down/ADP step/NOUN grab/VERB and/CCONJ hand/NOUN rail/NOUN#0.0#0.0
-a person walks down a beam with their right hand on a rail.#a/DET person/NOUN walk/VERB down/ADP a/DET beam/NOUN with/ADP their/DET right/ADJ hand/NOUN on/ADP a/DET rail/NOUN#0.0#0.0

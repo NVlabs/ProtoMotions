@@ -1,3 +1,0 @@
-a person swings out with their left.#a/DET person/NOUN swing/VERB out/ADP with/ADP their/DET left/NOUN#0.0#0.0
-the person is demonstrating the motions to catch and throw a ball.#the/DET person/NOUN is/AUX demonstrate/VERB the/DET motion/NOUN to/PART catch/VERB and/CCONJ throw/VERB a/DET ball/NOUN#0.0#0.0
-a person standing winding right arm.#a/DET person/NOUN stand/VERB wind/VERB right/ADJ arm/NOUN#0.0#0.0

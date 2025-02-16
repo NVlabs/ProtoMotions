@@ -1,3 +1,0 @@
-a figure bends at the waist and makes a motion with the arms as if lifting something slightly and passing it from one side to the other.#a/DET figure/NOUN bend/NOUN at/ADP the/DET waist/NOUN and/CCONJ make/VERB a/DET motion/NOUN with/ADP the/DET arm/NOUN as/SCONJ if/SCONJ lift/VERB something/PRON slightly/ADV and/CCONJ pass/VERB it/PRON from/ADP one/NUM side/NOUN to/ADP the/DET other/ADJ#0.0#0.0
-a person is moving something with his hands.#a/DET person/NOUN is/AUX move/VERB something/PRON with/ADP his/DET hand/NOUN#0.0#0.0
-a person picks something up on their right and moves it left.#a/DET person/NOUN pick/VERB something/PRON up/ADP on/ADP their/DET right/NOUN and/CCONJ move/VERB it/PRON left/VERB#0.0#0.0

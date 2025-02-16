@@ -1,3 +1,0 @@
-a person drop kicks a hackie sack ball.#a/DET person/NOUN drop/NOUN kick/VERB a/DET hackie/NOUN sack/NOUN ball/NOUN#0.0#0.0
-a person performing a front kick with the left leg#a/DET person/NOUN perform/VERB a/DET front/ADJ kick/NOUN with/ADP the/DET left/ADJ leg/NOUN#0.0#0.0
-a person is kicking with his left foot.#a/DET person/NOUN is/AUX kick/VERB with/ADP his/DET left/ADJ foot/NOUN#0.0#0.0

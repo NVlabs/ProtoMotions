@@ -1,3 +1,0 @@
-a person is pulled by an unseen force, and tries to resist the pull.#a/DET person/NOUN is/AUX pull/VERB by/ADP an/DET unseen/ADJ force/NOUN and/CCONJ try/VERB to/PART resist/VERB the/DET pull/NOUN#0.0#0.0
-person appears to be pulled by someone or some thing by there left hand.#person/NOUN appear/VERB to/PART be/AUX pull/VERB by/ADP someone/PRON or/CCONJ some/DET thing/NOUN by/ADP there/ADV left/ADJ hand/NOUN#0.0#0.0
-this person appears to be dragged to the left.#this/DET person/NOUN appear/VERB to/PART be/AUX drag/VERB to/ADP the/DET left/NOUN#0.0#0.0

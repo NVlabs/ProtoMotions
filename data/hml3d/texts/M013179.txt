@@ -1,3 +1,0 @@
-person pick something up and put it on the#person/NOUN pick/VERB something/PRON up/ADP and/CCONJ put/VERB it/PRON on/ADP the/DET#0.0#0.0
-moving hands side to side.#move/VERB hand/NOUN side/VERB to/PART side/VERB#0.0#0.0
-a person picks up an items on its right then sits the item down on its left.#a/DET person/NOUN pick/VERB up/ADP an/DET item/NOUN on/ADP its/DET right/NOUN then/ADV sit/VERB the/DET item/NOUN down/ADP on/ADP its/DET left/NOUN#0.0#5.0

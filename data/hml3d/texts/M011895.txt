@@ -1,3 +1,0 @@
-a man simultaneously lifts objects with his left and right arms.#a/DET man/NOUN simultaneously/ADV lift/VERB object/NOUN with/ADP his/DET left/ADJ and/CCONJ right/ADJ arm/NOUN#0.0#0.0
-the man shakes something with both hands.#the/DET man/NOUN shake/VERB something/PRON with/ADP both/DET hand/NOUN#0.0#0.0
-a person is moving their forearms up and down.#a/DET person/NOUN is/AUX move/VERB their/DET forearm/NOUN up/ADV and/CCONJ down/ADV#0.0#0.0

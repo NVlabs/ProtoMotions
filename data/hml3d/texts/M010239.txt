@@ -1,3 +1,0 @@
-a person stands leaning on their left leg and begins to turn backwards towards their right.#a/DET person/NOUN stand/VERB lean/VERB on/ADP their/DET left/ADJ leg/NOUN and/CCONJ begin/VERB to/PART turn/VERB backwards/ADV towards/ADP their/DET right/NOUN#0.0#0.0
-a person leans to the left and turns in a circle.#a/DET person/NOUN lean/VERB to/ADP the/DET left/NOUN and/CCONJ turn/VERB in/ADP a/DET circle/NOUN#0.0#0.0
-a person turns counterclockwise with difficulty moving their head#a/DET person/NOUN turn/VERB counterclockwise/NOUN with/ADP difficulty/NOUN move/VERB their/DET head/NOUN#0.0#0.0

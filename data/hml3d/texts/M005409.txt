@@ -1,3 +1,0 @@
-a person slowly walks forward#a/DET person/NOUN slowly/ADV walk/VERB forward/ADV#0.0#0.0
-person walking forward with alot of sway and swagger#person/NOUN walk/VERB forward/ADV with/ADP alot/NOUN of/ADP sway/NOUN and/CCONJ swagger/NOUN#0.0#0.0
-a man walks forward swaying from right to left.#a/DET man/NOUN walk/VERB forward/ADV sway/VERB from/ADP right/NOUN to/ADP left/NOUN#0.0#0.0

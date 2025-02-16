@@ -1,3 +1,0 @@
-a person veers to the left while walking.#a/DET person/NOUN veer/VERB to/ADP the/DET left/ADJ while/SCONJ walk/VERB#0.0#0.0
-half moon walk in clockwise direction#half/ADJ moon/NOUN walk/NOUN in/ADP clockwise/ADJ direction/NOUN#0.0#0.0
-the person is making a left turn.#the/DET person/NOUN is/AUX make/VERB a/DET left/ADJ turn/NOUN#0.0#0.0

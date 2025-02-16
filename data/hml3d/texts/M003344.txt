@@ -1,3 +1,0 @@
-a person walks forward counterclockwise, completing one full circle.#a/DET person/NOUN walk/VERB forward/ADV counterclockwise/NOUN complete/VERB one/NUM full/ADJ circle/NOUN#0.0#0.0
-a person walks towards the right to make a circle.#a/DET person/NOUN walk/VERB towards/ADP the/DET right/NOUN to/PART make/VERB a/DET circle/NOUN#0.0#0.0
-the person walks in an oval circle from left to right and then back to left.#the/DET person/NOUN walk/VERB in/ADP an/DET oval/ADJ circle/NOUN from/ADP left/VERB to/ADP right/NOUN and/CCONJ then/ADV back/ADV to/ADP left/NOUN#0.0#0.0

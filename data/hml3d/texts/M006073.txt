@@ -1,3 +1,0 @@
-a person sneezing; hand moves towards their face with a jerking motion indicating a sneeze#a/DET person/NOUN sneeze/VERB hand/VERB move/NOUN towards/ADP their/DET face/NOUN with/ADP a/DET jerking/ADJ motion/NOUN indicate/VERB a/DET sneeze/NOUN#0.0#0.0
-no control on the person body to standard and left hand put into head.#no/DET control/NOUN on/ADP the/DET person/NOUN body/NOUN to/ADP standard/NOUN and/CCONJ left/ADJ hand/NOUN put/VERB into/ADP head/NOUN#0.0#0.0
-a person lifts his left hand to his face.#a/DET person/NOUN lift/VERB his/DET left/ADJ hand/NOUN to/ADP his/DET face/NOUN#0.0#0.0

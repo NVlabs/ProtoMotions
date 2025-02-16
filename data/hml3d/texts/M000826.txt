@@ -1,3 +1,0 @@
-he puts leg up and down#he/PRON put/VERB leg/NOUN up/ADV and/CCONJ down/ADP#0.0#0.0
-the person is balancingon one foot.#the/DET person/NOUN is/AUX balancingon/PROPN one/NUM foot/NOUN#0.0#0.0
-a person stands on his right foot while steadying himself with his left hand, then swings his left leg back and forth.#a/DET person/NOUN stand/VERB on/ADP his/DET right/ADJ foot/NOUN while/SCONJ steady/VERB himself/PRON with/ADP his/DET left/ADJ hand/NOUN then/ADV swing/VERB his/DET left/ADJ leg/NOUN back/ADV and/CCONJ forth/ADV#0.0#0.0

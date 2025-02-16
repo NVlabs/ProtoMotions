@@ -1,3 +1,0 @@
-the sim walks down the plane.#the/DET sim/PROPN walk/VERB down/ADP the/DET plane/NOUN#0.0#0.0
-a person walks slowly forwards#a/DET person/NOUN walk/VERB slowly/ADV forwards/ADV#0.0#0.0
-beginning with his left foot, a man walks forward slowly.#begin/VERB with/ADP his/DET left/ADJ foot/NOUN a/DET man/NOUN walk/VERB forward/ADV slowly/ADV#0.0#0.0

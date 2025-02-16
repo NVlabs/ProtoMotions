@@ -1,3 +1,0 @@
-the person is going to hit someone with their right hand.#the/DET person/NOUN is/AUX go/VERB to/PART hit/VERB someone/PRON with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0
-a person throws a ball with their left hand in slow motion.#a/DET person/NOUN throw/VERB a/DET ball/NOUN with/ADP their/DET left/ADJ hand/NOUN in/ADP slow/ADJ motion/NOUN#0.0#0.0
-a person practices throwing overhand with their left hand#a/DET person/NOUN practice/VERB throw/VERB overhand/NOUN with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0

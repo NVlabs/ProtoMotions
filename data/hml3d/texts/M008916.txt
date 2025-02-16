@@ -1,3 +1,0 @@
-a person stands around and then throws something.#a/DET person/NOUN stand/VERB around/ADV and/CCONJ then/ADV throw/VERB something/PRON#0.0#0.0
-standing still than raising left arm#stand/VERB still/ADV than/SCONJ raise/VERB left/ADJ arm/NOUN#0.0#0.0
-a person does a high five with the left hand.#a/DET person/NOUN does/AUX a/DET high/ADJ five/NUM with/ADP the/DET left/ADJ hand/NOUN#0.0#0.0

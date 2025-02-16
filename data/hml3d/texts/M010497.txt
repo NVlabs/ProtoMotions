@@ -1,3 +1,0 @@
-a person quickly waves with their left hand#a/DET person/NOUN quickly/ADV wave/VERB with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a man knocking with his left hand.#a/DET man/NOUN knock/VERB with/ADP his/DET left/ADJ hand/NOUN#0.0#2.0
-a person waves with their left hand happily.#a/DET person/NOUN wave/VERB with/ADP their/DET left/ADJ hand/NOUN happily/ADV#0.0#0.0

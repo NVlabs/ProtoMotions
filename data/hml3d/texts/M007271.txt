@@ -1,3 +1,0 @@
-a person dances and turns around.#a/DET person/NOUN dance/VERB and/CCONJ turn/VERB around/ADV#0.0#0.0
-a person dances around the room#a/DET person/NOUN dance/VERB around/ADP the/DET room/NOUN#0.0#0.0
-a person is dancing by moving and spinning to the left and the right back and forth#a/DET person/NOUN is/AUX dance/VERB by/ADP move/VERB and/CCONJ spin/VERB to/ADP the/DET left/NOUN and/CCONJ the/DET right/NOUN back/ADV and/CCONJ forth/ADV#0.0#0.0

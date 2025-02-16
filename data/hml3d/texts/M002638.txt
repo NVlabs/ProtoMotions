@@ -1,3 +1,0 @@
-the person is looking right and left.#the/DET person/NOUN is/AUX look/VERB right/ADV and/CCONJ left/VERB#0.0#0.0
-a person looks over his shoulder, right first, left second, and then right twice with a more exaggerated motion#a/DET person/NOUN look/VERB over/ADP his/DET shoulder/NOUN right/ADV first/ADV left/VERB second/ADV and/CCONJ then/ADV right/INTJ twice/ADV with/ADP a/DET more/ADV exaggerated/ADJ motion/NOUN#0.0#0.0
-this person sways back & forth while looking all around.#this/DET person/NOUN sway/VERB back/ADV forth/ADV while/SCONJ look/VERB all/ADV around/ADV#0.0#0.0

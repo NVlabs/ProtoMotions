@@ -1,3 +1,0 @@
-a man is catching an object and throwing it back several times.#a/DET man/NOUN is/AUX catch/VERB an/DET object/NOUN and/CCONJ throw/VERB it/PRON back/ADV several/ADJ time/NOUN#0.0#0.0
-this person moves right to left and uses his hand as if to back off something.#this/DET person/NOUN move/VERB right/ADJ to/ADP left/VERB and/CCONJ use/VERB his/DET hand/NOUN as/SCONJ if/SCONJ to/PART back/VERB off/ADP something/PRON#0.0#0.0
-a person raised the right hand and made the jesture#a/DET person/NOUN raise/VERB the/DET right/ADJ hand/NOUN and/CCONJ make/VERB the/DET jesture/NOUN#0.0#0.0

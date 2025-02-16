@@ -1,3 +1,0 @@
-person is focused on their hands around their head.#person/NOUN is/AUX focus/VERB on/ADP their/DET hand/NOUN around/ADP their/DET head/NOUN#0.0#0.0
-person touches head with right hand and feels their hair.#person/NOUN touch/VERB head/NOUN with/ADP right/ADJ hand/NOUN and/CCONJ feel/VERB their/DET hair/NOUN#0.0#0.0
-a person slowly raises their left forearm so that their hand is in line with their head.#a/DET person/NOUN slowly/ADV raise/VERB their/DET left/ADJ forearm/NOUN so/SCONJ that/SCONJ their/DET hand/NOUN is/AUX in/ADP line/NOUN with/ADP their/DET head/NOUN#0.0#0.0

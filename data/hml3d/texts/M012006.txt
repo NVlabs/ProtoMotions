@@ -1,3 +1,0 @@
-user picks up left hand and stairs at palm slowly#user/NOUN pick/VERB up/ADP left/ADJ hand/NOUN and/CCONJ stair/NOUN at/ADP palm/NOUN slowly/ADV#0.0#0.0
-person raises left hand to face and does a drinking-motion. extends left arm out, returns to face & does another drinking motion#person/NOUN raise/VERB left/VERB hand/NOUN to/PART face/VERB and/CCONJ does/AUX a/DET drinkingmotion/NOUN extend/VERB left/VERB arm/NOUN out/ADP return/NOUN to/PART face/VERB does/AUX another/DET drinking/NOUN motion/NOUN#0.0#0.0
-a person sips a drink two times.#a/DET person/NOUN sip/VERB a/DET drink/NOUN two/NUM time/NOUN#0.0#0.0

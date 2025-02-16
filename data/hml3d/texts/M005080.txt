@@ -1,3 +1,0 @@
-a person walks forward slowly.#a/DET person/NOUN walk/VERB forward/ADV slowly/ADV#0.0#0.0
-walking forward then stopping.#walk/VERB forward/ADV then/ADV stop/VERB#0.0#0.0
-a person walks forward then left leg slides forward and continue walking.#a/DET person/NOUN walk/VERB forward/ADV then/ADV left/VERB leg/NOUN slide/VERB forward/ADV and/CCONJ continue/VERB walk/VERB#0.0#5.0

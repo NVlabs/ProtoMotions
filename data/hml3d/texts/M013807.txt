@@ -1,3 +1,0 @@
-a person jumps and turns to his right#a/DET person/NOUN jump/VERB and/CCONJ turn/VERB to/ADP his/DET right/NOUN#0.0#0.0
-the person jumped to the left.#the/DET person/NOUN jump/VERB to/ADP the/DET left/NOUN#0.0#0.0
-this person jumps and turns right.#this/DET person/NOUN jump/VERB and/CCONJ turn/VERB right/ADJ#0.0#0.0

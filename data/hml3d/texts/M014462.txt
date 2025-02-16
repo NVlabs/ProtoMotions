@@ -1,3 +1,0 @@
-a figure in the sitting position shouts with his right hand cupped#a/DET figure/NOUN in/ADP the/DET sit/VERB position/NOUN shout/VERB with/ADP his/DET right/ADJ hand/NOUN cup/VERB#0.0#0.0
-the person is calling with his right hand.#the/DET person/NOUN is/AUX call/VERB with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0
-this person is seated and appears to use something held close to face.#this/DET person/NOUN is/AUX seat/VERB and/CCONJ appear/VERB to/PART use/VERB something/PRON hold/VERB close/ADV to/ADP face/NOUN#0.0#0.0

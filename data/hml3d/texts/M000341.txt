@@ -1,3 +1,0 @@
-a person raises his left hand to his face, sways, then lifts his left hand to his face and the walks to the right.#a/DET person/NOUN raise/VERB his/DET left/ADJ hand/NOUN to/ADP his/DET face/NOUN sway/NOUN then/ADV lift/VERB his/DET left/ADJ hand/NOUN to/ADP his/DET face/NOUN and/CCONJ the/DET walk/NOUN to/ADP the/DET right/NOUN#0.0#0.0
-the person waves to someone then steps back waves again and leaves.#the/DET person/NOUN wave/VERB to/ADP someone/PRON then/ADV step/VERB back/ADV wave/NOUN again/ADV and/CCONJ leave/NOUN#0.0#0.0
-a person raises their left hand two times, then steps towards their left.#a/DET person/NOUN raise/VERB their/DET left/ADJ hand/NOUN two/NUM time/NOUN then/ADV step/VERB towards/ADP their/DET left/NOUN#0.0#0.0

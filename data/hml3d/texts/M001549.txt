@@ -1,3 +1,0 @@
-the person lifts his right hand to his head.#the/DET person/NOUN lift/VERB his/DET right/ADJ hand/NOUN to/ADP his/DET head/NOUN#0.0#0.0
-the figure lifts left arm and places it on top of head.#the/DET figure/NOUN lift/VERB left/VERB arm/NOUN and/CCONJ place/VERB it/PRON on/ADP top/NOUN of/ADP head/NOUN#0.0#0.0
-a person raises their right hand and lowers their left.#a/DET person/NOUN raise/VERB their/DET right/ADJ hand/NOUN and/CCONJ lower/VERB their/DET left/NOUN#0.0#0.0

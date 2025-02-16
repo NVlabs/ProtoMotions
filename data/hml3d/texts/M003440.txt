@@ -1,3 +1,0 @@
-the person is moving from side to side.#the/DET person/NOUN is/AUX move/VERB from/ADP side/NOUN to/ADP side/NOUN#0.0#0.0
-someone turns to flatten themselves against a wall then sidesteps along in a straight line forward then back.#someone/PRON turn/VERB to/PART flatten/VERB themselves/PRON against/ADP a/DET wall/NOUN then/ADV sidestep/VERB along/ADP in/ADP a/DET straight/ADJ line/NOUN forward/ADV then/ADV back/ADV#0.0#0.0
-a man turns to the left and walks by the sides to the left and then to the right .#a/DET man/NOUN turn/VERB to/ADP the/DET left/NOUN and/CCONJ walk/VERB by/ADP the/DET side/NOUN to/ADP the/DET left/NOUN and/CCONJ then/ADV to/ADP the/DET right/NOUN#0.0#0.0

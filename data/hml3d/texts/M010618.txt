@@ -1,3 +1,0 @@
-person is throwing a ball hard.#person/NOUN is/AUX throw/VERB a/DET ball/NOUN hard/ADJ#0.0#0.0
-a person throws an object with their left hand#a/DET person/NOUN throw/VERB an/DET object/NOUN with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-the person performs a throw with his left arm#the/DET person/NOUN perform/VERB a/DET throw/NOUN with/ADP his/DET left/ADJ arm/NOUN#0.0#0.0

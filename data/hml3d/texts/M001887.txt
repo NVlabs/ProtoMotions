@@ -1,3 +1,0 @@
-a man stand and crossing legs#a/DET man/NOUN stand/VERB and/CCONJ cross/VERB leg/NOUN#0.0#0.0
-a person crosses feet right then left.#a/DET person/NOUN cross/VERB foot/NOUN right/ADV then/ADV left/VERB#0.0#0.0
-a person crosses their legs while standing.#a/DET person/NOUN cross/VERB their/DET leg/NOUN while/SCONJ stand/VERB#0.0#0.0

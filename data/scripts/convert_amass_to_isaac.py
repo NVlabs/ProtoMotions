@@ -2,16 +2,17 @@
 # https://github.com/ZhengyiLuo/PHC/blob/master/scripts/data_process/convert_amass_isaac.py
 
 import os
-import shutil
 import uuid
 from pathlib import Path
 from typing import Optional
 
 import ipdb
+import yaml
 import numpy as np
 import torch
 import typer
 from scipy.spatial.transform import Rotation as sRot
+import pickle
 from smpl_sim.smpllib.smpl_joint_names import (
     SMPL_BONE_ORDER_NAMES,
     SMPL_MUJOCO_NAMES,
@@ -22,25 +23,38 @@ from smpl_sim.smpllib.smpl_local_robot import SMPL_Robot
 from tqdm import tqdm
 
 from poselib.skeleton.skeleton3d import SkeletonMotion, SkeletonState, SkeletonTree
+import time
+from datetime import timedelta
 
 TMP_SMPL_DIR = "/tmp/smpl"
 
 
 def main(
     amass_root_dir: Path,
+    robot_type: str = None,
     humanoid_type: str = "smpl",
     force_remake: bool = False,
     force_neutral_body: bool = True,
     generate_flipped: bool = False,
     not_upright_start: bool = False,  # By default, let's start upright (for consistency across all models).
     humanoid_mjcf_path: Optional[str] = None,
+    force_retarget: bool = False,
+    samp_root_offset_path: str = "data/yaml_files/samp_root_offsets.yaml",
 ):
+    if robot_type is None:
+        robot_type = humanoid_type
+    elif robot_type in ["h1"]:
+        assert (
+            force_retarget
+        ), f"Data is either SMPL or SMPL-X. The {robot_type} robot must use the retargeting pipeline."
     assert humanoid_type in [
         "smpl",
         "smplx",
         "smplh",
     ], "Humanoid type must be one of smpl, smplx, smplh"
-    append_name = humanoid_type
+    append_name = robot_type
+    if force_retarget:
+        append_name += "_retargeted"
     upright_start = not not_upright_start
 
     if humanoid_type == "smpl":
@@ -65,6 +79,10 @@ def main(
     folder_names = [
         f.path.split("/")[-1] for f in os.scandir(amass_root_dir) if f.is_dir()
     ]
+
+    # Load SAMP root offsets
+    with open(samp_root_offset_path, "r") as f:
+        samp_root_offsets = yaml.safe_load(f)
 
     robot_cfg = {
         "mesh": False,
@@ -100,25 +118,63 @@ def main(
 
     uuid_str = uuid.uuid4()
 
+    # Count total number of files that need processing
+    start_time = time.time()
+    total_files = 0
+    total_files_to_process = 0
+    processed_files = 0
     for folder_name in folder_names:
-        if "retarget" in folder_name or "smpl" in folder_name:
-            # Ignore folders where we store motions retargeted to AMP
+        if "retarget" in folder_name or "smpl" in folder_name or "h1" in folder_name:
             continue
-        if not force_remake and f"{folder_name}-{append_name}" in folder_names:
+        data_dir = amass_root_dir / folder_name
+        output_dir = amass_root_dir / f"{folder_name}-{append_name}"
+
+        all_files_in_folder = [
+            f
+            for f in Path(data_dir).glob("**/*.[np][pk][lz]")
+            if (f.name != "shape.npz" and "stagei.npz" not in f.name)
+        ]
+
+        if not force_remake:
+            # Only count files that don't already have outputs
+            files_to_process = [
+                f
+                for f in all_files_in_folder
+                if not (
+                    output_dir
+                    / f.relative_to(data_dir).parent
+                    / f.name.replace(".npz", ".npy")
+                    .replace(".pkl", ".npy")
+                    .replace("-", "_")
+                    .replace(" ", "_")
+                    .replace("(", "_")
+                    .replace(")", "_")
+                ).exists()
+            ]
+        else:
+            files_to_process = all_files_in_folder
+        print(
+            f"Processing {len(files_to_process)}/{len(all_files_in_folder)} files in {folder_name}"
+        )
+        total_files_to_process += len(files_to_process)
+        total_files += len(all_files_in_folder)
+
+    print(f"Total files to process: {total_files_to_process}/{total_files}")
+
+    for folder_name in folder_names:
+        if "retarget" in folder_name or "smpl" in folder_name or "h1" in folder_name:
+            # Ignore folders where we store motions retargeted to AMP
             continue
 
         data_dir = amass_root_dir / folder_name
         output_dir = amass_root_dir / f"{folder_name}-{append_name}"
 
-        if os.path.exists(output_dir) and os.path.isdir(output_dir):
-            shutil.rmtree(output_dir)
-
         print(f"Processing subset {folder_name}")
-        os.mkdir(output_dir)
+        os.makedirs(output_dir, exist_ok=True)
 
         files = [
             f
-            for f in Path(data_dir).glob("**/*.npz")
+            for f in Path(data_dir).glob("**/*.[np][pk][lz]")
             if (f.name != "shape.npz" and "stagei.npz" not in f.name)
         ]
         print(f"Processing {len(files)} files")
@@ -126,31 +182,82 @@ def main(
         files.sort()
 
         for filename in tqdm(files):
-            print(f"Processing {filename}")
             try:
                 relative_path_dir = filename.relative_to(data_dir).parent
-                relative_path_dir.mkdir(exist_ok=True, parents=True)
-
                 outpath = (
                     output_dir
                     / relative_path_dir
                     / filename.name.replace(".npz", ".npy")
+                    .replace(".pkl", ".npy")
                     .replace("-", "_")
                     .replace(" ", "_")
                     .replace("(", "_")
                     .replace(")", "_")
                 )
 
-                motion_data = np.load(filename)
+                # Check if the output file already exists
+                if not force_remake and outpath.exists():
+                    # print(f"Skipping {filename} as it already exists.")
+                    continue
 
-                betas = motion_data["betas"]
-                gender = motion_data["gender"]
-                amass_pose = motion_data["poses"]
-                amass_trans = motion_data["trans"]
-                if "mocap_framerate" in motion_data:
+                # Create the output directory if it doesn't exist
+                os.makedirs(output_dir / relative_path_dir, exist_ok=True)
+
+                print(f"Processing {filename}")
+                if filename.suffix == ".npz" and "samp" not in str(filename):
+                    motion_data = np.load(filename)
+
+                    betas = motion_data["betas"]
+                    gender = motion_data["gender"]
+                    amass_pose = motion_data["poses"]
+                    amass_trans = motion_data["trans"]
+                    if humanoid_type == "smplx":
+                        # Load the fps from the yaml file
+                        fps_yaml_path = Path("data/yaml_files/motion_fps_amassx.yaml")
+                        with open(fps_yaml_path, "r") as f:
+                            fps_dict = yaml.safe_load(f)
+
+                        # Convert filename to match yaml format
+                        yaml_key = (
+                            folder_name
+                            + "/"
+                            + str(
+                                relative_path_dir
+                                / filename.name.replace(".npz", ".npy")
+                                .replace("-", "_")
+                                .replace(" ", "_")
+                                .replace("(", "_")
+                                .replace(")", "_")
+                            )
+                        )
+
+                        if yaml_key in fps_dict:
+                            mocap_fr = fps_dict[yaml_key]
+                        elif "mocap_framerate" in motion_data:
+                            mocap_fr = motion_data["mocap_framerate"]
+                        elif "mocap_frame_rate" in motion_data:
+                            mocap_fr = motion_data["mocap_frame_rate"]
+                        else:
+                            raise Exception(f"FPS not found for {yaml_key}")
+                    else:
+                        if "mocap_framerate" in motion_data:
+                            mocap_fr = motion_data["mocap_framerate"]
+                        else:
+                            mocap_fr = motion_data["mocap_frame_rate"]
+                elif filename.suffix == ".pkl" and "samp" in str(filename):
+                    with open(filename, "rb") as f:
+                        motion_data = pickle.load(
+                            f, encoding="latin1"
+                        )  # np.load(filename)
+
+                    betas = motion_data["shape_est_betas"][:10]
+                    gender = "neutral"  # motion_data["gender"]
+                    amass_pose = motion_data["pose_est_fullposes"]
+                    amass_trans = motion_data["pose_est_trans"]
                     mocap_fr = motion_data["mocap_framerate"]
                 else:
-                    mocap_fr = motion_data["mocap_frame_rate"]
+                    print(f"Skipping {filename} as it is not a valid file")
+                    continue
 
                 pose_aa = torch.tensor(amass_pose)
                 amass_trans = torch.tensor(amass_trans)
@@ -174,10 +281,7 @@ def main(
 
                 if humanoid_type == "smpl":
                     pose_aa = np.concatenate(
-                        [
-                            motion_data["pose_aa"][:, :66],
-                            np.zeros((batch_size, 6))
-                        ],
+                        [motion_data["pose_aa"][:, :66], np.zeros((batch_size, 6))],
                         axis=1,
                     )  # TODO: need to extract correct handle rotations instead of zero
                     pose_aa_mj = pose_aa.reshape(batch_size, 24, 3)[:, smpl_2_mujoco]
@@ -267,6 +371,11 @@ def main(
                         pose_quat_global[..., 2] *= -1
                         trans[..., 1] *= -1
 
+                    if "samp" in str(filename):
+                        samp_offset = torch.tensor(samp_root_offsets[filename.stem])
+                        trans[:, :2] -= trans[0, :2].clone()
+                        trans[:, :2] += samp_offset
+
                     new_sk_state = SkeletonState.from_rotation_and_root_translation(
                         skeleton_tree,
                         torch.from_numpy(pose_quat_global),
@@ -278,12 +387,58 @@ def main(
                         new_sk_state, fps=mocap_fr
                     )
 
+                    if force_retarget:
+                        from data.scripts.retargeting.mink_retarget import (
+                            retarget_motion,
+                        )
+
+                        print("Force retargeting motion using mink retargeter...")
+                        # Convert to 30 fps to speedup Mink retargeting
+                        skip = int(mocap_fr // 30)
+                        new_sk_state = SkeletonState.from_rotation_and_root_translation(
+                            skeleton_tree,
+                            torch.from_numpy(pose_quat_global[::skip]),
+                            trans[::skip],
+                            is_local=False,
+                        )
+                        new_sk_motion = SkeletonMotion.from_skeleton_state(
+                            new_sk_state, fps=30
+                        )
+
+                        if robot_type in ["smpl", "smplx", "smplh"]:
+                            robot_type = f"{robot_type}_humanoid"
+                        new_sk_motion = retarget_motion(
+                            motion=new_sk_motion, robot_type=robot_type, render=False
+                        )
+
                     if format == "flipped":
                         outpath = outpath.with_name(
                             outpath.stem + "_flipped" + outpath.suffix
                         )
                     print(f"Saving to {outpath}")
-                    new_sk_motion.to_file(str(outpath))
+                    if robot_type == "h1":
+                        torch.save(new_sk_motion, str(outpath))
+                    else:
+                        new_sk_motion.to_file(str(outpath))
+
+                    processed_files += 1
+                    elapsed_time = time.time() - start_time
+                    avg_time_per_file = elapsed_time / processed_files
+                    remaining_files = total_files_to_process - processed_files
+                    estimated_time_remaining = avg_time_per_file * remaining_files
+
+                    print(
+                        f"\nProgress: {processed_files}/{total_files_to_process} files"
+                    )
+                    print(
+                        f"Average time per file: {timedelta(seconds=int(avg_time_per_file))}"
+                    )
+                    print(
+                        f"Estimated time remaining: {timedelta(seconds=int(estimated_time_remaining))}"
+                    )
+                    print(
+                        f"Estimated completion time: {time.strftime('%H:%M:%S', time.localtime(time.time() + estimated_time_remaining))}\n"
+                    )
             except Exception as e:
                 print(f"Error processing {filename}")
                 print(f"Error: {e}")

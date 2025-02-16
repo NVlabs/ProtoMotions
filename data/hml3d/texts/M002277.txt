@@ -1,3 +1,0 @@
-a person walks in a circle continuously.#a/DET person/NOUN walk/VERB in/ADP a/DET circle/NOUN continuously/ADV#0.0#0.0
-a person walks in a clockwise circle.#a/DET person/NOUN walk/VERB in/ADP a/DET clockwise/ADJ circle/NOUN#0.0#0.0
-a person walks in one and one half clockwise circles.#a/DET person/NOUN walk/VERB in/ADP one/NUM and/CCONJ one/NUM half/NOUN clockwise/NOUN circle/NOUN#0.0#0.0

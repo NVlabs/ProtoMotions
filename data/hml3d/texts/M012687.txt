@@ -1,3 +1,0 @@
-a person lowers his arms, walks forward, turns counterclockwise, walks forward again, turns around clockwise, and starts walking back.#a/DET person/NOUN lower/VERB his/DET arm/NOUN walk/VERB forward/ADV turn/VERB counterclockwise/NOUN walk/VERB forward/ADV again/ADV turn/VERB around/ADV clockwise/NOUN and/CCONJ start/VERB walk/VERB back/ADV#0.0#0.0
-a person walked in left direction and after right direction#a/DET person/NOUN walk/VERB in/ADP left/ADJ direction/NOUN and/CCONJ after/ADP right/ADJ direction/NOUN#0.0#0.0
-walking to the side and then back.#walk/VERB to/ADP the/DET side/NOUN and/CCONJ then/ADV back/ADV#0.0#0.0

@@ -1,3 +1,0 @@
-a person scratches the side of their head with their right hand.#a/DET person/NOUN scratch/VERB the/DET side/NOUN of/ADP their/DET head/NOUN with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0
-person scratches their head using their right hand#person/NOUN scratch/VERB their/DET head/NOUN use/VERB their/DET right/ADJ hand/NOUN#0.0#0.0
-a person scratches their head with their right hand.#a/DET person/NOUN scratch/VERB their/DET head/NOUN with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0

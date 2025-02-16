@@ -1,3 +1,0 @@
-a person throws an object with their left hand then catches an object with both hands.#a/DET person/NOUN throw/VERB an/DET object/NOUN with/ADP their/DET left/ADJ hand/NOUN then/ADV catch/VERB an/DET object/NOUN with/ADP both/DET hand/NOUN#0.0#0.0
-this person lifts his left arm and waves forward.#this/DET person/NOUN lift/VERB his/DET left/ADJ arm/NOUN and/CCONJ wave/NOUN forward/ADV#0.0#0.0
-the person throws the football forward#the/DET person/NOUN throw/VERB the/DET football/NOUN forward/ADV#0.0#0.0

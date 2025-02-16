@@ -1,3 +1,0 @@
-a man quickly turns right using his right heel as the pivot point.#a/DET man/NOUN quickly/ADV turn/VERB right/ADJ use/VERB his/DET right/ADJ heel/NOUN as/SCONJ the/DET pivot/NOUN point/NOUN#0.0#0.0
-the figure walks forward, swings his right leg around and walks back.#the/DET figure/NOUN walk/VERB forward/ADV swing/VERB his/DET right/ADJ leg/NOUN around/ADV and/CCONJ walk/VERB back/ADV#0.0#0.0
-person walks up and then spins counter counterclockwise then walks back#person/NOUN walk/VERB up/ADV and/CCONJ then/ADV spin/VERB counter/ADJ counterclockwise/PROPN then/ADV walk/VERB back/ADV#0.0#0.0

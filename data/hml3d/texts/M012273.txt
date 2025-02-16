@@ -1,3 +1,0 @@
-person runs fast in forward direction#person/NOUN run/VERB fast/ADV in/ADP forward/ADJ direction/NOUN#0.0#0.0
-the person is running in the diagonal arrow to the right.#the/DET person/NOUN is/AUX run/VERB in/ADP the/DET diagonal/ADJ arrow/NOUN to/ADP the/DET right/NOUN#0.0#0.0
-a person is jogging forward#a/DET person/NOUN is/AUX jog/VERB forward/ADV#0.0#0.0

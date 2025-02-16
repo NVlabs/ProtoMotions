@@ -1,3 +1,0 @@
-walking forward and then to the side.#walk/VERB forward/ADV and/CCONJ then/ADV to/ADP the/DET side/NOUN#0.0#0.0
-a person walks to the right side.#a/DET person/NOUN walk/VERB to/ADP the/DET right/ADJ side/NOUN#0.0#0.0
-person is walking and veering right#person/NOUN is/AUX walk/VERB and/CCONJ veer/VERB right/ADV#0.0#0.0

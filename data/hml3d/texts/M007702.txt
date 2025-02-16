@@ -1,3 +1,0 @@
-a person walks in place#a/DET person/NOUN walk/VERB in/ADP place/NOUN#0.0#0.0
-a person walks in place then lands with left foot forward and left arm raised.#a/DET person/NOUN walk/VERB in/ADP place/NOUN then/ADV land/VERB with/ADP left/ADJ foot/NOUN forward/ADV and/CCONJ left/VERB arm/NOUN raise/VERB#0.0#0.0
-a man walks forward swinging his shoulders#a/DET man/NOUN walk/VERB forward/ADV swinge/VERB his/DET shoulder/NOUN#0.0#0.0

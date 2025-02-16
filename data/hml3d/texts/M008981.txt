@@ -1,3 +1,0 @@
-jumping on one leg.#jump/VERB on/ADP one/NUM leg/NOUN#0.0#0.0
-the person is hopping on one leg.#the/DET person/NOUN is/AUX hop/VERB on/ADP one/NUM leg/NOUN#0.0#0.0
-a person hops on his left leg#a/DET person/NOUN hop/VERB on/ADP his/DET left/ADJ leg/NOUN#0.0#0.0

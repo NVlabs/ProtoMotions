@@ -1,3 +1,0 @@
-this person suffles his feet left and right in a circle.#this/DET person/NOUN suffle/VERB his/DET foot/NOUN left/VERB and/CCONJ right/ADV in/ADP a/DET circle/NOUN#0.0#0.0
-man walks in a counter counterclockwise circle.#man/NOUN walk/VERB in/ADP a/DET counter/ADJ counterclockwise/PROPN circle/NOUN#0.0#0.0
-a person walks making a diamond pattern, stopping with his right foot inside the pattern.#a/DET person/NOUN walk/VERB make/VERB a/DET diamond/NOUN pattern/NOUN stop/VERB with/ADP his/DET right/ADJ foot/NOUN inside/ADP the/DET pattern/NOUN#0.0#0.0

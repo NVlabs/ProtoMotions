@@ -1,3 +1,0 @@
-a man lifts something with his hands, and then places it back.#a/DET man/NOUN lift/VERB something/PRON with/ADP his/DET hand/NOUN and/CCONJ then/ADV place/VERB it/PRON back/ADV#0.0#0.0
-a man places his right hand onto his left biceps the returns of to his side.#a/DET man/NOUN place/VERB his/DET right/ADJ hand/NOUN onto/ADP his/DET left/NOUN bicep/VERB the/DET return/NOUN of/ADP to/ADP his/DET side/NOUN#0.0#0.0
-a man lifts an object and realized that he hurt his left arm so he grabs it with his right hand.#a/DET man/NOUN lift/VERB an/DET object/NOUN and/CCONJ realize/VERB that/SCONJ he/PRON hurt/VERB his/DET left/ADJ arm/NOUN so/SCONJ he/PRON grab/VERB it/PRON with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0

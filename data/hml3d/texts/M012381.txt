@@ -1,3 +1,0 @@
-a person stomps his right foot.#a/DET person/NOUN stomp/VERB his/DET right/ADJ foot/NOUN#0.0#0.0
-a person kicks the ground with his right leg.#a/DET person/NOUN kick/VERB the/DET ground/NOUN with/ADP his/DET right/ADJ leg/NOUN#0.0#0.0
-a person stomps their right foot.#a/DET person/NOUN stomp/VERB their/DET right/ADJ foot/NOUN#0.0#0.0

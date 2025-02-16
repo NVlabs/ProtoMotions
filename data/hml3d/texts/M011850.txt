@@ -1,3 +1,0 @@
-person walks left to right, in zigzag#person/NOUN walk/VERB left/VERB to/ADP right/INTJ in/ADP zigzag/PROPN#0.0#0.0
-a person walks in an s-curve pattern.#a/DET person/NOUN walk/VERB in/ADP an/DET scurve/NOUN pattern/NOUN#0.0#0.0
-a person is walking around in a snakey motion#a/DET person/NOUN is/AUX walk/VERB around/ADP in/ADP a/DET snakey/ADJ motion/NOUN#0.0#0.0

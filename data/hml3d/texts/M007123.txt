@@ -1,3 +1,0 @@
-a person is stretching his right hand to his left side.#a/DET person/NOUN is/AUX stretch/VERB his/DET right/ADJ hand/NOUN to/ADP his/DET left/ADJ side/NOUN#0.0#0.0
-a person turns to the left several times while extending their arm and returning to their original position between each turn.#a/DET person/NOUN turn/VERB to/ADP the/DET left/ADJ several/ADJ time/NOUN while/SCONJ extend/VERB their/DET arm/NOUN and/CCONJ return/VERB to/ADP their/DET original/ADJ position/NOUN between/ADP each/DET turn/NOUN#0.0#0.0
-a person uses right hand to reach over to the left.#a/DET person/NOUN use/VERB right/ADJ hand/NOUN to/PART reach/VERB over/ADP to/ADP the/DET left/NOUN#0.0#0.0

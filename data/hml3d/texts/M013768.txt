@@ -1,3 +1,0 @@
-moving the hands and work some thing.#move/VERB the/DET hand/NOUN and/CCONJ work/VERB some/DET thing/NOUN#0.0#0.0
-a person plays a violin with their left hand in the air and their right hand holding the bow.#a/DET person/NOUN play/VERB a/DET violin/NOUN with/ADP their/DET left/ADJ hand/NOUN in/ADP the/DET air/NOUN and/CCONJ their/DET right/ADJ hand/NOUN hold/VERB the/DET bow/NOUN#0.0#0.0
-a person is playing the violin.#a/DET person/NOUN is/AUX play/VERB the/DET violin/NOUN#0.0#0.0

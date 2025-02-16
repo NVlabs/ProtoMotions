@@ -1,3 +1,0 @@
-person steps forward with their right foot and kicks with their left.#person/NOUN step/VERB forward/ADV with/ADP their/DET right/ADJ foot/NOUN and/CCONJ kick/VERB with/ADP their/DET left/NOUN#0.0#0.0
-a person walks forward and kicks with their left foot before stepping back.#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ kick/VERB with/ADP their/DET left/ADJ foot/NOUN before/ADP step/VERB back/ADV#0.0#0.0
-a person kicks something with their left foot.#a/DET person/NOUN kick/VERB something/PRON with/ADP their/DET left/ADJ foot/NOUN#0.0#0.0

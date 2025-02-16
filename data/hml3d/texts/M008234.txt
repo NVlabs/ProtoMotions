@@ -1,3 +1,0 @@
-a man steps to the left, turns to right and walks majestically towards the rightside,stops and then turns back.#a/DET man/NOUN step/VERB to/ADP the/DET left/NOUN turn/VERB to/ADP right/NOUN and/CCONJ walk/VERB majestically/ADV towards/ADP the/DET rightside/NOUN stop/VERB and/CCONJ then/ADV turn/VERB back/ADV#0.0#0.0
-he walks from one side to the other#he/PRON walk/VERB from/ADP one/NUM side/NOUN to/ADP the/DET other/ADJ#0.0#0.0
-someone walks straight swaying both of his arms#someone/PRON walk/VERB straight/ADV sway/VERB both/DET of/ADP his/DET arm/NOUN#0.0#0.0

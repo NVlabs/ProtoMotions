@@ -1,3 +1,0 @@
-man stands pivoting on left foot holding up right leg with both arms stretched open trying to keep balance.#man/PROPN stand/VERB pivot/VERB on/ADP left/ADJ foot/NOUN hold/VERB up/ADP right/ADJ leg/NOUN with/ADP both/DET arm/NOUN stretch/VERB open/ADJ try/VERB to/PART keep/VERB balance/NOUN#0.0#0.0
-the person is balancing on his left foot.#the/DET person/NOUN is/AUX balance/VERB on/ADP his/DET left/ADJ foot/NOUN#0.0#0.0
-a person is balancing with their right leg.#a/DET person/NOUN is/AUX balance/VERB with/ADP their/DET right/ADJ leg/NOUN#0.0#0.0

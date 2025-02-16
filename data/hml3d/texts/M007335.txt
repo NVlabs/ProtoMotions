@@ -1,3 +1,0 @@
-a person jogs clockwise in a circle.#a/DET person/NOUN jog/VERB clockwise/NOUN in/ADP a/DET circle/NOUN#0.0#0.0
-a person jobs in a circle#a/DET person/NOUN job/VERB in/ADP a/DET circle/NOUN#0.0#0.0
-a person jogs around in a clockwise circle.#a/DET person/NOUN jog/VERB around/ADV in/ADP a/DET clockwise/ADJ circle/NOUN#0.0#0.0

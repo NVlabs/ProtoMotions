@@ -1,3 +1,0 @@
-a person jumping to their left hand side.#a/DET person/NOUN jump/VERB to/ADP their/DET left/ADJ hand/NOUN side/NOUN#0.0#0.0
-a man hops to the left#a/DET man/NOUN hop/VERB to/ADP the/DET left/NOUN#0.0#0.0
-a person is jumping to their left.#a/DET person/NOUN is/AUX jump/VERB to/ADP their/DET left/NOUN#0.0#0.0

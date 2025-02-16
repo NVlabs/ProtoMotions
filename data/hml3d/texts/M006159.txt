@@ -1,3 +1,0 @@
-a person grabs their left arm in pain.#a/DET person/NOUN grab/VERB their/DET left/ADJ arm/NOUN in/ADP pain/NOUN#0.0#0.0
-the person was scratching his left shoulder.#the/DET person/NOUN was/AUX scratch/VERB his/DET left/ADJ shoulder/NOUN#0.0#0.0
-a man steps forward and puts his right hand on his left shoulder.#a/DET man/NOUN step/VERB forward/ADV and/CCONJ put/VERB his/DET right/ADJ hand/NOUN on/ADP his/DET left/ADJ shoulder/NOUN#0.0#0.0

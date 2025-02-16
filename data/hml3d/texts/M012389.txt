@@ -1,3 +1,0 @@
-a person mail from left side to right and then left and stop#a/DET person/NOUN mail/NOUN from/ADP left/ADJ side/NOUN to/ADP right/NOUN and/CCONJ then/ADV left/VERB and/CCONJ stop/VERB#0.0#0.0
-a person is jogging around the room.#a/DET person/NOUN is/AUX jog/VERB around/ADP the/DET room/NOUN#0.0#0.0
-a person runs left to right then stops back in the center facing forward.#a/DET person/NOUN run/VERB left/VERB to/ADP right/ADV then/ADV stop/VERB back/ADV in/ADP the/DET center/NOUN face/VERB forward/ADV#0.0#0.0

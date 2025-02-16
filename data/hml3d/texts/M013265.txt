@@ -1,3 +1,0 @@
-a person moves their right hand in a clockwise horizontal circle#a/DET person/NOUN move/VERB their/DET right/ADJ hand/NOUN in/ADP a/DET clockwise/ADJ horizontal/ADJ circle/NOUN#0.0#0.0
-a person uses their right hand to stir something.#a/DET person/NOUN use/VERB their/DET right/ADJ hand/NOUN to/PART stir/VERB something/PRON#0.0#0.0
-the person was stirring with his right hand.#the/DET person/NOUN was/AUX stir/VERB with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0

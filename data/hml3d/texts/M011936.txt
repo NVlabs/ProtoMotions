@@ -1,2 +1,0 @@
-a person walks in a counterclockwise half cresent#a/DET person/NOUN walk/VERB in/ADP a/DET counterclockwise/ADJ half/NOUN cresent/ADJ#0.0#0.0
-a person walks to the left in a semi circle and then stands still.#a/DET person/NOUN walk/VERB to/ADP the/DET left/NOUN in/ADP a/DET semi/ADJ circle/NOUN and/CCONJ then/ADV stand/VERB still/ADV#0.0#0.0

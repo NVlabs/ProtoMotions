@@ -1,3 +1,0 @@
-person walks slowly from upper left to bottom right using handrails to steady their steps.#person/NOUN walk/VERB slowly/ADV from/ADP upper/ADJ left/NOUN to/ADP bottom/NOUN right/ADJ use/VERB handrail/NOUN to/PART steady/VERB their/DET step/NOUN#0.0#0.0
-person walking slow using handrails#person/NOUN walk/VERB slow/ADJ use/VERB handrail/NOUN#0.0#0.0
-a person walks towards the left, while holding something with both their hands.#a/DET person/NOUN walk/VERB towards/ADP the/DET left/NOUN while/SCONJ hold/VERB something/PRON with/ADP both/CCONJ their/DET hand/NOUN#0.0#0.0

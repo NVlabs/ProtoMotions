@@ -1,3 +1,0 @@
-a person slowly walked forward after in right direction#a/DET person/NOUN slowly/ADV walk/VERB forward/ADV after/ADV in/ADP right/ADJ direction/NOUN#0.0#0.0
-person is holding onto a handrail#person/NOUN is/AUX hold/VERB onto/ADP a/DET handrail/NOUN#0.0#0.0
-a person careful walks forward while balancing on a hand rail and then turns and walks right.#a/DET person/NOUN careful/ADJ walk/VERB forward/ADV while/SCONJ balance/VERB on/ADP a/DET hand/NOUN rail/NOUN and/CCONJ then/ADV turn/VERB and/CCONJ walk/VERB right/ADJ#0.0#0.0

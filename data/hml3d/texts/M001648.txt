@@ -1,3 +1,0 @@
-a man uses his left hand to throw somthing with force.#a/DET man/NOUN use/VERB his/DET left/ADJ hand/NOUN to/PART throw/VERB somthe/VERB with/ADP force/NOUN#0.0#0.0
-a person throws something then moves forward#a/DET person/NOUN throw/VERB something/PRON then/ADV move/VERB forward/ADV#0.0#0.0
-the person steps back on their left leg before pitching a baseball forward.#the/DET person/NOUN step/VERB back/ADV on/ADP their/DET left/ADJ leg/NOUN before/ADP pitch/VERB a/DET baseball/NOUN forward/ADV#0.0#0.0

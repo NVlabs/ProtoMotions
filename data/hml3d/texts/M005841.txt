@@ -1,3 +1,0 @@
-a person is playing a saxophone.#a/DET person/NOUN is/AUX play/VERB a/DET saxophone/NOUN#0.0#0.0
-this person is dancing quickly from right to left.#this/DET person/NOUN is/AUX dance/VERB quickly/ADV from/ADP right/NOUN to/ADP left/NOUN#0.0#0.0
-a person dances back and fourth with their hands held in front of their chest.#a/DET person/NOUN dance/VERB back/ADV and/CCONJ fourth/ADV with/ADP their/DET hand/NOUN hold/VERB in/ADP front/NOUN of/ADP their/DET chest/NOUN#0.0#0.0

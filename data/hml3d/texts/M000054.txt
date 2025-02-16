@@ -1,3 +1,0 @@
-he is waving with his left hand#he/PRON is/AUX wave/VERB with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
-a person lifts their left arm up, waves rapidly, and then lowers it back down to the side.#a/DET person/NOUN lift/VERB their/DET left/ADJ arm/NOUN up/ADP wave/NOUN rapidly/ADV and/CCONJ then/ADV lower/VERB it/PRON back/ADV down/ADP to/ADP the/DET side/NOUN#0.0#0.0
-a person waves with their left hand.#a/DET person/NOUN wave/VERB with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person walks forward while holding onto something with their left hand.#a/DET person/NOUN walk/VERB forward/ADV while/SCONJ hold/VERB onto/ADP something/PRON with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a person who is holding a hand railing while walking#a/DET person/NOUN who/PRON is/AUX hold/VERB a/DET hand/NOUN rail/VERB while/SCONJ walk/VERB#0.0#0.0
-a person walks forward and places his left hand on a handrail for support.#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ place/VERB his/DET left/ADJ hand/NOUN on/ADP a/DET handrail/NOUN for/ADP support/NOUN#0.0#0.0

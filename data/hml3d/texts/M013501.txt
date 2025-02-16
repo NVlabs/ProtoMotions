@@ -1,3 +1,0 @@
-a man walks from side to side, right then left.#a/DET man/NOUN walk/VERB from/ADP side/NOUN to/ADP side/NOUN right/ADV then/ADV left/VERB#0.0#0.0
-a person shuffles back and forth in a dancing motion.#a/DET person/NOUN shuffle/VERB back/ADV and/CCONJ forth/ADV in/ADP a/DET dancing/NOUN motion/NOUN#0.0#0.0
-walking to the side and then back.#walk/VERB to/ADP the/DET side/NOUN and/CCONJ then/ADV back/ADV#0.0#0.0

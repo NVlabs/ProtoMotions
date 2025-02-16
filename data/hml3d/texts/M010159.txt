@@ -1,3 +1,0 @@
-a man stretches his upper body right and left.#a/DET man/NOUN stretch/VERB his/DET upper/ADJ body/NOUN right/ADV and/CCONJ left/VERB#0.0#0.0
-a person stretching to the right and left#a/DET person/NOUN stretch/VERB to/ADP the/DET right/NOUN and/CCONJ left/VERB#0.0#0.0
-a person twists their upper body from left to right with their arms hinged.#a/DET person/NOUN twist/VERB their/DET upper/ADJ body/NOUN from/ADP left/VERB to/ADP right/NOUN with/ADP their/DET arm/NOUN hinge/VERB#0.0#0.0

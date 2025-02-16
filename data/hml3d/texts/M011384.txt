@@ -1,3 +1,0 @@
-a person is takes a quick step to the left.#a/DET person/NOUN is/AUX take/VERB a/DET quick/ADJ step/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-a person performing a swift strafing movement to the left#a/DET person/NOUN perform/VERB a/DET swift/ADJ strafing/NOUN movement/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-a person gets pushed to their left and recover quickly with their left leg.#a/DET person/NOUN get/VERB push/VERB to/ADP their/DET left/NOUN and/CCONJ recover/VERB quickly/ADV with/ADP their/DET left/ADJ leg/NOUN#0.0#0.0

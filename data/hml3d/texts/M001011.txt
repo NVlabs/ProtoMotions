@@ -1,3 +1,0 @@
-a person is drippling a ball and shooting.#a/DET person/NOUN is/AUX dripple/VERB a/DET ball/NOUN and/CCONJ shooting/NOUN#0.0#0.0
-a person does a crossover dribble from his left to right hand and then shoots a basketball.#a/DET person/NOUN does/AUX a/DET crossover/NOUN dribble/ADJ from/ADP his/DET left/NOUN to/ADP right/ADJ hand/NOUN and/CCONJ then/ADV shoot/VERB a/DET basketball/NOUN#0.0#0.0
-a person looks to be dribbling something with both hands, then makes a jump shot.#a/DET person/NOUN look/VERB to/PART be/AUX dribble/VERB something/PRON with/ADP both/DET hand/NOUN then/ADV make/VERB a/DET jump/NOUN shot/NOUN#0.0#0.0

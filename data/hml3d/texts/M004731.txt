@@ -1,3 +1,0 @@
-a person waves with left hand.#a/DET person/NOUN wave/VERB with/ADP left/ADJ hand/NOUN#0.0#0.0
-a person waives twice with their left arm.#a/DET person/NOUN waive/VERB twice/ADV with/ADP their/DET left/ADJ arm/NOUN#0.0#0.0
-moving the left arm towards the face moving his hand back and forth in a waving motion.#move/VERB the/DET left/ADJ arm/NOUN towards/ADP the/DET face/NOUN move/VERB his/DET hand/NOUN back/ADV and/CCONJ forth/ADV in/ADP a/DET waving/ADJ motion/NOUN#0.0#0.0

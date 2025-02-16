@@ -1,3 +1,0 @@
-a person pours with left hand.#a/DET person/NOUN pour/VERB with/ADP left/ADJ hand/NOUN#0.0#0.0
-a man takes a step forward, bends to the left, pauses, bends to the left again, and takes a step back to starting position.#a/DET man/NOUN take/VERB a/DET step/NOUN forward/ADV bend/NOUN to/ADP the/DET left/NOUN pause/NOUN bend/NOUN to/ADP the/DET left/NOUN again/ADV and/CCONJ take/VERB a/DET step/NOUN back/ADV to/ADP start/VERB position/NOUN#0.0#0.0
-a person picks up a beverage container and pours the beverage into a glass.#a/DET person/NOUN pick/VERB up/ADP a/DET beverage/NOUN container/NOUN and/CCONJ pour/VERB the/DET beverage/NOUN into/ADP a/DET glass/NOUN#0.0#0.0

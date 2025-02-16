@@ -1,3 +1,0 @@
-a person turns and leans to the left, then does a right leg kickboxing style kick.#a/DET person/NOUN turn/VERB and/CCONJ lean/VERB to/ADP the/DET left/NOUN then/ADV does/AUX a/DET right/ADJ leg/NOUN kickboxe/VERB style/NOUN kick/NOUN#0.0#0.0
-a man leans over and quickly kicks out with his right leg#a/DET man/NOUN lean/VERB over/ADV and/CCONJ quickly/ADV kick/VERB out/ADP with/ADP his/DET right/ADJ leg/NOUN#0.0#0.0
-someone is pitching a baseball game.#someone/PRON is/AUX pitch/VERB a/DET baseball/NOUN game/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-someone is holding something with their right hand and stirring it with their left hand.#someone/PRON is/AUX hold/VERB something/PRON with/ADP their/DET right/ADJ hand/NOUN and/CCONJ stir/VERB it/PRON with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a person is mixing something in what the right hand is holding.#a/DET person/NOUN is/AUX mix/VERB something/PRON in/ADP what/PRON the/DET right/ADJ hand/NOUN is/AUX hold/VERB#0.0#0.0
-person is mixing food ingredients#person/NOUN is/AUX mix/VERB food/NOUN ingredient/NOUN#0.0#0.0

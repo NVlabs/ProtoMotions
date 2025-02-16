@@ -1,3 +1,0 @@
-a person takes giant steps to the left side and then back to the right.#a/DET person/NOUN take/VERB giant/ADJ step/NOUN to/ADP the/DET left/ADJ side/NOUN and/CCONJ then/ADV back/ADV to/ADP the/DET right/NOUN#0.0#0.0
-this person side steps right several times.#this/DET person/NOUN side/NOUN step/VERB right/ADV several/ADJ time/NOUN#0.0#0.0
-a man is walking sideways to the left, stops, then walks one step sideways to the right#a/DET man/NOUN is/AUX walk/VERB sideways/ADV to/ADP the/DET left/NOUN stop/NOUN then/ADV walk/VERB one/NUM step/NOUN sideways/ADV to/ADP the/DET right/NOUN#0.0#0.0

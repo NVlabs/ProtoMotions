@@ -1,3 +1,0 @@
-a person walks in a counter counterclockwise circle.#a/DET person/NOUN walk/VERB in/ADP a/DET counter/ADJ counterclockwise/PROPN circle/NOUN#0.0#0.0
-a man walks in a counterclockwise circle at a medium pace, while swinging his arms.#a/DET man/NOUN walk/VERB in/ADP a/DET counterclockwise/ADJ circle/NOUN at/ADP a/DET medium/ADJ pace/NOUN while/SCONJ swinge/VERB his/DET arm/NOUN#0.0#0.0
-someone walks in a counterclockwise circle while swinging their arms then stops#someone/PRON walk/VERB in/ADP a/DET counterclockwise/ADJ circle/NOUN while/SCONJ swinge/VERB their/DET arm/NOUN then/ADV stop/VERB#0.0#0.0

@@ -1,3 +1,0 @@
-a person waves with their left hand#a/DET person/NOUN wave/VERB with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a figure raising theit left arm and waving the hand.#a/DET figure/NOUN raise/VERB theit/ADJ left/ADJ arm/NOUN and/CCONJ wave/VERB the/DET hand/NOUN#0.0#0.0
-a person standing in place uses their left arm to wave.#a/DET person/NOUN stand/VERB in/ADP place/NOUN use/VERB their/DET left/ADJ arm/NOUN to/PART wave/VERB#0.0#0.0

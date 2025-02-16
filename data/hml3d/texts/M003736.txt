@@ -1,3 +1,0 @@
-a man raises both of this arms in the air.#a/DET man/NOUN raise/VERB both/DET of/ADP this/DET arm/NOUN in/ADP the/DET air/NOUN#0.0#0.0
-a man begins with his feet shoulder width apart.  he then raises his right hand in front of his face.  he pumps his left hand in two short little lifts.#a/DET man/NOUN begin/VERB with/ADP his/DET foot/NOUN shoulder/VERB width/NOUN apart/ADV he/PRON then/ADV raise/VERB his/DET right/ADJ hand/NOUN in/ADP front/NOUN of/ADP his/DET face/NOUN he/PRON pump/VERB his/DET left/ADJ hand/NOUN in/ADP two/NUM short/ADJ little/ADJ lift/NOUN#0.0#0.0
-a person is making a circle with the right arm#a/DET person/NOUN is/AUX make/VERB a/DET circle/NOUN with/ADP the/DET right/ADJ arm/NOUN#0.0#0.0

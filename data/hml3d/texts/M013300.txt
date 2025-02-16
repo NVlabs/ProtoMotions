@@ -1,3 +1,0 @@
-a person stumbles backwards with right leg first#a/DET person/NOUN stumble/VERB backwards/ADV with/ADP right/ADJ leg/NOUN first/ADV#0.0#0.0
-a person quickly takes a step back with their left foot first.#a/DET person/NOUN quickly/ADV take/VERB a/DET step/NOUN back/ADV with/ADP their/DET left/ADJ foot/NOUN first/ADV#0.0#0.0
-person takes a step backwards to the right side using left foot behind right.#person/NOUN take/VERB a/DET step/NOUN backwards/ADV to/ADP the/DET right/ADJ side/NOUN use/VERB left/ADJ foot/NOUN behind/ADV right/ADV#0.0#0.0

@@ -1,9 +1,0 @@
-# @package _global_
-
-scene_lib:
-    max_num_objects: null
-    scene_yaml_path: ${scene_file}
-    force_single_robot_per_scene: False
-    scene_replications: 1
-    max_objects_per_scene: ???  # Parse the YAML file beforehand to define this.
-    num_bodies: ${robot.num_bodies}

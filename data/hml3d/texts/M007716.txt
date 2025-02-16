@@ -1,3 +1,0 @@
-a person picked up an item on the right side then placing it down on the left side.#a/DET person/NOUN pick/VERB up/ADP an/DET item/NOUN on/ADP the/DET right/ADJ side/NOUN then/ADV place/VERB it/PRON down/ADP on/ADP the/DET left/ADJ side/NOUN#0.0#4.0
-a person picks up an object, moves it to the left, and places it down.#a/DET person/NOUN pick/VERB up/ADP an/DET object/NOUN move/VERB it/PRON to/ADP the/DET left/NOUN and/CCONJ place/VERB it/PRON down/ADP#0.0#0.0
-a person grabbed something and  put it down#a/DET person/NOUN grab/VERB something/PRON and/CCONJ put/VERB it/PRON down/ADP#0.0#0.0

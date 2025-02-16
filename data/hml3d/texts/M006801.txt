@@ -1,3 +1,0 @@
-person stands stationary, left arm twitches#person/NOUN stand/VERB stationary/ADJ left/ADJ arm/NOUN twitch/NOUN#0.0#0.0
-a person is standing still then twitches left arm briefly.#a/DET person/NOUN is/AUX stand/VERB still/ADV then/ADV twitch/NOUN left/VERB arm/NOUN briefly/ADV#0.0#0.0
-person is standing completely still#person/NOUN is/AUX stand/VERB completely/ADV still/ADV#0.0#0.0

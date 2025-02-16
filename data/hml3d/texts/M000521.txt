@@ -1,2 +1,0 @@
-a person walks in a bending route to the left.#a/DET person/NOUN walk/VERB in/ADP a/DET bend/VERB route/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-a person walks across floor at an angled right direction#a/DET person/NOUN walk/VERB across/ADP floor/NOUN at/ADP an/DET angled/ADJ right/ADJ direction/NOUN#0.0#0.0

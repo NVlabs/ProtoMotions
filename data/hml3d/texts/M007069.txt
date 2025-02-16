@@ -1,3 +1,0 @@
-a person is pacing in a circle#a/DET person/NOUN is/AUX pace/VERB in/ADP a/DET circle/NOUN#0.0#0.0
-a person walking in a counter counterclockwise trajectory#a/DET person/NOUN walk/VERB in/ADP a/DET counter/ADJ counterclockwise/NOUN trajectory/NOUN#0.0#0.0
-a person walks in a wide counter counterclockwise circle#a/DET person/NOUN walk/VERB in/ADP a/DET wide/ADJ counter/NOUN counterclockwise/PROPN circle/NOUN#0.0#0.0

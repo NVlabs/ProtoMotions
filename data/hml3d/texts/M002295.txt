@@ -1,3 +1,0 @@
-the person is running in circles.#the/DET person/NOUN is/AUX run/VERB in/ADP circle/NOUN#0.0#0.0
-a person jogs at a medium pace anti- counterclockwise in a circle.#a/DET person/NOUN jog/VERB at/ADP a/DET medium/ADJ pace/NOUN anti/ADJ counterclockwise/NOUN in/ADP a/DET circle/NOUN#0.0#0.0
-a person jogs in a tight, counter counterclockwise circle.#a/DET person/NOUN jog/VERB in/ADP a/DET tight/ADJ counter/ADJ counterclockwise/PROPN circle/NOUN#0.0#0.0

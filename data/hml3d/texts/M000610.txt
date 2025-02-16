@@ -1,3 +1,0 @@
-a person is pushed forward to standstill.#a/DET person/NOUN is/AUX push/VERB forward/ADV to/ADP standstill/NOUN#0.0#0.0
-person appears to take one falling step forward with their right foot.#person/NOUN appear/VERB to/PART take/VERB one/NUM fall/VERB step/NOUN forward/ADV with/ADP their/DET right/ADJ foot/NOUN#0.0#0.0
-she tentatively takes a step forward, starting with her left foot.#she/PRON tentatively/ADV take/VERB a/DET step/NOUN forward/ADV start/VERB with/ADP her/DET left/ADJ foot/NOUN#0.0#0.0

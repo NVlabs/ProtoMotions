@@ -1,0 +1,38 @@
+# @package _global_
+
+agent:
+  config:
+    # Setup basic actor-critic structure
+    model:
+      config:
+        critic:
+          _target_: protomotions.agents.common.mlp.MultiHeadedMLP
+          _recursive_: False
+          num_out: 1
+          config:
+            input_models:
+              self_obs:
+                _target_: protomotions.agents.common.common.Flatten
+                _recursive_: False
+                num_in: ${robot.self_obs_size}
+                num_out: ${.num_in}
+                config:
+                  obs_key: self_obs
+                  normalize_obs: True
+                  norm_clamp_value: 5
+            trunk:
+              _target_: protomotions.agents.common.mlp.MLP
+              _recursive_: False
+              num_out: 1
+              config:
+                layers:
+                  - units: 1024
+                    activation: relu
+                    use_layer_norm: false
+                  - units: 512
+                    activation: relu
+                    use_layer_norm: false
+
+        critic_optimizer:
+          _target_: torch.optim.Adam
+          lr: 1e-4

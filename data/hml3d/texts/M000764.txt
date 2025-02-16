@@ -1,3 +1,0 @@
-a person jumps to the left and then stops.#a/DET person/NOUN jump/VERB to/ADP the/DET left/NOUN and/CCONJ then/ADV stop/VERB#0.0#0.0
-the person is jumping from one side to the other.#the/DET person/NOUN is/AUX jump/VERB from/ADP one/NUM side/NOUN to/ADP the/DET other/ADJ#0.0#0.0
-a person jumped to the left side once.#a/DET person/NOUN jump/VERB to/ADP the/DET left/ADJ side/NOUN once/ADV#0.0#0.0

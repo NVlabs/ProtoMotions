@@ -1,3 +1,0 @@
-a person uses their left hand to throw an object in front of them.#a/DET person/NOUN use/VERB their/DET left/ADJ hand/NOUN to/PART throw/VERB an/DET object/NOUN in/ADP front/NOUN of/ADP them/PRON#0.0#0.0
-a person pitches a baseball with his left hand after a full windup.#a/DET person/NOUN pitch/VERB a/DET baseball/NOUN with/ADP his/DET left/ADJ hand/NOUN after/ADP a/DET full/ADJ windup/NOUN#0.0#0.0
-a person holds something in both hands, and winds up before throwing it very hard with their left hand.#a/DET person/NOUN hold/VERB something/PRON in/ADP both/DET hand/NOUN and/CCONJ wind/VERB up/ADP before/ADP throw/VERB it/PRON very/ADV hard/ADV with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0

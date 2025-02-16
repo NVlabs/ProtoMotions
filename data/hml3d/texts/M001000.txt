@@ -1,3 +1,0 @@
-a person does a long step to the left.#a/DET person/NOUN does/AUX a/DET long/ADJ step/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-someone taking a forward-left step in , leading with their left foot.#someone/PRON take/VERB a/DET forwardleft/NOUN step/NOUN in/ADV lead/VERB with/ADP their/DET left/ADJ foot/NOUN#0.0#0.0
-person takes a step diagonally forward and to the left with their left foot followed by their right.#person/NOUN take/VERB a/DET step/NOUN diagonally/ADV forward/ADV and/CCONJ to/ADP the/DET left/NOUN with/ADP their/DET left/ADJ foot/NOUN follow/VERB by/ADP their/DET right/NOUN#0.0#0.0

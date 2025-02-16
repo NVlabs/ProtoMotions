@@ -1,3 +1,0 @@
-walking side to side.#walk/VERB side/NOUN to/ADP side/VERB#0.0#0.0
-a figure shuffles to the left and stops#a/DET figure/NOUN shuffle/VERB to/ADP the/DET left/NOUN and/CCONJ stop/NOUN#0.0#0.0
-a person steps back#a/DET person/NOUN step/VERB back/ADV#0.0#0.0

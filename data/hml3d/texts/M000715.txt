@@ -1,3 +1,0 @@
-person steps right forward pivots on leg and turns around walks back and faces other direction#person/NOUN step/VERB right/ADV forward/ADV pivot/NOUN on/ADP leg/NOUN and/CCONJ turn/VERB around/ADV walk/VERB back/ADV and/CCONJ face/VERB other/ADJ direction/NOUN#0.0#0.0
-a person walks, turns around, and then walks back#a/DET person/NOUN walk/VERB turn/VERB around/ADV and/CCONJ then/ADV walk/VERB back/ADV#0.0#0.0
-a person walks forward and turns on their foot before walking back#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ turn/VERB on/ADP their/DET foot/NOUN before/ADP walk/VERB back/ADV#0.0#0.0

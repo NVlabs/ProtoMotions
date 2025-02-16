@@ -1,3 +1,0 @@
-a person puts right hand on the ground and kneels down first on right knee and then both knees.#a/DET person/NOUN put/VERB right/ADJ hand/NOUN on/ADP the/DET ground/NOUN and/CCONJ kneel/VERB down/ADP first/ADV on/ADP right/ADJ knee/NOUN and/CCONJ then/ADV both/DET knee/NOUN#0.0#0.0
-a person kneeling down.#a/DET person/NOUN kneel/VERB down/ADP#0.0#0.0
-a person kneels to the ground using their right hand as balance whilst on the way down#a/DET person/NOUN kneel/VERB to/ADP the/DET ground/NOUN use/VERB their/DET right/ADJ hand/NOUN as/SCONJ balance/NOUN whilst/SCONJ on/ADP the/DET way/NOUN down/ADV#0.0#0.0

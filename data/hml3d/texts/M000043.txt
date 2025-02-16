@@ -1,3 +1,0 @@
-a person jumps straight to the right, then jumps straight back to the left.#a/DET person/NOUN jump/VERB straight/ADV to/ADP the/DET right/NOUN then/ADV jump/VERB straight/ADV back/ADV to/ADP the/DET left/NOUN#0.0#0.0
-a person jumps to the right, then jumps to the left#a/DET person/NOUN jump/VERB to/ADP the/DET right/NOUN then/ADV jump/VERB to/ADP the/DET left/NOUN#0.0#0.0
-a person is jumping from side to side.#a/DET person/NOUN is/AUX jump/VERB from/ADP side/NOUN to/ADP side/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person walks forward, then takes a big step forward.#a/DET person/NOUN walk/VERB forward/ADV then/ADV take/VERB a/DET big/ADJ step/NOUN forward/ADV#0.0#0.0
-a person is walking forward then takes a big step over something with their left foot#a/DET person/NOUN is/AUX walk/VERB forward/ADV then/ADV take/VERB a/DET big/ADJ step/NOUN over/ADP something/PRON with/ADP their/DET left/ADJ foot/NOUN#0.0#0.0
-a man takes a few steps forward, taking a big forward step with his left leg on the third step.#a/DET man/NOUN take/VERB a/DET few/ADJ step/NOUN forward/ADV take/VERB a/DET big/ADJ forward/ADJ step/NOUN with/ADP his/DET left/ADJ leg/NOUN on/ADP the/DET third/ADJ step/NOUN#0.0#0.0

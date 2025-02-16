@@ -1,3 +1,0 @@
-a person walks backwards then to the left#a/DET person/NOUN walk/VERB backwards/ADV then/ADV to/ADP the/DET left/NOUN#0.0#0.0
-a person shuffles back slowly then sides steps, left/left leg, to the left.#a/DET person/NOUN shuffle/VERB back/ADV slowly/ADV then/ADV side/VERB step/NOUN left/VERB left/ADJ leg/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-a person slowly starts taking steps backwards, stops, and then steps slowly to their left.#a/DET person/NOUN slowly/ADV start/VERB take/VERB step/NOUN backwards/ADV stop/VERB and/CCONJ then/ADV step/VERB slowly/ADV to/ADP their/DET left/NOUN#0.0#0.0

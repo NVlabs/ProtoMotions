@@ -1,0 +1,43 @@
+# @package _global_
+
+defaults:
+  - amp_mlp
+  - /env/path_follower
+
+  - /agent/ppo/models/mlp_actor_terrain
+  - /agent/ppo/models/mlp_critic_terrain
+  - /terrain/complex
+
+agent:
+  config:
+    task_reward_w: 0.5
+    discriminator_reward_w: 1.0
+
+    modules:
+      path:
+        _target_: protomotions.agents.common.common.Flatten
+        config:
+          normalize_obs: true
+          norm_clamp_value: 5
+          obs_key: path
+        # Input and output size are the same due to flattening
+        num_in: ${env.config.path_follower_params.path_obs_size}
+        num_out: ${.num_in}
+
+    # Append the direction obs to the actor and critic inputs
+    model:
+      config:
+        actor:
+          config:
+            mu_model:
+              config:
+                input_models:
+                  path: ${agent.config.modules.path}
+
+    critic:
+      config:
+        input_models:
+          path: ${agent.config.modules.path}
+
+    extra_inputs:
+      path: true

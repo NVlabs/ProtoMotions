@@ -1,3 +1,0 @@
-man reach down lift up with hands and turn body to the right with right hand reaching out min forward motion.#man/NOUN reach/VERB down/ADP lift/VERB up/ADP with/ADP hand/NOUN and/CCONJ turn/VERB body/NOUN to/ADP the/DET right/NOUN with/ADP right/ADJ hand/NOUN reach/VERB out/ADP min/PROPN forward/ADV motion/NOUN#0.0#0.0
-a man picks something up in his hands and then puts it back down.#a/DET man/NOUN pick/VERB something/PRON up/ADP in/ADP his/DET hand/NOUN and/CCONJ then/ADV put/VERB it/PRON back/ADV down/ADP#0.0#0.0
-a person picks something up with both hands, brings it upleft, then sets it down.#a/DET person/NOUN pick/VERB something/PRON up/ADP with/ADP both/DET hand/NOUN bring/VERB it/PRON upleft/ADJ then/ADV set/VERB it/PRON down/ADP#0.0#0.0

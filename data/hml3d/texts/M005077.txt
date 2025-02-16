@@ -1,3 +1,0 @@
-a person sidesteps to their right.#a/DET person/NOUN sidestep/VERB to/ADP their/DET right/NOUN#0.0#0.0
-a man steps into his shoes with his right foot then his left#a/DET man/NOUN step/VERB into/ADP his/DET shoe/NOUN with/ADP his/DET right/ADJ foot/NOUN then/ADV his/DET left/NOUN#0.0#0.0
-a person climbs a step while walking.#a/DET person/NOUN climb/VERB a/DET step/NOUN while/SCONJ walk/VERB#0.0#0.0

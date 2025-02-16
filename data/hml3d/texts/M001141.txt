@@ -1,3 +1,0 @@
-a person walks forward in a straight line.#a/DET person/NOUN walk/VERB forward/ADV in/ADP a/DET straight/ADJ line/NOUN#0.0#0.0
-a man casually walks forward.#a/DET man/NOUN casually/ADV walk/VERB forward/ADV#0.0#0.0
-a person walk forwards, going slightly to the left.#a/DET person/NOUN walk/NOUN forwards/ADV go/VERB slightly/ADV to/ADP the/DET left/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person waves with his right hand#a/DET person/NOUN wave/VERB with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0
-figure raises right hand to wave towards camera and then relaxes.#figure/NOUN raise/VERB right/ADJ hand/NOUN to/PART wave/VERB towards/ADP camera/NOUN and/CCONJ then/ADV relax/VERB#0.0#0.0
-waving arm above head.#wave/VERB arm/NOUN above/ADP head/NOUN#0.0#0.0

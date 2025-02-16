@@ -1,3 +1,0 @@
-the person bends forward, puts hands in front of face, then turns left, then right#the/DET person/NOUN bend/VERB forward/ADV put/VERB hand/NOUN in/ADP front/NOUN of/ADP face/NOUN then/ADV turn/VERB left/VERB then/ADV right/ADV#0.0#0.0
-a person is shouting with their hands up to their mouth#a/DET person/NOUN is/AUX shout/VERB with/ADP their/DET hand/NOUN up/ADP to/ADP their/DET mouth/NOUN#0.0#0.0
-a person draws their hands in towards their face and sways left, right and left again.#a/DET person/NOUN draw/VERB their/DET hand/NOUN in/ADP towards/ADP their/DET face/NOUN and/CCONJ sway/VERB left/VERB right/INTJ and/CCONJ left/VERB again/ADV#0.0#0.0

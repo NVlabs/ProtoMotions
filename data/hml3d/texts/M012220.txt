@@ -1,3 +1,0 @@
-the person picks an object up off the floor with their left hand#the/DET person/NOUN pick/VERB an/DET object/NOUN up/ADP off/ADP the/DET floor/NOUN with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a person bends over, trying to pick something up with his left hand#a/DET person/NOUN bend/VERB over/ADP try/VERB to/PART pick/VERB something/PRON up/ADP with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
-a person picks something up off the ground.#a/DET person/NOUN pick/VERB something/PRON up/ADP off/ADP the/DET ground/NOUN#0.0#0.0

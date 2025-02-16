@@ -1,3 +1,0 @@
-a person sways gently left then right, takes a turn counterclockwise, then takes a few short steps.#a/DET person/NOUN sway/VERB gently/ADV left/VERB then/ADV right/INTJ take/VERB a/DET turn/NOUN counterclockwise/NOUN then/ADV take/VERB a/DET few/ADJ short/ADJ step/NOUN#0.0#0.0
-a person takes a few steps while turning#a/DET person/NOUN take/VERB a/DET few/ADJ step/NOUN while/SCONJ turn/VERB#0.0#0.0
-a person sways in place, then turns to the left and faces that direction.#a/DET person/NOUN sway/VERB in/ADP place/NOUN then/ADV turn/VERB to/ADP the/DET left/NOUN and/CCONJ face/VERB that/DET direction/NOUN#0.0#0.0

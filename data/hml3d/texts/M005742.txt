@@ -1,3 +1,0 @@
-a man stands on his left foot while kicking his right foot out.#a/DET man/NOUN stand/VERB on/ADP his/DET left/ADJ foot/NOUN while/SCONJ kick/VERB his/DET right/ADJ foot/NOUN out/ADP#0.0#0.0
-a person starts balancing forward on their left leg, then bends their right leg out behind them, with a little difficulty, to kick.#a/DET person/NOUN start/VERB balance/VERB forward/ADV on/ADP their/DET left/ADJ leg/NOUN then/ADV bend/VERB their/DET right/ADJ leg/NOUN out/ADP behind/ADP them/PRON with/ADP a/DET little/ADJ difficulty/NOUN to/PART kick/VERB#0.0#0.0
-a man holds a kick position, and slowly extends his knees.#a/DET man/NOUN hold/VERB a/DET kick/NOUN position/NOUN and/CCONJ slowly/ADV extend/VERB his/DET knee/NOUN#0.0#0.0

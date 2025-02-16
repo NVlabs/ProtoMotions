@@ -1,3 +1,0 @@
-the person leaned to the left and the walk forward to the right.#the/DET person/NOUN lean/VERB to/ADP the/DET left/NOUN and/CCONJ the/DET walk/NOUN forward/ADV to/ADP the/DET right/NOUN#0.0#0.0
-a man is standing and picks up something with his left hand and then walks diagonally#a/DET man/NOUN is/AUX stand/VERB and/CCONJ pick/VERB up/ADP something/PRON with/ADP his/DET left/ADJ hand/NOUN and/CCONJ then/ADV walk/VERB diagonally/ADV#0.0#0.0
-person is walking straight ahead#person/NOUN is/AUX walk/VERB straight/ADV ahead/ADV#0.0#0.0

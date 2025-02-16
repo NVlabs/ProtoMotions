@@ -1,3 +1,0 @@
-person walks forward slowly and hesitates before standing upleft#person/NOUN walk/VERB forward/ADV slowly/ADV and/CCONJ hesitate/NOUN before/ADP stand/VERB upleft/ADV#0.0#0.0
-person walks forward and slightly to the right#person/NOUN walk/VERB forward/ADV and/CCONJ slightly/ADV to/ADP the/DET right/NOUN#0.0#0.0
-a person walking in the straight line forward.#a/DET person/NOUN walk/VERB in/ADP the/DET straight/ADJ line/NOUN forward/ADV#0.0#0.0

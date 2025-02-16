@@ -1,3 +1,0 @@
-the person is lifting a dumbbell with their left arm.#the/DET person/NOUN is/AUX lift/VERB a/DET dumbbell/NOUN with/ADP their/DET left/ADJ arm/NOUN#0.0#0.0
-person leans to the left while making stroking motions up and down with his left arm.#person/NOUN lean/VERB to/ADP the/DET left/ADJ while/SCONJ make/VERB stroke/VERB motion/NOUN up/ADP and/CCONJ down/ADV with/ADP his/DET left/ADJ arm/NOUN#0.0#0.0
-a person raised the left hand and lift something#a/DET person/NOUN raise/VERB the/DET left/ADJ hand/NOUN and/CCONJ lift/VERB something/PRON#0.0#0.0

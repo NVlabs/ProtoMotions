@@ -1,3 +1,0 @@
-a man walks forward then left.#a/DET man/NOUN walk/VERB forward/ADV then/ADV left/VERB#0.0#0.0
-person is slow walking.#person/NOUN is/AUX slow/ADJ walk/VERB#0.0#0.0
-a woman walks moving her hips from right to left while swinging her hair#a/DET woman/NOUN walk/VERB move/VERB her/DET hip/NOUN from/ADP right/NOUN to/ADP left/VERB while/SCONJ swinge/VERB her/DET hair/NOUN#0.0#0.0

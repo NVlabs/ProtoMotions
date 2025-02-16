@@ -1,3 +1,0 @@
-a person uses their left arm to scratch their head.#a/DET person/NOUN use/VERB their/DET left/ADJ arm/NOUN to/PART scratch/VERB their/DET head/NOUN#0.0#0.0
-he sctratches his head#he/PRON sctratche/VERB his/DET head/NOUN#0.0#0.0
-a person scratches his head with his left hand.#a/DET person/NOUN scratch/VERB his/DET head/NOUN with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0

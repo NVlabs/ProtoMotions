@@ -1,3 +1,0 @@
-a person walks forward at a slow pace.#a/DET person/NOUN walk/VERB forward/ADV at/ADP a/DET slow/ADJ pace/NOUN#0.0#0.0
-walking forward and then stopping.#walk/VERB forward/ADV and/CCONJ then/ADV stop/VERB#0.0#0.0
-the man walks directly forward starting with his right foot then left foot then right foot.#the/DET man/NOUN walk/VERB directly/ADV forward/ADV start/VERB with/ADP his/DET right/ADJ foot/NOUN then/ADV left/VERB foot/NOUN then/ADV right/ADJ foot/NOUN#0.0#0.0

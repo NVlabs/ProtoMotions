@@ -1,3 +1,0 @@
-person appears to walk in a s shape as if they are a mommy or zombie.#person/NOUN appear/VERB to/PART walk/VERB in/ADP a/DET s/NOUN shape/NOUN as/SCONJ if/SCONJ they/PRON are/AUX a/DET mommy/NOUN or/CCONJ zombie/NOUN#0.0#0.0
-the man walks just like a mummy#the/DET man/NOUN walk/VERB just/ADV like/SCONJ a/DET mummy/NOUN#0.0#0.0
-a person walks like a mummy, swinging around to their left then right.#a/DET person/NOUN walk/VERB like/SCONJ a/DET mummy/NOUN swinge/VERB around/ADV to/ADP their/DET left/NOUN then/ADV right/ADV#0.0#0.0

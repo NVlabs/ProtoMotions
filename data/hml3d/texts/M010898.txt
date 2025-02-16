@@ -1,3 +1,0 @@
-a person kicks something with their left foot.#a/DET person/NOUN kick/VERB something/PRON with/ADP their/DET left/ADJ foot/NOUN#0.0#0.0
-a person looks to the right then kicks something with their left foot#a/DET person/NOUN look/VERB to/ADP the/DET right/NOUN then/ADV kick/VERB something/PRON with/ADP their/DET left/ADJ foot/NOUN#0.0#0.0
-kicking something to the side.#kick/VERB something/PRON to/ADP the/DET side/NOUN#0.0#0.0

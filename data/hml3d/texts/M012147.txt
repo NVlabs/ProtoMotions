@@ -1,3 +1,0 @@
-a person side steps to their left with a large step.#a/DET person/NOUN side/NOUN step/NOUN to/ADP their/DET left/NOUN with/ADP a/DET large/ADJ step/NOUN#nan#0.0
-he does a medium step to left#he/PRON does/AUX a/DET medium/ADJ step/NOUN to/ADP left/ADV#0.0#0.0
-the person takes one step to the left#the/DET person/NOUN take/VERB one/NUM step/NOUN to/ADP the/DET left/NOUN#0.0#0.0

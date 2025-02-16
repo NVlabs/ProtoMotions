@@ -1,3 +1,0 @@
-a person throws something with his left hand.#a/DET person/NOUN throw/VERB something/PRON with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
-a person stands and brings back their left arm then extends it into the air above their head.#a/DET person/NOUN stand/VERB and/CCONJ bring/VERB back/ADP their/DET left/ADJ arm/NOUN then/ADV extend/VERB it/PRON into/ADP the/DET air/NOUN above/ADP their/DET head/NOUN#0.0#0.0
-a person twisting from side to side and puts right arm up.#a/DET person/NOUN twist/VERB from/ADP side/NOUN to/ADP side/VERB and/CCONJ put/VERB right/ADJ arm/NOUN up/ADP#0.0#0.0

@@ -1,3 +1,0 @@
-a person holding something and placing it away#a/DET person/NOUN hold/VERB something/PRON and/CCONJ place/VERB it/PRON away/ADV#0.0#0.0
-a person gestures with their left hand and picks something up.#a/DET person/NOUN gesture/VERB with/ADP their/DET left/ADJ hand/NOUN and/CCONJ pick/VERB something/PRON up/ADP#0.0#0.0
-the person who was waving with his left hand.#the/DET person/NOUN who/PRON was/AUX wave/VERB with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-person waves with right hand above head#person/NOUN wave/VERB with/ADP right/ADJ hand/NOUN above/ADP head/NOUN#0.0#0.0
-the person waves their right hand over their head.#the/DET person/NOUN wave/VERB their/DET right/ADJ hand/NOUN over/ADP their/DET head/NOUN#0.0#0.0
-a man waves repeatedly with his right hand.#a/DET man/NOUN wave/VERB repeatedly/ADV with/ADP his/DET right/ADJ hand/NOUN#0.0#0.0

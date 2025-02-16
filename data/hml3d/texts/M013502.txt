@@ -1,3 +1,0 @@
-shuffle step left then side stepping back right#shuffle/PROPN step/NOUN left/VERB then/ADV side/NOUN step/VERB back/ADV right/ADV#0.0#0.0
-the person is stumbling sideways to the left.#the/DET person/NOUN is/AUX stumble/VERB sideways/ADV to/ADP the/DET left/NOUN#0.0#0.0
-the man cross steps across then sidesteps back.#the/DET man/NOUN cross/VERB step/NOUN across/ADP then/ADV sidestep/VERB back/ADV#0.0#0.0

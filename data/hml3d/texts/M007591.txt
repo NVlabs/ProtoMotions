@@ -1,3 +1,0 @@
-a person walks slowly in an arc to their left.#a/DET person/NOUN walk/VERB slowly/ADV in/ADP an/DET arc/NOUN to/ADP their/DET left/NOUN#0.0#0.0
-a person slowly walked forward in left direction#a/DET person/NOUN slowly/ADV walk/VERB forward/ADV in/ADP left/ADJ direction/NOUN#0.0#0.0
-a person walks in a wide arc to their left#a/DET person/NOUN walk/VERB in/ADP a/DET wide/ADJ arc/NOUN to/ADP their/DET left/NOUN#0.0#0.0

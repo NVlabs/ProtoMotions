@@ -1,3 +1,0 @@
-a person side steps to their right, then side steps to their left, then side steps back to the center.#a/DET person/NOUN side/NOUN step/NOUN to/ADP their/DET right/NOUN then/ADV side/NOUN step/NOUN to/ADP their/DET left/NOUN then/ADV side/NOUN step/VERB back/ADV to/ADP the/DET center/NOUN#0.0#0.0
-the man side steps 2 steps to the right the sidesteps to the left then back to starting point.#the/DET man/NOUN side/NOUN step/NOUN step/NOUN to/ADP the/DET right/NOUN the/DET sidestep/NOUN to/ADP the/DET left/NOUN then/ADV back/ADV to/ADP starting/NOUN point/NOUN#0.0#0.0
-the person is sliding his feet from right to left.#the/DET person/NOUN is/AUX slide/VERB his/DET foot/NOUN from/ADP right/NOUN to/ADP left/NOUN#0.0#0.0

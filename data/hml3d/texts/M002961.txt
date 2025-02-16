@@ -1,3 +1,0 @@
-a person waves with their left hand.#a/DET person/NOUN wave/VERB with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-someone is waving to someone else#someone/PRON is/AUX wave/VERB to/ADP someone/PRON else/ADV#0.0#0.0
-a person waves with their left hand.#a/DET person/NOUN wave/VERB with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0

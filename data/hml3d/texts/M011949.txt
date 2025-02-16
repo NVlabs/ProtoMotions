@@ -1,3 +1,0 @@
-moving and create a ovel image.#move/VERB and/CCONJ create/VERB a/DET ovel/NOUN image/NOUN#0.0#0.0
-the man is waling in counterclockwise direction#the/DET man/NOUN is/AUX wale/VERB in/ADP counterclockwise/ADJ direction/NOUN#0.0#0.0
-walking in a circle.#walk/VERB in/ADP a/DET circle/NOUN#0.0#0.0

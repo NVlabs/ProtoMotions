@@ -1,3 +1,0 @@
-person walks then turns right#person/NOUN walk/VERB then/ADV turn/VERB right/ADV#0.0#0.0
-a person is walking on a right curve.#a/DET person/NOUN is/AUX walk/VERB on/ADP a/DET right/ADJ curve/NOUN#0.0#0.0
-a person walks in a narc to their right.#a/DET person/NOUN walk/VERB in/ADP a/DET narc/NOUN to/ADP their/DET right/NOUN#0.0#0.0

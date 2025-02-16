@@ -1,3 +1,0 @@
-a person throws an object with their left hand.#a/DET person/NOUN throw/VERB an/DET object/NOUN with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a man raises its left arm then brings it back down.#a/DET man/NOUN raise/VERB its/DET left/ADJ arm/NOUN then/ADV bring/VERB it/PRON back/ADV down/ADP#0.0#0.0
-person looks like they're throwing something#person/NOUN look/VERB like/SCONJ they/PRON throw/VERB something/PRON#0.0#0.0

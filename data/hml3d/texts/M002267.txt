@@ -1,3 +1,0 @@
-a person walks to the side horizontally and then back and forth.#a/DET person/NOUN walk/VERB to/ADP the/DET side/NOUN horizontally/ADV and/CCONJ then/ADV back/ADV and/CCONJ forth/ADV#0.0#0.0
-a person steps to the right then the left#a/DET person/NOUN step/VERB to/ADP the/DET right/NOUN then/ADV the/DET left/NOUN#0.0#0.0
-a man takes a step the left and then back to the right.#a/DET man/NOUN take/VERB a/DET step/NOUN the/DET left/NOUN and/CCONJ then/ADV back/ADV to/ADP the/DET right/NOUN#0.0#0.0

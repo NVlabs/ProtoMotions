@@ -1,3 +1,0 @@
-a man raises right foot knee high then swings out and puts down repaets this motion twice#a/DET man/NOUN raise/VERB right/ADJ foot/NOUN knee/NOUN high/ADV then/ADV swing/VERB out/ADP and/CCONJ put/VERB down/ADP repaet/NOUN this/DET motion/NOUN twice/ADV#0.0#0.0
-a person is balancing on his left foot, touch down once with his right foot, then resumes balancing.#a/DET person/NOUN is/AUX balance/VERB on/ADP his/DET left/ADJ foot/NOUN touch/VERB down/ADP once/ADV with/ADP his/DET right/ADJ foot/NOUN then/ADV resume/VERB balance/VERB#0.0#0.0
-a person is raising their right foot in all directions as if trying to balance.#a/DET person/NOUN is/AUX raise/VERB their/DET right/ADJ foot/NOUN in/ADP all/DET direction/NOUN as/SCONJ if/SCONJ try/VERB to/PART balance/VERB#0.0#0.0

@@ -1,3 +1,0 @@
-a figure reaches right hand up and out to the right, almost like its spreading a path.#a/DET figure/NOUN reach/VERB right/ADJ hand/NOUN up/ADP and/CCONJ out/ADV to/ADP the/DET right/NOUN almost/ADV like/SCONJ its/DET spread/VERB a/DET path/NOUN#0.0#0.0
-a person lifting their right arm and then dropping it back down#a/DET person/NOUN lift/VERB their/DET right/ADJ arm/NOUN and/CCONJ then/ADV drop/VERB it/PRON back/ADV down/ADP#0.0#0.0
-person lifts right arm to the front and then to the side#person/NOUN lift/VERB right/ADJ arm/NOUN to/ADP the/DET front/NOUN and/CCONJ then/ADV to/ADP the/DET side/NOUN#0.0#0.0

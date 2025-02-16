@@ -1,3 +1,0 @@
-a person walks around in a counterclockwise circle#a/DET person/NOUN walk/VERB around/ADV in/ADP a/DET counterclockwise/ADJ circle/NOUN#0.0#0.0
-person walking casually in circular motion#person/NOUN walk/VERB casually/ADV in/ADP circular/ADJ motion/NOUN#0.0#0.0
-the person is walking swinging his arms#the/DET person/NOUN is/AUX walk/VERB swinge/VERB his/DET arm/NOUN#0.0#0.0

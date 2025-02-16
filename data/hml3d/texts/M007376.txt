@@ -1,3 +1,0 @@
-a person throws something with their left hand#a/DET person/NOUN throw/VERB something/PRON with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a person throws something with their left hand.#a/DET person/NOUN throw/VERB something/PRON with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a figure throws slowly with its right hand then relaxes#a/DET figure/NOUN throw/VERB slowly/ADV with/ADP its/DET right/ADJ hand/NOUN then/ADV relax/VERB#0.0#0.0

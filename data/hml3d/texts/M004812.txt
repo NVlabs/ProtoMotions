@@ -1,3 +1,0 @@
-a person jumps up and down multiple times.#a/DET person/NOUN jump/VERB up/ADV and/CCONJ down/ADP multiple/ADJ time/NOUN#0.0#0.0
-a person hops quickly in place.#a/DET person/NOUN hop/VERB quickly/ADV in/ADP place/NOUN#0.0#0.0
-a person bounces up and down gently while leaning slightly to their left and right repeatedly.#a/DET person/NOUN bounce/VERB up/ADV and/CCONJ down/ADV gently/ADV while/SCONJ lean/VERB slightly/ADV to/ADP their/DET left/NOUN and/CCONJ right/ADV repeatedly/ADV#0.0#5.0

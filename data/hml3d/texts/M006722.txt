@@ -1,3 +1,0 @@
-a man punches the air in front of him with his left arm.#a/DET man/NOUN punch/VERB the/DET air/NOUN in/ADP front/NOUN of/ADP him/PRON with/ADP his/DET left/ADJ arm/NOUN#0.0#0.0
-a person stands while punching the air seven times with left hand while body turns.#a/DET person/NOUN stand/VERB while/SCONJ punch/VERB the/DET air/NOUN seven/NUM time/NOUN with/ADP left/ADJ hand/NOUN while/SCONJ body/NOUN turn/VERB#0.0#10.0
-a person does arm stretch exercises with left arm.#a/DET person/NOUN does/AUX arm/VERB stretch/NOUN exercise/NOUN with/ADP left/ADJ arm/NOUN#0.0#0.0

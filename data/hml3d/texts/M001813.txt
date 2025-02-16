@@ -1,3 +1,0 @@
-a figure kicks their right leg behind them before kicking forward sharply with their left leg three times.#a/DET figure/NOUN kick/VERB their/DET right/ADJ leg/NOUN behind/ADP them/PRON before/ADP kick/VERB forward/ADV sharply/ADV with/ADP their/DET left/ADJ leg/NOUN three/NUM time/NOUN#0.0#0.0
-a person stands and kicks their right leg forwards repeatedly#a/DET person/NOUN stand/VERB and/CCONJ kick/VERB their/DET right/ADJ leg/NOUN forward/VERB repeatedly/ADV#0.0#0.0
-person kicks air with right foot repeatedly#person/NOUN kick/VERB air/NOUN with/ADP right/ADJ foot/NOUN repeatedly/ADV#0.0#0.0

@@ -1,3 +1,0 @@
-a person walks forward while shifting from right to left and turns around in the end.#a/DET person/NOUN walk/VERB forward/ADV while/SCONJ shift/VERB from/ADP right/NOUN to/ADP left/NOUN and/CCONJ turn/VERB around/ADP in/ADP the/DET end/NOUN#0.0#0.0
-a person walks forward, pauses and turns right, then proceeds forward and spins in a circle.#a/DET person/NOUN walk/VERB forward/ADV pause/VERB and/CCONJ turn/VERB right/ADJ then/ADV proceed/VERB forward/ADV and/CCONJ spin/VERB in/ADP a/DET circle/NOUN#0.0#0.0
-the man does cool walk#the/DET man/NOUN does/AUX cool/ADJ walk/VERB#0.0#0.0

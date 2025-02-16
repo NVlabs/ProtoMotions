@@ -1,3 +1,0 @@
-both arms raise to the left, hit throw#both/DET arm/NOUN raise/VERB to/ADP the/DET left/NOUN hit/VERB throw/NOUN#0.5#0.5
-a person performing a golf swing.#a/DET person/NOUN perform/VERB a/DET golf/NOUN swing/NOUN#0.0#0.0
-a person swings a golf club.#a/DET person/NOUN swing/VERB a/DET golf/NOUN club/NOUN#0.0#0.0

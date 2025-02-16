@@ -1,3 +1,0 @@
-a person raising their left hand.#a/DET person/NOUN raise/VERB their/DET left/ADJ hand/NOUN#0.0#0.0
-the raises its left (our right) arm above its head and brings it back down, without moving the rest of its body.#the/DET raise/VERB its/DET left/NOUN our/DET right/NOUN arm/NOUN above/ADP its/DET head/NOUN and/CCONJ bring/VERB it/PRON back/ADV down/ADP without/ADP move/VERB the/DET rest/NOUN of/ADP its/DET body/NOUN#0.0#0.0
-the person scratching scratching his head with his left arm.#the/DET person/NOUN scratch/VERB scratch/VERB his/DET head/NOUN with/ADP his/DET left/ADJ arm/NOUN#0.0#0.0

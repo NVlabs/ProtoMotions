@@ -1,3 +1,0 @@
-a person is side stepping both ways#a/DET person/NOUN is/AUX side/NOUN step/VERB both/DET way/NOUN#0.0#0.0
-a person is side stepping to the right and then does so to the left.#a/DET person/NOUN is/AUX side/NOUN step/VERB to/ADP the/DET right/NOUN and/CCONJ then/ADV does/AUX so/ADV to/ADP the/DET left/NOUN#0.0#0.0
-a person walks laterally, first to his right, then to his left, and finally right again.#a/DET person/NOUN walk/VERB laterally/ADV first/ADV to/ADP his/DET right/NOUN then/ADV to/ADP his/DET left/NOUN and/CCONJ finally/ADV right/ADV again/ADV#0.0#0.0

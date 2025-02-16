@@ -1,3 +1,0 @@
-a person walks forward to the right, steps up going back to the right and steps down two times.#a/DET person/NOUN walk/VERB forward/ADV to/ADP the/DET right/NOUN step/VERB up/ADP go/VERB back/ADV to/ADP the/DET right/NOUN and/CCONJ step/VERB down/ADV two/NUM time/NOUN#0.0#0.0
-a person walking up, around and then down an unleveled surface.#a/DET person/NOUN walk/VERB up/ADP around/ADV and/CCONJ then/ADV down/ADP an/DET unleveled/ADJ surface/NOUN#0.0#0.0
-a person turns counterclockwise and walks towards the left hand side, before stepping up onto something.#a/DET person/NOUN turn/VERB counterclockwise/NOUN and/CCONJ walk/VERB towards/ADP the/DET left/ADJ hand/NOUN side/NOUN before/ADP step/VERB up/ADP onto/ADP something/PRON#0.0#4.0

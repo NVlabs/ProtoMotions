@@ -1,3 +1,0 @@
-a person hopping on right leg.#a/DET person/NOUN hop/VERB on/ADP right/ADJ leg/NOUN#0.0#0.0
-a person hop on their right foot with arms at side to help keep balance.#a/DET person/NOUN hop/ADJ on/ADP their/DET right/ADJ foot/NOUN with/ADP arm/NOUN at/ADP side/NOUN to/PART help/VERB keep/VERB balance/NOUN#0.0#0.0
-a person hops on their right foot.#a/DET person/NOUN hop/VERB on/ADP their/DET right/ADJ foot/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a figure stumbles backwards then forwards repetitively as though drunk#a/DET figure/NOUN stumble/NOUN backwards/ADV then/ADV forwards/ADV repetitively/ADV as/SCONJ though/SCONJ drunk/ADJ#0.0#0.0
-the person is pushed backwards.#the/DET person/NOUN is/AUX push/VERB backwards/ADV#0.0#0.0
-a person stumbles from right to left repeatedly in a drunken manner.#a/DET person/NOUN stumble/VERB from/ADP right/NOUN to/ADP left/VERB repeatedly/ADV in/ADP a/DET drunken/ADJ manner/NOUN#0.0#0.0

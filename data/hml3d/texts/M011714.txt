@@ -1,3 +1,0 @@
-a man waves his arm in front of him from right to left, then up and down, to forward and back, then back to his side.#a/DET man/NOUN wave/VERB his/DET arm/NOUN in/ADP front/NOUN of/ADP him/PRON from/ADP right/ADV to/ADP left/NOUN then/ADV up/ADP and/CCONJ down/ADV to/ADP forward/ADV and/CCONJ back/ADV then/ADV back/ADV to/ADP his/DET side/NOUN#0.0#0.0
-a man moves his left arm in from of him.#a/DET man/NOUN move/VERB his/DET left/ADJ arm/NOUN in/ADV from/ADP of/ADP him/PRON#0.0#0.0
-a person puts his left hand in the air.#a/DET person/NOUN put/VERB his/DET left/ADJ hand/NOUN in/ADP the/DET air/NOUN#0.0#0.0

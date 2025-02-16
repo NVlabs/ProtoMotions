@@ -1,3 +1,0 @@
-person is walking in an s pattern#person/NOUN is/AUX walk/VERB in/ADP an/DET s/NOUN pattern/NOUN#0.0#0.0
-a man walks to his right, then his left, then his right, while walking across an area.#a/DET man/NOUN walk/VERB to/ADP his/DET right/NOUN then/ADV his/DET left/NOUN then/ADV his/DET right/NOUN while/SCONJ walk/VERB across/ADP an/DET area/NOUN#0.0#0.0
-person takes a step to the left then walks in a winding path, then stops#person/NOUN take/VERB a/DET step/NOUN to/ADP the/DET left/NOUN then/ADV walk/VERB in/ADP a/DET winding/NOUN path/NOUN then/ADV stop/VERB#0.0#0.0

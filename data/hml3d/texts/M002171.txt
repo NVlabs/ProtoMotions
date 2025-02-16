@@ -1,3 +1,0 @@
-a person who sits down on there knees#a/DET person/NOUN who/PRON sit/VERB down/ADP on/ADP there/ADV knee/NOUN#0.0#0.0
-a person walks forward at a right angle, slightly turns left, kneels, relaxes and then slightly wiggles ankles.#a/DET person/NOUN walk/VERB forward/ADV at/ADP a/DET right/ADJ angle/NOUN slightly/ADV turn/VERB left/VERB kneels/PROPN relax/VERB and/CCONJ then/ADV slightly/ADV wiggle/VERB ankle/NOUN#0.0#10.0
-a person who is  kneeling down#a/DET person/NOUN who/PRON is/AUX kneel/VERB down/ADP#0.0#0.0

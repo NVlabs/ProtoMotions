@@ -1,3 +1,0 @@
-a person steps forward and to his left hand side.#a/DET person/NOUN step/VERB forward/ADV and/CCONJ to/ADP his/DET left/ADJ hand/NOUN side/NOUN#0.0#0.0
-a person is taking a big step over something with their left foot#a/DET person/NOUN is/AUX take/VERB a/DET big/ADJ step/NOUN over/ADP something/PRON with/ADP their/DET left/ADJ foot/NOUN#0.0#0.0
-a man takes one long step diagonally to the right.#a/DET man/NOUN take/VERB one/NUM long/ADJ step/NOUN diagonally/ADV to/ADP the/DET right/NOUN#0.0#0.0

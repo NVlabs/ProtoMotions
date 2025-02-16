@@ -1,3 +1,0 @@
-a person does neck rolls while standing.#a/DET person/NOUN does/AUX neck/NOUN roll/NOUN while/SCONJ stand/VERB#0.0#0.0
-a person looking left to right, to be aware of surroundings.#a/DET person/NOUN look/VERB left/VERB to/ADP right/NOUN to/PART be/AUX aware/ADJ of/ADP surrounding/NOUN#0.0#0.0
-a man stands straight while rotaing his neck in a counterclockwise manner.#a/DET man/NOUN stand/VERB straight/ADV while/SCONJ rotae/VERB his/DET neck/NOUN in/ADP a/DET counterclockwise/ADJ manner/NOUN#0.0#0.0

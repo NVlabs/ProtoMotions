@@ -1,3 +1,0 @@
-a man raises his right and left arms while exercising.#a/DET man/NOUN raise/VERB his/DET right/NOUN and/CCONJ left/VERB arm/NOUN while/SCONJ exercise/VERB#0.0#0.0
-a person stands on the spot and swings arms in a grabbing motion then kicks with their right foot.#a/DET person/NOUN stand/VERB on/ADP the/DET spot/NOUN and/CCONJ swing/VERB arm/NOUN in/ADP a/DET grabbing/ADJ motion/NOUN then/ADV kick/VERB with/ADP their/DET right/ADJ foot/NOUN#0.0#5.0
-a person moving arms and right leg in a certain motion#a/DET person/NOUN move/VERB arm/NOUN and/CCONJ right/ADJ leg/NOUN in/ADP a/DET certain/ADJ motion/NOUN#0.0#0.0

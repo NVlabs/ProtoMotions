@@ -1,3 +1,0 @@
-a person walks to his left.#a/DET person/NOUN walk/VERB to/ADP his/DET left/NOUN#0.0#0.0
-a man walks forward slowly veering to the left.#a/DET man/NOUN walk/VERB forward/ADV slowly/ADV veer/VERB to/ADP the/DET left/NOUN#0.0#0.0
-a person walks curving to the left.#a/DET person/NOUN walk/VERB curve/VERB to/ADP the/DET left/NOUN#0.0#0.0

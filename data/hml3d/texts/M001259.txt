@@ -1,3 +1,0 @@
-a person slowly runs in place.#a/DET person/NOUN slowly/ADV run/VERB in/ADP place/NOUN#0.0#0.0
-a person jogs in place#a/DET person/NOUN jog/VERB in/ADP place/NOUN#0.0#0.0
-a person jogs in place while slowly rotating slightly right to left.#a/DET person/NOUN jog/VERB in/ADP place/NOUN while/SCONJ slowly/ADV rotate/VERB slightly/ADV right/ADJ to/ADP left/VERB#0.0#0.0

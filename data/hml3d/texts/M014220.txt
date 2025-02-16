@@ -1,3 +1,0 @@
-a person balances on their right leg while kicking their left foot out, then rotates their neck, and finally performs a squat.#a/DET person/NOUN balance/VERB on/ADP their/DET right/ADJ leg/NOUN while/SCONJ kick/VERB their/DET left/ADJ foot/NOUN out/ADP then/ADV rotate/VERB their/DET neck/NOUN and/CCONJ finally/ADV perform/VERB a/DET squat/NOUN#0.0#0.0
-moving the left  leg and like dancing.#move/VERB the/DET left/ADJ leg/NOUN and/CCONJ like/SCONJ dancing/NOUN#0.0#0.0
-a person who seems to warm up different body parts#a/DET person/NOUN who/PRON seem/VERB to/PART warm/VERB up/ADP different/ADJ body/NOUN part/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a standing man waves with his left hand.#a/DET stand/VERB man/NOUN wave/NOUN with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0
-person standing uses left hand to wave hello#person/NOUN stand/VERB use/VERB left/ADJ hand/NOUN to/PART wave/VERB hello/INTJ#0.0#0.0
-the man waves with his left hand.#the/DET man/NOUN wave/VERB with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0

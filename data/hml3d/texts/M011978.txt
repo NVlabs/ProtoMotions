@@ -1,3 +1,0 @@
-a person, walked forward by changing direcion into right and left#a/DET person/NOUN walk/VERB forward/ADV by/ADP change/VERB direcion/NOUN into/ADP right/NOUN and/CCONJ left/ADJ#0.0#0.0
-a man walks slowly forwards, stepping widely to the right and left.#a/DET man/NOUN walk/VERB slowly/ADV forwards/ADJ step/VERB widely/ADV to/ADP the/DET right/NOUN and/CCONJ left/VERB#0.0#0.0
-this person stumbles right and left while moving forward.#this/DET person/NOUN stumble/VERB right/ADJ and/CCONJ left/VERB while/SCONJ move/VERB forward/ADV#0.0#0.0

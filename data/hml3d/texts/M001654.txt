@@ -1,3 +1,0 @@
-person is jumping around back and forth.#person/NOUN is/AUX jump/VERB around/ADV back/ADV and/CCONJ forth/ADV#0.0#0.0
-a person hops back and forth from one foot to the other.#a/DET person/NOUN hop/VERB back/ADV and/CCONJ forth/ADV from/ADP one/NUM foot/NOUN to/ADP the/DET other/ADJ#0.0#0.0
-the person lowers their arms and then steps forward. they then jump right and left repeatedly.#the/DET person/NOUN lower/VERB their/DET arm/NOUN and/CCONJ then/ADV step/VERB forward/ADV they/PRON then/ADV jump/VERB right/ADV and/CCONJ left/VERB repeatedly/ADV#0.0#0.0

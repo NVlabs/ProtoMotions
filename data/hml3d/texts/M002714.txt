@@ -1,3 +1,0 @@
-a man walks forward turns around clockwise and walks back.#a/DET man/NOUN walk/VERB forward/ADV turn/VERB around/ADP clockwise/NOUN and/CCONJ walk/VERB back/ADV#0.0#0.0
-a person walks forwards, pivots on their right foot and swings back around to walk back in the opposite direction#a/DET person/NOUN walk/VERB forwards/ADV pivot/NOUN on/ADP their/DET right/ADJ foot/NOUN and/CCONJ swing/VERB back/ADV around/ADV to/PART walk/VERB back/ADV in/ADP the/DET opposite/ADJ direction/NOUN#0.0#0.0
-person is walking the other way.#person/NOUN is/AUX walk/VERB the/DET other/ADJ way/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person loses his balance towards his left and then steps back towards his right.#a/DET person/NOUN lose/VERB his/DET balance/NOUN towards/ADP his/DET left/NOUN and/CCONJ then/ADV step/VERB back/ADV towards/ADP his/DET right/NOUN#0.0#0.0
-a person steps sideways to the left and then sideways to the right.#a/DET person/NOUN step/VERB sideways/ADV to/ADP the/DET left/NOUN and/CCONJ then/ADV sideway/VERB to/ADP the/DET right/NOUN#0.0#0.0
-a person steps to the right while crossing left foot behind right foot, then steps back to the left.#a/DET person/NOUN step/VERB to/ADP the/DET right/ADJ while/SCONJ cross/VERB left/VERB foot/NOUN behind/ADP right/ADJ foot/NOUN then/ADV step/VERB back/ADV to/ADP the/DET left/NOUN#0.0#0.0

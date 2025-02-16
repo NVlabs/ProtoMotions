@@ -1,3 +1,0 @@
-a person runs along the fence holding his phone in his left hand, then he stops and walks back#a/DET person/NOUN run/VERB along/ADP the/DET fence/NOUN hold/VERB his/DET phone/NOUN in/ADP his/DET left/ADJ hand/NOUN then/ADV he/PRON stop/VERB and/CCONJ walk/VERB back/ADV#0.0#0.0
-the person put their arms down at their side.#the/DET person/NOUN put/VERB their/DET arm/NOUN down/ADP at/ADP their/DET side/NOUN#0.0#0.0
-a person stands with their arms straight out at their sides, drops their arms slowly, then looks right and left#a/DET person/NOUN stand/VERB with/ADP their/DET arm/NOUN straight/ADV out/ADV at/ADP their/DET side/NOUN drop/VERB their/DET arm/NOUN slowly/ADV then/ADV look/VERB right/ADJ and/CCONJ left/ADJ#0.0#0.0

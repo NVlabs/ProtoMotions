@@ -1,3 +1,0 @@
-a person does a swinging golf club motion#a/DET person/NOUN does/AUX a/DET swinge/VERB golf/NOUN club/NOUN motion/NOUN#0.0#0.0
-person performs a swing like motion from left to right#person/NOUN perform/VERB a/DET swing/NOUN like/SCONJ motion/NOUN from/ADP left/ADJ to/ADP right/ADJ#0.0#0.0
-person takes a left handed golf swing#person/NOUN take/VERB a/DET left/ADJ handed/ADJ golf/NOUN swing/NOUN#0.0#0.0

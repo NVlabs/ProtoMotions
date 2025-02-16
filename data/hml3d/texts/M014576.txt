@@ -1,3 +1,0 @@
-a man exercising his arms.#a/DET man/NOUN exercise/VERB his/DET arm/NOUN#0.0#0.0
-a person stretches their arm by diagonally reaching across#a/DET person/NOUN stretch/VERB their/DET arm/NOUN by/ADP diagonally/ADV reach/VERB across/ADP#0.0#0.0
-a person pivots right and reaches with his left hand#a/DET person/NOUN pivot/VERB right/ADJ and/CCONJ reach/VERB with/ADP his/DET left/ADJ hand/NOUN#0.0#0.0

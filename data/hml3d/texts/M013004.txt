@@ -1,3 +1,0 @@
-a man swings his left arm behind him and then swings it forward and down toward the right, as if he is brushing something aside,#a/DET man/NOUN swing/VERB his/DET left/ADJ arm/NOUN behind/ADP him/PRON and/CCONJ then/ADV swing/VERB it/PRON forward/ADV and/CCONJ down/ADV toward/ADP the/DET right/NOUN as/SCONJ if/SCONJ he/PRON is/AUX brush/VERB something/PRON aside/ADV#0.0#0.0
-swinging arms up and down.#swinge/VERB arm/NOUN up/ADV and/CCONJ down/ADV#0.0#0.0
-a man standing still straight up then throwing an object with the left arm towards the ground.#a/DET man/NOUN stand/VERB still/ADV straight/ADV up/ADV then/ADV throw/VERB an/DET object/NOUN with/ADP the/DET left/ADJ arm/NOUN towards/ADP the/DET ground/NOUN#0.0#0.0

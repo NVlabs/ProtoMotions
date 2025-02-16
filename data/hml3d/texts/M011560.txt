@@ -1,3 +1,0 @@
-a peson walking using their left hand to balance#a/DET peson/NOUN walk/VERB use/VERB their/DET left/ADJ hand/NOUN to/PART balance/NOUN#0.0#0.0
-the person is walking forward holding on to somethig with their left hand#the/DET person/NOUN is/AUX walk/VERB forward/ADV hold/VERB on/ADP to/ADP somethig/PROPN with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-he walks on a table#he/PRON walk/VERB on/ADP a/DET table/NOUN#0.0#0.0

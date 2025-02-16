@@ -1,3 +1,0 @@
-a person slowly throws two objects with their left hand.#a/DET person/NOUN slowly/ADV throw/VERB two/NUM object/NOUN with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a man throws something with his left arm twice.#a/DET man/NOUN throw/VERB something/PRON with/ADP his/DET left/ADJ arm/NOUN twice/ADV#0.0#0.0
-a person throws a ball and moves his left foot if front of his right.#a/DET person/NOUN throw/VERB a/DET ball/NOUN and/CCONJ move/VERB his/DET left/ADJ foot/NOUN if/SCONJ front/NOUN of/ADP his/DET right/NOUN#0.0#0.0

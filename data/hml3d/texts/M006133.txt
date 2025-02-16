@@ -1,3 +1,0 @@
-a person hunches with hands forward then shakes his head right to left.#a/DET person/NOUN hunch/VERB with/ADP hand/NOUN forward/ADV then/ADV shake/VERB his/DET head/NOUN right/ADV to/ADP left/ADV#0.0#0.0
-a person bends over and looks around.#a/DET person/NOUN bend/VERB over/ADP and/CCONJ look/VERB around/ADV#0.0#0.0
-the person looks around while slightly slouched over#the/DET person/NOUN look/VERB around/ADP while/SCONJ slightly/ADV slouch/VERB over/ADV#0.0#0.0

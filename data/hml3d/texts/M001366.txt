@@ -1,3 +1,0 @@
-the man moves his left side of body towards right#the/DET man/NOUN move/VERB his/DET left/ADJ side/NOUN of/ADP body/NOUN towards/ADP right/ADJ#0.0#0.0
-a person moves his hands in the air.#a/DET person/NOUN move/VERB his/DET hand/NOUN in/ADP the/DET air/NOUN#0.0#0.0
-a person hitting a left boxing punch..#a/DET person/NOUN hit/VERB a/DET left/ADJ boxing/NOUN punch/NOUN#0.0#0.0

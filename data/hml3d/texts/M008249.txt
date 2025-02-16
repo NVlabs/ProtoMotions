@@ -1,3 +1,0 @@
-a man plays the violin the goes back to his original position.#a/DET man/NOUN play/VERB the/DET violin/NOUN the/DET go/VERB back/ADV to/ADP his/DET original/ADJ position/NOUN#0.0#0.0
-the person is playing the violin with his left arm.#the/DET person/NOUN is/AUX play/VERB the/DET violin/NOUN with/ADP his/DET left/ADJ arm/NOUN#0.0#0.0
-a man lifts both of his hands to play an object like a violin.#a/DET man/NOUN lift/VERB both/DET of/ADP his/DET hand/NOUN to/PART play/VERB an/DET object/NOUN like/SCONJ a/DET violin/NOUN#0.0#0.0

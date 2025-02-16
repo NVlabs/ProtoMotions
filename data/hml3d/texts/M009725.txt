@@ -1,3 +1,0 @@
-stick figure moving to the right#stick/PROPN figure/NOUN move/VERB to/ADP the/DET right/NOUN#0.0#0.0
-a person evading something by dodging to the left#a/DET person/NOUN evade/VERB something/PRON by/ADP dodge/VERB to/ADP the/DET left/NOUN#0.0#0.0
-the person ducked to the left.#the/DET person/NOUN duck/VERB to/ADP the/DET left/NOUN#0.0#0.0

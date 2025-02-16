@@ -1,3 +1,0 @@
-the person walks forward holding on to something, maybe a handrail.#the/DET person/NOUN walk/VERB forward/ADV hold/VERB on/ADP to/ADP something/PRON maybe/ADV a/DET handrail/NOUN#0.0#0.0
-a person walks down a slope with their left hand placed on a handrail.#a/DET person/NOUN walk/VERB down/ADP a/DET slope/NOUN with/ADP their/DET left/ADJ hand/NOUN place/VERB on/ADP a/DET handrail/NOUN#0.0#0.0
-and walks forward with left arm outstretched as if petting something.#and/CCONJ walk/VERB forward/ADV with/ADP left/ADJ arm/NOUN outstretche/VERB as/SCONJ if/SCONJ pet/VERB something/PRON#0.0#0.0

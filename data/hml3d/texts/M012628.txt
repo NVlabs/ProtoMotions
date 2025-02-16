@@ -1,3 +1,0 @@
-a person ran forward in right direction#a/DET person/NOUN run/VERB forward/ADV in/ADP right/ADJ direction/NOUN#0.0#0.0
-the person is jogging towards the right.#the/DET person/NOUN is/AUX jog/VERB towards/ADP the/DET right/NOUN#0.0#0.0
-a man run in a curve.#a/DET man/NOUN run/VERB in/ADP a/DET curve/NOUN#0.0#0.0

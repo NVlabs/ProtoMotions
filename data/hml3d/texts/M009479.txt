@@ -1,3 +1,0 @@
-this person stumbles right to left then to the right again.#this/DET person/NOUN stumble/VERB right/ADJ to/PART left/VERB then/ADV to/ADP the/DET right/NOUN again/ADV#0.0#0.0
-the person was pushed from the right side.#the/DET person/NOUN was/AUX push/VERB from/ADP the/DET right/ADJ side/NOUN#0.0#0.0
-a person walks to their front and then jumps to the left.#a/DET person/NOUN walk/VERB to/ADP their/DET front/NOUN and/CCONJ then/ADV jump/VERB to/ADP the/DET left/NOUN#0.0#0.0

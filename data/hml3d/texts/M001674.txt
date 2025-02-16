@@ -1,3 +1,0 @@
-person turns and looks to the left then walks straight ahead dragging left foot.#person/NOUN turn/VERB and/CCONJ look/VERB to/ADP the/DET left/NOUN then/ADV walk/VERB straight/ADV ahead/ADV drag/VERB left/ADJ foot/NOUN#0.0#0.0
-the character is limping forwards dragging one foot behind him#the/DET character/NOUN is/AUX limp/VERB forwards/ADV drag/VERB one/NUM foot/NOUN behind/ADP him/PRON#0.0#0.0
-the person looks briefly to the right and walks forward while dragging their left leg.#the/DET person/NOUN look/VERB briefly/ADV to/ADP the/DET right/NOUN and/CCONJ walk/VERB forward/ADV while/SCONJ drag/VERB their/DET left/ADJ leg/NOUN#0.0#0.0

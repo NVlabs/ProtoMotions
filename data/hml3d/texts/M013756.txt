@@ -1,3 +1,0 @@
-a person is lifting weights in their left hand.#a/DET person/NOUN is/AUX lift/VERB weight/NOUN in/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a person lifts a weight with their left hand.#a/DET person/NOUN lift/VERB a/DET weight/NOUN with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-a person is lifting a dumbell with their left hand#a/DET person/NOUN is/AUX lift/VERB a/DET dumbell/NOUN with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0

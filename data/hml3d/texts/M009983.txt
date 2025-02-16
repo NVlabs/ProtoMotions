@@ -1,3 +1,0 @@
-a person quickly side steps to the left and then to the right.#a/DET person/NOUN quickly/ADV side/VERB step/NOUN to/ADP the/DET left/NOUN and/CCONJ then/ADV to/ADP the/DET right/NOUN#0.0#0.0
-a person taking strafing steps from left to right and right to left#a/DET person/NOUN take/VERB strafe/VERB step/NOUN from/ADP left/VERB to/ADP right/NOUN and/CCONJ right/ADV to/ADP left/ADV#0.0#0.0
-a person sidesteps quickly to the left then to the right.#a/DET person/NOUN sidestep/VERB quickly/ADV to/ADP the/DET left/NOUN then/ADV to/ADP the/DET right/NOUN#0.0#0.0

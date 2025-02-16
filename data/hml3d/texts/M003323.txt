@@ -1,3 +1,0 @@
-a person walks in a circle#a/DET person/NOUN walk/VERB in/ADP a/DET circle/NOUN#0.0#0.0
-a person walks in a curve to their right.#a/DET person/NOUN walk/VERB in/ADP a/DET curve/NOUN to/ADP their/DET right/NOUN#0.0#0.0
-a person casually walks in a counter counterclockwise arc towards the left hand side, then stops and stands.#a/DET person/NOUN casually/ADV walk/VERB in/ADP a/DET counter/ADJ counterclockwise/PROPN arc/NOUN towards/ADP the/DET left/ADJ hand/NOUN side/NOUN then/ADV stop/VERB and/CCONJ stand/VERB#0.0#0.0

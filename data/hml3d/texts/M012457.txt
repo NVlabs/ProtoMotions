@@ -1,3 +1,0 @@
-a person jumps backwards, then jumps to the right, then to the left then back to the right.#a/DET person/NOUN jump/VERB backwards/ADV then/ADV jump/VERB to/ADP the/DET right/NOUN then/ADV to/ADP the/DET left/NOUN then/ADV back/ADV to/ADP the/DET right/NOUN#0.0#0.0
-man hop backwards two times then jump right one time and then take four hop to the left then take three hops to the right.#man/PROPN hop/PROPN backwards/ADV two/NUM time/NOUN then/ADV jump/VERB right/ADV one/NUM time/NOUN and/CCONJ then/ADV take/VERB four/NUM hop/NOUN to/ADP the/DET left/NOUN then/ADV take/VERB three/NUM hop/NOUN to/ADP the/DET right/NOUN#0.0#0.0
-a person jumping backwards in circle#a/DET person/NOUN jump/VERB backwards/ADV in/ADP circle/NOUN#0.0#0.0

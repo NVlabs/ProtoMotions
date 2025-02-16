@@ -1,3 +1,0 @@
-a person steps forward then spins around with arms outstretched.#a/DET person/NOUN step/VERB forward/ADV then/ADV spin/VERB around/ADV with/ADP arm/NOUN outstretche/VERB#0.0#0.0
-the person that was doing a windmill spinning around.#the/DET person/NOUN that/DET was/AUX do/VERB a/DET windmill/NOUN spin/VERB around/ADV#0.0#0.0
-a man takes a few steps forwards, spins counterclockwise twice, then spins clockwise twice.#a/DET man/NOUN take/VERB a/DET few/ADJ step/NOUN forwards/ADV spin/VERB counterclockwise/VERB twice/ADV then/ADV spin/VERB clockwise/VERB twice/ADV#0.0#0.0

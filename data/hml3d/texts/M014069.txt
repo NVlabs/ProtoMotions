@@ -1,3 +1,0 @@
-person is pretending they are a dinosaur.#person/NOUN is/AUX pretend/VERB they/PRON are/AUX a/DET dinosaur/NOUN#0.0#0.0
-a man rights both hands like a zombie.#a/DET man/NOUN right/VERB both/DET hand/NOUN like/SCONJ a/DET zombie/NOUN#0.0#0.0
-person looks to be pretending to be a dinasour or t-rex.#person/NOUN look/VERB to/PART be/AUX pretend/VERB to/PART be/AUX a/DET dinasour/NOUN or/CCONJ trex/NOUN#0.0#0.0

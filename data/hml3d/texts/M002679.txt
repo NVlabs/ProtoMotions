@@ -1,3 +1,0 @@
-a person starts walking counterclockwise then clockwise in a partial figure eight.#a/DET person/NOUN start/VERB walk/VERB counterclockwise/NOUN then/ADV clockwise/NOUN in/ADP a/DET partial/ADJ figure/NOUN eight/NUM#0.0#0.0
-the person is walking forward in the z shape.#the/DET person/NOUN is/AUX walk/VERB forward/ADV in/ADP the/DET z/NOUN shape/NOUN#0.0#0.0
-a person walks in the shape of an s, turning to the left first and then to the right.#a/DET person/NOUN walk/VERB in/ADP the/DET shape/NOUN of/ADP an/DET s/PROPN turn/VERB to/ADP the/DET left/ADJ first/ADV and/CCONJ then/ADV to/ADP the/DET right/NOUN#0.0#0.0

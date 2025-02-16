@@ -1,3 +1,0 @@
-a man walked and make a left turn.#a/DET man/NOUN walk/VERB and/CCONJ make/VERB a/DET left/ADJ turn/NOUN#0.0#0.0
-a person turns left while walking.#a/DET person/NOUN turn/VERB left/VERB while/SCONJ walk/VERB#0.0#0.0
-a person walks in a curved path to the left.#a/DET person/NOUN walk/VERB in/ADP a/DET curved/ADJ path/NOUN to/ADP the/DET left/NOUN#0.0#0.0

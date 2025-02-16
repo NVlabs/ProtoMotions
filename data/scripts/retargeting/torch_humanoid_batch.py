@@ -135,6 +135,11 @@ class Humanoid_Batch:
         self.extend_to_proper_mapping = []
         for i, name in enumerate(self._proper_kinematic_structure):
             self.extend_to_proper_mapping.append(self.body_names_augment.index(name))
+        self.proper_to_extend_mapping = []
+        for i, name in enumerate(self.body_names_augment):
+            self.proper_to_extend_mapping.append(
+                self._proper_kinematic_structure.index(name)
+            )
 
     def from_mjcf(self, path):
         # function from Poselib:
@@ -213,6 +218,8 @@ class Humanoid_Batch:
         }
 
     def fk_batch(self, pose, trans, convert_to_mat=True, return_full=False, dt=1 / 30):
+        device, dtype = pose.device, pose.dtype
+        pose_input = pose.clone()
         B, seq_len = pose.shape[:2]
         pose = pose[
             ..., : len(self._parents), :

@@ -1,3 +1,0 @@
-person slides to the left.#person/NOUN slide/VERB to/ADP the/DET left/NOUN#0.0#0.0
-the person slides to their left quickly.#the/DET person/NOUN slide/VERB to/ADP their/DET left/NOUN quickly/ADV#0.0#0.0
-a person takes a giant step to the left and then drags their right foot along.#a/DET person/NOUN take/VERB a/DET giant/ADJ step/NOUN to/ADP the/DET left/NOUN and/CCONJ then/ADV drag/VERB their/DET right/ADJ foot/NOUN along/ADV#0.0#0.0

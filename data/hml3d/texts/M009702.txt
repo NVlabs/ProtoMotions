@@ -1,3 +1,0 @@
-a standing person performs a cartwheel starting with their right hand#a/DET stand/VERB person/NOUN perform/VERB a/DET cartwheel/NOUN start/VERB with/ADP their/DET right/ADJ hand/NOUN#0.0#0.0
-a man steps forward and then does a cartwheel.#a/DET man/NOUN step/VERB forward/ADV and/CCONJ then/ADV does/AUX a/DET cartwheel/NOUN#0.0#0.0
-a person does a cartwheel#a/DET person/NOUN does/AUX a/DET cartwheel/NOUN#0.0#0.0

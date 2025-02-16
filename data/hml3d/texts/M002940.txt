@@ -1,3 +1,0 @@
-a person walks forward and turns to the left.#a/DET person/NOUN walk/VERB forward/ADV and/CCONJ turn/VERB to/ADP the/DET left/NOUN#0.0#0.0
-a person walks forward in a curved path to the left.#a/DET person/NOUN walk/VERB forward/ADV in/ADP a/DET curved/ADJ path/NOUN to/ADP the/DET left/NOUN#0.0#0.0
-a person walks towards the right hand side, turning slightly clockwise.#a/DET person/NOUN walk/VERB towards/ADP the/DET right/ADJ hand/NOUN side/NOUN turn/VERB slightly/ADV clockwise/NOUN#0.0#0.0

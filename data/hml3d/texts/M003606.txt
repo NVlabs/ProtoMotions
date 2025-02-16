@@ -1,3 +1,0 @@
-a man waves his right hand.#a/DET man/NOUN wave/VERB his/DET right/ADJ hand/NOUN#0.0#0.0
-person person is waving at people with their left hand.#person/NOUN person/NOUN is/AUX wave/VERB at/ADP people/NOUN with/ADP their/DET left/ADJ hand/NOUN#0.0#0.0
-the man waves with his left hand all around to everyone.#the/DET man/NOUN wave/VERB with/ADP his/DET left/ADJ hand/NOUN all/ADV around/ADV to/ADP everyone/PRON#0.0#0.0

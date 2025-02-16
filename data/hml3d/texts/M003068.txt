@@ -1,3 +1,0 @@
-a person raises their left hand and slowly waves.#a/DET person/NOUN raise/VERB their/DET left/ADJ hand/NOUN and/CCONJ slowly/ADV wave/NOUN#0.0#0.0
-a person lifts up their left arm above their head, moves it towards their right side and then back down.#a/DET person/NOUN lift/VERB up/ADP their/DET left/ADJ arm/NOUN above/ADP their/DET head/NOUN move/VERB it/PRON towards/ADP their/DET right/ADJ side/NOUN and/CCONJ then/ADV back/ADV down/ADP#0.0#0.0
-a person lifts his left hand in the air.#a/DET person/NOUN lift/VERB his/DET left/ADJ hand/NOUN in/ADP the/DET air/NOUN#0.0#0.0

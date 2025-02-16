@@ -1,3 +1,0 @@
-the person is being pulled by his arm but is resisting.#the/DET person/NOUN is/AUX being/AUX pull/VERB by/ADP his/DET arm/NOUN but/CCONJ is/AUX resist/VERB#0.0#0.0
-a person fastly walked in forward and left direction#a/DET person/NOUN fastly/ADV walk/VERB in/ADV forward/ADV and/CCONJ left/VERB direction/NOUN#0.0#0.0
-a person is pulled to the left by their elbow.#a/DET person/NOUN is/AUX pull/VERB to/ADP the/DET left/NOUN by/ADP their/DET elbow/NOUN#0.0#0.0

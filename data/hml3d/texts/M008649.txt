@@ -1,3 +1,0 @@
-a man raises his right arm, lowers it and rasies left arm.#a/DET man/NOUN raise/VERB his/DET right/ADJ arm/NOUN lower/VERB it/PRON and/CCONJ rasie/VERB left/ADJ arm/NOUN#0.0#10.0
-the sim raises both their left & right arms, standing still.#the/DET sim/PROPN raise/VERB both/CCONJ their/DET left/NOUN right/ADJ arm/NOUN stand/VERB still/ADV#0.0#4.0
-a person lifts his left and right arm.#a/DET person/NOUN lift/VERB his/DET left/ADJ and/CCONJ right/ADJ arm/NOUN#0.0#0.0

@@ -1,3 +1,0 @@
-a person walks back and forth on a diagonal#a/DET person/NOUN walk/VERB back/ADV and/CCONJ forth/ADV on/ADP a/DET diagonal/ADJ#0.0#0.0
-a figure looks down and paces first to the right and then to the left#a/DET figure/NOUN look/VERB down/ADP and/CCONJ pace/NOUN first/ADV to/ADP the/DET right/NOUN and/CCONJ then/ADV to/ADP the/DET left/NOUN#0.0#0.0
-the person walk to the right and then back to the left.#the/DET person/NOUN walk/VERB to/ADP the/DET right/NOUN and/CCONJ then/ADV back/ADV to/ADP the/DET left/NOUN#0.0#0.0
