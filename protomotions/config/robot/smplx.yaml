@@ -31,16 +31,3 @@ robot:
     asset_file_name: "mjcf/smplx_humanoid.xml"
     usd_asset_file_name: "usd/smplx_humanoid.usda"
     filter_ints: [ 0, 0, 7, 16, 12, 0, 56, 2, 33, 128, 0, 192, 0, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ]
-
-
-# Editing some env parameters to provide more precise SMPLX simulation
-env:
-  config:
-    simulator:
-      sim:
-        physx:
-          num_position_iterations: 8
-          num_velocity_iterations: 1
-          default_buffer_size_multiplier: 10
-          contact_offset: 0.005
-          rest_offset: 0.0001
