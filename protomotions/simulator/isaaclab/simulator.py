@@ -49,7 +49,7 @@ from protomotions.simulator.base_simulator.config import (
     ControlType,
     VisualizationMarker,
     SimBodyOrdering,
-    SimulatorConfig
+    SimulatorConfig,
 )
 from protomotions.simulator.base_simulator.robot_state import RobotState
 
@@ -78,7 +78,13 @@ class IsaacLabSimulator(Simulator):
             scene_lib (Optional[SceneLib], optional): The scene library containing scene and object data.
             visualization_markers (Optional[Dict[str, VisualizationMarker]], optional): Configuration for visualization markers.
         """
-        super().__init__(config=config, scene_lib=scene_lib, terrain=terrain, visualization_markers=visualization_markers, device=device)
+        super().__init__(
+            config=config,
+            scene_lib=scene_lib,
+            terrain=terrain,
+            visualization_markers=visualization_markers,
+            device=device,
+        )
 
         sim_cfg = sim_utils.SimulationCfg(
             device=str(device),
@@ -94,28 +100,28 @@ class IsaacLabSimulator(Simulator):
                 gpu_found_lost_aggregate_pairs_capacity=self.config.sim.physx.gpu_found_lost_aggregate_pairs_capacity,
             ),
         )
-        self.simulation_app = simulation_app
-        self.sim = SimulationContext(sim_cfg)
-        self.sim.set_camera_view([2.5, 0.0, 4.0], [0.0, 0.0, 2.0])
+        self._simulation_app = simulation_app
+        self._sim = SimulationContext(sim_cfg)
+        self._sim.set_camera_view([2.5, 0.0, 4.0], [0.0, 0.0, 2.0])
 
-        scene_cfg = self.get_scene_cfg()
+        scene_cfg = self._get_scene_cfg()
 
-        self.scene = InteractiveScene(scene_cfg)
+        self._scene = InteractiveScene(scene_cfg)
         if not self.headless:
-            self.setup_keyboard()
+            self._setup_keyboard()
         print("[INFO]: Setup complete...")
 
-        self.robot = self.scene["robot"]
-        self.contact_sensor = self.scene["contact_sensor"]
-        self.object = []
+        self._robot = self._scene["robot"]
+        self._contact_sensor = self._scene["contact_sensor"]
+        self._object = []
         if self.scene_lib is not None and self.scene_lib.total_spawned_scenes > 0:
             for obj_idx in range(self.scene_lib.num_objects_per_scene):
-                self.object.append(self.scene[f"object_{obj_idx}"])
+                self._object.append(self._scene[f"object_{obj_idx}"])
         if visualization_markers:
-            self.build_markers(visualization_markers)
-        self.sim.reset()
+            self._build_markers(visualization_markers)
+        self._sim.reset()
 
-    def get_scene_cfg(self) -> SceneCfg:
+    def _get_scene_cfg(self) -> SceneCfg:
         """
         Construct and return the scene configuration from the current config, scene library, and terrain.
 
@@ -123,23 +129,20 @@ class IsaacLabSimulator(Simulator):
             SceneCfg: The constructed scene configuration.
         """
         scene_cfgs = None
-        if (
-            self.scene_lib is not None
-            and self.scene_lib.total_spawned_scenes > 0
-        ):
-            scene_cfgs, self.inital_scene_pos = self.preprocess_object_playground()
+        if self.scene_lib is not None and self.scene_lib.total_spawned_scenes > 0:
+            scene_cfgs, self._initial_scene_pos = self._preprocess_object_playground()
 
         scene_cfg = SceneCfg(
             config=self.config,
-            robot_type=self.config.robot.asset.robot_type,
+            robot_config=self.robot_config,
             num_envs=self.config.num_envs,
             env_spacing=2.0,
             scene_cfgs=scene_cfgs,
             terrain=self.terrain,
         )
         return scene_cfg
-    
-    def preprocess_object_playground(self) -> Tuple[List[Any], torch.Tensor]:
+
+    def _preprocess_object_playground(self) -> Tuple[List[Any], torch.Tensor]:
         """
         Process and build the object playground from the scene library.
 
@@ -167,14 +170,14 @@ class IsaacLabSimulator(Simulator):
                     dtype=torch.float,
                 )
             ).item()
-            self.scene_position.append(
+            self._scene_position.append(
                 torch.tensor(
                     [scene_offset[0], scene_offset[1], height_at_scene_origin],
                     device=self.device,
                     dtype=torch.float,
                 )
             )
-            self.object_dims.append([])
+            self._object_dims.append([])
 
             for obj_idx, obj in enumerate(scene_spawn_info.objects):
                 # Get the spawn info for this object which contains the correct ID
@@ -207,7 +210,16 @@ class IsaacLabSimulator(Simulator):
                 )
 
                 initial_obj_pos[scene_idx, obj_idx, :3] = global_object_position
-                initial_obj_pos[scene_idx, obj_idx, 3:] = torch.tensor([obj.rotation[3], obj.rotation[0], obj.rotation[1], obj.rotation[2]], device=self.device, dtype=torch.float) # Convert xyzw to wxyz
+                initial_obj_pos[scene_idx, obj_idx, 3:] = torch.tensor(
+                    [
+                        obj.rotation[3],
+                        obj.rotation[0],
+                        obj.rotation[1],
+                        obj.rotation[2],
+                    ],
+                    device=self.device,
+                    dtype=torch.float,
+                )  # Convert xyzw to wxyz
 
                 main_dir_path = (
                     f"{os.path.dirname(os.path.abspath(__file__))}/../../../"
@@ -248,8 +260,7 @@ class IsaacLabSimulator(Simulator):
                         ),
                         rigid_props=rigid_props,
                         mass_props=sim_utils.MassPropertiesCfg(
-                            mass=1.0,
-                            density=obj.options.density
+                            mass=1.0, density=obj.options.density
                         ),
                         collision_props=collision_props,
                     )
@@ -265,28 +276,30 @@ class IsaacLabSimulator(Simulator):
                     )
                 objects_cfgs[obj_idx].append(spawn_cfg)
 
-                object_dims = torch.tensor(object_spawn_info.object_dims, device=self.device, dtype=torch.float)
-                self.object_dims[-1].append(object_dims)
-            self.object_dims[-1] = torch.stack(self.object_dims[-1]).reshape(
-                self.num_objects_per_scene, -1
+                object_dims = torch.tensor(
+                    object_spawn_info.object_dims, device=self.device, dtype=torch.float
+                )
+                self._object_dims[-1].append(object_dims)
+            self._object_dims[-1] = torch.stack(self._object_dims[-1]).reshape(
+                self._num_objects_per_scene, -1
             )
 
         return objects_cfgs, initial_obj_pos
 
-    def setup_keyboard(self) -> None:
+    def _setup_keyboard(self) -> None:
         """
         Set up keyboard callbacks for control using the Se2Keyboard interface.
         """
         from isaaclab.devices.keyboard.se2_keyboard import Se2Keyboard
 
         self.keyboard_interface = Se2Keyboard()
-        self.keyboard_interface.add_callback("R", self.requested_reset)
-        self.keyboard_interface.add_callback("U", self.update_inference_parameters)
-        self.keyboard_interface.add_callback("L", self.toggle_video_record)
-        self.keyboard_interface.add_callback(";", self.cancel_video_record)
+        self.keyboard_interface.add_callback("R", self._requested_reset)
+        self.keyboard_interface.add_callback("U", self._update_inference_parameters)
+        self.keyboard_interface.add_callback("L", self._toggle_video_record)
+        self.keyboard_interface.add_callback(";", self._cancel_video_record)
         self.keyboard_interface.add_callback("Q", self.close)
-        self.keyboard_interface.add_callback("O", self.toggle_camera_target)
-        self.keyboard_interface.add_callback("J", self.push_robot)
+        self.keyboard_interface.add_callback("O", self._toggle_camera_target)
+        self.keyboard_interface.add_callback("J", self._push_robot)
 
     # =====================================================
     # Group 2: Environment Setup & Configuration
@@ -297,72 +310,76 @@ class IsaacLabSimulator(Simulator):
         This includes setting up joint limits and initializing state tensors.
         """
         self._isaaclab_default_state = RobotState(
-            root_pos=self.robot.data.root_pos_w.clone(),
-            root_rot=self.robot.data.root_quat_w.clone(),
-            root_vel=torch.zeros((len(self.robot.data.root_pos_w), 3), device=self.device),
-            root_ang_vel=torch.zeros((len(self.robot.data.root_pos_w), 3), device=self.device),
-            dof_pos=self.robot.data.joint_pos.clone(),
-            dof_vel=self.robot.data.joint_vel.clone(),
-            rigid_body_pos=self.robot.data.body_pos_w.clone(),
-            rigid_body_rot=self.robot.data.body_quat_w.clone(),
-            rigid_body_vel=self.robot.data.body_lin_vel_w.clone(),
-            rigid_body_ang_vel=self.robot.data.body_ang_vel_w.clone(),
+            root_pos=self._robot.data.root_pos_w.clone(),
+            root_rot=self._robot.data.root_quat_w.clone(),
+            root_vel=torch.zeros(
+                (len(self._robot.data.root_pos_w), 3), device=self.device
+            ),
+            root_ang_vel=torch.zeros(
+                (len(self._robot.data.root_pos_w), 3), device=self.device
+            ),
+            dof_pos=self._robot.data.joint_pos.clone(),
+            dof_vel=self._robot.data.joint_vel.clone(),
+            rigid_body_pos=self._robot.data.body_pos_w.clone(),
+            rigid_body_rot=self._robot.data.body_quat_w.clone(),
+            rigid_body_vel=self._robot.data.body_lin_vel_w.clone(),
+            rigid_body_ang_vel=self._robot.data.body_ang_vel_w.clone(),
         )
-        
-        dof_limits = self.robot.data.joint_limits.clone()
-        self.dof_limits_lower = dof_limits[0, :, 0].to(self.device)
-        self.dof_limits_upper = dof_limits[0, :, 1].to(self.device)
-        
+
+        dof_limits = self._robot.data.joint_limits.clone()
+        self._dof_limits_lower_sim = dof_limits[0, :, 0].to(self.device)
+        self._dof_limits_upper_sim = dof_limits[0, :, 1].to(self.device)
+
         super().on_environment_ready()
-        
+
         # Update initial object positions
         if self.scene_lib is not None and self.scene_lib.total_spawned_scenes > 0:
             objects_start_pos = torch.zeros(
                 (self.num_envs, 13), device=self.device, dtype=torch.float
             )
-            for obj_idx, object in enumerate(self.object):
-                objects_start_pos[:, :7] = self.inital_scene_pos[:, obj_idx, :]
+            for obj_idx, object in enumerate(self._object):
+                objects_start_pos[:, :7] = self._initial_scene_pos[:, obj_idx, :]
                 object.write_root_state_to_sim(objects_start_pos)
 
     # =====================================================
     # Group 3: Simulation Steps & State Management
     # =====================================================
-    def physics_step(self) -> None:
+    def _physics_step(self) -> None:
         """
         Advance the simulation by stepping for a number of iterations equal to the decimation factor.
         Applies PD control or motor forces as required.
         """
         for idx in range(self.decimation):
             if self.control_type == ControlType.BUILT_IN_PD:
-                self.apply_pd_control()
+                self._apply_pd_control()
             else:
-                self.apply_motor_forces()
-            self.scene.write_data_to_sim()
-            self.sim.step(render=False)
-            if (
-                idx + 1
-            ) % self.decimation == 0 and not self.headless:
-                self.sim.render()
-            self.scene.update(dt=self.sim.get_physics_dt())
+                self._apply_motor_forces()
+            self._scene.write_data_to_sim()
+            self._sim.step(render=False)
+            if (idx + 1) % self.decimation == 0 and not self.headless:
+                self._sim.render()
+            self._scene.update(dt=self._sim.get_physics_dt())
 
-    def apply_pd_control(self) -> None:
+    def _apply_pd_control(self) -> None:
         """
         Apply PD control by converting actions into PD targets and updating joint targets accordingly.
         """
-        pd_tar = self.action_to_pd_targets(self._actions)
-        self.robot.set_joint_position_target(pd_tar, joint_ids=None)
+        pd_tar = self._action_to_pd_targets(self._actions)
+        self._robot.set_joint_position_target(pd_tar, joint_ids=None)
 
-    def apply_motor_forces(self) -> None:
+    def _apply_motor_forces(self) -> None:
         """
         Apply motor forces to the robot.
 
         Raises:
             NotImplementedError: Not supported yet.
         """
-        torques = self.compute_torques(self._actions)
-        self.robot.set_joint_effort_target(torques, joint_ids=None)
-        
-    def _set_simulator_env_state(self, new_states: RobotState, env_ids: Optional[torch.Tensor]) -> None:
+        torques = self._compute_torques(self._actions)
+        self._robot.set_joint_effort_target(torques, joint_ids=None)
+
+    def _set_simulator_env_state(
+        self, new_states: RobotState, env_ids: Optional[torch.Tensor]
+    ) -> None:
         """
         Apply the provided state to the simulation by writing root and joint states.
 
@@ -371,10 +388,18 @@ class IsaacLabSimulator(Simulator):
             env_ids (Optional[torch.Tensor]): Specific environment IDs to update.
         """
         init_root_state = torch.cat(
-            [new_states.root_pos, new_states.root_rot, new_states.root_vel, new_states.root_ang_vel], dim=-1
+            [
+                new_states.root_pos,
+                new_states.root_rot,
+                new_states.root_vel,
+                new_states.root_ang_vel,
+            ],
+            dim=-1,
         )
-        self.robot.write_root_state_to_sim(init_root_state, env_ids)
-        self.robot.write_joint_state_to_sim(new_states.dof_pos, new_states.dof_vel, None, env_ids)
+        self._robot.write_root_state_to_sim(init_root_state, env_ids)
+        self._robot.write_joint_state_to_sim(
+            new_states.dof_pos, new_states.dof_vel, None, env_ids
+        )
 
     # =====================================================
     # Group 4: State Getters
@@ -388,7 +413,7 @@ class IsaacLabSimulator(Simulator):
         """
         return self._isaaclab_default_state
 
-    def get_sim_body_ordering(self) -> SimBodyOrdering:
+    def _get_sim_body_ordering(self) -> SimBodyOrdering:
         """
         Obtain the ordering of body, degree-of-freedom, and contact sensor names.
 
@@ -396,12 +421,14 @@ class IsaacLabSimulator(Simulator):
             SimBodyOrdering: An object containing the body names, DOF names, and contact sensor body names.
         """
         return SimBodyOrdering(
-            body_names=self.robot.data.body_names,
-            dof_names=self.robot.data.joint_names,
-            contact_sensor_body_names=self.contact_sensor.body_names,
+            body_names=self._robot.data.body_names,
+            dof_names=self._robot.data.joint_names,
+            contact_sensor_body_names=self._contact_sensor.body_names,
         )
 
-    def _get_simulator_bodies_state(self, env_ids: Optional[torch.Tensor] = None) -> RobotState:
+    def _get_simulator_bodies_state(
+        self, env_ids: Optional[torch.Tensor] = None
+    ) -> RobotState:
         """
         Retrieve the state (positions, rotations, velocities) of all simulation bodies.
 
@@ -411,22 +438,22 @@ class IsaacLabSimulator(Simulator):
         Returns:
             RobotState: The state of the bodies.
         """
-        isaacsim_bodies_positions = self.robot.data.body_pos_w.clone()
-        isaacsim_bodies_rotations = self.robot.data.body_quat_w.clone()
-        isaacsim_bodies_velocities = self.robot.data.body_lin_vel_w.clone()
-        isaacsim_bodies_ang_velocities = self.robot.data.body_ang_vel_w.clone()
+        isaacsim_bodies_positions = self._robot.data.body_pos_w.clone()
+        isaacsim_bodies_rotations = self._robot.data.body_quat_w.clone()
+        isaacsim_bodies_velocities = self._robot.data.body_lin_vel_w.clone()
+        isaacsim_bodies_ang_velocities = self._robot.data.body_ang_vel_w.clone()
 
         isaacsim_bodies_positions = isaacsim_bodies_positions.view(
-            self.num_envs, self.num_bodies, 3
+            self.num_envs, self._num_bodies, 3
         )
         isaacsim_bodies_rotations = isaacsim_bodies_rotations.view(
-            self.num_envs, self.num_bodies, 4
+            self.num_envs, self._num_bodies, 4
         )
         isaacsim_bodies_velocities = isaacsim_bodies_velocities.view(
-            self.num_envs, self.num_bodies, 3
+            self.num_envs, self._num_bodies, 3
         )
         isaacsim_bodies_ang_velocities = isaacsim_bodies_ang_velocities.view(
-            self.num_envs, self.num_bodies, 3
+            self.num_envs, self._num_bodies, 3
         )
         if env_ids is not None:
             isaacsim_bodies_positions = isaacsim_bodies_positions[env_ids]
@@ -440,7 +467,9 @@ class IsaacLabSimulator(Simulator):
             rigid_body_ang_vel=isaacsim_bodies_ang_velocities,
         )
 
-    def _get_simulator_dof_forces(self, env_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def _get_simulator_dof_forces(
+        self, env_ids: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         """
         Retrieve applied torque forces for the robot's degrees of freedom.
 
@@ -450,12 +479,14 @@ class IsaacLabSimulator(Simulator):
         Returns:
             torch.Tensor: The DOF forces.
         """
-        isaacsim_dof_forces = self.robot.data.applied_torque.clone()
+        isaacsim_dof_forces = self._robot.data.applied_torque.clone()
         if env_ids is not None:
             isaacsim_dof_forces = isaacsim_dof_forces[env_ids]
         return isaacsim_dof_forces
 
-    def _get_simulator_dof_state(self, env_ids: Optional[torch.Tensor] = None) -> RobotState:
+    def _get_simulator_dof_state(
+        self, env_ids: Optional[torch.Tensor] = None
+    ) -> RobotState:
         """
         Retrieve the state (positions and velocities) of the robot's DOFs.
 
@@ -465,8 +496,8 @@ class IsaacLabSimulator(Simulator):
         Returns:
             RobotState: The DOF state.
         """
-        isaacsim_dof_pos = self.robot.data.joint_pos.clone()
-        isaacsim_dof_vel = self.robot.data.joint_vel.clone()
+        isaacsim_dof_pos = self._robot.data.joint_pos.clone()
+        isaacsim_dof_vel = self._robot.data.joint_vel.clone()
         if env_ids is not None:
             isaacsim_dof_pos = isaacsim_dof_pos[env_ids]
             isaacsim_dof_vel = isaacsim_dof_vel[env_ids]
@@ -475,8 +506,9 @@ class IsaacLabSimulator(Simulator):
             dof_vel=isaacsim_dof_vel,
         )
 
-
-    def _get_simulator_bodies_contact_buf(self, env_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def _get_simulator_bodies_contact_buf(
+        self, env_ids: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         """
         Retrieve the contact force buffer for simulation bodies.
 
@@ -486,20 +518,24 @@ class IsaacLabSimulator(Simulator):
         Returns:
             torch.Tensor: Tensor containing the contact forces.
         """
-        if self.contact_sensor.data.force_matrix_w is not None:
-            isaacsim_rb_contacts = self.contact_sensor.data.force_matrix_w.clone().view(
-                self.num_envs, self.num_bodies, -1, 3
+        if self._contact_sensor.data.force_matrix_w is not None:
+            isaacsim_rb_contacts = (
+                self._contact_sensor.data.force_matrix_w.clone().view(
+                    self.num_envs, self._num_bodies, -1, 3
+                )
             )
             isaacsim_rb_contacts = isaacsim_rb_contacts.sum(dim=2)
         else:
-            isaacsim_rb_contacts = self.contact_sensor.data.net_forces_w.clone().view(
-                self.num_envs, self.num_bodies, 3
+            isaacsim_rb_contacts = self._contact_sensor.data.net_forces_w.clone().view(
+                self.num_envs, self._num_bodies, 3
             )
         if env_ids is not None:
             isaacsim_rb_contacts = isaacsim_rb_contacts[env_ids]
         return isaacsim_rb_contacts
 
-    def _get_simulator_object_contact_buf(self, env_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def _get_simulator_object_contact_buf(
+        self, env_ids: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         """
         Retrieve the contact buffer for simulation objects.
 
@@ -513,7 +549,7 @@ class IsaacLabSimulator(Simulator):
             object_forces = []
             for obj_idx in range(self.scene_lib.num_objects_per_scene):
                 object_forces.append(
-                    self.object[obj_idx].data.net_contact_forces_w.clone()
+                    self._object[obj_idx].data.net_contact_forces_w.clone()
                 )
             if env_ids is not None:
                 object_forces = object_forces[env_ids]
@@ -526,7 +562,9 @@ class IsaacLabSimulator(Simulator):
                 return_tensor = return_tensor[env_ids]
             return return_tensor
 
-    def _get_simulator_root_state(self, env_ids: Optional[torch.Tensor] = None) -> RobotState:
+    def _get_simulator_root_state(
+        self, env_ids: Optional[torch.Tensor] = None
+    ) -> RobotState:
         """
         Retrieve the root state (position, rotation, velocity) of the robot.
 
@@ -536,10 +574,10 @@ class IsaacLabSimulator(Simulator):
         Returns:
             RobotState: The robot's root state.
         """
-        isaacsim_root_pos = self.robot.data.root_pos_w.clone()
-        isaacsim_root_rot = self.robot.data.root_quat_w.clone()
-        isaacsim_root_vel = self.robot.data.root_lin_vel_w.clone()
-        isaacsim_root_ang_vel = self.robot.data.root_ang_vel_w.clone()
+        isaacsim_root_pos = self._robot.data.root_pos_w.clone()
+        isaacsim_root_rot = self._robot.data.root_quat_w.clone()
+        isaacsim_root_vel = self._robot.data.root_lin_vel_w.clone()
+        isaacsim_root_ang_vel = self._robot.data.root_ang_vel_w.clone()
         if env_ids is not None:
             isaacsim_root_pos = isaacsim_root_pos[env_ids]
             isaacsim_root_rot = isaacsim_root_rot[env_ids]
@@ -552,7 +590,9 @@ class IsaacLabSimulator(Simulator):
             root_ang_vel=isaacsim_root_ang_vel,
         )
 
-    def _get_simulator_object_root_state(self, env_ids: Optional[torch.Tensor] = None) -> RobotState:
+    def _get_simulator_object_root_state(
+        self, env_ids: Optional[torch.Tensor] = None
+    ) -> RobotState:
         """
         Retrieve the combined root state for all simulation objects.
 
@@ -567,10 +607,12 @@ class IsaacLabSimulator(Simulator):
         isaacsim_root_vel = []
         isaacsim_root_ang_vel = []
         for obj_idx in range(self.scene_lib.num_objects_per_scene):
-            isaacsim_root_pos.append(self.object[obj_idx].data.root_pos_w.clone())
-            isaacsim_root_rot.append(self.object[obj_idx].data.root_quat_w.clone())
-            isaacsim_root_vel.append(self.object[obj_idx].data.root_lin_vel_w.clone())
-            isaacsim_root_ang_vel.append(self.object[obj_idx].data.root_ang_vel_w.clone())
+            isaacsim_root_pos.append(self._object[obj_idx].data.root_pos_w.clone())
+            isaacsim_root_rot.append(self._object[obj_idx].data.root_quat_w.clone())
+            isaacsim_root_vel.append(self._object[obj_idx].data.root_lin_vel_w.clone())
+            isaacsim_root_ang_vel.append(
+                self._object[obj_idx].data.root_ang_vel_w.clone()
+            )
         isaacsim_root_pos = torch.stack(isaacsim_root_pos, dim=1)
         isaacsim_root_rot = torch.stack(isaacsim_root_rot, dim=1)
         isaacsim_root_vel = torch.stack(isaacsim_root_vel, dim=1)
@@ -594,16 +636,19 @@ class IsaacLabSimulator(Simulator):
         Returns:
             int: Number of actors per environment.
         """
-        root_pos = self.robot.data.root_pos_w
+        root_pos = self._robot.data.root_pos_w
         return root_pos.shape[0] // self.num_envs
 
     # =====================================================
     # Group 5: Control & Computation Methods
     # =====================================================
 
-    def push_robot(self):
-        vel_w = self.robot.data.root_vel_w
-        self.robot.write_root_velocity_to_sim(vel_w + torch.ones_like(vel_w), env_ids=torch.arange(self.num_envs, device=self.device))
+    def _push_robot(self):
+        vel_w = self._robot.data.root_vel_w
+        self._robot.write_root_velocity_to_sim(
+            vel_w + torch.ones_like(vel_w),
+            env_ids=torch.arange(self.num_envs, device=self.device),
+        )
 
     # =====================================================
     # Group 6: Rendering & Visualization
@@ -613,45 +658,52 @@ class IsaacLabSimulator(Simulator):
         Render the simulation view. Initializes or updates the camera if the simulator is not in headless mode.
         """
         if not self.headless:
-            if not hasattr(self, "perspective_view"):
-                from protomotions.simulator.isaaclab.utils.perspective_viewer import PerspectiveViewer
+            if not hasattr(self, "_perspective_view"):
+                from protomotions.simulator.isaaclab.utils.perspective_viewer import (
+                    PerspectiveViewer,
+                )
 
-                self.perspective_view = PerspectiveViewer()
-                self.init_camera()
+                self._perspective_view = PerspectiveViewer()
+                self._init_camera()
             else:
-                self.update_camera()
+                self._update_camera()
         super().render()
 
-    def init_camera(self) -> None:
+    def _init_camera(self) -> None:
         """
         Initialize the camera view based on the current simulation root state.
         """
-        self.cam_prev_char_pos = self._get_simulator_root_state(0).root_pos.cpu().numpy()
-        pos = self.cam_prev_char_pos + np.array([0, -5, 1])
-        self.perspective_view.set_camera_view(
-            pos, self.cam_prev_char_pos + np.array([0, 0, 0.2])
+        self._cam_prev_char_pos = (
+            self._get_simulator_root_state(0).root_pos.cpu().numpy()
+        )
+        pos = self._cam_prev_char_pos + np.array([0, -5, 1])
+        self._perspective_view.set_camera_view(
+            pos, self._cam_prev_char_pos + np.array([0, 0, 0.2])
         )
 
-    def update_camera(self) -> None:
+    def _update_camera(self) -> None:
         """
         Update the camera view based on the target's position and current camera movement.
         """
-        if self.camera_target["element"] == 0:
+        if self._camera_target["element"] == 0:
             char_root_pos = (
-                self._get_simulator_root_state(self.camera_target["env"]).root_pos
-                .cpu()
+                self._get_simulator_root_state(self._camera_target["env"])
+                .root_pos.cpu()
                 .numpy()
             )
             height_offset = 0.2
         else:
-            in_scene_object_id = self.camera_target["element"] - 1
+            in_scene_object_id = self._camera_target["element"] - 1
             char_root_pos = (
-                self._get_simulator_object_root_state(self.camera_target["env"]).root_pos[in_scene_object_id].cpu().numpy()
+                self._get_simulator_object_root_state(self._camera_target["env"])
+                .root_pos[in_scene_object_id]
+                .cpu()
+                .numpy()
             )
             height_offset = 0
 
-        cam_pos = np.array(self.perspective_view.get_camera_state())
-        cam_delta = cam_pos - self.cam_prev_char_pos
+        cam_pos = np.array(self._perspective_view.get_camera_state())
+        cam_delta = cam_pos - self._cam_prev_char_pos
 
         new_cam_target = np.array(
             [char_root_pos[0], char_root_pos[1], char_root_pos[2] + height_offset]
@@ -663,17 +715,20 @@ class IsaacLabSimulator(Simulator):
                 char_root_pos[2] + cam_delta[2],
             ]
         )
-        self.perspective_view.set_camera_view(new_cam_pos, new_cam_target)
-        self.cam_prev_char_pos[:] = char_root_pos
+        self._perspective_view.set_camera_view(new_cam_pos, new_cam_target)
+        self._cam_prev_char_pos[:] = char_root_pos
 
-    def write_viewport_to_file(self, file_name: str) -> None:
+    def _write_viewport_to_file(self, file_name: str) -> None:
         """
         Capture the current viewport and save it to the specified file.
 
         Parameters:
             file_name (str): The filename for the saved image.
         """
-        from omni.kit.viewport.utility import get_active_viewport, capture_viewport_to_file
+        from omni.kit.viewport.utility import (
+            get_active_viewport,
+            capture_viewport_to_file,
+        )
 
         vp_api = get_active_viewport()
         capture_viewport_to_file(vp_api, file_name)
@@ -682,15 +737,17 @@ class IsaacLabSimulator(Simulator):
         """
         Close the simulation application and perform cleanup.
         """
-        self.simulation_app.close()
+        self._simulation_app.close()
 
-    def build_markers(self, visualization_markers: Dict[str, VisualizationMarker]) -> None:
+    def _build_markers(
+        self, visualization_markers: Dict[str, VisualizationMarker]
+    ) -> None:
         """Build and configure visualization markers.
 
         Args:
             visualization_markers (Dict[str, VisualizationMarker]): Dictionary mapping marker names to their configurations
         """
-        self.visualization_markers = {}
+        self._visualization_markers = {}
         if visualization_markers is None:
             return
 
@@ -702,7 +759,11 @@ class IsaacLabSimulator(Simulator):
                         "sphere": sim_utils.SphereCfg(
                             radius=1,
                             visual_material=sim_utils.PreviewSurfaceCfg(
-                                diffuse_color=(markers_cfg.color[0], markers_cfg.color[1], markers_cfg.color[2])
+                                diffuse_color=(
+                                    markers_cfg.color[0],
+                                    markers_cfg.color[1],
+                                    markers_cfg.color[2],
+                                )
                             ),
                         ),
                     },
@@ -715,7 +776,12 @@ class IsaacLabSimulator(Simulator):
                             usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/UIElements/arrow_x.usd",
                             scale=(1.0, 1.0, 1.0),
                             visual_material=sim_utils.PreviewSurfaceCfg(
-                                diffuse_color=(markers_cfg.color[0], markers_cfg.color[1], markers_cfg.color[2]), opacity=0.5
+                                diffuse_color=(
+                                    markers_cfg.color[0],
+                                    markers_cfg.color[1],
+                                    markers_cfg.color[2],
+                                ),
+                                opacity=0.5,
                             ),
                         ),
                     },
@@ -740,12 +806,18 @@ class IsaacLabSimulator(Simulator):
                         scale = 0.5
                     marker_scale.append([scale, 0.2 * scale, 0.2 * scale])
 
-            self.visualization_markers[marker_name] = EasyDict({
-                "marker": VisualizationMarkers(marker_obj_cfg),
-                "scale": torch.tensor(marker_scale, device=self.device).repeat(self.num_envs, 1)
-            })
+            self._visualization_markers[marker_name] = EasyDict(
+                {
+                    "marker": VisualizationMarkers(marker_obj_cfg),
+                    "scale": torch.tensor(marker_scale, device=self.device).repeat(
+                        self.num_envs, 1
+                    ),
+                }
+            )
 
-    def _update_simulator_markers(self, markers_state: Optional[Dict[str, MarkerState]] = None) -> None:
+    def _update_simulator_markers(
+        self, markers_state: Optional[Dict[str, MarkerState]] = None
+    ) -> None:
         """Update the visualization markers with new state information.
 
         Args:
@@ -755,10 +827,9 @@ class IsaacLabSimulator(Simulator):
             return
 
         for marker_name, markers_state_item in markers_state.items():
-            marker_dict = self.visualization_markers[marker_name]
+            marker_dict = self._visualization_markers[marker_name]
             marker_dict.marker.visualize(
                 translations=markers_state_item.translation.view(-1, 3),
                 orientations=markers_state_item.orientation.view(-1, 4),
-                scales=marker_dict.scale
+                scales=marker_dict.scale,
             )
-

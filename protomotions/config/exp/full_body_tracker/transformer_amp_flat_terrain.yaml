@@ -9,10 +9,8 @@ defaults:
   - /agent/amp/models/mlp_discriminator_large
   - /agent/mimic/models/transformer_actor_target_pose
   - /agent/mimic/models/mlp_critic_target_pose
-  # # - /scenes/samp
   - /agent/mimic/options/global_tracking
   - /agent/mimic/options/early_termination_tracking_err
-  - /agent/mimic/options/dynamic_sampling
 
 env:
   config:

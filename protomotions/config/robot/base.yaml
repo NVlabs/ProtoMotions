@@ -10,12 +10,15 @@ robot:
   contact_bodies: ${.body_names}
 
   # Control parameters
-  body_names: ???  # DFS ordering
-  dof_names: ???
+  body_names: ???  # DFS ordering (IsaacGym)
+  dof_names: ???  # DFS ordering (IsaacGym)
   trackable_bodies_subset: ${.body_names}
 
   dof_body_ids: ???
   dof_effort_limits: null
+  dof_vel_limits: null
+  dof_armatures: null
+  dof_joint_frictions: null
 
   key_bodies: null
   non_termination_contact_bodies: null
@@ -34,6 +37,8 @@ robot:
   control:
     # Can be "built_in_pd" or "proportional"/"velocity"/"torque" for Proportional, Velocity, Torque control
     control_type: built_in_pd
+    use_biased_controller: False  # See H1 config for an example of what this does
+    map_actions_to_pd_range: True  # Actions assumed to be in [-1, 1] range, are mapped to [dof_min, dof_max] (+ some extra slack to avoid power drops at the limit)
     # PD Drive parameters:
     stiffness: null
     damping: null

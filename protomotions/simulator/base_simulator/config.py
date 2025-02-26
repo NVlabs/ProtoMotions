@@ -182,6 +182,11 @@ class ControlConfig(ConfigBuilder):
     action_scale: float = 1.0
     clamp_actions: float = 1.0
     
+    # target angles [rad] when action = 0
+    use_biased_controller: bool = False
+    # maps [-1, 1] to [dof_min, dof_max]
+    map_actions_to_pd_range: bool = True
+    
     # Optional fields
     stiffness: Optional[Dict[str, float]] = None  # joint type -> stiffness in N*m/rad
     damping: Optional[Dict[str, float]] = None  # joint type -> damping in N*m*s/rad
@@ -213,6 +218,10 @@ class RobotConfig(ConfigBuilder):
     
     # Optional fields
     dof_effort_limits: Optional[List[float]] = None
+    dof_vel_limits: Optional[List[float]] = None
+    dof_armatures: Optional[List[float]] = None
+    dof_joint_frictions: Optional[List[float]] = None
+
     key_bodies: Optional[List[str]] = None
     non_termination_contact_bodies: Optional[List[str]] = None
     init_state: Optional[InitState] = None

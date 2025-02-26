@@ -85,7 +85,8 @@ class VaeDeterministicOutputModel(nn.Module):
         )
         input_dict["vae_latent"] = z
         action = self._trunk(input_dict)
-
+        action = torch.tanh(action)
+        
         return action
 
     def get_action_and_vae_outputs(self, input_dict: dict):
@@ -107,6 +108,7 @@ class VaeDeterministicOutputModel(nn.Module):
 
         input_dict["vae_latent"] = z
         action = self._trunk(input_dict)
+        action = torch.tanh(action)
 
         return action, prior_out, encoder_out
 

@@ -28,7 +28,6 @@
 
 import torch
 from torch import distributions, nn
-import numpy as np
 from hydra.utils import instantiate
 from protomotions.agents.common.mlp import MultiHeadedMLP
 
@@ -83,8 +82,5 @@ class PPOModel(nn.Module):
 
     @staticmethod
     def neglogp(x, mean, std, logstd):
-        return (
-            0.5 * (((x - mean) / std) ** 2).sum(dim=-1)
-            + 0.5 * np.log(2.0 * np.pi) * x.size()[-1]
-            + logstd.sum(dim=-1)
-        )
+        dist = distributions.Normal(mean, std)
+        return -dist.log_prob(x).sum(dim=-1)

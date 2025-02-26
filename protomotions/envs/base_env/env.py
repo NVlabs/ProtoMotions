@@ -581,7 +581,7 @@ class BaseEnv:
         head_term_height = self.config.head_termination_height
         termination_height = self.config.termination_height
 
-        termination_heights = np.array([termination_height] * self.simulator.num_bodies)
+        termination_heights = np.array([termination_height] * self.simulator.get_num_bodies())
 
         head_id = self.config.robot.body_names.index(self.config.robot.head_body_name)
 
@@ -682,7 +682,7 @@ class BaseEnv:
     def instantiate_motion_lib(self):
         motion_lib: MotionLib = instantiate(
             self.config.motion_lib,
-            dof_body_ids=self.simulator.dof_body_ids,
+            dof_body_ids=self.simulator.get_dof_body_ids(),
             dof_offsets=self.simulator.get_dof_offsets(),
             key_body_ids=self.key_body_ids,
             device=self.device,

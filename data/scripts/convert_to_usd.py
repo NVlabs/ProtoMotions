@@ -30,8 +30,6 @@ from isaaclab.app import AppLauncher
 
 import os
 from pathlib import Path
-
-import numpy as np
 import torch
 import typer
 from tqdm import tqdm
@@ -51,7 +49,7 @@ def convert(in_file, out_file, make_instanceable, collision_approximation, mass)
 
     # Collision properties
     collision_props = schemas_cfg.CollisionPropertiesCfg(
-        collision_enabled=True  # collision_approximation != "none"
+        collision_enabled=collision_approximation != "none"
     )
 
     # Create Mesh converter config
@@ -103,7 +101,7 @@ def main(
         files.sort()
 
         for filename in tqdm(files):
-            if str(filename).endswith(".obj") or str(filename).endswith(".ply"):
+            if str(filename).endswith(".obj") or str(filename).endswith(".ply") or str(filename).endswith(".stl"):
                 relative_path_dir = filename.relative_to(data_dir).parent
                 file_ending = filename.name.split(".")[-1]
                 outpath = (

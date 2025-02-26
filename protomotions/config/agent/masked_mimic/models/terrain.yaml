@@ -12,7 +12,6 @@ agent:
           normalize_obs: True
           norm_clamp_value: 5
 
-    # Setup basic actor-critic structure
     model:
       config:
         trunk:

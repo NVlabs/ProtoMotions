@@ -44,19 +44,6 @@ class Mimic(AMP):
     env: MimicEnv
 
     # -----------------------------
-    # Environment Interaction and Data Updates
-    # -----------------------------
-    def post_train_env_step(self, rewards, dones, done_indices, extras, step):
-        """
-        After resuming training, force a quick evaluation of motions so the agent focuses on harder data.
-        """
-        if self.env.config.motion_manager.dynamic_sampling.enabled:
-            self.env.force_respawn_on_flat = torch.any(
-                self.env.motion_manager.bucket_weights == 0
-            )
-        return super().post_train_env_step(rewards, dones, done_indices, extras, step)
-
-    # -----------------------------
     # Motion Mapping and Data Distribution
     # -----------------------------
     def map_motions_to_iterations(self) -> List[Tuple[torch.Tensor, torch.Tensor]]:
@@ -183,18 +170,20 @@ class Mimic(AMP):
             motion_lengths = self.motion_lib.state.motion_lengths[:]
             motion_num_frames = (motion_lengths / dt).floor().long()
 
+        # Save metrics per rank; distributed all_gather does not support dictionaries.
         with open(root_dir / f"{self.fabric.global_rank}_metrics.pt", "wb") as f:
             torch.save(metrics, f)
         self.fabric.barrier()
-        if self.fabric.global_rank == 0:
-            for rank in range(1, self.fabric.world_size):
-                with open(root_dir / f"{rank}_metrics.pt", "rb") as f:
-                    other_metrics = torch.load(f, map_location=self.device)
-                other_evaluated_indices = torch.nonzero(other_metrics["evaluated"]).flatten()
-                for k in other_metrics.keys():
-                    metrics[k][other_evaluated_indices] = other_metrics[k][other_evaluated_indices]
-                metrics["evaluated"][other_evaluated_indices] = True
-            assert metrics["evaluated"].all(), "Not all motions were evaluated."
+        # All ranks aggregrate data from all ranks.
+        for rank in range(self.fabric.world_size):
+            with open(root_dir / f"{rank}_metrics.pt", "rb") as f:
+                other_metrics = torch.load(f, map_location=self.device)
+            other_evaluated_indices = torch.nonzero(other_metrics["evaluated"]).flatten()
+            for k in other_metrics.keys():
+                metrics[k][other_evaluated_indices] = other_metrics[k][other_evaluated_indices]
+            metrics["evaluated"][other_evaluated_indices] = True
+
+        assert metrics["evaluated"].all(), "Not all motions were evaluated."
         self.fabric.barrier()
         (root_dir / f"{self.fabric.global_rank}_metrics.pt").unlink()
 
@@ -208,11 +197,16 @@ class Mimic(AMP):
         if "gt_err" in self.config.eval_metric_keys:
             tracking_failures = (metrics["gt_err_max"] > 0.5).float()
             to_log["eval/tracking_success_rate"] = 1.0 - tracking_failures.detach().mean().item()
+
             failed_motions = torch.nonzero(tracking_failures).flatten().tolist()
             print(f"Saving to: {root_dir / f'failed_motions_{self.fabric.global_rank}.txt'}")
             with open(root_dir / f"failed_motions_{self.fabric.global_rank}.txt", "w") as f:
                 for motion_id in failed_motions:
                     f.write(f"{motion_id}\n")
+                    
+            new_weights = torch.ones(self.motion_lib.num_motions(), device=self.device) * 1e-4
+            new_weights[failed_motions] = 1.0
+            self.env.motion_manager.update_sampling_weights(new_weights)
 
         stop_early = (
             self.config.training_early_termination.early_terminate_cart_err is not None

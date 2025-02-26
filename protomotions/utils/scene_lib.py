@@ -110,7 +110,6 @@ class Scene:
     Represents a scene consisting of one or more SceneObjects.
     An offset (x, y) indicates the scene's location.
     """
-    id: int
     objects: List[SceneObject] = field(default_factory=list)
     offset: Tuple[float, float] = (0.0, 0.0)
 
@@ -239,7 +238,7 @@ class SceneLib:
             locations = torch.tensor([[scene_x, scene_y]], device=terrain.device)
             assert terrain.is_valid_spawn_location(locations).cpu().item(), f"Scene {idx} is not a valid spawn location."
             terrain.mark_scene_location(scene_x, scene_y)
-            logger.info("Assigned scene id %s to offset (%.2f, %.2f)", scene.id, x_offset, y_offset)
+            logger.info("Assigned scene id %s to offset (%.2f, %.2f)", idx, x_offset, y_offset)
             self._scene_offsets.append((x_offset, y_offset))
 
             # Ensure each scene has the same number of objects
@@ -291,9 +290,9 @@ class SceneLib:
         return assigned_scenes
     
     def compute_object_dims(self, object_path):
-        obj_path = object_path.replace(".urdf", ".obj").replace(".usda", ".obj")
-        stl_path = object_path.replace(".urdf", ".stl").replace(".usda", ".stl")
-        ply_path = object_path.replace(".urdf", ".ply").replace(".usda", ".ply")
+        obj_path = object_path.replace(".urdf", ".obj").replace(".usda", ".obj").replace(".usd", ".obj")
+        stl_path = object_path.replace(".urdf", ".stl").replace(".usda", ".stl").replace(".usd", ".stl")
+        ply_path = object_path.replace(".urdf", ".ply").replace(".usda", ".ply").replace(".usd", ".ply")
 
         if (
             os.path.exists(obj_path)
@@ -595,7 +594,7 @@ if __name__ == "__main__":
     terrain = DummyTerrain()
     assigned_scenes = scene_lib.create_scenes(scenes, terrain, replicate_method="random")
     for idx, scene in enumerate(assigned_scenes):
-        logger.info("Environment %d assigned Scene ID %d with offset %s", idx, scene.id, scene.offset)
+        logger.info("Environment %d assigned Scene with objects %s with offset %s", idx, scene.objects, scene.offset)
 
     # get_object_pose now returns an ObjectState and combine_object_motions is automatically called in create_scenes()
     time = 1. / 30 * 0.5

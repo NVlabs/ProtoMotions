@@ -9,9 +9,6 @@ defaults:
   - /agent/amp/models/mlp_discriminator
   - /agent/mimic/models/mlp_actor_target_pose
   - /agent/mimic/models/mlp_critic_target_pose
-  # - /terrain/complex
-  # - /agent/ppo/models/mlp_actor_terrain
-  # - /agent/ppo/models/mlp_critic_terrain
   - /agent/mimic/options/global_tracking
   - /agent/mimic/options/early_termination_tracking_err
 

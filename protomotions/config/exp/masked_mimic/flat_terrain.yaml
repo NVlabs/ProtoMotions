@@ -7,12 +7,8 @@ defaults:
   - /agent/masked_mimic/models/encoder
   - /agent/masked_mimic/models/prior
   - /agent/masked_mimic/models/text_conditioning
-#  - /terrain/complex
-#  - /agent/masked_mimic/models/terrain
-  # # - /scenes/samp
   - /agent/mimic/options/global_tracking
   - /agent/mimic/options/early_termination_tracking_err
-  - /agent/mimic/options/dynamic_sampling
 
 env:
   config:

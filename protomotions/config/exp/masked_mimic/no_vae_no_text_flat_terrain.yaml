@@ -5,12 +5,8 @@ defaults:
   - /env/mimic
 
   - /agent/masked_mimic/models_no_vae/encoder
-#  - /terrain/complex
-#  - /agent/masked_mimic/models/terrain
-  # # - /scenes/samp
   - /agent/mimic/options/global_tracking
   - /agent/mimic/options/early_termination_tracking_err
-  - /agent/mimic/options/dynamic_sampling
 
 env:
   config:

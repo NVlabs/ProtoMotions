@@ -1,34 +1,14 @@
 # @package _global_
 
 motion_manager:
-  motion_sampling:
-    # For motion tracking it is important to emphasize the initial pose.
-    init_start_prob: 0.2
-    init_random_prob: 0
-
   reset_track:
     steps_min: 10
     steps_max: 600
     grace_period: 5
 
-  dynamic_sampling:
-    enabled: False
-    bucket_width: 1.0
-    min_bucket_weight: 1e-6
-    dynamic_weight_pow: 1.0
-    dynamic_weight_max: 40
-    update_dynamic_weight_epochs: 5
-
 # Globally accessible parameters
 eval_overrides:
   motion_manager:
-    motion_sampling:
-      init_start_prob: 1.
-      init_random_prob: 0
-
     reset_track:
       steps_min: 1000000
       steps_max: 1000001
-
-    dynamic_sampling:
-      enabled: False

@@ -44,6 +44,8 @@ class MotionManager(BaseComponent):
             torch.ones(self.env.num_envs, dtype=torch.float, device=self.env.device)
             * self.config.motion_sampling.init_start_prob
         )
+        
+        self.motion_weights = self.env.motion_lib.state.motion_weights.clone().to(device=self.env.device)
 
     def reset_envs(self, env_ids):
         self.sample_motions(env_ids)
@@ -64,7 +66,7 @@ class MotionManager(BaseComponent):
             Tuple[Tensor, Tensor]: New motion IDs and times for the reset environments.
         """
         if self.config.fixed_motion_per_env:
-            # We typically use this for recording. Maybe worth moving into the motion manager logic.
+            # We typically use this for recording.
             motion_index_offset = self.config.motion_index_offset
             if motion_index_offset is None:
                 motion_index_offset = 0
@@ -77,7 +79,7 @@ class MotionManager(BaseComponent):
             )
         else:
             if new_motion_ids is None:
-                new_motion_ids = self.env.motion_lib.sample_motions(len(env_ids))
+                new_motion_ids = torch.multinomial(self.motion_weights, num_samples=len(env_ids), replacement=True)
             if self.config.fixed_motion_id is not None:
                 new_motion_ids = (
                     torch.zeros_like(new_motion_ids) + self.config.fixed_motion_id
@@ -86,13 +88,26 @@ class MotionManager(BaseComponent):
                 new_motion_ids, truncate_time=self.env.dt
             )
 
-        if self.config.motion_sampling.init_start_prob > 0:
-            init_start = torch.bernoulli(self.init_start_probs[: len(env_ids)])
-            new_times = torch.where(
-                init_start == 1,
-                torch.zeros_like(new_times),
-                new_times,
-            )
+            if self.config.motion_sampling.init_start_prob > 0:
+                init_start = torch.bernoulli(self.init_start_probs[: len(env_ids)])
+                new_times = torch.where(
+                    init_start == 1,
+                    torch.zeros_like(new_times),
+                    new_times,
+                )
 
         self.motion_ids[env_ids] = new_motion_ids
         self.motion_times[env_ids] = new_times
+
+    def update_sampling_weights(self, weights):
+        self.motion_weights[:] = weights
+
+    def get_state_dict(self):
+        state_dict = {
+            "motion_weights": self.motion_weights.cpu().clone(),
+        }
+        return state_dict
+
+    def load_state_dict(self, state_dict):
+        if "motion_weights" in state_dict:
+            self.motion_weights[:] = state_dict["motion_weights"].to(self.motion_weights.device)

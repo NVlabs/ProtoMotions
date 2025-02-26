@@ -260,9 +260,6 @@ class Mimic(BaseEnv):
         # if scene interaction motion -- also consider as "flat" for dynamic sampling measurements
         if requires_scene is not None and torch.any(requires_scene):
             self.respawned_on_flat[env_ids[requires_scene]] = True
-        self.motion_manager.envs_tracked_for_dynamic_sampling[env_ids] = (
-            self.respawned_on_flat[env_ids]
-        )
 
         return respawn_position
     
@@ -308,9 +305,6 @@ class Mimic(BaseEnv):
 
             has_reset_grace = self.motion_manager.get_has_reset_grace()
             reward_too_bad &= ~has_reset_grace
-
-            self.motion_manager.dynamic_sampling_tracked_failures[:] = 0
-            self.motion_manager.dynamic_sampling_tracked_failures[reward_too_bad] = 1
 
             self.reset_buf[reward_too_bad] = 1
             self.terminate_buf[reward_too_bad] = 1
@@ -373,7 +367,7 @@ class Mimic(BaseEnv):
         ref_gav = ref_state.rigid_body_ang_vel
         ref_dv = ref_state.dof_vel
 
-        ref_lr = ref_lr[:, self.simulator.dof_body_ids]
+        ref_lr = ref_lr[:, self.simulator.get_dof_body_ids()]
         ref_kb = self.process_kb(ref_gt, ref_gr)
 
         current_state = self.simulator.get_bodies_state()
@@ -542,14 +536,10 @@ class Mimic(BaseEnv):
     def post_physics_step(self):
         self.motion_manager.post_physics_step()
         super().post_physics_step()
-        self.motion_manager.update_dynamic_stats()
         self.motion_manager.handle_reset_track()
         
         if self.config.masked_mimic.enabled:
             self.masked_mimic_obs_cb.post_physics_step()
-            
-    def on_epoch_end(self, current_epoch: int):
-        self.motion_manager.refresh_dynamic_weights(current_epoch)
 
     def user_reset(self):
         super().user_reset()

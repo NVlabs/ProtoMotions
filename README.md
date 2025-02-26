@@ -95,7 +95,7 @@ If you have python errors:
 export LD_LIBRARY_PATH=${CONDA_PREFIX}/lib/
 ```
 
-If you run into memory issues -- try reducing the number of environments by adding to the commandline `num_envs=1024`
+If you run into memory issues -- try reducing the number of environments by adding to the command line `num_envs=1024`
 
 </details>
 
@@ -103,13 +103,13 @@ If you run into memory issues -- try reducing the number of environments by addi
 <summary>IsaacLab</summary>
 
 1. Install [IsaacLab](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/index.html)
-2. Once IsaacLAb is installed, from the repository root install the ProtoMotions package and its dependencies with:
+2. Once IsaacLab is installed, from the repository root install the ProtoMotions package and its dependencies with:
 3. Set `PYTHON_PATH` to point at the `isaaclab.sh` script
 ```bash
 For Linux: alias PYTHON_PATH="<isaac_lab_path> -p"
 # For example: alias PYTHON_PATH="/home/USERNAME/IsaacLab/isaaclab.sh -p"
 ```
-3. Once IsaacLab is installed, from the protomotions repository root, install the Physical Animation package and its dependencies with:
+4. Once IsaacLab is installed, from the protomotions repository root, install the Physical Animation package and its dependencies with:
 ```bash
 PYTHON_PATH -m pip install -e .
 PYTHON_PATH -m pip install -r requirements_isaaclab.txt

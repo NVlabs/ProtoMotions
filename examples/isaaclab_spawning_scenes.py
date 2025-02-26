@@ -8,7 +8,6 @@ headless = False
 app_launcher = AppLauncher({"headless": headless})
 simulation_app = app_launcher.app
 
-import numpy as np
 import torch
 
 from protomotions.simulator.isaaclab.config import IsaacLabSimulatorConfig, IsaacLabSimParams
@@ -186,7 +185,7 @@ table = SceneObject(
 )
 
 # Create scene with both objects
-scene = Scene(id=1, objects=[elephant, table])
+scene = Scene(objects=[elephant, table])
 
 # Create SceneLib instance
 scene_lib = SceneLib(num_envs=simulator_config.num_envs, device=device)

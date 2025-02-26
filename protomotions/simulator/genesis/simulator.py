@@ -72,12 +72,12 @@ class GenesisSimulator(Simulator):
         
         # Initialize the Genesis engine
         gs.init(backend=gs.gpu)
-        self.create_sim(visualization_markers)
+        self._create_sim(visualization_markers)
 
-    def create_sim(self, visualization_markers: Dict) -> None:
+    def _create_sim(self, visualization_markers: Dict) -> None:
         """Creates the Genesis simulation environment with specified configuration."""
         # Create a Genesis Scene with the configuration
-        self.scene = gs.Scene(
+        self._scene = gs.Scene(
             sim_options=gs.options.SimOptions(
                 dt=1. / self.config.sim.fps,
                 substeps=self.config.sim.substeps
@@ -104,26 +104,26 @@ class GenesisSimulator(Simulator):
         )
         
         if not self.headless:
-            self.perspective_view = self.scene.add_camera(
+            self._perspective_view = self._scene.add_camera(
                 # Use the same parameters as the viewer
-                res=self.scene.viewer.res,  
+                res=self._scene.viewer.res,  
                 pos=(2.5, 0.0, 4.0),
                 lookat=(0.0, 0.0, 2.0),
                 fov=40,
                 GUI=False
             )
 
-        self.add_terrain()
-        self.setup_markers(visualization_markers)
+        self._add_terrain()
+        self._setup_markers(visualization_markers)
 
-        self.create_envs()
+        self._create_envs()
         
         if not self.headless:
-            self.init_camera()
-            self.init_keyboard()
+            self._init_camera()
+            self._init_keyboard()
 
     # ===== Group 2: Environment Setup & Configuration =====
-    def create_envs(self) -> None:
+    def _create_envs(self) -> None:
         """Creates the simulation environments and loads robot assets."""
         asset_root = self.robot_config.asset.asset_root
         asset_file = self.robot_config.asset.asset_file_name
@@ -135,14 +135,14 @@ class GenesisSimulator(Simulator):
         
         # Load robot asset based on file type (MJCF or URDF)
         if asset_file_ext == ".xml":
-            self.robot = self.scene.add_entity(
+            self._robot = self._scene.add_entity(
                 gs.morphs.MJCF(
                     file=asset_path,
                 ),
                 visualize_contact=False,
             )
         else:
-            self.robot = self.scene.add_entity(
+            self._robot = self._scene.add_entity(
                 gs.morphs.URDF(
                     file=asset_path,
                     merge_fixed_links=True,
@@ -153,23 +153,23 @@ class GenesisSimulator(Simulator):
         
         # Setup DOF indices and limits
         self._genesis_dof_indices = []
-        self.dof_limits_lower = []
-        self.dof_limits_upper = []
-        for joint in self.robot.joints:
+        dof_limits_lower = []
+        dof_limits_upper = []
+        for joint in self._robot.joints:
             if joint.name in self.robot_config.dof_names:
                 if type(joint.dof_idx_local) is list:
                     self._genesis_dof_indices.extend(joint.dof_idx_local)
                 else:
                     self._genesis_dof_indices.append(joint.dof_idx_local)
 
-                self.dof_limits_lower.extend(joint.dofs_limit[:, 0])
-                self.dof_limits_upper.extend(joint.dofs_limit[:, 1])
+                dof_limits_lower.extend(joint.dofs_limit[:, 0])
+                dof_limits_upper.extend(joint.dofs_limit[:, 1])
 
         self._genesis_dof_indices = torch.tensor(self._genesis_dof_indices, device=self.device)
-        self.dof_limits_lower = torch.tensor(self.dof_limits_lower, device=self.device)
-        self.dof_limits_upper = torch.tensor(self.dof_limits_upper, device=self.device)
+        self._dof_limits_lower_sim = torch.tensor(dof_limits_lower, device=self.device)
+        self._dof_limits_upper_sim = torch.tensor(dof_limits_upper, device=self.device)
         
-        self.scene.build(n_envs=self.num_envs)
+        self._scene.build(n_envs=self.num_envs)
         
     def on_environment_ready(self) -> None:
         """
@@ -177,23 +177,23 @@ class GenesisSimulator(Simulator):
         This includes conversion tensors for bodies, DOFs, and contact sensors.
         """
         self._genesis_default_state = RobotState(
-            root_pos=self.robot.get_pos(),
-            root_rot=self.robot.get_quat(),
-            root_vel=self.robot.get_vel() * 0,
-            root_ang_vel=self.robot.get_ang() * 0,
-            dof_pos=self.robot.get_dofs_position(self._genesis_dof_indices),
-            dof_vel=self.robot.get_dofs_velocity(self._genesis_dof_indices),
-            rigid_body_pos=self.robot.get_links_pos(),
-            rigid_body_rot=self.robot.get_links_quat(),
-            rigid_body_vel=self.robot.get_links_vel(),
-            rigid_body_ang_vel=self.robot.get_links_ang(),
+            root_pos=self._robot.get_pos(),
+            root_rot=self._robot.get_quat(),
+            root_vel=self._robot.get_vel() * 0,
+            root_ang_vel=self._robot.get_ang() * 0,
+            dof_pos=self._robot.get_dofs_position(self._genesis_dof_indices),
+            dof_vel=self._robot.get_dofs_velocity(self._genesis_dof_indices),
+            rigid_body_pos=self._robot.get_links_pos(),
+            rigid_body_rot=self._robot.get_links_quat(),
+            rigid_body_vel=self._robot.get_links_vel(),
+            rigid_body_ang_vel=self._robot.get_links_ang(),
         )
         super().on_environment_ready()
 
-    def get_sim_body_ordering(self) -> SimBodyOrdering:
+    def _get_sim_body_ordering(self) -> SimBodyOrdering:
         """Returns the ordering of bodies and DOFs in the simulation."""
         dof_names = []
-        for joint in self.robot.joints:
+        for joint in self._robot.joints:
             if joint.name in self.robot_config.dof_names:
                 common_dof_idx = self.robot_config.dof_names.index(joint.name)
                 if type(joint.dof_idx_local) is list:
@@ -204,20 +204,20 @@ class GenesisSimulator(Simulator):
                     dof_names.append(joint.name)
         
         return SimBodyOrdering(
-            body_names=[link.name for link in self.robot.links],
+            body_names=[link.name for link in self._robot.links],
             dof_names=dof_names,
-            contact_sensor_body_names=[link.name for link in self.robot.links],
+            contact_sensor_body_names=[link.name for link in self._robot.links],
         )
     
-    def load_object_assets(self) -> None:
+    def _load_object_assets(self) -> None:
         """Loads object assets for the simulation environment."""
         pass
         
-    def build_object_playground(self, env_id: int, env_ptr) -> None:
+    def _build_object_playground(self, env_id: int, env_ptr) -> None:
         """Builds the object playground for a specific environment."""
         pass
     
-    def setup_markers(self, visualization_markers: Dict[str, VisualizationMarker]) -> None:
+    def _setup_markers(self, visualization_markers: Dict[str, VisualizationMarker]) -> None:
         """Build and configure visualization markers.
         Genesis visualization works much better when parallelized.
         However, each marker call supports a single scale value.
@@ -227,7 +227,7 @@ class GenesisSimulator(Simulator):
         Args:
             visualization_markers (Dict[str, VisualizationMarker]): Dictionary mapping marker names to their configurations
         """
-        self.visualization_markers = {}
+        self._visualization_markers = {}
         if visualization_markers is None:
             return
 
@@ -242,23 +242,23 @@ class GenesisSimulator(Simulator):
             for marker_size, indices in scale_dict.items():
                 scale_dict[marker_size] = torch.tensor(indices, device=self.device, dtype=torch.long)
             
-            self.visualization_markers[marker_name] = EasyDict({
+            self._visualization_markers[marker_name] = EasyDict({
                 "marker_type": markers_cfg.type,
                 "marker_color": markers_cfg.color,
                 "scale": scale_dict,
             })
     
-    def add_terrain(self) -> None:
+    def _add_terrain(self) -> None:
         """Adds terrain to the simulation environment."""
         if isinstance(self.terrain, FlatTerrain):
             # When using a flat terrain, we spawn the built-in plane.
             # This is faster and more memory efficient than spawning a trimesh terrain.
             # The Genesis plane spans the entire environment.
-            self._genesis_terrain = self.scene.add_entity(
+            self._genesis_terrain = self._scene.add_entity(
                 gs.morphs.Plane()
             )
         else:
-            self._genesis_terrain = self.scene.add_entity(
+            self._genesis_terrain = self._scene.add_entity(
                 morph=gs.morphs.Terrain(
                     horizontal_scale=self.terrain.horizontal_scale,
                     vertical_scale=self.terrain.vertical_scale,
@@ -267,35 +267,35 @@ class GenesisSimulator(Simulator):
             )
 
     # ===== Group 3: Simulation Steps & State Management =====
-    def physics_step(self) -> None:
+    def _physics_step(self) -> None:
         """Performs a physics simulation step."""
         for i in range(self.decimation):
             if self.control_type == ControlType.BUILT_IN_PD:
-                self.apply_pd_control()
+                self._apply_pd_control()
             else:
-                self.apply_motor_forces()
-            self.scene.step()
+                self._apply_motor_forces()
+            self._scene.step()
 
     def _set_simulator_env_state(self, new_states: RobotState, env_ids: Optional[torch.Tensor] = None) -> None:
         """Sets the state of specified environments."""
-        self.robot.set_pos(
+        self._robot.set_pos(
             new_states.root_pos, zero_velocity=False, envs_idx=env_ids
         )
-        self.robot.set_quat(
+        self._robot.set_quat(
             new_states.root_rot, zero_velocity=False, envs_idx=env_ids
         )
-        self.robot.set_dofs_velocity(
+        self._robot.set_dofs_velocity(
             new_states.root_vel, dofs_idx_local=[0, 1, 2],  envs_idx=env_ids
         )
-        self.robot.set_dofs_velocity(
+        self._robot.set_dofs_velocity(
             new_states.root_ang_vel, dofs_idx_local=[3, 4, 5],  envs_idx=env_ids
         )
-        self.robot.set_dofs_position(
+        self._robot.set_dofs_position(
             position=new_states.dof_pos,
             dofs_idx_local=self._genesis_dof_indices,
             envs_idx=env_ids,
         )
-        self.robot.set_dofs_velocity(
+        self._robot.set_dofs_velocity(
             velocity=new_states.dof_vel,
             dofs_idx_local=self._genesis_dof_indices,
             envs_idx=env_ids,
@@ -304,17 +304,17 @@ class GenesisSimulator(Simulator):
     # ===== Group 4: State Getters =====
     def _get_simulator_bodies_contact_buf(self, env_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
         """Returns contact forces for robot bodies."""
-        contact_forces = self.robot.get_links_net_contact_force()
+        contact_forces = self._robot.get_links_net_contact_force()
         if env_ids is not None:
             contact_forces = contact_forces[env_ids]
         return contact_forces
     
     def _get_simulator_bodies_state(self, env_ids: Optional[torch.Tensor] = None) -> RobotState:
         """Returns the state of robot bodies."""
-        body_pos = self.robot.get_links_pos()
-        body_rot = self.robot.get_links_quat()
-        body_vel = self.robot.get_links_vel()
-        body_ang_vel = self.robot.get_links_ang()
+        body_pos = self._robot.get_links_pos()
+        body_rot = self._robot.get_links_quat()
+        body_vel = self._robot.get_links_vel()
+        body_ang_vel = self._robot.get_links_ang()
         if env_ids is not None:
             body_pos = body_pos[env_ids]
             body_rot = body_rot[env_ids]
@@ -333,10 +333,10 @@ class GenesisSimulator(Simulator):
 
     def _get_simulator_root_state(self, env_ids: Optional[torch.Tensor] = None) -> RobotState:
         """Returns the root state of the robot."""
-        root_pos = self.robot.get_pos()
-        root_rot = self.robot.get_quat()
-        root_vel = self.robot.get_vel()
-        root_ang_vel = self.robot.get_ang()
+        root_pos = self._robot.get_pos()
+        root_rot = self._robot.get_quat()
+        root_vel = self._robot.get_vel()
+        root_ang_vel = self._robot.get_ang()
         if env_ids is not None:
             root_pos = root_pos[env_ids]
             root_rot = root_rot[env_ids]
@@ -359,15 +359,15 @@ class GenesisSimulator(Simulator):
 
     def _get_simulator_dof_forces(self, env_ids=None):
         """Returns the DOF forces."""
-        dof_forces = self.robot.get_dofs_force(self._genesis_dof_indices)
+        dof_forces = self._robot.get_dofs_force(self._genesis_dof_indices)
         if env_ids is not None:
             dof_forces = dof_forces[env_ids]
         return dof_forces
 
     def _get_simulator_dof_state(self, env_ids: Optional[torch.Tensor] = None) -> RobotState:
         """Returns the state of robot DOFs."""
-        dof_pos = self.robot.get_dofs_position(self._genesis_dof_indices)
-        dof_vel = self.robot.get_dofs_velocity(self._genesis_dof_indices)
+        dof_pos = self._robot.get_dofs_position(self._genesis_dof_indices)
+        dof_vel = self._robot.get_dofs_velocity(self._genesis_dof_indices)
         if env_ids is not None:
             dof_pos = dof_pos[env_ids]
             dof_vel = dof_vel[env_ids]
@@ -377,50 +377,50 @@ class GenesisSimulator(Simulator):
         )
 
     # ===== Group 5: Control & Computation Methods =====
-    def apply_motor_forces(self) -> None:
+    def _apply_motor_forces(self) -> None:
         """Applies computed motor forces to the robot."""
-        torques = self.compute_torques(self._actions)
-        self.robot.control_dofs_force(torques, self._genesis_dof_indices)
+        torques = self._compute_torques(self._actions)
+        self._robot.control_dofs_force(torques, self._genesis_dof_indices)
         
-    def apply_pd_control(self) -> None:
+    def _apply_pd_control(self) -> None:
         """Applies PD control to the robot."""
-        pd_tar = self.action_to_pd_targets(self._actions)
-        self.robot.control_dofs_position(pd_tar, self._genesis_dof_indices)
+        pd_tar = self._action_to_pd_targets(self._actions)
+        self._robot.control_dofs_position(pd_tar, self._genesis_dof_indices)
 
     # ===== Group 6: Rendering & Visualization =====
-    def init_camera(self) -> None:
+    def _init_camera(self) -> None:
         """Initializes the camera position and orientation."""
-        self.cam_prev_char_pos = self._get_simulator_root_state(self.camera_target["env"]).root_pos.cpu().numpy()
+        self._cam_prev_char_pos = self._get_simulator_root_state(self._camera_target["env"]).root_pos.cpu().numpy()
 
         cam_pos = np.array([
-            self.cam_prev_char_pos[0],
-            self.cam_prev_char_pos[1] - 3.0,
-            self.cam_prev_char_pos[2] + 0.4,
+            self._cam_prev_char_pos[0],
+            self._cam_prev_char_pos[1] - 3.0,
+            self._cam_prev_char_pos[2] + 0.4,
         ])
         cam_target = np.array([
-            self.cam_prev_char_pos[0],
-            self.cam_prev_char_pos[1],
-            self.cam_prev_char_pos[2] + 0.2,
+            self._cam_prev_char_pos[0],
+            self._cam_prev_char_pos[1],
+            self._cam_prev_char_pos[2] + 0.2,
         ])
-        self.scene.viewer.set_camera_pose(pos=cam_pos, lookat=cam_target)
+        self._scene.viewer.set_camera_pose(pos=cam_pos, lookat=cam_target)
         
-    def init_keyboard(self) -> None:
+    def _init_keyboard(self) -> None:
         pass
         # TODO: implement
     
-    def update_camera(self) -> None:
+    def _update_camera(self) -> None:
         """Updates the camera position based on the target."""
-        if self.camera_target["element"] == 0:
-            current_char_pos = self._get_simulator_root_state(self.camera_target["env"]).root_pos.cpu().numpy()
+        if self._camera_target["element"] == 0:
+            current_char_pos = self._get_simulator_root_state(self._camera_target["env"]).root_pos.cpu().numpy()
             height_offset = 0.2
         else:
-            in_scene_object_id = self.camera_target["element"] - 1
-            current_char_pos = self._get_simulator_object_root_state(self.camera_target["env"]).root_pos[in_scene_object_id].cpu().numpy()
+            in_scene_object_id = self._camera_target["element"] - 1
+            current_char_pos = self._get_simulator_object_root_state(self._camera_target["env"]).root_pos[in_scene_object_id].cpu().numpy()
             height_offset = 0
 
-        current_cam_transform = self.scene.viewer.camera_pos
+        current_cam_transform = self._scene.viewer.camera_pos
         
-        cam_offset = current_cam_transform - self.cam_prev_char_pos
+        cam_offset = current_cam_transform - self._cam_prev_char_pos
 
         new_cam_target = np.array([
             current_char_pos[0], current_char_pos[1], current_char_pos[2] + height_offset
@@ -432,38 +432,38 @@ class GenesisSimulator(Simulator):
             current_char_pos[2] + cam_offset[2],
         ])
 
-        self.scene.viewer.set_camera_pose(pos=new_cam_pos, lookat=new_cam_target)
-        self.perspective_view.set_pose(pos=new_cam_pos, lookat=new_cam_target)
+        self._scene.viewer.set_camera_pose(pos=new_cam_pos, lookat=new_cam_target)
+        self._perspective_view.set_pose(pos=new_cam_pos, lookat=new_cam_target)
 
-        self.cam_prev_char_pos[:] = current_char_pos
+        self._cam_prev_char_pos[:] = current_char_pos
     
     def close(self) -> None:
         """Closes the simulator and cleans up resources."""
         pass
     
-    def write_viewport_to_file(self, file_name: str) -> None:
+    def _write_viewport_to_file(self, file_name: str) -> None:
         """Writes the current viewport to a file.
 
         Args:
             file_name (str): Path where the image should be saved
         """
-        rgb = self.perspective_view.render()
+        rgb = self._perspective_view.render()
         plt.imsave(file_name, rgb)
 
     def render(self) -> None:
         """Renders the current simulation state."""
         if not self.headless:
-            self.update_camera()
+            self._update_camera()
         super().render()
 
     def _update_simulator_markers(self, markers_state: Optional[Dict[str, MarkerState]] = None) -> None:
         """Updates the state of visualization markers."""
-        self.scene.clear_debug_objects()
+        self._scene.clear_debug_objects()
         if markers_state is None:
             return
         
         for marker_name, markers_state_item in markers_state.items():
-            marker_dict = self.visualization_markers[marker_name]
+            marker_dict = self._visualization_markers[marker_name]
             
             marker_pos_all = markers_state_item.translation.view(self.num_envs, -1, 3)
             marker_quat = markers_state_item.orientation.view(self.num_envs, -1, 4)
@@ -478,7 +478,7 @@ class GenesisSimulator(Simulator):
                         scale_val = 0.05
                     
                     group_marker_pos = marker_pos_all[:, indices]  # indices list for this scale group
-                    self.scene.draw_debug_spheres(
+                    self._scene.draw_debug_spheres(
                         poss=group_marker_pos.view(-1, 3).cpu().numpy(),
                         radius=scale_val,
                         color=marker_dict.marker_color
@@ -503,7 +503,7 @@ class GenesisSimulator(Simulator):
                     arrow_vectors = rotations.quat_rotate(flat_quat, repeated_base, w_last=self.data_conversion.sim_w_last).view(-1, 3).cpu().numpy()
                     for arrow_idx in range(len(group_marker_pos)):
                         # Genesis does not support vectorized arrow rendering.
-                        self.scene.draw_debug_arrow(
+                        self._scene.draw_debug_arrow(
                             pos=group_marker_pos[arrow_idx],
                             vec=arrow_vectors[arrow_idx],
                             radius=scale_val,

@@ -66,9 +66,9 @@ class Simulator(ABC):
         self.device = device
         self.scene_lib = scene_lib
         if self.scene_lib is not None:
-            self.num_objects_per_scene: int = self.scene_lib.num_objects_per_scene
+            self._num_objects_per_scene: int = self.scene_lib.num_objects_per_scene
         else:
-            self.num_objects_per_scene = 0
+            self._num_objects_per_scene = 0
         self.terrain = terrain
         self.headless: bool = self.config.headless
         self.num_envs: int = self.config.num_envs
@@ -80,22 +80,23 @@ class Simulator(ABC):
         self.dt: float = self.decimation * 1.0 / self.simulator_fps
 
         # Scene storage
-        self.scene_position: List[torch.Tensor] = []
-        self.object_dims: List[torch.Tensor] = []
+        self._scene_position: List[torch.Tensor] = []
+        self._object_dims: List[torch.Tensor] = []
 
-        self.body_names: List[str] = self.robot_config.body_names
-        self.num_bodies: int = self.robot_config.num_bodies
-        self.num_dof: int = len(self.robot_config.dof_names)
+        self._num_bodies: int = self.robot_config.num_bodies
+        self._num_dof: int = len(self.robot_config.dof_names)
+        self._dof_limits_lower_sim: torch.Tensor = None
+        self._dof_limits_upper_sim: torch.Tensor = None
 
-        self.dof_body_ids = self.robot_config.dof_body_ids
-        self.dof_offsets_common: List[int] = self.compute_dof_offsets(self.robot_config.dof_names)
+        self._dof_body_ids = self.robot_config.dof_body_ids
+        self._dof_offsets_common: List[int] = self._compute_dof_offsets(self.robot_config.dof_names)
 
-        self.dof_obs_size = self.robot_config.dof_obs_size
-        self.num_act = self.robot_config.number_of_actions
+        self._dof_obs_size = self.robot_config.dof_obs_size
+        self._num_act = self.robot_config.number_of_actions
 
         self.user_requested_reset: bool = False
 
-        self.camera_target: Dict[str, int] = {"env": 0, "element": 0}
+        self._camera_target: Dict[str, int] = {"env": 0, "element": 0}
         
         self._user_is_recording, self._user_recording_state_change = False, False
         self._user_recording_video_queue_size = 100000
@@ -106,7 +107,7 @@ class Simulator(ABC):
         )
 
 
-    def compute_dof_offsets(self, dof_names: List[str]) -> List[int]:
+    def _compute_dof_offsets(self, dof_names: List[str]) -> List[int]:
         """
         Compute and return offsets where consecutive bodies' DOFs start.
 
@@ -132,12 +133,12 @@ class Simulator(ABC):
         Returns:
             List[int]: DOF offsets.
         """
-        return self.dof_offsets_common
+        return self._dof_offsets_common
 
     # -------------------------
     # 🌄 Group 2: Environment Setup & Configuration
     # -------------------------
-    def update_inference_parameters(self) -> None:
+    def _update_inference_parameters(self) -> None:
         """
         Update parameters required for inference. This is an optional override.
         """
@@ -150,7 +151,7 @@ class Simulator(ABC):
         Returns:
             List[torch.Tensor]: Scene positions.
         """
-        return self.scene_position
+        return self._scene_position
 
     def get_object_dims(self) -> List[torch.Tensor]:
         """
@@ -159,7 +160,7 @@ class Simulator(ABC):
         Returns:
             List[torch.Tensor]: Object dimensions.
         """
-        return self.object_dims
+        return self._object_dims
 
     def build_body_ids_tensor(self, body_names: List[str]) -> torch.Tensor:
         """
@@ -173,8 +174,8 @@ class Simulator(ABC):
         """
         body_ids: List[int] = []
         for body_name in body_names:
-            body_id = self.body_names.index(body_name)
-            assert body_id != -1, f"Body part {body_name} not found in {self.body_names}"
+            body_id = self.robot_config.body_names.index(body_name)
+            assert body_id != -1, f"Body part {body_name} not found in {self.robot_config.body_names}"
             body_ids.append(body_id)
         body_ids = torch_utils.to_torch(body_ids, device=self.device, dtype=torch.long)
         return body_ids
@@ -184,9 +185,9 @@ class Simulator(ABC):
         Configure internal tensors after the simulation environment is initialized.
         This includes conversion tensors for bodies, DOFs, and contact sensors.
         """
-        self.process_dof_props()
+        self._process_dof_props()
 
-        body_ordering = self.get_sim_body_ordering()
+        body_ordering = self._get_sim_body_ordering()
 
         body_convert_to_common = torch.tensor(
             [
@@ -241,24 +242,41 @@ class Simulator(ABC):
             sim_w_last=self.config.w_last,
         )
         
-        self.create_legged_robot_tensors()
+        self._create_legged_robot_tensors()
         
-        self.dof_offsets_sim = self.compute_dof_offsets(body_ordering.dof_names)
+        self._dof_offsets_sim = self._compute_dof_offsets(body_ordering.dof_names)
         
-        if self.control_type == ControlType.BUILT_IN_PD:
-            self._sim_pd_action_offset, self._sim_pd_action_scale = (
-                build_pd_action_offset_scale(
-                    self.dof_offsets_sim,
-                    self.dof_limits_lower,
-                    self.dof_limits_upper,
-                    self.device,
-                )
+        self._sim_pd_action_offset, self._sim_pd_action_scale = (
+            build_pd_action_offset_scale(
+                self._dof_offsets_sim,
+                self._dof_limits_lower_sim,
+                self._dof_limits_upper_sim,
+                self.device,
             )
+        )
+        
+    def get_num_bodies(self) -> int:
+        """
+        Return the number of bodies in the robot.
+        """
+        return self._num_bodies
+    
+    def get_num_act(self) -> int:
+        """
+        Return the number of actions in the robot.
+        """
+        return self._num_act
+    
+    def get_dof_body_ids(self) -> List[int]:
+        """
+        Return the DOF body IDs.
+        """
+        return self._dof_body_ids
 
     # -------------------------
     # ⏱️ Group 3: Simulation Steps & State Management
     # -------------------------
-    def requested_reset(self) -> None:
+    def _requested_reset(self) -> None:
         """
         Set the flag indicating that a user-requested reset has been made.
         """
@@ -278,9 +296,10 @@ class Simulator(ABC):
             markers_state (Dict[str, MarkerState]): Dictionary of marker states.
         """
         self.user_requested_reset = False
+        common_actions = torch.clamp(common_actions, -self.robot_config.control.clamp_actions, self.robot_config.control.clamp_actions)
         self._actions = common_actions.to(self.device)[:, self.data_conversion.dof_convert_to_sim]
-        self.physics_step()
-        self.update_markers(markers_state)
+        self._physics_step()
+        self._update_markers(markers_state)
         self.render()
 
     def _update_simulator_tensors_after_reset(self, env_ids: Optional[torch.Tensor]) -> None:
@@ -334,7 +353,7 @@ class Simulator(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def physics_step(self) -> None:
+    def _physics_step(self) -> None:
         """
         Advance the physics simulation by one step.
         
@@ -378,7 +397,7 @@ class Simulator(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_sim_body_ordering(self) -> SimBodyOrdering:
+    def _get_sim_body_ordering(self) -> SimBodyOrdering:
         """
         Retrieve the ordering of bodies and DOFs as defined by the simulator.
         
@@ -571,7 +590,7 @@ class Simulator(ABC):
     # -------------------------
     # 🎮 Group 5: Control & Computation Methods
     # -------------------------
-    def action_to_pd_targets(self, action: torch.Tensor) -> torch.Tensor:
+    def _action_to_pd_targets(self, action: torch.Tensor) -> torch.Tensor:
         """
         Convert a common action tensor into PD targets for simulation.
 
@@ -581,10 +600,13 @@ class Simulator(ABC):
         Returns:
             torch.Tensor: PD targets computed as offset + scale * action.
         """
-        pd_tar = self._sim_pd_action_offset + self._sim_pd_action_scale * action
+        if self.robot_config.control.map_actions_to_pd_range:
+            pd_tar = self._sim_pd_action_offset + self._sim_pd_action_scale * action
+        else:
+            pd_tar = action
         return pd_tar
 
-    def create_legged_robot_tensors(self) -> None:
+    def _create_legged_robot_tensors(self) -> None:
         """
         Create tensors necessary for simulating legged robots.
         
@@ -593,11 +615,11 @@ class Simulator(ABC):
         if self.robot_config.init_state is None:
             return
 
-        p_gains: torch.Tensor = torch.zeros(self.num_act, dtype=torch.float, device=self.device, requires_grad=False)
-        d_gains: torch.Tensor = torch.zeros(self.num_act, dtype=torch.float, device=self.device, requires_grad=False)
+        p_gains: torch.Tensor = torch.zeros(self._num_act, dtype=torch.float, device=self.device, requires_grad=False)
+        d_gains: torch.Tensor = torch.zeros(self._num_act, dtype=torch.float, device=self.device, requires_grad=False)
 
-        default_dof_pos: torch.Tensor = torch.zeros(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False)
-        for i in range(self.num_dof):
+        default_dof_pos: torch.Tensor = torch.zeros(self._num_dof, dtype=torch.float, device=self.device, requires_grad=False)
+        for i in range(self._num_dof):
             name: str = self.robot_config.dof_names[i]
             angle: float = self.robot_config.init_state.default_joint_angles[name]
             default_dof_pos[i] = angle
@@ -612,11 +634,11 @@ class Simulator(ABC):
                 d_gains[i] = 0.0
                 if self.robot_config.control.control_type in [ControlType.PROPORTIONAL, ControlType.VELOCITY]:
                     raise ValueError(f"PD gain of joint {name} were not defined.")
-        self.sim_default_dof_pos = default_dof_pos[self.data_conversion.dof_convert_to_sim].unsqueeze(0)
-        self.sim_p_gains = p_gains[self.data_conversion.dof_convert_to_sim]
-        self.sim_d_gains = d_gains[self.data_conversion.dof_convert_to_sim]
+        self._sim_default_dof_pos = default_dof_pos[self.data_conversion.dof_convert_to_sim].unsqueeze(0)
+        self._sim_p_gains = p_gains[self.data_conversion.dof_convert_to_sim]
+        self._sim_d_gains = d_gains[self.data_conversion.dof_convert_to_sim]
 
-    def process_dof_props(self) -> None:
+    def _process_dof_props(self) -> None:
         """
         Process DOF properties from the asset's properties.
         
@@ -626,11 +648,11 @@ class Simulator(ABC):
             props (Dict[str, torch.Tensor]): Properties of DOFs from the asset.
         """
         if self.robot_config.dof_effort_limits is not None:
-            self.torque_limits_common = torch.tensor(self.robot_config.dof_effort_limits, dtype=torch.float, device=self.device, requires_grad=False)
+            self._torque_limits_common = torch.tensor(self.robot_config.dof_effort_limits, dtype=torch.float, device=self.device, requires_grad=False)
         else:
-            self.torque_limits_common = torch.ones(self.num_dof, dtype=torch.float, device=self.device, requires_grad=False) * 300.0
+            self._torque_limits_common = torch.ones(self._num_dof, dtype=torch.float, device=self.device, requires_grad=False) * 300.0
 
-    def compute_torques(self, action: torch.Tensor) -> torch.Tensor:
+    def _compute_torques(self, action: torch.Tensor) -> torch.Tensor:
         """
         Compute torques from actions.
 
@@ -648,38 +670,44 @@ class Simulator(ABC):
         dof_state = self._get_simulator_dof_state()
         
         if self.control_type == ControlType.PROPORTIONAL:
+            # Map action to dof ranges.
+            pd_tar = self._action_to_pd_targets(action)
+            
+            if self.robot_config.control.use_biased_controller:
+                pd_tar += self._sim_default_dof_pos
+            
             torques: torch.Tensor = (
-                self.sim_p_gains * (actions_scaled + self.sim_default_dof_pos - dof_state.dof_pos)
-                - self.sim_d_gains * dof_state.dof_vel
+                self._sim_p_gains * (pd_tar - dof_state.dof_pos)
+                - self._sim_d_gains * dof_state.dof_vel
             )
         elif self.control_type == ControlType.VELOCITY:
             raise NotImplementedError("Velocity control is not properly implemented yet.")
             torques = (
-                self.sim_p_gains * (actions_scaled - dof_state.dof_vel)
-                - self.sim_d_gains * (dof_state.dof_vel - self.last_dof_vel) / self.dt
+                self._sim_p_gains * (actions_scaled - dof_state.dof_vel)
+                - self._sim_d_gains * (dof_state.dof_vel - self.last_dof_vel) / self.dt
             )
         elif self.control_type == ControlType.TORQUE:
             torques = actions_scaled
         else:
             raise NameError(f"Unknown controller type: {self.control_type}")
-        return torch.clip(torques, -self.torque_limits_common[self.data_conversion.dof_convert_to_sim], self.torque_limits_common[self.data_conversion.dof_convert_to_sim])
+        return torch.clip(torques, -self._torque_limits_common[self.data_conversion.dof_convert_to_sim], self._torque_limits_common[self.data_conversion.dof_convert_to_sim])
 
     # -------------------------
     # 🎨 Group 6: Rendering & Visualization
     # -------------------------
-    def toggle_camera_target(self) -> None:
+    def _toggle_camera_target(self) -> None:
         """
         Toggle the camera target between different environments and objects.
         
         The target cycles through all objects in the scene, with 0 referring to the environment.
         """
         if self.scene_lib is not None:
-            self.camera_target["element"] = (self.camera_target["element"] + 1) % (self.num_objects_per_scene + 1)
-            print("Updated camera target to element", self.camera_target["element"])
+            self._camera_target["element"] = (self._camera_target["element"] + 1) % (self._num_objects_per_scene + 1)
+            print("Updated camera target to element", self._camera_target["element"])
 
-        if self.camera_target["element"] == 0:
-            self.camera_target["env"] = (self.camera_target["env"] + 1) % self.num_envs
-            print("Updated camera target to env", self.camera_target["env"])
+        if self._camera_target["element"] == 0:
+            self._camera_target["env"] = (self._camera_target["env"] + 1) % self.num_envs
+            print("Updated camera target to env", self._camera_target["env"])
 
     def render(self):
         """
@@ -704,6 +732,8 @@ class Simulator(ABC):
                         self._user_recording_video_path % curr_date_time
                     )
                     self._user_recording_frame = 0
+                    
+                    self._recorded_motion = {"global_translation": [], "global_rotation": []}
                     
                     if not os.path.exists(self._curr_user_recording_name):
                         os.makedirs(self._curr_user_recording_name)
@@ -739,6 +769,13 @@ class Simulator(ABC):
                     self._delete_user_viewer_recordings = True
                     print(f"Video saved to {self._curr_user_recording_name}.mp4")
                     
+                    # Save the recorded motion to a file
+                    global_translation = torch.cat(self._recorded_motion["global_translation"], dim=0)
+                    global_rotation = torch.cat(self._recorded_motion["global_rotation"], dim=0)
+                    with open(f"{self._curr_user_recording_name}.pt", "wb") as f:
+                        torch.save({"global_translation": global_translation, "global_rotation": global_rotation}, f)
+                    self._recorded_motion = None
+                    
                 self._user_recording_state_change = False
 
             # Capture frame if recording
@@ -747,8 +784,12 @@ class Simulator(ABC):
                     self._curr_user_recording_name
                     + "/%04d.png" % self._user_recording_frame
                 )
-                self.write_viewport_to_file(file_name)
+                self._write_viewport_to_file(file_name)
                 self._user_recording_frame += 1
+                
+                bodies_state = self.get_bodies_state()
+                self._recorded_motion["global_translation"].append(bodies_state.rigid_body_pos)
+                self._recorded_motion["global_rotation"].append(bodies_state.rigid_body_rot)
 
             # Clean up temporary files if needed
             if self._delete_user_viewer_recordings:
@@ -761,16 +802,17 @@ class Simulator(ABC):
                     os.remove(os.path.join(self._curr_user_recording_name, image))
                 os.removedirs(self._curr_user_recording_name)
                 self._delete_user_viewer_recordings = False
+                self._recorded_motion = None
 
     @abstractmethod
-    def write_viewport_to_file(self, file_name: str) -> None:
+    def _write_viewport_to_file(self, file_name: str) -> None:
         """
         Write the current viewport to a file.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def init_camera(self) -> None:
+    def _init_camera(self) -> None:
         """
         Initialize the camera for visualization.
         
@@ -778,17 +820,17 @@ class Simulator(ABC):
         """
         raise NotImplementedError
     
-    def toggle_video_record(self):
+    def _toggle_video_record(self):
         self._user_is_recording = not self._user_is_recording
         self._user_recording_state_change = True
 
-    def cancel_video_record(self):
+    def _cancel_video_record(self):
         self._user_is_recording = False
         self._user_recording_state_change = False
         self._delete_user_viewer_recordings = True
 
 
-    def update_markers(self, markers_state: Optional[Dict[str, MarkerState]] = None) -> None:
+    def _update_markers(self, markers_state: Optional[Dict[str, MarkerState]] = None) -> None:
         """
         Update visualization markers for the simulator.
 

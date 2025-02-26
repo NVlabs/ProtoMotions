@@ -27,7 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import isaaclab.sim as sim_utils
-from isaaclab.actuators import ImplicitActuatorCfg, IdealPDActuatorCfg
+from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg
 
 
@@ -356,13 +356,13 @@ SMPL_CFG = ArticulationCfg(
                 "L_Hand_.",
                 "R_Hand_.",
             ],
-            effort_limit=300,
+            effort_limit=500,
             velocity_limit=100.0,
             stiffness={
                 "L_Shoulder_.": 500,
                 "R_Shoulder_.": 500,
-                "L_Elbow_.": 300,
-                "R_Elbow_.": 300,
+                "L_Elbow_.": 500,
+                "R_Elbow_.": 500,
                 "L_Wrist_.": 300,
                 "R_Wrist_.": 300,
                 "L_Hand_.": 300,
@@ -371,8 +371,8 @@ SMPL_CFG = ArticulationCfg(
             damping={
                 "L_Shoulder_.": 50,
                 "R_Shoulder_.": 50,
-                "L_Elbow_.": 30,
-                "R_Elbow_.": 30,
+                "L_Elbow_.": 50,
+                "R_Elbow_.": 50,
                 "L_Wrist_.": 30,
                 "R_Wrist_.": 30,
             },
@@ -400,82 +400,5 @@ H1_CFG = ArticulationCfg(
             solver_velocity_iteration_count=4,
         ),
     ),
-    init_state=ArticulationCfg.InitialStateCfg(
-        pos=(
-            0.0,
-            0.0,
-            1.05,
-        ),
-        joint_pos={
-            ".*_hip_yaw_joint": 0.0,
-            ".*_hip_roll_joint": 0.0,
-            ".*_hip_pitch_joint": -0.28,  # -16 degrees
-            ".*_knee_joint": 0.79,  # 45 degrees
-            ".*_ankle_joint": -0.52,  # -30 degrees
-            "torso_joint": 0.0,
-            ".*_shoulder_pitch_joint": 0.28,
-            ".*_shoulder_roll_joint": 0.0,
-            ".*_shoulder_yaw_joint": 0.0,
-            ".*_elbow_joint": 0.52,
-        },
-        joint_vel={".*": 0.0},
-    ),
     soft_joint_pos_limit_factor=0.9,
-    actuators={
-        # https://github.com/LeCAR-Lab/HumanoidVerse/blob/master/humanoidverse/simulator/isaacsim/isaaclab_cfg.py
-        "legs": IdealPDActuatorCfg(
-            joint_names_expr=[
-                ".*_hip_yaw_joint",
-                ".*_hip_roll_joint",
-                ".*_hip_pitch_joint",
-                ".*_knee_joint",
-                "torso_joint",
-            ],
-            effort_limit={
-                ".*_hip_yaw_joint": 200.0,
-                ".*_hip_roll_joint": 200.0,
-                ".*_hip_pitch_joint": 200.0,
-                ".*_knee_joint": 300.0,
-                "torso_joint": 200.0,
-            },
-            velocity_limit={
-                ".*_hip_yaw_joint": 23.0,
-                ".*_hip_roll_joint": 23.0,
-                ".*_hip_pitch_joint": 23.0,
-                ".*_knee_joint": 14.0,
-                "torso_joint": 23.0,
-            },
-            stiffness=0,
-            damping=0,
-        ),
-        "feet": IdealPDActuatorCfg(
-            joint_names_expr=[".*_ankle_joint"],
-            effort_limit=40,
-            velocity_limit=9.0,
-            stiffness=0,
-            damping=0,
-        ),
-        "arms": IdealPDActuatorCfg(
-            joint_names_expr=[
-                ".*_shoulder_pitch_joint",
-                ".*_shoulder_roll_joint",
-                ".*_shoulder_yaw_joint",
-                ".*_elbow_joint",
-            ],
-            effort_limit={
-                ".*_shoulder_pitch_joint": 40.0,
-                ".*_shoulder_roll_joint": 40.0,
-                ".*_shoulder_yaw_joint": 18.0,
-                ".*_elbow_joint": 18.0,
-            },
-            velocity_limit={
-                ".*_shoulder_pitch_joint": 9.0,
-                ".*_shoulder_roll_joint": 9.0,
-                ".*_shoulder_yaw_joint": 20.0,
-                ".*_elbow_joint": 20.0,
-            },
-            stiffness=0,
-            damping=0,
-        ),
-    },
 )

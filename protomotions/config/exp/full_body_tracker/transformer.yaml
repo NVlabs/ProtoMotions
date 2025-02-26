@@ -11,10 +11,8 @@ defaults:
   - /terrain/complex
   - /agent/ppo/models/transformer_actor_terrain
   - /agent/ppo/models/mlp_critic_terrain
-  # # - /scenes/samp
   - /agent/mimic/options/global_tracking
   - /agent/mimic/options/early_termination_tracking_err
-  - /agent/mimic/options/dynamic_sampling
 
 env:
   config:
