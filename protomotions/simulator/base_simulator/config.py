@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, Tuple, List, Dict, Optional, Any, Type, TypeVar
 import torch
 from enum import Enum
@@ -229,7 +229,7 @@ class RobotConfig(ConfigBuilder):
     
     # Optional with default
     contact_pairs_multiplier: int = 16
-    control: ControlConfig = ControlConfig()
+    control: ControlConfig = field(default_factory=ControlConfig)
 
     def __post_init__(self):
         """Compute derived fields after initialization."""
