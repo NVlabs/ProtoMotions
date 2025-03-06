@@ -1,7 +1,7 @@
 genesis-world
 wheel
-torch==2.5.0
-lightning==2.5.0.post0
+torch>=2.5.0
+lightning>=2.5.0.post0
 numpy>=1.21.1
 termcolor>=1.1.0
 scikit-image
@@ -14,14 +14,14 @@ typer>=0.6.1
 transformers>=4.20.1
 matplotlib
 easydict
-wandb==0.19.8
+wandb>=0.19.8
 tensorboardX
 sentry-sdk==1.9.10
 hydra-core==1.3.2
-PyOpenGL==3.1.4
+PyOpenGL>=3.1.4
 # pydantic==1.10.9
 moviepy
-open3d==0.19.0
+open3d>=0.19.0
 
 # export __NV_PRIME_RENDER_OFFLOAD=1
 # export __GLX_VENDOR_LIBRARY_NAME=nvidia
