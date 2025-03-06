@@ -14,7 +14,7 @@ typer>=0.6.1
 transformers>=4.20.1
 matplotlib
 easydict
-wandb==0.15.12
+wandb==0.19.8
 tensorboardX
 sentry-sdk==1.9.10
 hydra-core==1.3.2

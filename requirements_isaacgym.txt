@@ -9,7 +9,7 @@ setuptools==69.5.1
 rich
 smpl_sim @ git+https://github.com/ZhengyiLuo/SMPLSim.git@master
 typer>=0.6.1
-wandb>=0.13.4
+wandb>=0.19.8
 transformers>=4.20.1
 hydra-core>=1.2.0
 matplotlib
