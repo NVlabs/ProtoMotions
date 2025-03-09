@@ -73,7 +73,7 @@ class VaeDeterministicOutputModel(nn.Module):
         if with_encoder:
             encoder_out = self._encoder(input_dict)
             mu = prior_out["mu"] + encoder_out["mu"]
-            logvar = prior_out["logvar"] + encoder_out["logvar"]
+            logvar = encoder_out["logvar"]
         else:
             mu = prior_out["mu"]
             logvar = prior_out["logvar"]
@@ -90,11 +90,27 @@ class VaeDeterministicOutputModel(nn.Module):
         return action
 
     def get_action_and_vae_outputs(self, input_dict: dict):
+        """Get action and VAE outputs by sampling from the encoder.
+
+        This method is used during training to sample from both the encoder and prior networks.
+        The encoder output's mu acts as a residual to the prior's mu, while its logvar is used directly.
+        This allows the encoder to refine the prior's prediction while maintaining the prior's
+        influence on the latent space.
+
+        Args:
+            input_dict: Dictionary containing model inputs
+
+        Returns:
+            Tuple containing:
+            - action: The output action after passing through trunk network
+            - prior_out: Output dictionary from prior network with mu/logvar
+            - encoder_out: Output dictionary from encoder network with mu (as residual) and logvar
+        """
         prior_out = self._prior(input_dict)
         encoder_out = self._encoder(input_dict)
 
         mu = prior_out["mu"] + encoder_out["mu"]
-        logvar = prior_out["logvar"] + encoder_out["logvar"]
+        logvar = encoder_out["logvar"]
 
         if "vae_noise" not in input_dict:
             # During training, we randomly re-sample the noise.

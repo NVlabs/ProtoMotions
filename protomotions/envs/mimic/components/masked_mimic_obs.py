@@ -274,25 +274,25 @@ class MaskedMimicObs(BaseComponent):
         """Resets masks and target poses when a new motion track starts."""
         new_motion_ids, new_times = self.env.motion_manager.get_respawn_info(env_ids)
 
-        if hasattr(self.env.motion_lib.state, "has_text_embeddings") and self.motion_text_config.enabled:
-            visible_text_embeddings = (
-                torch.bernoulli(self.visible_text_embeddings_prob[: len(env_ids)]) > 0
-            )
-            self.motion_text_embeddings[env_ids] = (
-                self.env.motion_lib.sample_text_embeddings(new_motion_ids)
-            )
-            has_text = self.env.motion_lib.state.has_text_embeddings[new_motion_ids]
-            self.motion_text_embeddings_mask[env_ids] = visible_text_embeddings.view(
-                -1, 1
-            ) & has_text.view(-1, 1)
-        else:
-            self.motion_text_embeddings_mask[env_ids] = False
+        # Sample for each env whether it should be conditioned using text
+        visible_text_embeddings = (
+            torch.bernoulli(self.visible_text_embeddings_prob[: len(env_ids)]) > 0
+        )
+        self.motion_text_embeddings[env_ids] = (
+            self.env.motion_lib.sample_text_embeddings(new_motion_ids)
+        )
+        has_text = self.env.motion_lib.state.has_text_embeddings[new_motion_ids]
+        self.motion_text_embeddings_mask[env_ids] = visible_text_embeddings.view(
+            -1, 1
+        ) & has_text.view(-1, 1)
 
+        # Sample for each env whether it should be conditioned using a "far away" target pose
         visible_target_pose = (
             torch.bernoulli(self.visible_target_pose_prob[: len(env_ids)]) > 0
         )
         self.target_pose_visible_mask[env_ids] = visible_target_pose.view(-1, 1)
 
+        # Sample "far away" target pose time
         max_time = self.env.motion_lib.state.motion_lengths[new_motion_ids]
         target_pose_time = (
             torch.rand(len(env_ids), device=self.env.device) * (max_time - new_times)
@@ -302,11 +302,13 @@ class MaskedMimicObs(BaseComponent):
         target_pose_time[sample_max_time] = max_time[sample_max_time]
         self.target_pose_time[env_ids] = target_pose_time
 
+        # Sample "far away" target pose joints
         visible_target_pose_joints = self.sample_body_masks(
             len(env_ids), None, reset_track=True
         )
         self.target_pose_joints_mask[env_ids] = visible_target_pose_joints
 
+        # Sample new body masks for the "near future" target poses
         new_body_masks = self.sample_body_masks(len(env_ids), env_ids, reset_track=True)
         single_step_mask_size = self.num_conditionable_bodies * 2
         new_body_masks = (
@@ -316,16 +318,18 @@ class MaskedMimicObs(BaseComponent):
         )
         self.time_gap_mask_steps.reset_steps(env_ids)
         if self.joint_masking_config.masked_mimic_time_gap_probability == 1:
+            # Special case where we want to force non-visible joints. Turn masks on for all joints right away.
             new_body_masks[:, :] = 0
 
+        # Determine whether we have a long-term conditioning signal (text / far away target pose).
+        # When such a signal exists, we can (with probability) disable all near-term joints.
         has_long_term_conditioning = torch.zeros(
             len(env_ids), dtype=torch.bool, device=self.env.device
         )
-        if self.motion_text_config.enabled:
-            has_long_term_conditioning = torch.logical_or(
-                has_long_term_conditioning,
-                self.motion_text_embeddings_mask[env_ids].view(-1),
-            )
+        has_long_term_conditioning = torch.logical_or(
+            has_long_term_conditioning,
+            self.motion_text_embeddings_mask[env_ids].view(-1),
+        )
         has_long_term_conditioning = torch.logical_or(
             has_long_term_conditioning,
             self.target_pose_visible_mask[env_ids].view(-1),
@@ -342,9 +346,11 @@ class MaskedMimicObs(BaseComponent):
                 long_term_gap_env_ids = env_ids[has_long_term_conditioning][
                     long_term_gap
                 ]
+                # For all long-term gap envs, set the time-gap to go beyond the maximal episode length
+                # (no near-term joints). And turn off the near-term joints (mask out).
                 self.time_gap_mask_steps.cur_max_steps[long_term_gap_env_ids] = (
                     self.env.config.max_episode_length * 2
-                )  # Set beyond max episode length
+                )
                 new_body_masks[has_long_term_conditioning][long_term_gap, :] = 0
 
         self.masked_mimic_target_bodies_masks[env_ids] = new_body_masks
@@ -520,10 +526,9 @@ class MaskedMimicObs(BaseComponent):
         had_long_term_conditioning = torch.zeros(
             self.env.num_envs, dtype=torch.bool, device=self.env.device
         )
-        if self.motion_text_config.enabled:
-            had_long_term_conditioning = (
-                had_long_term_conditioning | self.motion_text_embeddings_mask.view(-1)
-            )
+        had_long_term_conditioning = (
+            had_long_term_conditioning | self.motion_text_embeddings_mask.view(-1)
+        )
         had_long_term_conditioning = (
             had_long_term_conditioning | self.target_pose_visible_mask.view(-1)
         )
@@ -577,6 +582,8 @@ class MaskedMimicObs(BaseComponent):
         )
 
         if lost_long_term_conditioning.any():
+            # If no longer has long-term conditioning, reset the time-gap masking to bring back the near-term
+            # joint constraints.
             self.time_gap_mask_steps.cur_max_steps[lost_long_term_conditioning] = -1
         all_env_ids = torch.arange(
             self.env.num_envs, dtype=torch.long, device=self.env.device

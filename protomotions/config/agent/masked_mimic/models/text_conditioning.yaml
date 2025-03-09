@@ -37,9 +37,3 @@ agent:
               config:
                 input_models:
                   motion_text_embeddings: ${agent.config.modules.motion_text_embeddings_for_transformer_model}
-
-env:
-  config:
-    masked_mimic:
-      masked_mimic_masking:
-        motion_text_embeddings_visible_prob: 0.5
