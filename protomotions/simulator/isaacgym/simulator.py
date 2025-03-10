@@ -61,7 +61,20 @@ class IsaacGymSimulator(Simulator):
     ) -> None:
         super().__init__(config=config, scene_lib=scene_lib, terrain=terrain, visualization_markers=visualization_markers, device=device)
 
-        self._graphics_device_id = self.device.index
+        # Handle the case where device.index is None
+        if self.device.index is None:
+            if self.device.type == 'cuda':
+                # Try to get the default CUDA device index
+                try:
+                    device_index = torch.cuda.current_device()
+                except:
+                    device_index = 0
+            else:
+                device_index = 0
+        else:
+            device_index = self.device.index
+
+        self._graphics_device_id = device_index
         if self.headless is True:
             self._graphics_device_id = -1
 
@@ -84,9 +97,6 @@ class IsaacGymSimulator(Simulator):
             self._gym.subscribe_viewer_keyboard_event(self._viewer, gymapi.KEY_Q, "QUIT")
             self._gym.subscribe_viewer_keyboard_event(
                 self._viewer, gymapi.KEY_V, "toggle_viewer_sync"
-            )
-            self._gym.subscribe_viewer_keyboard_event(
-                self._viewer, gymapi.KEY_U, "update_inference_parameters"
             )
             self._gym.subscribe_viewer_keyboard_event(
                 self._viewer, gymapi.KEY_J, "push_robot"
@@ -149,7 +159,7 @@ class IsaacGymSimulator(Simulator):
 
         self._object_root_states = self._root_states.view(
             self.num_envs, num_actors, actor_root_state.shape[-1]
-        )[..., 1 : self._num_objects_per_scene + 1, :]
+        )[..., 1: self._num_objects_per_scene + 1, :]
         self._object_indices = torch_utils.to_torch(
             self._object_indices, dtype=torch.int32, device=self.device
         )
@@ -346,7 +356,7 @@ class IsaacGymSimulator(Simulator):
         self._up_axis_idx = self._set_sim_params_up_axis(self._sim_params, "z")
 
         sim = self._gym.create_sim(
-            self.device.index,
+            self._graphics_device_id if self.device.index is None else self.device.index,
             self._graphics_device_id,
             self._physics_engine,
             self._sim_params,
@@ -530,7 +540,7 @@ class IsaacGymSimulator(Simulator):
                     progress.update(task, advance=1)
 
             print(
-                f"=========== Total number of unique objects is {len(self.object_assets)}"
+                f"=========== Total number of unique objects is {len(self._object_assets)}"
             )
 
     def _build_env(
@@ -624,7 +634,7 @@ class IsaacGymSimulator(Simulator):
             )
             object_id = object_spawn_info.id
 
-            object_asset = self.object_assets[object_id]
+            object_asset = self._object_assets[object_id]
             object_name = object_spawn_info.object_path.split("/")[-1].split(".")[0]
             object_pose = gymapi.Transform()
 
@@ -667,7 +677,7 @@ class IsaacGymSimulator(Simulator):
             object_dims = torch.tensor(object_spawn_info.object_dims, device=self.device, dtype=torch.float)
             self._object_dims[-1].append(object_dims)
 
-        self.object_dims[-1] = torch.stack(self.object_dims[-1]).reshape(
+        self._object_dims[-1] = torch.stack(self._object_dims[-1]).reshape(
             self._num_objects_per_scene, -1
         )
 
@@ -723,7 +733,7 @@ class IsaacGymSimulator(Simulator):
         if self._num_objects_per_scene > 0:
             self._marker_states = self._root_states.view(
                 self.num_envs, num_actors, self._root_states.shape[-1]
-            )[..., 1 + self._num_objects_per_scene :, :]
+            )[..., 1 + self._num_objects_per_scene:, :]
         else:
             self._marker_states = self._root_states.view(
                 self.num_envs, num_actors, self._root_states.shape[-1]
@@ -1011,8 +1021,6 @@ class IsaacGymSimulator(Simulator):
                     sys.exit()
                 elif evt.action == "toggle_viewer_sync" and evt.value > 0:
                     self._enable_viewer_sync = not self._enable_viewer_sync
-                elif evt.action == "update_inference_parameters" and evt.value > 0:
-                    self._update_inference_parameters()
                 elif evt.action == "push_robot" and evt.value > 0:
                     self._push_robot()
                 elif evt.action == "toggle_video_record" and evt.value > 0:
