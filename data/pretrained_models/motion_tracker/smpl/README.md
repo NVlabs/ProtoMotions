@@ -23,7 +23,7 @@
 To evaluate the model run the following command:
 
 ```
-PYTHON_PATH protomotions/eval_agent.py +robot=smpl +simulator=isaaclab motion_file=<path to motion file> checkpoint=data/pretrained_models/motion_tracker/smpl/last.ckpt
+PYTHON_PATH protomotions/eval_agent.py +robot=smpl +simulator=isaaclab +motion_file=<path to motion file> +checkpoint=data/pretrained_models/motion_tracker/smpl/last.ckpt
 ```
 
 - You should pick which `motion_file` to load.
