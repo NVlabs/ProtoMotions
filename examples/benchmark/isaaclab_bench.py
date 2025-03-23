@@ -40,6 +40,10 @@ robot_config = RobotConfig(
     head_body_name="head",
     key_bodies=[ "left_foot_link", "right_foot_link", "left_arm_end_effector",  "right_arm_end_effector" ],
     non_termination_contact_bodies=[ "left_foot_link", "left_ankle_link", "right_foot_link", "right_ankle_link" ],
+    dof_effort_limits=[200., 200., 200., 300., 40., 200., 200., 200., 300., 40., 200., 40., 40., 18., 18., 40., 40., 18., 18.],
+    dof_vel_limits=[23., 23., 23., 14., 9., 23., 23., 23., 14., 9., 23., 9., 9., 20., 20., 9., 9., 20., 20.],
+    dof_armatures=[0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
+    dof_joint_frictions=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
     asset=robot_asset_config,
     init_state=InitState(
         pos=[0.0, 0.0, 1.0],
@@ -63,11 +67,6 @@ robot_config = RobotConfig(
             "right_shoulder_roll_joint": 0.0,
             "right_shoulder_yaw_joint": 0.0,
             "right_elbow_joint": 0.0,
-            "head": 0.0,
-            "left_arm_end_effector_joint": 0.0,
-            "right_arm_end_effector_joint": 0.0,
-            "left_foot_link": 0.0,
-            "right_foot_link": 0.0,
         },
     ),
     control=ControlConfig(
