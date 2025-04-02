@@ -64,12 +64,33 @@ _H1_KEYPOINT_TO_JOINT = {
     "R_Shoulder": {"name": "right_shoulder_pitch_link", "weight": 1.0},
 }
 
+_G1_KEYPOINT_TO_JOINT = {
+    "Pelvis": {"name": "pelvis", "weight": 1.0},
+    "Head": {"name": "head", "weight": 1.0},
+    # Legs.
+    "L_Hip": {"name": "left_hip_yaw_link", "weight": 1.0},
+    "R_Hip": {"name": "right_hip_yaw_link", "weight": 1.0},
+    "L_Knee": {"name": "left_knee_link", "weight": 1.0},
+    "R_Knee": {"name": "right_knee_link", "weight": 1.0},
+    "L_Ankle": {"name": "left_ankle_roll_link", "weight": 1.0},
+    "R_Ankle": {"name": "right_ankle_roll_link", "weight": 1.0},
+    # Arms.
+    "L_Elbow": {"name": "left_elbow_link", "weight": 1.0},
+    "R_Elbow": {"name": "right_elbow_link", "weight": 1.0},
+    "L_Wrist": {"name": "left_wrist_yaw_link", "weight": 1.0},
+    "R_Wrist": {"name": "right_wrist_yaw_link", "weight": 1.0},
+    "L_Shoulder": {"name": "left_shoulder_pitch_link", "weight": 1.0},
+    "R_Shoulder": {"name": "right_shoulder_pitch_link", "weight": 1.0},
+}
+
 _KEYPOINT_TO_JOINT_MAP = {
     "h1": _H1_KEYPOINT_TO_JOINT,
+    "g1": _G1_KEYPOINT_TO_JOINT,
 }
 
 _RESCALE_FACTOR = {
     "h1": np.array([1.0, 1.0, 1.1]),
+    "g1": np.array([0.75, 1.0, 0.8]),
 }
 
 _OFFSET = {
@@ -78,6 +99,7 @@ _OFFSET = {
 
 _ROOT_LINK = {
     "h1": "pelvis",
+    "g1": "pelvis",
 }
 
 _H1_VELOCITY_LIMITS = {
@@ -189,15 +211,17 @@ def construct_model(robot_name: str, keypoint_names: Sequence[str]):
 
     if robot_name == "h1":
         humanoid_mjcf = mjcf.from_path("protomotions/data/assets/mjcf/h1.xml")
-        humanoid_mjcf.worldbody.add(
-            "camera",
-            name="front_track",
-            pos="-0.120 3.232 1.064",
-            xyaxes="-1.000 -0.002 -0.000 0.000 -0.103 0.995",
-            mode="trackcom",
-        )
+    elif robot_name == "g1":
+        humanoid_mjcf = mjcf.from_path("protomotions/data/assets/mjcf/g1.xml")
     else:
         raise ValueError(f"Unknown robot name: {robot_name}")
+    humanoid_mjcf.worldbody.add(
+        "camera",
+        name="front_track",
+        pos="-0.120 3.232 1.064",
+        xyaxes="-1.000 -0.002 -0.000 0.000 -0.103 0.995",
+        mode="trackcom",
+    )
     root.include_copy(humanoid_mjcf)
 
     root_str = to_string(root, pretty=True)
@@ -265,8 +289,8 @@ def get_assets(root: mjcf.RootElement) -> dict[str, bytes]:
     return assets
 
 
-def create_h1_motion(
-    poses: np.ndarray, trans: np.ndarray, orig_global_trans: np.ndarray, mocap_fr: float
+def create_robot_motion(
+    poses: np.ndarray, trans: np.ndarray, orig_global_trans: np.ndarray, mocap_fr: float, robot_type: str
 ) -> SkeletonMotion:
     """Create a SkeletonMotion for H1 robot from poses and translations.
     Args:
@@ -281,7 +305,7 @@ def create_h1_motion(
     from data.scripts.retargeting.config import get_config
 
     # Initialize H1 humanoid batch with config
-    cfg = get_config("h1")
+    cfg = get_config(robot_type)
     humanoid_batch = Humanoid_Batch(cfg)
 
     # Convert poses to proper format
@@ -558,9 +582,9 @@ def retarget_motion(motion: SkeletonMotion, robot_type: str, render: bool = Fals
     retargeted_trans = np.stack(retargeted_trans)
 
     # Create skeleton motion
-    if robot_type == "h1":
-        return create_h1_motion(
-            retargeted_poses, retargeted_trans, global_translations, fps
+    if robot_type in ["h1", "g1"]:
+        return create_robot_motion(
+            retargeted_poses, retargeted_trans, global_translations, fps, robot_type
         )
     else:
         skeleton_tree = SkeletonTree.from_mjcf(
@@ -687,7 +711,7 @@ def manually_retarget_motion(
     )
     new_sk_motion = SkeletonMotion.from_skeleton_state(new_sk_state, fps=30)
     sk_motion = retarget_motion(new_sk_motion, robot_type, render=render)
-    if robot_type == "h1":
+    if robot_type in ["h1", "g1"]:
         torch.save(sk_motion, output_path)
     else:
         sk_motion.to_file(output_path)

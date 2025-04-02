@@ -73,6 +73,66 @@ def h1_mapping():
         smpl_pose_modifier=smpl_pose_modifier,
         asset_file=asset_file,
     )
+    
+
+def g1_mapping():
+    #### Config for extension
+    extend_config = [
+        {
+            "joint_name": "left_rubber_hand_2",
+            "parent_name": "left_wrist_yaw_link",
+            "pos": [0.12, 0, 0.0],
+            "rot": [1.0, 0.0, 0.0, 0.0],
+        },
+        {
+            "joint_name": "right_rubber_hand_2",
+            "parent_name": "right_wrist_yaw_link",
+            "pos": [0.12, 0, 0.0],
+            "rot": [1.0, 0.0, 0.0, 0.0],
+        },
+        {
+            "joint_name": "head",
+            "parent_name": "pelvis",
+            "pos": [0.0, 0.0, 0.4],
+            "rot": [1.0, 0.0, 0.0, 0.0],
+        },
+    ]
+
+    base_link = "torso_link"
+    joint_matches = [
+        ["pelvis", "Pelvis"],
+        ["left_hip_yaw_link", "L_Hip"],
+        ["left_knee_link", "L_Knee"],
+        ["left_ankle_roll_link", "L_Ankle"],
+        ["right_hip_yaw_link", "R_Hip"],
+        ["right_knee_link", "R_Knee"],
+        ["right_ankle_roll_link", "R_Ankle"],
+        ["left_shoulder_pitch_link", "L_Shoulder"],
+        ["left_elbow_link", "L_Elbow"],
+        ["left_rubber_hand_2", "L_Hand"],
+        ["right_shoulder_pitch_link", "R_Shoulder"],
+        ["right_elbow_link", "R_Elbow"],
+        ["right_rubber_hand_2", "R_Hand"],
+        ["head", "Head"],
+    ]
+
+    smpl_pose_modifier = [
+        {"Pelvis": "[np.pi/2, 0, np.pi/2]"},
+        {"L_Shoulder": "[0, 0, -np.pi/2]"},
+        {"R_Shoulder": "[0, 0, np.pi/2]"},
+        {"L_Elbow": "[0, -np.pi/2, 0]"},
+        {"R_Elbow": "[0, np.pi/2, 0]"},
+    ]
+
+    asset_file = "protomotions/data/assets/mjcf/g1_original.xml"
+
+    return EasyDict(
+        extend_config=extend_config,
+        base_link=base_link,
+        joint_matches=joint_matches,
+        smpl_pose_modifier=smpl_pose_modifier,
+        asset_file=asset_file,
+    )
 
 
 def h1_no_head_mapping():
@@ -250,5 +310,7 @@ def get_config(humanoid_type: str):
         return h1_no_head_no_hands_mapping()
     elif humanoid_type == "smplx_humanoid_with_limits":
         return smplx_with_limits_mapping()
+    elif humanoid_type == "g1":
+        return g1_mapping()
     else:
         raise NotImplementedError
