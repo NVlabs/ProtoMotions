@@ -87,12 +87,8 @@ class Simulator(ABC):
         self._num_dof: int = len(self.robot_config.dof_names)
         self._dof_limits_lower_sim: torch.Tensor = None
         self._dof_limits_upper_sim: torch.Tensor = None
-
-        self._dof_body_ids = self.robot_config.dof_body_ids
-        self._dof_offsets_common: List[int] = self._compute_dof_offsets(self.robot_config.dof_names)
-
-        self._dof_obs_size = self.robot_config.dof_obs_size
-        self._num_act = self.robot_config.number_of_actions
+        self._dof_limits_lower_common: torch.Tensor = None
+        self._dof_limits_upper_common: torch.Tensor = None
 
         self.user_requested_reset: bool = False
 
@@ -105,35 +101,6 @@ class Simulator(ABC):
         self._user_recording_video_path = os.path.join(
             "output/renderings", f"{self.config.experiment_name}-%s"
         )
-
-
-    def _compute_dof_offsets(self, dof_names: List[str]) -> List[int]:
-        """
-        Compute and return offsets where consecutive bodies' DOFs start.
-
-        Args:
-            dof_names (List[str]): List of DOF names.
-
-        Returns:
-            List[int]: A list of offsets indicating the start of each new set of DOFs.
-        """
-        dof_offsets: List[int] = []
-        previous_dof_name: str = "null"
-        for dof_offset, dof_name in enumerate(dof_names):
-            if dof_name[:-2] != previous_dof_name:  # remove the "_x/y/z"
-                previous_dof_name = dof_name[:-2]
-                dof_offsets.append(dof_offset)
-        dof_offsets.append(len(dof_names))
-        return dof_offsets
-
-    def get_dof_offsets(self) -> List[int]:
-        """
-        Return the pre-computed common DOF offsets.
-
-        Returns:
-            List[int]: DOF offsets.
-        """
-        return self._dof_offsets_common
 
     # -------------------------
     # 🌄 Group 2: Environment Setup & Configuration
@@ -243,35 +210,17 @@ class Simulator(ABC):
         )
         
         self._create_legged_robot_tensors()
-        
-        self._dof_offsets_sim = self._compute_dof_offsets(body_ordering.dof_names)
-        
-        self._sim_pd_action_offset, self._sim_pd_action_scale = (
+
+        self._dof_limits_lower_common = self._dof_limits_lower_sim[self.data_conversion.dof_convert_to_common]
+        self._dof_limits_upper_common = self._dof_limits_upper_sim[self.data_conversion.dof_convert_to_common]
+        self._common_pd_action_offset, self._common_pd_action_scale = (
             build_pd_action_offset_scale(
-                self._dof_offsets_sim,
-                self._dof_limits_lower_sim,
-                self._dof_limits_upper_sim,
+                self.robot_config.dof_offsets,
+                self._dof_limits_lower_common,
+                self._dof_limits_upper_common,
                 self.device,
             )
         )
-        
-    def get_num_bodies(self) -> int:
-        """
-        Return the number of bodies in the robot.
-        """
-        return self._num_bodies
-    
-    def get_num_act(self) -> int:
-        """
-        Return the number of actions in the robot.
-        """
-        return self._num_act
-    
-    def get_dof_body_ids(self) -> List[int]:
-        """
-        Return the DOF body IDs.
-        """
-        return self._dof_body_ids
 
     # -------------------------
     # ⏱️ Group 3: Simulation Steps & State Management
@@ -297,7 +246,7 @@ class Simulator(ABC):
         """
         self.user_requested_reset = False
         common_actions = torch.clamp(common_actions, -self.robot_config.control.clamp_actions, self.robot_config.control.clamp_actions)
-        self._actions = common_actions.to(self.device)[:, self.data_conversion.dof_convert_to_sim]
+        self._common_actions = common_actions.to(self.device)
         self._physics_step()
         self._update_markers(markers_state)
         self.render()
@@ -601,7 +550,7 @@ class Simulator(ABC):
             torch.Tensor: PD targets computed as offset + scale * action.
         """
         if self.robot_config.control.map_actions_to_pd_range:
-            pd_tar = self._sim_pd_action_offset + self._sim_pd_action_scale * action
+            pd_tar = self._common_pd_action_offset + self._common_pd_action_scale * action
         else:
             pd_tar = action
         return pd_tar
@@ -615,8 +564,8 @@ class Simulator(ABC):
         if self.robot_config.init_state is None:
             return
 
-        p_gains: torch.Tensor = torch.zeros(self._num_act, dtype=torch.float, device=self.device, requires_grad=False)
-        d_gains: torch.Tensor = torch.zeros(self._num_act, dtype=torch.float, device=self.device, requires_grad=False)
+        p_gains: torch.Tensor = torch.zeros(self.robot_config.number_of_actions, dtype=torch.float, device=self.device, requires_grad=False)
+        d_gains: torch.Tensor = torch.zeros(self.robot_config.number_of_actions, dtype=torch.float, device=self.device, requires_grad=False)
 
         default_dof_pos: torch.Tensor = torch.zeros(self._num_dof, dtype=torch.float, device=self.device, requires_grad=False)
         for i in range(self._num_dof):
@@ -634,9 +583,9 @@ class Simulator(ABC):
                 d_gains[i] = 0.0
                 if self.robot_config.control.control_type in [ControlType.PROPORTIONAL, ControlType.VELOCITY]:
                     raise ValueError(f"PD gain of joint {name} were not defined.")
-        self._sim_default_dof_pos = default_dof_pos[self.data_conversion.dof_convert_to_sim].unsqueeze(0)
-        self._sim_p_gains = p_gains[self.data_conversion.dof_convert_to_sim]
-        self._sim_d_gains = d_gains[self.data_conversion.dof_convert_to_sim]
+        self._default_dof_pos = default_dof_pos.unsqueeze(0)
+        self._common_p_gains = p_gains
+        self._common_d_gains = d_gains
 
     def _process_dof_props(self) -> None:
         """
@@ -666,31 +615,31 @@ class Simulator(ABC):
             torch.Tensor: Computed torques clipped to the torque limits.
         """
         actions_scaled: torch.Tensor = action * self.robot_config.control.action_scale
-        
-        dof_state = self._get_simulator_dof_state()
-        
+
+        common_dof_state = self._get_simulator_dof_state().convert_to_common(self.data_conversion)
+
         if self.control_type == ControlType.PROPORTIONAL:
             # Map action to dof ranges.
             pd_tar = self._action_to_pd_targets(action)
-            
+
             if self.robot_config.control.use_biased_controller:
-                pd_tar += self._sim_default_dof_pos
-            
+                pd_tar += self._default_dof_pos
+
             torques: torch.Tensor = (
-                self._sim_p_gains * (pd_tar - dof_state.dof_pos)
-                - self._sim_d_gains * dof_state.dof_vel
+                    self._common_p_gains * (pd_tar - common_dof_state.dof_pos)
+                    - self._common_d_gains * common_dof_state.dof_vel
             )
         elif self.control_type == ControlType.VELOCITY:
             raise NotImplementedError("Velocity control is not properly implemented yet.")
             torques = (
-                self._sim_p_gains * (actions_scaled - dof_state.dof_vel)
-                - self._sim_d_gains * (dof_state.dof_vel - self.last_dof_vel) / self.dt
+                    self._common_p_gains * (actions_scaled - dof_state.dof_vel)
+                    - self._common_d_gains * (dof_state.dof_vel - self.last_dof_vel) / self.dt
             )
         elif self.control_type == ControlType.TORQUE:
             torques = actions_scaled
         else:
             raise NameError(f"Unknown controller type: {self.control_type}")
-        return torch.clip(torques, -self._torque_limits_common[self.data_conversion.dof_convert_to_sim], self._torque_limits_common[self.data_conversion.dof_convert_to_sim])
+        return torch.clip(torques, -self._torque_limits_common, self._torque_limits_common)
 
     # -------------------------
     # 🎨 Group 6: Rendering & Visualization

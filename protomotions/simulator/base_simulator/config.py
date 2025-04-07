@@ -200,6 +200,7 @@ class RobotConfig(ConfigBuilder):
     dof_names: List[str]
     dof_body_ids: List[int]
     dof_obs_size: int
+    joint_axis: List[str]
     number_of_actions: int
     self_obs_max_coords_size: int
     left_foot_name: str
@@ -210,7 +211,9 @@ class RobotConfig(ConfigBuilder):
     asset: RobotAssetConfig
     
     # Optional fields with computed defaults
+    dof_offsets: Optional[List[int]] = None
     num_bodies: Optional[int] = None  # Computed from len(body_names)
+    num_dof: Optional[int] = None  # Computed from dof_offsets
     num_key_bodies: Optional[int] = None  # Computed from len(key_bodies)
     contact_bodies: Optional[List[str]] = None  # Defaults to body_names
     trackable_bodies_subset: Optional[List[str]] = None  # Defaults to body_names
@@ -247,6 +250,29 @@ class RobotConfig(ConfigBuilder):
             
         if self.num_key_bodies is None:
             self.num_key_bodies = len(self.key_bodies)
+
+        if self.dof_offsets is None:
+            self.dof_offsets = self._compute_dof_offsets(self.joint_axis)
+
+        if self.num_dof is None:
+            self.num_dof = self.dof_offsets[-1]
+
+    def _compute_dof_offsets(self, joint_axis: List[str]) -> List[int]:
+        """
+        Compute and return offsets where consecutive bodies' DOFs start.
+
+        Args:
+            joint_axis (List[str]): List of axis spanned per joint.
+
+        Returns:
+            List[int]: A list of offsets indicating the start of each new set of DOFs.
+        """
+        dof_offsets: List[int] = [0]
+        dofs_so_far = 0
+        for axis in joint_axis:
+            dofs_so_far += len(axis)
+            dof_offsets.append(dofs_so_far)
+        return dof_offsets
 
 
 @dataclass

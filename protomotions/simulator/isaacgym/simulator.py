@@ -966,15 +966,17 @@ class IsaacGymSimulator(Simulator):
 
     # ===== Group 5: Control & Computation Methods =====
     def _apply_pd_control(self) -> None:
-        pd_tar = self._action_to_pd_targets(self._actions)
-        pd_tar_tensor = gymtorch.unwrap_tensor(pd_tar)
+        common_pd_tar = self._action_to_pd_targets(self._common_actions)
+        isaacgym_pd_tar = common_pd_tar[:, self.data_conversion.dof_convert_to_sim]
+        pd_tar_tensor = gymtorch.unwrap_tensor(isaacgym_pd_tar)
         self._gym.set_dof_position_target_tensor(self._sim, pd_tar_tensor)
 
     def _apply_motor_forces(self) -> None:
-        torques = self._compute_torques(self._actions)
-        torques_tensor = gymtorch.unwrap_tensor(torques)
+        common_torques = self._compute_torques(self._common_actions)
+        isaacgym_torques = common_torques[:, self.data_conversion.dof_convert_to_sim]
+        torques_tensor = gymtorch.unwrap_tensor(isaacgym_torques)
         self._gym.set_dof_actuation_force_tensor(self._sim, torques_tensor)
-        
+
     def _push_robot(self):
         forces = torch.zeros((1, self._rigid_body_state.shape[0], 3), device=self.device, dtype=torch.float)
         torques = torch.zeros((1, self._rigid_body_state.shape[0], 3), device=self.device, dtype=torch.float)

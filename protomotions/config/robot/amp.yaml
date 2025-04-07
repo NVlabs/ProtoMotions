@@ -14,6 +14,7 @@ robot:
 
   # Control parameters
   dof_body_ids: [1, 2, 3, 4, 6, 7, 9, 10, 11, 12, 13, 14]
+  joint_axis: ['xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz']
 
   key_bodies:
     - "right_hand"

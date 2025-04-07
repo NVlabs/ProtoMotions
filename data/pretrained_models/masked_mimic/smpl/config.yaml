@@ -602,6 +602,7 @@ robot:
   - 21
   - 22
   - 23
+  joint_axis: ['xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz', 'xyz']
   dof_effort_limits: null
   dof_vel_limits: null
   dof_armatures: null
