@@ -246,6 +246,17 @@ class MotionLib(DeviceDtypeModuleMixin):
     def get_motion(self, motion_id):
         return self.state.motions[motion_id]
 
+    def sample_motions(self, n, valid_mask=None):
+        if valid_mask is not None:
+            weights = self.state.motion_weights.clone()
+            weights[~valid_mask] = 0
+        else:
+            weights = self.state.motion_weights
+
+        motion_ids = torch.multinomial(weights, num_samples=n, replacement=True)
+
+        return motion_ids
+
     def sample_text_embeddings(self, motion_ids: Tensor) -> Tensor:
         """Samples text embeddings for the given motion IDs.
 
