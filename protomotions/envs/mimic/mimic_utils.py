@@ -146,7 +146,7 @@ def exp_tracking_reward(
 
 
 @torch.jit.script
-def dof_to_local(pose: Tensor, dof_offsets: List[int], w_last: bool) -> Tensor:
+def dof_to_local(pose: Tensor, dof_offsets: List[int], joint_axis: List[str], w_last: bool) -> Tensor:
     """Convert degrees of freedom (DoF) representation to local rotations.
 
     Args:
@@ -174,11 +174,18 @@ def dof_to_local(pose: Tensor, dof_offsets: List[int], w_last: bool) -> Tensor:
         if dof_size == 3:  # Spherical joint (3 DoF)
             joint_quat = torch_utils.exp_map_to_quat(joint_pose, w_last)
         elif dof_size == 1:  # Revolute joint (1 DoF)
-            y_axis = torch.tensor(
-                [0.0, 1.0, 0.0], dtype=joint_pose.dtype, device=pose.device
+            configured_joint_axis = joint_axis[joint_idx]
+            axis = torch.tensor(
+                [0.0, 0.0, 0.0], dtype=joint_pose.dtype, device=pose.device
             )
+            if configured_joint_axis == "x":
+                axis[0] = 1.0
+            elif configured_joint_axis == "y":
+                axis[1] = 1.0
+            elif configured_joint_axis == "z":
+                axis[2] = 1.0
             joint_quat = rotations.quat_from_angle_axis(
-                joint_pose[..., 0], y_axis, w_last
+                joint_pose[..., 0], axis, w_last
             )
         else:
             raise ValueError(f"Unsupported joint type with {dof_size} DoF")

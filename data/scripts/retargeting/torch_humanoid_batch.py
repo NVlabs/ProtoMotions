@@ -94,6 +94,19 @@ class Humanoid_Batch:
                 self.dof_axis.append([int(i) for i in j.attrib["axis"].split(" ")])
             self.has_freejoint = False
 
+        axis_list = []
+        for i, axis in enumerate(self.dof_axis):
+            if axis == [1, 0, 0]:
+                axis_list.append("x")
+            elif axis == [0, 1, 0]:
+                axis_list.append("y")
+            elif axis == [0, 0, 1]:
+                axis_list.append("z")
+            else:
+                raise ValueError(f"Invalid axis: {axis}")
+        print("Axis list for this humanoid: ", axis_list)
+
+
         self.dof_axis = torch.tensor(self.dof_axis)
 
         for extend_config in cfg.extend_config:

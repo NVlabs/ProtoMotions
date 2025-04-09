@@ -364,8 +364,9 @@ class IsaacLabSimulator(Simulator):
         """
         Apply PD control by converting actions into PD targets and updating joint targets accordingly.
         """
-        pd_tar = self._action_to_pd_targets(self._actions)
-        self._robot.set_joint_position_target(pd_tar, joint_ids=None)
+        common_pd_tar = self._action_to_pd_targets(self._common_actions)
+        isaaclab_pd_tar = common_pd_tar[:, self.data_conversion.dof_convert_to_sim]
+        self._robot.set_joint_position_target(isaaclab_pd_tar, joint_ids=None)
 
     def _apply_motor_forces(self) -> None:
         """
@@ -374,8 +375,9 @@ class IsaacLabSimulator(Simulator):
         Raises:
             NotImplementedError: Not supported yet.
         """
-        torques = self._compute_torques(self._actions)
-        self._robot.set_joint_effort_target(torques, joint_ids=None)
+        common_torques = self._compute_torques(self._common_actions)
+        isaaclab_torques = common_torques[:, self.data_conversion.dof_convert_to_sim]
+        self._robot.set_joint_effort_target(isaaclab_torques, joint_ids=None)
 
     def _set_simulator_env_state(
         self, new_states: RobotState, env_ids: Optional[torch.Tensor]

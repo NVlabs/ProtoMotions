@@ -12,6 +12,7 @@ robot:
   # Control parameters
   body_names: ???  # DFS ordering (IsaacGym)
   dof_names: ???  # DFS ordering (IsaacGym)
+  joint_axis: ??? # List of strings. Entries are either "x", "y", "z", "xy", "xz", "yz", "xyz". Depending on which axes the joint is actuated.
   trackable_bodies_subset: ${.body_names}
 
   dof_body_ids: ???

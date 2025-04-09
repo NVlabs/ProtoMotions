@@ -38,6 +38,7 @@ from lightning_fabric.utilities.rank_zero import _get_rank
 from torch import Tensor, nn
 
 from isaac_utils import rotations, torch_utils
+from protomotions.simulator.base_simulator.config import RobotConfig
 from protomotions.simulator.base_simulator.robot_state import RobotState
 from protomotions.utils.device_dtype_mixin import DeviceDtypeModuleMixin
 from poselib.core.rotation3d import quat_angle_axis, quat_inverse, quat_mul_norm
@@ -46,23 +47,24 @@ from poselib.skeleton.skeleton3d import SkeletonMotion, SkeletonState
 # CT hack: remap phys_anim to protomotions for backwards compatibility of pre-existing motion files
 import sys
 import protomotions
+
 sys.modules['phys_anim'] = protomotions
 
 
 class LoadedMotions(nn.Module):
     def __init__(
-        self,
-        motions: Tuple[SkeletonMotion],
-        motion_lengths: Tensor,
-        motion_weights: Tensor,
-        motion_fps: Tensor,
-        motion_dt: Tensor,
-        motion_num_frames: Tensor,
-        motion_files: Tuple[str],
-        ref_respawn_offsets: Tensor,
-        text_embeddings: Tensor = None,
-        has_text_embeddings: Tensor = None,
-        **kwargs,  # Catch some nn.Module arguments that aren't needed
+            self,
+            motions: Tuple[SkeletonMotion],
+            motion_lengths: Tensor,
+            motion_weights: Tensor,
+            motion_fps: Tensor,
+            motion_dt: Tensor,
+            motion_num_frames: Tensor,
+            motion_files: Tuple[str],
+            ref_respawn_offsets: Tensor,
+            text_embeddings: Tensor = None,
+            has_text_embeddings: Tensor = None,
+            **kwargs,  # Catch some nn.Module arguments that aren't needed
     ):
         super().__init__()
         self.motions = motions
@@ -98,28 +100,25 @@ class MotionLib(DeviceDtypeModuleMixin):
     key_body_ids: Tensor
 
     def __init__(
-        self,
-        motion_file,
-        dof_body_ids,
-        dof_offsets,
-        key_body_ids,
-        device="cpu",
-        ref_height_adjust: float = 0,
-        target_frame_rate: int = 30,
-        create_text_embeddings: bool = False,
-        fix_motion_heights: bool = True,
-        skeleton_tree: Any = None,
-        local_rot_conversion: Tensor = None,
-        w_last: bool = True,
+            self,
+            motion_file,
+            robot_config: RobotConfig,
+            key_body_ids,
+            device="cpu",
+            ref_height_adjust: float = 0,
+            target_frame_rate: int = 30,
+            create_text_embeddings: bool = False,
+            fix_motion_heights: bool = True,
+            skeleton_tree: Any = None,
+            local_rot_conversion: Tensor = None,
+            w_last: bool = True,
     ):
         super().__init__()
         self.w_last = w_last
         self.fix_heights = fix_motion_heights
         self.skeleton_tree = skeleton_tree
         self.create_text_embeddings = create_text_embeddings
-        self.dof_body_ids = dof_body_ids
-        self.dof_offsets = dof_offsets
-        self.num_dof = dof_offsets[-1]
+        self.robot_config = robot_config
         self.ref_height_adjust = ref_height_adjust
         self.local_rot_conversion = local_rot_conversion
 
@@ -150,6 +149,8 @@ class MotionLib(DeviceDtypeModuleMixin):
                 **{k: v for k, v in state._buffers.items() if v is not None},
             }
             self.state = LoadedMotions(**state_dict)
+
+        self.motion_file = motion_file
 
         motions = self.state.motions
         self.register_buffer(
@@ -256,23 +257,6 @@ class MotionLib(DeviceDtypeModuleMixin):
 
         return motion_ids
 
-    def sample_other_motions(self, already_chosen_ids: Tensor) -> Tensor:
-        """Samples other motions that are not in the already chosen IDs.
-
-        Args:
-            already_chosen_ids (Tensor): A tensor containing the IDs of motions that have already been chosen.
-
-        Returns:
-            Tensor: A tensor containing the IDs of the sampled motions that are not in the already chosen IDs.
-        """
-        n = already_chosen_ids.shape[0]
-        motion_weights = self.state.motion_weights.unsqueeze(0).tile([n, 1])
-        motion_weights = motion_weights.scatter(
-            1, already_chosen_ids.unsqueeze(-1), torch.zeros_like(motion_weights)
-        )
-        motion_ids = torch.multinomial(motion_weights, num_samples=1).squeeze(-1)
-        return motion_ids
-
     def sample_text_embeddings(self, motion_ids: Tensor) -> Tensor:
         """Samples text embeddings for the given motion IDs.
 
@@ -301,10 +285,13 @@ class MotionLib(DeviceDtypeModuleMixin):
         return motion_time
 
     def get_motion_length(self, motion_ids):
-        return self.state.motion_lengths[motion_ids]
+        if motion_ids is None:
+            return self.state.motion_lengths
+        else:
+            return self.state.motion_lengths[motion_ids]
 
     def get_motion_state(
-        self, motion_ids, motion_times, joint_3d_format="exp_map"
+            self, motion_ids, motion_times, joint_3d_format="exp_map"
     ) -> RobotState:
         motion_len = self.state.motion_lengths[motion_ids]
         motion_times = motion_times.clip(min=0).clip(
@@ -390,13 +377,12 @@ class MotionLib(DeviceDtypeModuleMixin):
         key_body_pos = (1.0 - blend_exp) * key_body_pos0 + blend_exp * key_body_pos1
         key_body_pos[:, :, 2] += self.ref_height_adjust
 
-        local_rot = torch_utils.slerp(
-            local_rot0, local_rot1, torch.unsqueeze(blend, axis=-1)
-        )
-
         if hasattr(self, "dof_pos"):  # H1 joints
             dof_pos = (1.0 - blend) * self.dof_pos[f0l] + blend * self.dof_pos[f1l]
         else:
+            local_rot = torch_utils.slerp(
+                local_rot0, local_rot1, torch.unsqueeze(blend, axis=-1)
+            )
             dof_pos: Tensor = self._local_rotation_to_dof(local_rot, joint_3d_format)
 
         root_vel = (1.0 - blend) * root_vel0 + blend * root_vel1
@@ -418,7 +404,6 @@ class MotionLib(DeviceDtypeModuleMixin):
             key_body_pos=key_body_pos,
             dof_pos=dof_pos,
             dof_vel=dof_vel,
-            local_rot=local_rot,
             rigid_body_pos=rigid_body_pos,
             rigid_body_rot=rigid_body_rot,
             rigid_body_vel=global_vel,
@@ -441,7 +426,7 @@ class MotionLib(DeviceDtypeModuleMixin):
             end_frame = int(end * motion.fps)
 
         assert (
-            start_frame < end_frame
+                start_frame < end_frame
         ), f"Motion start frame {start_frame} >= motion end frame {end_frame}"
 
         sliced_local_rotation = motion.local_rotation[start_frame:end_frame].clone()
@@ -499,8 +484,9 @@ class MotionLib(DeviceDtypeModuleMixin):
                 cur_fps = curr_motion.fps
                 
             if cur_fps > target_frame_rate:
-                # Only downsample the FPS
-                curr_motion = fix_motion_fps(
+                # Not necessary, but we downsample the FPS to save memory
+                # do nothing if cur_fps <= target_frame_rate
+                curr_motion = self._fix_motion_fps(
                     curr_motion,
                     cur_fps,
                     target_frame_rate,
@@ -508,7 +494,6 @@ class MotionLib(DeviceDtypeModuleMixin):
                 )
 
             sub_motion = self._slice_motion_file(curr_motion, motion_timings[f])
-
             motion_fpses.append(float(sub_motion.fps))
 
             if self.fix_heights:
@@ -624,7 +609,7 @@ class MotionLib(DeviceDtypeModuleMixin):
                     motion_entry.sub_motions[0].idx = motion_index
 
                 for sub_motion in sorted(
-                    motion_entry.sub_motions, key=lambda x: int(x.idx)
+                        motion_entry.sub_motions, key=lambda x: int(x.idx)
                 ):
                     curr_weight = sub_motion.weight
                     assert curr_weight >= 0
@@ -697,11 +682,6 @@ class MotionLib(DeviceDtypeModuleMixin):
 
         return frame_idx0, frame_idx1, blend
 
-    def _get_num_bodies(self):
-        motion = self.get_motion(0)
-        num_bodies = motion.num_joints
-        return num_bodies
-
     def _compute_motion_dof_vels(self, motion: SkeletonMotion):
         num_frames = motion.global_translation.shape[0]
         dt = 1.0 / motion.fps
@@ -721,11 +701,11 @@ class MotionLib(DeviceDtypeModuleMixin):
     # jp hack
     # get rid of this ASAP, need a proper way of projecting from max coords to reduced coords
     def _local_rotation_to_dof(self, local_rot, joint_3d_format):
-        body_ids = self.dof_body_ids
-        dof_offsets = self.dof_offsets
+        body_ids = self.robot_config.dof_body_ids
+        dof_offsets = self.robot_config.dof_offsets
 
         n = local_rot.shape[0]
-        dof_pos = torch.zeros((n, self.num_dof), dtype=torch.float, device=self._device)
+        dof_pos = torch.zeros((n, self.robot_config.num_dof), dtype=torch.float, device=self._device)
 
         for j in range(len(body_ids)):
             body_id = body_ids[j]
@@ -742,15 +722,23 @@ class MotionLib(DeviceDtypeModuleMixin):
                 else:
                     raise ValueError(f"Unknown 3d format '{joint_3d_format}'")
 
-                dof_pos[:, joint_offset : (joint_offset + joint_size)] = formatted_joint
+                dof_pos[:, joint_offset: (joint_offset + joint_size)] = formatted_joint
             elif joint_size == 1:
                 joint_q = local_rot[:, body_id]
+                configured_joint_axis = self.robot_config.joint_axis[j]
                 joint_theta, joint_axis = torch_utils.quat_to_angle_axis(
                     joint_q, w_last=True
                 )
+                if configured_joint_axis == "x":
+                    joint_axis = joint_axis[..., 0]
+                elif configured_joint_axis == "y":
+                    joint_axis = joint_axis[..., 1]
+                elif configured_joint_axis == "z":
+                    joint_axis[..., 2]
+
                 joint_theta = (
-                    joint_theta * joint_axis[..., 1]
-                )  # assume joint is always along y axis
+                        joint_theta * joint_axis
+                )
 
                 joint_theta = rotations.normalize_angle(joint_theta)
                 dof_pos[:, joint_offset] = joint_theta
@@ -762,10 +750,10 @@ class MotionLib(DeviceDtypeModuleMixin):
         return dof_pos
 
     def _local_rotation_to_dof_vel(self, local_rot0, local_rot1, dt):
-        body_ids = self.dof_body_ids
-        dof_offsets = self.dof_offsets
+        body_ids = self.robot_config.dof_body_ids
+        dof_offsets = self.robot_config.dof_offsets
 
-        dof_vel = torch.zeros([self.num_dof], device=self._device)
+        dof_vel = torch.zeros([self.robot_config.num_dof], device=self._device)
 
         diff_quat_data = quat_mul_norm(quat_inverse(local_rot0), local_rot1)
         diff_angle, diff_axis = quat_angle_axis(diff_quat_data)
@@ -779,7 +767,7 @@ class MotionLib(DeviceDtypeModuleMixin):
 
             if joint_size == 3:
                 joint_vel = local_vel[body_id]
-                dof_vel[joint_offset : (joint_offset + joint_size)] = joint_vel
+                dof_vel[joint_offset: (joint_offset + joint_size)] = joint_vel
 
             elif joint_size == 1:
                 assert joint_size == 1
@@ -820,30 +808,30 @@ class MotionLib(DeviceDtypeModuleMixin):
 
         return new_motion
 
+    @staticmethod
+    def _fix_motion_fps(
+            motion,
+            orig_fps,
+            target_frame_rate,
+            skeleton_tree,
+    ):
+        if skeleton_tree is None:
+            if hasattr(motion, "skeleton_tree"):
+                skeleton_tree = motion.skeleton_tree
+            else:
+                return motion
 
-def fix_motion_fps(
-    motion,
-    orig_fps,
-    target_frame_rate,
-    skeleton_tree,
-):
-    if skeleton_tree is None:
-        if hasattr(motion, "skeleton_tree"):
-            skeleton_tree = motion.skeleton_tree
-        else:
-            return motion
+        skip = int(np.round(orig_fps / target_frame_rate))
 
-    skip = int(np.round(orig_fps / target_frame_rate))
+        lr = motion.local_rotation[::skip]
+        rt = motion.root_translation[::skip]
 
-    lr = motion.local_rotation[::skip]
-    rt = motion.root_translation[::skip]
+        new_sk_state = SkeletonState.from_rotation_and_root_translation(
+            skeleton_tree,
+            lr,
+            rt,
+            is_local=True,
+        )
+        new_motion = SkeletonMotion.from_skeleton_state(new_sk_state, fps=target_frame_rate)
 
-    new_sk_state = SkeletonState.from_rotation_and_root_translation(
-        skeleton_tree,
-        lr,
-        rt,
-        is_local=True,
-    )
-    new_motion = SkeletonMotion.from_skeleton_state(new_sk_state, fps=target_frame_rate)
-
-    return new_motion
+        return new_motion

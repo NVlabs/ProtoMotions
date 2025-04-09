@@ -92,7 +92,6 @@ class RobotState:
     rigid_body_vel: Optional[torch.Tensor] = None
     rigid_body_ang_vel: Optional[torch.Tensor] = None
     key_body_pos: Optional[torch.Tensor] = None
-    local_rot: Optional[torch.Tensor] = None
 
     @staticmethod
     def from_dict(data: Dict[str, torch.Tensor]) -> "RobotState":
@@ -120,7 +119,6 @@ class RobotState:
             rigid_body_vel=data.get("rigid_body_vel", None),
             rigid_body_ang_vel=data.get("rigid_body_ang_vel", None),
             key_body_pos=data.get("key_body_pos", None),
-            local_rot=data.get("local_rot", None),
         )
 
     def to_dict(self) -> Dict[str, torch.Tensor]:
@@ -153,8 +151,6 @@ class RobotState:
             data["rigid_body_ang_vel"] = self.rigid_body_ang_vel
         if self.key_body_pos is not None:
             data["key_body_pos"] = self.key_body_pos
-        if self.local_rot is not None:
-            data["local_rot"] = self.local_rot
         return data 
 
     def convert_to_common(self, conversion: DataConversion) -> "RobotState":
@@ -186,13 +182,6 @@ class RobotState:
         new_rigid_body_vel = self.rigid_body_vel[:, conversion.body_convert_to_common] if self.rigid_body_vel is not None else None
         new_rigid_body_ang_vel = self.rigid_body_ang_vel[:, conversion.body_convert_to_common] if self.rigid_body_ang_vel is not None else None
 
-        new_local_rot = None
-        if self.local_rot is not None:
-            lr = self.local_rot
-            if not conversion.sim_w_last:
-                lr = rotations.wxyz_to_xyzw(lr)
-            new_local_rot = lr[:, conversion.body_convert_to_common[1:]]  # Skip root rotation in local frame
-            
         return RobotState(
             root_pos=self.root_pos,
             root_rot=new_root_rot,
@@ -205,7 +194,6 @@ class RobotState:
             rigid_body_vel=new_rigid_body_vel,
             rigid_body_ang_vel=new_rigid_body_ang_vel,
             key_body_pos=self.key_body_pos,
-            local_rot=new_local_rot,
         )
 
     def convert_to_sim(self, conversion: DataConversion) -> "RobotState":
@@ -236,13 +224,6 @@ class RobotState:
         new_rigid_body_vel = self.rigid_body_vel[:, conversion.body_convert_to_sim] if self.rigid_body_vel is not None else None
         new_rigid_body_ang_vel = self.rigid_body_ang_vel[:, conversion.body_convert_to_sim] if self.rigid_body_ang_vel is not None else None
 
-        new_local_rot = None
-        if self.local_rot is not None:
-            lr = self.local_rot[:, conversion.body_convert_to_sim[1:]]
-            if not conversion.sim_w_last:
-                lr = rotations.xyzw_to_wxyz(lr)
-            new_local_rot = lr
-            
         return RobotState(
             root_pos=self.root_pos,
             root_rot=new_root_rot,
@@ -255,5 +236,4 @@ class RobotState:
             rigid_body_vel=new_rigid_body_vel,
             rigid_body_ang_vel=new_rigid_body_ang_vel,
             key_body_pos=self.key_body_pos,
-            local_rot=new_local_rot,
-        ) 
+        )

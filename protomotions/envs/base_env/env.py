@@ -581,7 +581,7 @@ class BaseEnv:
         head_term_height = self.config.head_termination_height
         termination_height = self.config.termination_height
 
-        termination_heights = np.array([termination_height] * self.simulator.get_num_bodies())
+        termination_heights = np.array([termination_height] * self.simulator.robot_config.num_bodies)
 
         head_id = self.config.robot.body_names.index(self.config.robot.head_body_name)
 
@@ -680,13 +680,20 @@ class BaseEnv:
         self.sync_motion_just_reset[wrapped_motions] = True
 
     def instantiate_motion_lib(self):
-        motion_lib: MotionLib = instantiate(
-            self.config.motion_lib,
-            dof_body_ids=self.simulator.get_dof_body_ids(),
-            dof_offsets=self.simulator.get_dof_offsets(),
+        # CT hack: we do not use hydra.instantiate here because we need to pass the robot_config
+        # the robot_config can not be parsed by OmegaConf/Hydra, which causes a failure.
+        MotionLibClass = get_class(self.config.motion_lib._target_)
+        motion_lib_params = {}
+        for key, value in self.config.motion_lib.items():
+            if key != "_target_":
+                motion_lib_params[key] = value
+
+        motion_lib: MotionLib = MotionLibClass(
+            robot_config=self.simulator.robot_config,
             key_body_ids=self.key_body_ids,
             device=self.device,
             skeleton_tree=None,
+            **motion_lib_params
         )
         return motion_lib
 

@@ -38,7 +38,7 @@ from isaac_utils import torch_utils, rotations, maths
 
 @torch.jit.script
 def dof_to_obs(
-    pose: Tensor, dof_obs_size: int, dof_offsets: List[int], w_last: bool
+    pose: Tensor, dof_obs_size: int, dof_offsets: List[int], joint_axis: List[str], w_last: bool
 ) -> Tensor:
     joint_obs_size = 6
     num_joints = len(dof_offsets) - 1
@@ -56,9 +56,16 @@ def dof_to_obs(
         if dof_size == 3:
             joint_pose_q = torch_utils.exp_map_to_quat(joint_pose, w_last)
         elif dof_size == 1:
+            configured_joint_axis = joint_axis[j]
             axis = torch.tensor(
-                [0.0, 1.0, 0.0], dtype=joint_pose.dtype, device=pose.device
+                [0.0, 0.0, 0.0], dtype=joint_pose.dtype, device=pose.device
             )
+            if configured_joint_axis == "x":
+                axis[0] = 1.0
+            elif configured_joint_axis == "y":
+                axis[1] = 1.0
+            elif configured_joint_axis == "z":
+                axis[2] = 1.0
             joint_pose_q = rotations.quat_from_angle_axis(
                 joint_pose[..., 0], axis, w_last
             )
@@ -136,6 +143,7 @@ def compute_humanoid_observations(
     local_root_obs: bool,
     dof_obs_size: int,
     dof_offsets: List[int],
+    joint_axis: List[str],
     w_last: bool,
 ) -> Tensor:
     root_h = root_pos[:, 2:3] - ground_height
@@ -170,7 +178,7 @@ def compute_humanoid_observations(
         local_key_body_pos.shape[1] * local_key_body_pos.shape[2],
     )
 
-    dof_obs = dof_to_obs(dof_pos, dof_obs_size, dof_offsets, w_last)
+    dof_obs = dof_to_obs(dof_pos, dof_obs_size, dof_offsets, joint_axis, w_last)
 
     obs = torch.cat(
         (
@@ -325,6 +333,7 @@ def build_disc_observations(
     root_height_obs: bool,
     dof_obs_size: int,
     dof_offsets: List[int],
+    joint_axis: List[str],
     w_last: bool,
 ) -> Union[Tensor, Tuple[Tensor, Dict[str, Tensor]]]:
     root_h = root_pos[:, 2:3]
@@ -363,7 +372,7 @@ def build_disc_observations(
         local_key_body_pos.shape[1] * local_key_body_pos.shape[2],
     )
 
-    dof_obs = dof_to_obs(dof_pos, dof_obs_size, dof_offsets, w_last)
+    dof_obs = dof_to_obs(dof_pos, dof_obs_size, dof_offsets, joint_axis, w_last)
 
     obs = torch.cat(
         (

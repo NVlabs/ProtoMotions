@@ -379,13 +379,15 @@ class GenesisSimulator(Simulator):
     # ===== Group 5: Control & Computation Methods =====
     def _apply_motor_forces(self) -> None:
         """Applies computed motor forces to the robot."""
-        torques = self._compute_torques(self._actions)
-        self._robot.control_dofs_force(torques, self._genesis_dof_indices)
-        
+        common_torques = self._compute_torques(self._common_actions)
+        genesis_torques = common_torques[:, self.data_conversion.dof_convert_to_sim]
+        self._robot.control_dofs_force(genesis_torques, self._genesis_dof_indices)
+
     def _apply_pd_control(self) -> None:
         """Applies PD control to the robot."""
-        pd_tar = self._action_to_pd_targets(self._actions)
-        self._robot.control_dofs_position(pd_tar, self._genesis_dof_indices)
+        common_pd_tar = self._action_to_pd_targets(self._common_actions)
+        genesis_pd_tar = common_pd_tar[:, self.data_conversion.dof_convert_to_sim]
+        self._robot.control_dofs_position(genesis_pd_tar, self._genesis_dof_indices)
 
     # ===== Group 6: Rendering & Visualization =====
     def _init_camera(self) -> None:
