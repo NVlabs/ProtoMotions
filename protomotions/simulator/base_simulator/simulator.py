@@ -245,7 +245,7 @@ class Simulator(ABC):
             markers_state (Dict[str, MarkerState]): Dictionary of marker states.
         """
         self.user_requested_reset = False
-        common_actions = torch.clamp(common_actions, -self.robot_config.control.clamp_actions, self.robot_config.control.clamp_actions)
+        common_actions = torch.clamp(common_actions * self.robot_config.control.action_scale, -self.robot_config.control.clamp_actions, self.robot_config.control.clamp_actions)
         self._common_actions = common_actions.to(self.device)
         self._physics_step()
         self._update_markers(markers_state)
@@ -614,8 +614,6 @@ class Simulator(ABC):
         Returns:
             torch.Tensor: Computed torques clipped to the torque limits.
         """
-        actions_scaled: torch.Tensor = action * self.robot_config.control.action_scale
-
         common_dof_state = self._get_simulator_dof_state().convert_to_common(self.data_conversion)
 
         if self.control_type == ControlType.PROPORTIONAL:
@@ -632,11 +630,11 @@ class Simulator(ABC):
         elif self.control_type == ControlType.VELOCITY:
             raise NotImplementedError("Velocity control is not properly implemented yet.")
             torques = (
-                    self._common_p_gains * (actions_scaled - dof_state.dof_vel)
+                    self._common_p_gains * (action - dof_state.dof_vel)
                     - self._common_d_gains * (dof_state.dof_vel - self.last_dof_vel) / self.dt
             )
         elif self.control_type == ControlType.TORQUE:
-            torques = actions_scaled
+            torques = action
         else:
             raise NameError(f"Unknown controller type: {self.control_type}")
         return torch.clip(torques, -self._torque_limits_common, self._torque_limits_common)
