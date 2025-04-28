@@ -200,7 +200,6 @@ class RobotConfig(ConfigBuilder):
     dof_names: List[str]
     dof_body_ids: List[int]
     dof_obs_size: int
-    joint_axis: List[str]
     number_of_actions: int
     self_obs_max_coords_size: int
     left_foot_name: str
@@ -218,7 +217,8 @@ class RobotConfig(ConfigBuilder):
     contact_bodies: Optional[List[str]] = None  # Defaults to body_names
     trackable_bodies_subset: Optional[List[str]] = None  # Defaults to body_names
     self_obs_size: Optional[int] = None  # Defaults to self_obs_max_coords_size
-    
+    joint_axis: List[str] = None 
+ 
     # Optional fields
     dof_effort_limits: Optional[List[float]] = None
     dof_vel_limits: Optional[List[float]] = None

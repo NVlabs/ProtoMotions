@@ -28,6 +28,7 @@ robot_config = RobotConfig(
     dof_body_ids=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
     dof_obs_size=114,  # 19 joints * 6 (pos, vel, etc.)
     number_of_actions=19,
+    joint_axis=[],
     self_obs_max_coords_size=373,
     left_foot_name="left_foot_link",
     right_foot_name="right_foot_link",
