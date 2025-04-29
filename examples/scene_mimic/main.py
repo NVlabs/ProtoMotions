@@ -91,7 +91,7 @@ try:
         """
         # In mimic environment with motion_sync=True, the actions are ignored
         # as the robot follows the motion library
-        actions = torch.zeros((env.num_envs, env.simulator.get_num_act()), device=device)
+        actions = torch.zeros((env.num_envs, env.simulator.robot_config.number_of_actions), device=device)
         obs, rewards, dones, infos = env.step(actions)
             
 except KeyboardInterrupt:
