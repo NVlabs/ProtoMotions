@@ -39,8 +39,11 @@ def main(
     not_upright_start: bool = False,  # By default, let's start upright (for consistency across all models).
     humanoid_mjcf_path: Optional[str] = None,
     force_retarget: bool = False,
-    samp_root_offset_path: str = "data/yaml_files/samp_root_offsets.yaml",
+    output_dir: Path = None,
 ):
+    if output_dir is None:
+        output_dir = amass_root_dir
+
     if robot_type is None:
         robot_type = humanoid_type
     elif robot_type in ["h1", "g1"]:
@@ -79,10 +82,6 @@ def main(
     folder_names = [
         f.path.split("/")[-1] for f in os.scandir(amass_root_dir) if f.is_dir()
     ]
-
-    # Load SAMP root offsets
-    with open(samp_root_offset_path, "r") as f:
-        samp_root_offsets = yaml.safe_load(f)
 
     robot_cfg = {
         "mesh": False,
@@ -127,7 +126,7 @@ def main(
         if "retarget" in folder_name or "smpl" in folder_name or "h1" in folder_name:
             continue
         data_dir = amass_root_dir / folder_name
-        output_dir = amass_root_dir / f"{folder_name}-{append_name}"
+        save_dir = output_dir / f"{folder_name}-{append_name}"
 
         all_files_in_folder = [
             f
@@ -141,7 +140,7 @@ def main(
                 f
                 for f in all_files_in_folder
                 if not (
-                    output_dir
+                    save_dir
                     / f.relative_to(data_dir).parent
                     / f.name.replace(".npz", ".npy")
                     .replace(".pkl", ".npy")
@@ -167,10 +166,10 @@ def main(
             continue
 
         data_dir = amass_root_dir / folder_name
-        output_dir = amass_root_dir / f"{folder_name}-{append_name}"
+        save_dir = amass_root_dir / f"{folder_name}-{append_name}"
 
         print(f"Processing subset {folder_name}")
-        os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(save_dir, exist_ok=True)
 
         files = [
             f
@@ -185,7 +184,7 @@ def main(
             try:
                 relative_path_dir = filename.relative_to(data_dir).parent
                 outpath = (
-                    output_dir
+                    save_dir
                     / relative_path_dir
                     / filename.name.replace(".npz", ".npy")
                     .replace(".pkl", ".npy")
@@ -201,10 +200,10 @@ def main(
                     continue
 
                 # Create the output directory if it doesn't exist
-                os.makedirs(output_dir / relative_path_dir, exist_ok=True)
+                os.makedirs(save_dir / relative_path_dir, exist_ok=True)
 
                 print(f"Processing {filename}")
-                if filename.suffix == ".npz" and "samp" not in str(filename):
+                if filename.suffix == ".npz":
                     motion_data = np.load(filename)
 
                     betas = motion_data["betas"]
@@ -244,17 +243,6 @@ def main(
                             mocap_fr = motion_data["mocap_framerate"]
                         else:
                             mocap_fr = motion_data["mocap_frame_rate"]
-                elif filename.suffix == ".pkl" and "samp" in str(filename):
-                    with open(filename, "rb") as f:
-                        motion_data = pickle.load(
-                            f, encoding="latin1"
-                        )  # np.load(filename)
-
-                    betas = motion_data["shape_est_betas"][:10]
-                    gender = "neutral"  # motion_data["gender"]
-                    amass_pose = motion_data["pose_est_fullposes"]
-                    amass_trans = motion_data["pose_est_trans"]
-                    mocap_fr = motion_data["mocap_framerate"]
                 else:
                     print(f"Skipping {filename} as it is not a valid file")
                     continue
@@ -370,11 +358,6 @@ def main(
                         pose_quat_global[..., 0] *= -1
                         pose_quat_global[..., 2] *= -1
                         trans[..., 1] *= -1
-
-                    if "samp" in str(filename):
-                        samp_offset = torch.tensor(samp_root_offsets[filename.stem])
-                        trans[:, :2] -= trans[0, :2].clone()
-                        trans[:, :2] += samp_offset
 
                     new_sk_state = SkeletonState.from_rotation_and_root_translation(
                         skeleton_tree,
