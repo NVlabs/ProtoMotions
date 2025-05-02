@@ -33,17 +33,33 @@ import torch
 import typer
 import yaml
 import tempfile
-from hydra.utils import instantiate
+import math
+from hydra.utils import get_class
 from hydra import compose, initialize
+
+from protomotions.utils.motion_lib import MotionLib
+from protomotions.simulator.base_simulator.config import RobotConfig
+
+from omegaconf import OmegaConf, ListConfig
+
+OmegaConf.register_new_resolver("eval", eval)
+OmegaConf.register_new_resolver("if", lambda pred, a, b: a if pred else b)
+OmegaConf.register_new_resolver("eq", lambda x, y: x.lower() == y.lower())
+OmegaConf.register_new_resolver("sqrt", lambda x: math.sqrt(float(x)))
+OmegaConf.register_new_resolver("sum", lambda x: sum(x))
+OmegaConf.register_new_resolver("ceil", lambda x: math.ceil(x))
+OmegaConf.register_new_resolver("int", lambda x: int(x))
+OmegaConf.register_new_resolver("len", lambda x: len(x))
+OmegaConf.register_new_resolver("sum_list", lambda lst: sum(lst))
+OmegaConf.register_new_resolver("len_or_int_value", lambda lst: len(lst) if isinstance(lst, ListConfig) else int(lst))
 
 
 def main(
-    motion_file: Path,
-    amass_data_path: Path,
-    outpath: Path,
-    humanoid_type: str = "smpl",
-    create_text_embeddings: bool = False,
-    num_data_splits: int = None,
+        motion_file: Path,
+        amass_data_path: Path,
+        outpath: Path,
+        humanoid_type: str = "smpl",
+        num_data_splits: int = None,
 ):
     config_path = "../../protomotions/config/robot"
 
@@ -57,13 +73,9 @@ def main(
         ],
         dtype=torch.long,
     )
-    dof_offsets = []
-    previous_dof_name = "null"
-    for dof_offset, dof_name in enumerate(cfg.robot.dof_names):
-        if dof_name[:-2] != previous_dof_name:  # remove the "_x/y/z"
-            previous_dof_name = dof_name[:-2]
-            dof_offsets.append(dof_offset)
-    dof_offsets.append(len(cfg.robot.dof_names))
+
+    # Process the robot config into a RobotConfig object
+    robot_config: RobotConfig = RobotConfig.from_dict(cfg.robot)
 
     print("Creating motion state")
     motion_files = []
@@ -77,9 +89,9 @@ def main(
         split_size = num_motions // num_data_splits
         for i in range(num_data_splits):
             if i == num_data_splits - 1:  # make sure we get all the remaining motions
-                split_motions = motions[i * split_size :]
+                split_motions = motions[i * split_size:]
             else:
-                split_motions = motions[i * split_size : (i + 1) * split_size]
+                split_motions = motions[i * split_size: (i + 1) * split_size]
 
             motion_idx = 0
             for motion in split_motions:
@@ -117,21 +129,26 @@ def main(
 
         # Save to a temporary file
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False
+                mode="w", suffix=".yaml", delete=False
         ) as temp_file:
             yaml.dump(motion_data, temp_file)
             temp_file_path = temp_file.name
 
         # Use the temporary file for MotionLib
         cfg.motion_lib.motion_file = temp_file_path
-        mlib = instantiate(
-            cfg.motion_lib,
-            dof_body_ids=cfg.robot.dof_body_ids,
-            dof_offsets=dof_offsets,
+
+        MotionLibClass = get_class(cfg.motion_lib._target_)
+        motion_lib_params = {}
+        for key, value in cfg.motion_lib.items():
+            if key != "_target_":
+                motion_lib_params[key] = value
+
+        mlib: MotionLib = MotionLibClass(
+            robot_config=robot_config,
             key_body_ids=key_body_ids,
             device="cpu",
-            create_text_embeddings=create_text_embeddings,
             skeleton_tree=None,
+            **motion_lib_params
         )
 
         print("Saving motion state")
