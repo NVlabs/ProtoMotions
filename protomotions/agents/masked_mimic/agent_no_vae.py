@@ -77,7 +77,7 @@ class MaskedMimicNoVae(PPO):
             checkpoint_path = self.config.expert_model_path + "/score_based.ckpt"
             if not Path(checkpoint_path).exists():
                 checkpoint_path = self.config.expert_model_path + "/last.ckpt"
-            pre_trained_expert = torch.load(checkpoint_path)
+            pre_trained_expert = torch.load(checkpoint_path, map_location='cpu')
 
             self.expert_model_config = OmegaConf.load(
                 Path(self.config.expert_model_path) / "config.yaml"
@@ -97,10 +97,13 @@ class MaskedMimicNoVae(PPO):
             expert_model: PPOModel = instantiate(
                 self.expert_model_config.agent.config.model
             )
+            
+            # load parameters before setting up the model
+            expert_model.load_state_dict(pre_trained_expert["model"])
+
             self.expert_model = self.fabric.setup(expert_model)
             self.expert_model.mark_forward_method("act")
 
-            self.expert_model.load_state_dict(pre_trained_expert["model"])
             for param in self.expert_model.parameters():
                 param.requires_grad = False
             self.expert_model.eval()  # Just incase
