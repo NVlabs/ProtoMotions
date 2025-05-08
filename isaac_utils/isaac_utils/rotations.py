@@ -35,16 +35,16 @@ from typing import Tuple
 
 def wxyz_to_xyzw(quat: Tensor):
     shape = quat.shape
-    flat_quat = quat.view(-1, 4)
+    flat_quat = quat.reshape(-1, 4)
     flat_quat = flat_quat[:, [1, 2, 3, 0]]
-    return flat_quat.view(shape)
+    return flat_quat.reshape(shape)
 
 
 def xyzw_to_wxyz(quat: Tensor):
     shape = quat.shape
-    flat_quat = quat.view(-1, 4)
+    flat_quat = quat.reshape(-1, 4)
     flat_quat = flat_quat[:, [3, 0, 1, 2]]
-    return flat_quat.view(shape)
+    return flat_quat.reshape(shape)
 
 
 @torch.jit.script
@@ -109,9 +109,9 @@ def quat_mul(a, b, w_last: bool):
     z = qq - zz + (z1 + y1) * (w2 - x2)
 
     if w_last:
-        quat = torch.stack([x, y, z, w], dim=-1).view(shape)
+        quat = torch.stack([x, y, z, w], dim=-1).reshape(shape)
     else:
-        quat = torch.stack([w, x, y, z], dim=-1).view(shape)
+        quat = torch.stack([w, x, y, z], dim=-1).reshape(shape)
 
     return quat
 
@@ -121,9 +121,9 @@ def quat_conjugate(a: Tensor, w_last: bool) -> Tensor:
     shape = a.shape
     a = a.reshape(-1, 4)
     if w_last:
-        return torch.cat((-a[:, :3], a[:, -1:]), dim=-1).view(shape)
+        return torch.cat((-a[:, :3], a[:, -1:]), dim=-1).reshape(shape)
     else:
-        return torch.cat((a[:, 0:1], -a[:, 1:]), dim=-1).view(shape)
+        return torch.cat((a[:, 0:1], -a[:, 1:]), dim=-1).reshape(shape)
 
 
 @torch.jit.script
@@ -138,7 +138,7 @@ def quat_apply(a: Tensor, b: Tensor, w_last: bool) -> Tensor:
         xyz = a[:, 1:]
         w = a[:, :1]
     t = xyz.cross(b, dim=-1) * 2
-    return (b + w * t + xyz.cross(t, dim=-1)).view(shape)
+    return (b + w * t + xyz.cross(t, dim=-1)).reshape(shape)
 
 
 @torch.jit.script
@@ -177,7 +177,7 @@ def quat_rotate_inverse(q: Tensor, v: Tensor, w_last: bool) -> Tensor:
     b = torch.cross(q_vec, v, dim=-1) * q_w.unsqueeze(-1) * 2.0
     c = (
         q_vec
-        * torch.bmm(q_vec.view(shape[0], 1, 3), v.view(shape[0], 3, 1)).squeeze(-1)
+        * torch.bmm(q_vec.reshape(shape[0], 1, 3), v.reshape(shape[0], 3, 1)).squeeze(-1)
         * 2.0
     )
     return a - b + c
@@ -354,7 +354,7 @@ def normalise_quat_in_pose(pose):
 
 @torch.jit.script
 def quat_apply_yaw(quat: Tensor, vec: Tensor, w_last: bool) -> Tensor:
-    quat_yaw = quat.clone().view(-1, 4)
+    quat_yaw = quat.clone().reshape(-1, 4)
     quat_yaw[:, :2] = 0.0
     quat_yaw = normalize(quat_yaw)
     return quat_apply(quat_yaw, vec, w_last)
