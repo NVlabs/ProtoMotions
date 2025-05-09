@@ -1,0 +1,1514 @@
+#usda 1.0
+(
+    customLayerData = {
+        dictionary cameraSettings = {
+            dictionary Front = {
+                double3 position = (50000.000000000015, -1.1102230246251565e-11, 0)
+                double radius = 500
+            }
+            dictionary Perspective = {
+                double3 position = (5, 4.9999999999999964, 5.000000000000003)
+                double3 target = (1.7763568394002505e-15, -3.552713678800501e-15, 8.881784197001252e-16)
+            }
+            dictionary Right = {
+                double3 position = (0, -50000, -1.1102230246251565e-11)
+                double radius = 500
+            }
+            dictionary Top = {
+                double3 position = (0, 0, 50000)
+                double radius = 500
+            }
+            string boundCamera = "/OmniverseKit_Persp"
+        }
+        dictionary omni_layer = {
+            dictionary muteness = {
+            }
+        }
+        dictionary renderSettings = {
+        }
+    }
+    defaultPrim = "amp_humanoid_sword_shield"
+    endTimeCode = 100
+    metersPerUnit = 1
+    startTimeCode = 0
+    timeCodesPerSecond = 24
+    upAxis = "Z"
+)
+
+def Xform "amp_humanoid_sword_shield" (
+    delete apiSchemas = ["PhysicsArticulationRootAPI", "PhysxArticulationAPI"]
+)
+{
+    def Xform "bodies"
+    {
+        quatd xformOp:orient = (1, 0, 0, 0)
+        double3 xformOp:scale = (1, 1, 1)
+        double3 xformOp:translate = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+        def Xform "pelvis" (
+            apiSchemas = ["PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsMassAPI", "PhysicsFilteredPairsAPI", "PhysicsArticulationRootAPI", "PhysxArticulationAPI", "AnimationDataAPI"]
+        )
+        {
+            rel animationData:binding = </amp_humanoid_sword_shield/bodies/pelvis/animationData>
+            float physics:density = 0
+            float physics:mass = 9.996
+            float physxRigidBody:angularDamping = 0.01
+            float physxRigidBody:maxAngularVelocity = 5729.58
+            float physxRigidBody:maxDepenetrationVelocity = 10
+            float physxRigidBody:maxLinearVelocity = 1000
+            bool physxRigidBody:retainAccelerations = 1
+            int physxRigidBody:solverPositionIterationCount = 4
+            float physxRigidBody:stabilizationThreshold = 0
+            matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+
+            def "collisions"
+            {
+                def Sphere "pelvis" (
+                    apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+                )
+                {
+                    float3[] extent = [(-0.09, -0.09, -0.09), (0.09, 0.09, 0.09)]
+                    uniform token physics:approximation = "boundingSphere"
+                    float physxCollision:contactOffset = 0.02
+                    float physxCollision:restOffset = 0
+                    uniform token purpose = "guide"
+                    double radius = 0.09000000357627869
+                    matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0.07000000029802322, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+
+                def Sphere "upper_waist" (
+                    apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+                )
+                {
+                    float3[] extent = [(-0.07, -0.07, -0.07), (0.07, 0.07, 0.07)]
+                    uniform token physics:approximation = "boundingSphere"
+                    float physxCollision:contactOffset = 0.02
+                    float physxCollision:restOffset = 0
+                    uniform token purpose = "guide"
+                    double radius = 0.07000000029802322
+                    matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0.20499999821186066, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+
+            def "visuals"
+            {
+                def Sphere "pelvis"
+                {
+                    float3[] extent = [(-0.09, -0.09, -0.09), (0.09, 0.09, 0.09)]
+                    double radius = 0.09000000357627869
+                    matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0.07000000029802322, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+
+                def Sphere "upper_waist"
+                {
+                    float3[] extent = [(-0.07, -0.07, -0.07), (0.07, 0.07, 0.07)]
+                    double radius = 0.07000000029802322
+                    matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0.20499999821186066, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+
+            def AnimationData "animationData"
+            {
+                double physics:density:x
+                bool physics:density:x:tangentBroken
+                timecode[] physics:density:x:tangentTimes
+                token[] physics:density:x:tangentTypes
+                double[] physics:density:x:tangentValues
+                bool physics:density:x:tangentWeighted
+            }
+        }
+
+        def Xform "torso" (
+            apiSchemas = ["PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsMassAPI", "PhysicsFilteredPairsAPI"]
+        )
+        {
+            float physics:density = 0
+            float physics:mass = 12.011
+            float physxRigidBody:angularDamping = 0.01
+            float physxRigidBody:maxAngularVelocity = 5729.58
+            float physxRigidBody:maxDepenetrationVelocity = 10
+            float physxRigidBody:maxLinearVelocity = 1000
+            bool physxRigidBody:retainAccelerations = 1
+            int physxRigidBody:solverPositionIterationCount = 4
+            float physxRigidBody:stabilizationThreshold = 0
+            matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0.23615099489688873, 1) )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+
+            def "collisions"
+            {
+                def Sphere "torso" (
+                    apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+                )
+                {
+                    float3[] extent = [(-0.11, -0.11, -0.11), (0.11, 0.11, 0.11)]
+                    uniform token physics:approximation = "boundingSphere"
+                    float physxCollision:contactOffset = 0.02
+                    float physxCollision:restOffset = 0
+                    uniform token purpose = "guide"
+                    double radius = 0.10999999940395355
+                    matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0.11999999731779099, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+
+                def Capsule "right_clavicle" (
+                    apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+                )
+                {
+                    uniform token axis = "X"
+                    float3[] extent = [(-0.08678709, -0.045, -0.045), (0.08678709, 0.045, 0.045)]
+                    double height = 0.08357418328523636
+                    uniform token physics:approximation = "convexHull"
+                    float physxCollision:contactOffset = 0.02
+                    float physxCollision:restOffset = 0
+                    uniform token purpose = "guide"
+                    double radius = 0.04500000178813934
+                    matrix4d xformOp:transform = ( (-0.1294958466137186, -0.9859444532297346, 0.10556721910322864, 0), (0.9859444532297346, -0.11669356780289064, 0.11956681145397674, 0), (-0.10556721910322864, 0.11956681145397674, 0.987197721189172, 0), (-0.011423749849200249, -0.08697725087404251, 0.2332068383693695, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+
+                def Capsule "left_clavicle" (
+                    apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+                )
+                {
+                    uniform token axis = "X"
+                    float3[] extent = [(-0.08678709, -0.045, -0.045), (0.08678709, 0.045, 0.045)]
+                    double height = 0.08357418328523636
+                    uniform token physics:approximation = "convexHull"
+                    float physxCollision:contactOffset = 0.02
+                    float physxCollision:restOffset = 0
+                    uniform token purpose = "guide"
+                    double radius = 0.04500000178813934
+                    matrix4d xformOp:transform = ( (-0.1294958466137186, 0.9859444532297346, 0.10556721910322864, 0), (-0.9859444532297346, -0.11669356780289064, -0.11956681145397674, 0), (-0.10556721910322864, -0.11956681145397674, 0.987197721189172, 0), (-0.011423749849200249, 0.08697725087404251, 0.2332068383693695, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+
+            def "visuals"
+            {
+                def Sphere "torso"
+                {
+                    float3[] extent = [(-0.11, -0.11, -0.11), (0.11, 0.11, 0.11)]
+                    double radius = 0.10999999940395355
+                    matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0.11999999731779099, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+
+                def Capsule "right_clavicle"
+                {
+                    uniform token axis = "X"
+                    float3[] extent = [(-0.08678709, -0.045, -0.045), (0.08678709, 0.045, 0.045)]
+                    double height = 0.08357418328523636
+                    double radius = 0.04500000178813934
+                    matrix4d xformOp:transform = ( (-0.1294958466137186, -0.9859444532297346, 0.10556721910322864, 0), (0.9859444532297346, -0.11669356780289064, 0.11956681145397674, 0), (-0.10556721910322864, 0.11956681145397674, 0.987197721189172, 0), (-0.011423749849200249, -0.08697725087404251, 0.2332068383693695, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+
+                def Capsule "left_clavicle"
+                {
+                    uniform token axis = "X"
+                    float3[] extent = [(-0.08678709, -0.045, -0.045), (0.08678709, 0.045, 0.045)]
+                    double height = 0.08357418328523636
+                    double radius = 0.04500000178813934
+                    matrix4d xformOp:transform = ( (-0.1294958466137186, 0.9859444532297346, 0.10556721910322864, 0), (-0.9859444532297346, -0.11669356780289064, -0.11956681145397674, 0), (-0.10556721910322864, -0.11956681145397674, 0.987197721189172, 0), (-0.011423749849200249, 0.08697725087404251, 0.2332068383693695, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+        }
+
+        def Xform "head" (
+            apiSchemas = ["PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsMassAPI", "PhysicsFilteredPairsAPI"]
+        )
+        {
+            float physics:density = 0
+            float physics:mass = 3.882
+            float physxRigidBody:angularDamping = 0.01
+            float physxRigidBody:maxAngularVelocity = 5729.58
+            float physxRigidBody:maxDepenetrationVelocity = 10
+            float physxRigidBody:maxLinearVelocity = 1000
+            bool physxRigidBody:retainAccelerations = 1
+            int physxRigidBody:solverPositionIterationCount = 4
+            float physxRigidBody:stabilizationThreshold = 0
+            matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0.4600449800491333, 1) )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+
+            def "collisions"
+            {
+                def Sphere "head" (
+                    apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+                )
+                {
+                    float3[] extent = [(-0.095, -0.095, -0.095), (0.095, 0.095, 0.095)]
+                    uniform token physics:approximation = "boundingSphere"
+                    float physxCollision:contactOffset = 0.02
+                    float physxCollision:restOffset = 0
+                    uniform token purpose = "guide"
+                    double radius = 0.0949999988079071
+                    matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0.17499999701976776, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+
+            def "visuals"
+            {
+                def Sphere "head"
+                {
+                    float3[] extent = [(-0.095, -0.095, -0.095), (0.095, 0.095, 0.095)]
+                    double radius = 0.0949999988079071
+                    matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0.17499999701976776, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+        }
+
+        def Xform "right_upper_arm" (
+            apiSchemas = ["PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsMassAPI", "PhysicsFilteredPairsAPI"]
+        )
+        {
+            float physics:density = 0
+            float physics:mass = 1.499
+            float physxRigidBody:angularDamping = 0.01
+            float physxRigidBody:maxAngularVelocity = 5729.58
+            float physxRigidBody:maxDepenetrationVelocity = 10
+            float physxRigidBody:maxLinearVelocity = 1000
+            bool physxRigidBody:retainAccelerations = 1
+            int physxRigidBody:solverPositionIterationCount = 4
+            float physxRigidBody:stabilizationThreshold = 0
+            matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (-0.024049999192357063, -0.18310999870300293, 0.47965097427368164, 1) )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+
+            def "collisions"
+            {
+                def Capsule "right_upper_arm" (
+                    apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+                )
+                {
+                    uniform token axis = "X"
+                    float3[] extent = [(-0.135, -0.045, -0.045), (0.135, 0.045, 0.045)]
+                    double height = 0.18000000715255737
+                    uniform token physics:approximation = "convexHull"
+                    float physxCollision:contactOffset = 0.02
+                    float physxCollision:restOffset = 0
+                    uniform token purpose = "guide"
+                    double radius = 0.04500000178813934
+                    matrix4d xformOp:transform = ( (3.422854177870249e-8, 0, -0.9999999657714582, 0), (0, 1, 0, 0), (0.9999999657714582, 0, 3.422854177870249e-8, 0), (0, 0, -0.14000000059604645, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+
+            def "visuals"
+            {
+                def Capsule "right_upper_arm"
+                {
+                    uniform token axis = "X"
+                    float3[] extent = [(-0.135, -0.045, -0.045), (0.135, 0.045, 0.045)]
+                    double height = 0.18000000715255737
+                    double radius = 0.04500000178813934
+                    matrix4d xformOp:transform = ( (3.422854177870249e-8, 0, -0.9999999657714582, 0), (0, 1, 0, 0), (0.9999999657714582, 0, 3.422854177870249e-8, 0), (0, 0, -0.14000000059604645, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+        }
+
+        def Xform "right_lower_arm" (
+            apiSchemas = ["PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsMassAPI", "PhysicsFilteredPairsAPI"]
+        )
+        {
+            float physics:density = 0
+            float physics:mass = 1
+            float physxRigidBody:angularDamping = 0.01
+            float physxRigidBody:maxAngularVelocity = 5729.58
+            float physxRigidBody:maxDepenetrationVelocity = 10
+            float physxRigidBody:maxLinearVelocity = 1000
+            bool physxRigidBody:retainAccelerations = 1
+            int physxRigidBody:solverPositionIterationCount = 4
+            float physxRigidBody:stabilizationThreshold = 0
+            matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (-0.024049999192357063, -0.18310999870300293, 0.20486298203468323, 1) )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+
+            def "collisions"
+            {
+                def Capsule "right_lower_arm" (
+                    apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+                )
+                {
+                    uniform token axis = "X"
+                    float3[] extent = [(-0.1075, -0.04, -0.04), (0.1075, 0.04, 0.04)]
+                    double height = 0.13500000536441803
+                    uniform token physics:approximation = "convexHull"
+                    float physxCollision:contactOffset = 0.02
+                    float physxCollision:restOffset = 0
+                    uniform token purpose = "guide"
+                    double radius = 0.03999999910593033
+                    matrix4d xformOp:transform = ( (3.422854177870249e-8, 0, -0.9999999657714582, 0), (0, 1, 0, 0), (0.9999999657714582, 0, 3.422854177870249e-8, 0), (0, 0, -0.11999999731779099, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+
+            def "visuals"
+            {
+                def Capsule "right_lower_arm"
+                {
+                    uniform token axis = "X"
+                    float3[] extent = [(-0.1075, -0.04, -0.04), (0.1075, 0.04, 0.04)]
+                    double height = 0.13500000536441803
+                    double radius = 0.03999999910593033
+                    matrix4d xformOp:transform = ( (3.422854177870249e-8, 0, -0.9999999657714582, 0), (0, 1, 0, 0), (0.9999999657714582, 0, 3.422854177870249e-8, 0), (0, 0, -0.11999999731779099, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+        }
+
+        def Xform "right_hand" (
+            apiSchemas = ["PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsMassAPI", "PhysicsFilteredPairsAPI"]
+        )
+        {
+            float physics:density = -0
+            float physics:mass = 0.5
+            float physxRigidBody:angularDamping = 0.01
+            float physxRigidBody:maxAngularVelocity = 5729.58
+            float physxRigidBody:maxDepenetrationVelocity = 10
+            float physxRigidBody:maxLinearVelocity = 1000
+            bool physxRigidBody:retainAccelerations = 1
+            int physxRigidBody:solverPositionIterationCount = 4
+            float physxRigidBody:stabilizationThreshold = 0
+            matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (-0.024049999192357063, -0.18310999870300293, -0.05408403277397156, 1) )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+
+            def "collisions"
+            {
+                def Sphere "right_hand" (
+                    apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+                )
+                {
+                    float3[] extent = [(-0.04, -0.04, -0.04), (0.04, 0.04, 0.04)]
+                    uniform token physics:approximation = "boundingSphere"
+                    float physxCollision:contactOffset = 0.02
+                    float physxCollision:restOffset = 0
+                    uniform token purpose = "guide"
+                    double radius = 0.03999999910593033
+                    matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+
+            def "visuals"
+            {
+                def Sphere "right_hand"
+                {
+                    float3[] extent = [(-0.04, -0.04, -0.04), (0.04, 0.04, 0.04)]
+                    double radius = 0.03999999910593033
+                    matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+        }
+
+        def Xform "sword" (
+            apiSchemas = ["PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsMassAPI", "PhysicsFilteredPairsAPI"]
+        )
+        {
+            float physics:density = 0
+            float physics:mass = 0.701
+            float physxRigidBody:angularDamping = 0.01
+            float physxRigidBody:maxAngularVelocity = 5729.58
+            float physxRigidBody:maxDepenetrationVelocity = 10
+            float physxRigidBody:maxLinearVelocity = 1000
+            bool physxRigidBody:retainAccelerations = 1
+            int physxRigidBody:solverPositionIterationCount = 4
+            float physxRigidBody:stabilizationThreshold = 0
+            matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0.7159500122070312, -0.18310999870300293, -0.05408403277397156, 1) )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+
+            def "collisions"
+            {
+                def Capsule "sword_hilt" (
+                    apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+                )
+                {
+                    uniform token axis = "X"
+                    float3[] extent = [(-0.13800001, -0.023, -0.023), (0.13800001, 0.023, 0.023)]
+                    double height = 0.23000001907348633
+                    uniform token physics:approximation = "convexHull"
+                    float physxCollision:contactOffset = 0.02
+                    float physxCollision:restOffset = 0
+                    uniform token purpose = "guide"
+                    double radius = 0.023000000044703484
+                    matrix4d xformOp:transform = ( (0.9999999403953572, 0, -0.0003452669770922512, 0), (0, 1, 0, 0), (0.0003452669770922512, 0, 0.9999999403953572, 0), (-0.7549999952316284, 0, 0, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+
+                def Cube "sword_blade" (
+                    apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+                )
+                {
+                    float3[] extent = [(-0.34, -0.01, -0.035), (0.34, 0.01, 0.035)]
+                    uniform token physics:approximation = "boundingCube"
+                    float physxCollision:contactOffset = 0.02
+                    float physxCollision:restOffset = 0
+                    uniform token purpose = "guide"
+                    matrix4d xformOp:transform = ( (0.3400000035762787, 0, 0, 0), (0, 0.009999999776482582, 0, 0), (0, 0, 0.03500000014901161, 0), (-0.3400000035762787, 0, 0, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+
+            def "visuals"
+            {
+                def Capsule "sword_hilt"
+                {
+                    uniform token axis = "X"
+                    float3[] extent = [(-0.13800001, -0.023, -0.023), (0.13800001, 0.023, 0.023)]
+                    double height = 0.23000001907348633
+                    double radius = 0.023000000044703484
+                    matrix4d xformOp:transform = ( (0.9999999403953572, 0, -0.0003452669770922512, 0), (0, 1, 0, 0), (0.0003452669770922512, 0, 0.9999999403953572, 0), (-0.7549999952316284, 0, 0, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+
+                def Cube "sword_blade"
+                {
+                    float3[] extent = [(-0.34, -0.01, -0.035), (0.34, 0.01, 0.035)]
+                    matrix4d xformOp:transform = ( (0.3400000035762787, 0, 0, 0), (0, 0.009999999776482582, 0, 0), (0, 0, 0.03500000014901161, 0), (-0.3400000035762787, 0, 0, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+        }
+
+        def Xform "left_upper_arm" (
+            apiSchemas = ["PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsMassAPI", "PhysicsFilteredPairsAPI"]
+        )
+        {
+            float physics:density = 0
+            float physics:mass = 1.499
+            float physxRigidBody:angularDamping = 0.01
+            float physxRigidBody:maxAngularVelocity = 5729.58
+            float physxRigidBody:maxDepenetrationVelocity = 10
+            float physxRigidBody:maxLinearVelocity = 1000
+            bool physxRigidBody:retainAccelerations = 1
+            int physxRigidBody:solverPositionIterationCount = 4
+            float physxRigidBody:stabilizationThreshold = 0
+            matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (-0.024049999192357063, 0.18310999870300293, 0.47965097427368164, 1) )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+
+            def "collisions"
+            {
+                def Capsule "left_upper_arm" (
+                    apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+                )
+                {
+                    uniform token axis = "X"
+                    float3[] extent = [(-0.135, -0.045, -0.045), (0.135, 0.045, 0.045)]
+                    double height = 0.18000000715255737
+                    uniform token physics:approximation = "convexHull"
+                    float physxCollision:contactOffset = 0.02
+                    float physxCollision:restOffset = 0
+                    uniform token purpose = "guide"
+                    double radius = 0.04500000178813934
+                    matrix4d xformOp:transform = ( (3.422854177870249e-8, 0, -0.9999999657714582, 0), (0, 1, 0, 0), (0.9999999657714582, 0, 3.422854177870249e-8, 0), (0, 0, -0.14000000059604645, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+
+            def "visuals"
+            {
+                def Capsule "left_upper_arm"
+                {
+                    uniform token axis = "X"
+                    float3[] extent = [(-0.135, -0.045, -0.045), (0.135, 0.045, 0.045)]
+                    double height = 0.18000000715255737
+                    double radius = 0.04500000178813934
+                    matrix4d xformOp:transform = ( (3.422854177870249e-8, 0, -0.9999999657714582, 0), (0, 1, 0, 0), (0.9999999657714582, 0, 3.422854177870249e-8, 0), (0, 0, -0.14000000059604645, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+        }
+
+        def Xform "left_lower_arm" (
+            apiSchemas = ["PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsMassAPI", "PhysicsFilteredPairsAPI"]
+        )
+        {
+            float physics:density = 0
+            float physics:mass = 1
+            float physxRigidBody:angularDamping = 0.01
+            float physxRigidBody:maxAngularVelocity = 5729.58
+            float physxRigidBody:maxDepenetrationVelocity = 10
+            float physxRigidBody:maxLinearVelocity = 1000
+            bool physxRigidBody:retainAccelerations = 1
+            int physxRigidBody:solverPositionIterationCount = 4
+            float physxRigidBody:stabilizationThreshold = 0
+            matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (-0.024049999192357063, 0.18310999870300293, 0.20486298203468323, 1) )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+
+            def "collisions"
+            {
+                def Capsule "left_lower_arm" (
+                    apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+                )
+                {
+                    uniform token axis = "X"
+                    float3[] extent = [(-0.1075, -0.04, -0.04), (0.1075, 0.04, 0.04)]
+                    double height = 0.13500000536441803
+                    uniform token physics:approximation = "convexHull"
+                    float physxCollision:contactOffset = 0.02
+                    float physxCollision:restOffset = 0
+                    uniform token purpose = "guide"
+                    double radius = 0.03999999910593033
+                    matrix4d xformOp:transform = ( (3.422854177870249e-8, 0, -0.9999999657714582, 0), (0, 1, 0, 0), (0.9999999657714582, 0, 3.422854177870249e-8, 0), (0, 0, -0.11999999731779099, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+
+            def "visuals"
+            {
+                def Capsule "left_lower_arm"
+                {
+                    uniform token axis = "X"
+                    float3[] extent = [(-0.1075, -0.04, -0.04), (0.1075, 0.04, 0.04)]
+                    double height = 0.13500000536441803
+                    double radius = 0.03999999910593033
+                    matrix4d xformOp:transform = ( (3.422854177870249e-8, 0, -0.9999999657714582, 0), (0, 1, 0, 0), (0.9999999657714582, 0, 3.422854177870249e-8, 0), (0, 0, -0.11999999731779099, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+        }
+
+        def Xform "shield" (
+            apiSchemas = ["PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsMassAPI", "PhysicsFilteredPairsAPI"]
+        )
+        {
+            float physics:density = 0
+            float physics:mass = 2.086
+            float physxRigidBody:angularDamping = 0.01
+            float physxRigidBody:maxAngularVelocity = 5729.58
+            float physxRigidBody:maxDepenetrationVelocity = 10
+            float physxRigidBody:maxLinearVelocity = 1000
+            bool physxRigidBody:retainAccelerations = 1
+            int physxRigidBody:solverPositionIterationCount = 4
+            float physxRigidBody:stabilizationThreshold = 0
+            matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (-0.024049999192357063, 0.25310999155044556, 0.08486298471689224, 1) )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+
+            def "collisions"
+            {
+                def Cylinder "shield" (
+                    apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+                )
+                {
+                    uniform token axis = "Z"
+                    float3[] extent = [(-0.015, -0.3, -0.3), (0.015, 0.3, 0.3)]
+                    double height = 0.029999999329447746
+                    uniform token physics:approximation = "convexHull"
+                    float physxCollision:contactOffset = 0.02
+                    float physxCollision:restOffset = 0
+                    uniform token purpose = "guide"
+                    double radius = 0.30000001192092896
+                    matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, -1.3435885648505064e-7, -1.0000001343588565, 0), (0, 1.0000001343588565, -1.3435885648505064e-7, 0), (0, 0.014999999664723873, 0, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+
+            def "visuals"
+            {
+                def Cylinder "shield"
+                {
+                    uniform token axis = "Z"
+                    float3[] extent = [(-0.015, -0.3, -0.3), (0.015, 0.3, 0.3)]
+                    double height = 0.029999999329447746
+                    double radius = 0.30000001192092896
+                    matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, -1.3435885648505064e-7, -1.0000001343588565, 0), (0, 1.0000001343588565, -1.3435885648505064e-7, 0), (0, 0.014999999664723873, 0, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+        }
+
+        def Xform "left_hand" (
+            apiSchemas = ["PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsMassAPI", "PhysicsFilteredPairsAPI"]
+        )
+        {
+            float physics:density = 0
+            float physics:mass = 0.5
+            float physxRigidBody:angularDamping = 0.01
+            float physxRigidBody:maxAngularVelocity = 5729.58
+            float physxRigidBody:maxDepenetrationVelocity = 10
+            float physxRigidBody:maxLinearVelocity = 1000
+            bool physxRigidBody:retainAccelerations = 1
+            int physxRigidBody:solverPositionIterationCount = 4
+            float physxRigidBody:stabilizationThreshold = 0
+            matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (-0.024049999192357063, 0.18310999870300293, -0.05408403277397156, 1) )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+
+            def "collisions"
+            {
+                def Sphere "left_hand" (
+                    apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+                )
+                {
+                    float3[] extent = [(-0.04, -0.04, -0.04), (0.04, 0.04, 0.04)]
+                    uniform token physics:approximation = "boundingSphere"
+                    float physxCollision:contactOffset = 0.02
+                    float physxCollision:restOffset = 0
+                    uniform token purpose = "guide"
+                    double radius = 0.03999999910593033
+                    matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+
+            def "visuals"
+            {
+                def Sphere "left_hand"
+                {
+                    float3[] extent = [(-0.04, -0.04, -0.04), (0.04, 0.04, 0.04)]
+                    double radius = 0.03999999910593033
+                    matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+        }
+
+        def Xform "right_thigh" (
+            apiSchemas = ["PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsMassAPI", "PhysicsFilteredPairsAPI"]
+        )
+        {
+            float physics:density = 0
+            float physics:mass = 4.502
+            float physxRigidBody:angularDamping = 0.01
+            float physxRigidBody:maxAngularVelocity = 5729.58
+            float physxRigidBody:maxDepenetrationVelocity = 10
+            float physxRigidBody:maxLinearVelocity = 1000
+            bool physxRigidBody:retainAccelerations = 1
+            int physxRigidBody:solverPositionIterationCount = 4
+            float physxRigidBody:stabilizationThreshold = 0
+            matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, -0.08488699793815613, 0, 1) )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+
+            def "collisions"
+            {
+                def Capsule "right_thigh" (
+                    apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+                )
+                {
+                    uniform token axis = "X"
+                    float3[] extent = [(-0.20500001, -0.055, -0.055), (0.20500001, 0.055, 0.055)]
+                    double height = 0.30000001192092896
+                    uniform token physics:approximation = "convexHull"
+                    float physxCollision:contactOffset = 0.02
+                    float physxCollision:restOffset = 0
+                    uniform token purpose = "guide"
+                    double radius = 0.054999999701976776
+                    matrix4d xformOp:transform = ( (3.422854177870249e-8, 0, -0.9999999657714582, 0), (0, 1, 0, 0), (0.9999999657714582, 0, 3.422854177870249e-8, 0), (0, 0, -0.21000000834465027, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+
+            def "visuals"
+            {
+                def Capsule "right_thigh"
+                {
+                    uniform token axis = "X"
+                    float3[] extent = [(-0.20500001, -0.055, -0.055), (0.20500001, 0.055, 0.055)]
+                    double height = 0.30000001192092896
+                    double radius = 0.054999999701976776
+                    matrix4d xformOp:transform = ( (3.422854177870249e-8, 0, -0.9999999657714582, 0), (0, 1, 0, 0), (0.9999999657714582, 0, 3.422854177870249e-8, 0), (0, 0, -0.21000000834465027, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+        }
+
+        def Xform "right_shin" (
+            apiSchemas = ["PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsMassAPI", "PhysicsFilteredPairsAPI"]
+        )
+        {
+            float physics:density = 0
+            float physics:mass = 3
+            float physxRigidBody:angularDamping = 0.01
+            float physxRigidBody:maxAngularVelocity = 5729.58
+            float physxRigidBody:maxDepenetrationVelocity = 10
+            float physxRigidBody:maxLinearVelocity = 1000
+            bool physxRigidBody:retainAccelerations = 1
+            int physxRigidBody:solverPositionIterationCount = 4
+            float physxRigidBody:stabilizationThreshold = 0
+            matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, -0.08488699793815613, -0.42154601216316223, 1) )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+
+            def "collisions"
+            {
+                def Capsule "right_shin" (
+                    apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+                )
+                {
+                    uniform token axis = "X"
+                    float3[] extent = [(-0.205, -0.05, -0.05), (0.205, 0.05, 0.05)]
+                    double height = 0.3100000023841858
+                    uniform token physics:approximation = "convexHull"
+                    float physxCollision:contactOffset = 0.02
+                    float physxCollision:restOffset = 0
+                    uniform token purpose = "guide"
+                    double radius = 0.05000000074505806
+                    matrix4d xformOp:transform = ( (3.422854177870249e-8, 0, -0.9999999657714582, 0), (0, 1, 0, 0), (0.9999999657714582, 0, 3.422854177870249e-8, 0), (0, 0, -0.19999998807907104, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+
+            def "visuals"
+            {
+                def Capsule "right_shin"
+                {
+                    uniform token axis = "X"
+                    float3[] extent = [(-0.205, -0.05, -0.05), (0.205, 0.05, 0.05)]
+                    double height = 0.3100000023841858
+                    double radius = 0.05000000074505806
+                    matrix4d xformOp:transform = ( (3.422854177870249e-8, 0, -0.9999999657714582, 0), (0, 1, 0, 0), (0.9999999657714582, 0, 3.422854177870249e-8, 0), (0, 0, -0.19999998807907104, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+        }
+
+        def Xform "right_foot" (
+            apiSchemas = ["PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsMassAPI", "PhysicsFilteredPairsAPI", "PhysxArticulationForceSensorAPI"]
+        )
+        {
+            float physics:density = 0
+            float physics:mass = 1
+            vector3f physxArticulationForceSensor:force = (271.24796, -23.46257, 47.356873)
+            vector3f physxArticulationForceSensor:torque = (-0.14206687, -2.9780989, -0.8399456)
+            float physxRigidBody:angularDamping = 0.01
+            float physxRigidBody:maxAngularVelocity = 5729.58
+            float physxRigidBody:maxDepenetrationVelocity = 10
+            float physxRigidBody:maxLinearVelocity = 1000
+            bool physxRigidBody:retainAccelerations = 1
+            int physxRigidBody:solverPositionIterationCount = 4
+            float physxRigidBody:stabilizationThreshold = 0
+            matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, -0.08488699793815613, -0.8314160108566284, 1) )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+
+            def "collisions"
+            {
+                def Cube "right_foot" (
+                    apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+                )
+                {
+                    float3[] extent = [(-0.0885, -0.045, -0.0275), (0.0885, 0.045, 0.0275)]
+                    uniform token physics:approximation = "boundingCube"
+                    float physxCollision:contactOffset = 0.02
+                    float physxCollision:restOffset = 0
+                    uniform token purpose = "guide"
+                    matrix4d xformOp:transform = ( (0.0885000005364418, 0, 0, 0), (0, 0.04500000178813934, 0, 0), (0, 0, 0.027499999850988388, 0), (0.04500000178813934, 0, -0.02250000089406967, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+
+            def "visuals"
+            {
+                def Cube "right_foot"
+                {
+                    float3[] extent = [(-0.0885, -0.045, -0.0275), (0.0885, 0.045, 0.0275)]
+                    matrix4d xformOp:transform = ( (0.0885000005364418, 0, 0, 0), (0, 0.04500000178813934, 0, 0), (0, 0, 0.027499999850988388, 0), (0.04500000178813934, 0, -0.02250000089406967, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+        }
+
+        def Xform "left_thigh" (
+            apiSchemas = ["PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsMassAPI", "PhysicsFilteredPairsAPI"]
+        )
+        {
+            float physics:density = 0
+            float physics:mass = 4.502
+            float physxRigidBody:angularDamping = 0.01
+            float physxRigidBody:maxAngularVelocity = 5729.58
+            float physxRigidBody:maxDepenetrationVelocity = 10
+            float physxRigidBody:maxLinearVelocity = 1000
+            bool physxRigidBody:retainAccelerations = 1
+            int physxRigidBody:solverPositionIterationCount = 4
+            float physxRigidBody:stabilizationThreshold = 0
+            matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0.08488699793815613, 0, 1) )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+
+            def "collisions"
+            {
+                def Capsule "left_thigh" (
+                    apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+                )
+                {
+                    uniform token axis = "X"
+                    float3[] extent = [(-0.20500001, -0.055, -0.055), (0.20500001, 0.055, 0.055)]
+                    double height = 0.30000001192092896
+                    uniform token physics:approximation = "convexHull"
+                    float physxCollision:contactOffset = 0.02
+                    float physxCollision:restOffset = 0
+                    uniform token purpose = "guide"
+                    double radius = 0.054999999701976776
+                    matrix4d xformOp:transform = ( (3.422854177870249e-8, 0, -0.9999999657714582, 0), (0, 1, 0, 0), (0.9999999657714582, 0, 3.422854177870249e-8, 0), (0, 0, -0.21000000834465027, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+
+            def "visuals"
+            {
+                def Capsule "left_thigh"
+                {
+                    uniform token axis = "X"
+                    float3[] extent = [(-0.20500001, -0.055, -0.055), (0.20500001, 0.055, 0.055)]
+                    double height = 0.30000001192092896
+                    double radius = 0.054999999701976776
+                    matrix4d xformOp:transform = ( (3.422854177870249e-8, 0, -0.9999999657714582, 0), (0, 1, 0, 0), (0.9999999657714582, 0, 3.422854177870249e-8, 0), (0, 0, -0.21000000834465027, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+        }
+
+        def Xform "left_shin" (
+            apiSchemas = ["PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsMassAPI", "PhysicsFilteredPairsAPI"]
+        )
+        {
+            float physics:density = 0
+            float physics:mass = 3
+            float physxRigidBody:angularDamping = 0.01
+            float physxRigidBody:maxAngularVelocity = 5729.58
+            float physxRigidBody:maxDepenetrationVelocity = 10
+            float physxRigidBody:maxLinearVelocity = 1000
+            bool physxRigidBody:retainAccelerations = 1
+            int physxRigidBody:solverPositionIterationCount = 4
+            float physxRigidBody:stabilizationThreshold = 0
+            matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0.08488699793815613, -0.42154601216316223, 1) )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+
+            def "collisions"
+            {
+                def Capsule "left_shin" (
+                    apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+                )
+                {
+                    uniform token axis = "X"
+                    float3[] extent = [(-0.205, -0.05, -0.05), (0.205, 0.05, 0.05)]
+                    double height = 0.3100000023841858
+                    uniform token physics:approximation = "convexHull"
+                    float physxCollision:contactOffset = 0.02
+                    float physxCollision:restOffset = 0
+                    uniform token purpose = "guide"
+                    double radius = 0.05000000074505806
+                    matrix4d xformOp:transform = ( (3.422854177870249e-8, 0, -0.9999999657714582, 0), (0, 1, 0, 0), (0.9999999657714582, 0, 3.422854177870249e-8, 0), (0, 0, -0.19999998807907104, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+
+            def "visuals"
+            {
+                def Capsule "left_shin"
+                {
+                    uniform token axis = "X"
+                    float3[] extent = [(-0.205, -0.05, -0.05), (0.205, 0.05, 0.05)]
+                    double height = 0.3100000023841858
+                    double radius = 0.05000000074505806
+                    matrix4d xformOp:transform = ( (3.422854177870249e-8, 0, -0.9999999657714582, 0), (0, 1, 0, 0), (0.9999999657714582, 0, 3.422854177870249e-8, 0), (0, 0, -0.19999998807907104, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+        }
+
+        def Xform "left_foot" (
+            apiSchemas = ["PhysicsRigidBodyAPI", "PhysxRigidBodyAPI", "PhysicsMassAPI", "PhysicsFilteredPairsAPI", "PhysxArticulationForceSensorAPI"]
+        )
+        {
+            float physics:density = 0
+            float physics:mass = 1
+            vector3f physxArticulationForceSensor:force = (6.190368, -20.987577, 15.195181)
+            vector3f physxArticulationForceSensor:torque = (-0.09690868, -0.44957078, -0.16732378)
+            float physxRigidBody:angularDamping = 0.01
+            float physxRigidBody:maxAngularVelocity = 5729.58
+            float physxRigidBody:maxDepenetrationVelocity = 10
+            float physxRigidBody:maxLinearVelocity = 1000
+            bool physxRigidBody:retainAccelerations = 1
+            int physxRigidBody:solverPositionIterationCount = 4
+            float physxRigidBody:stabilizationThreshold = 0
+            matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0.08488699793815613, -0.8314160108566284, 1) )
+            uniform token[] xformOpOrder = ["xformOp:transform"]
+
+            def "collisions"
+            {
+                def Cube "left_foot" (
+                    apiSchemas = ["PhysicsCollisionAPI", "PhysicsMeshCollisionAPI", "PhysxCollisionAPI"]
+                )
+                {
+                    float3[] extent = [(-0.0885, -0.045, -0.0275), (0.0885, 0.045, 0.0275)]
+                    uniform token physics:approximation = "boundingCube"
+                    float physxCollision:contactOffset = 0.02
+                    float physxCollision:restOffset = 0
+                    uniform token purpose = "guide"
+                    matrix4d xformOp:transform = ( (0.0885000005364418, 0, 0, 0), (0, 0.04500000178813934, 0, 0), (0, 0, 0.027499999850988388, 0), (0.04500000178813934, 0, -0.02250000089406967, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+
+            def "visuals"
+            {
+                def Cube "left_foot"
+                {
+                    float3[] extent = [(-0.0885, -0.045, -0.0275), (0.0885, 0.045, 0.0275)]
+                    matrix4d xformOp:transform = ( (0.0885000005364418, 0, 0, 0), (0, 0.04500000178813934, 0, 0), (0, 0, 0.027499999850988388, 0), (0.04500000178813934, 0, -0.02250000089406967, 1) )
+                    uniform token[] xformOpOrder = ["xformOp:transform"]
+                }
+            }
+        }
+    }
+
+    def "joints"
+    {
+        def PhysicsJoint "torso" (
+            apiSchemas = ["PhysxJointAPI", "PhysicsLimitAPI:transX", "PhysicsLimitAPI:transY", "PhysicsLimitAPI:transZ", "PhysicsLimitAPI:rotX", "PhysxLimitAPI:rotX", "PhysicsJointStateAPI:angular", "PhysicsDriveAPI:rotX", "PhysicsLimitAPI:rotY", "PhysxLimitAPI:rotY", "PhysicsDriveAPI:rotY", "PhysicsLimitAPI:rotZ", "PhysxLimitAPI:rotZ", "PhysicsDriveAPI:rotZ", "PhysicsArticulationRootAPI", "PhysxArticulationAPI"]
+        )
+        {
+            float drive:rotX:physics:damping = 1.7453296
+            float drive:rotX:physics:stiffness = 17.453297
+            uniform token drive:rotX:physics:type = "force"
+            float drive:rotY:physics:damping = 1.74533
+            float drive:rotY:physics:stiffness = 17.4533
+            float drive:rotY:physics:targetPosition = 0
+            uniform token drive:rotY:physics:type = "force"
+            float drive:rotZ:physics:damping = 1.74533
+            float drive:rotZ:physics:stiffness = 17.4533
+            uniform token drive:rotZ:physics:type = "force"
+            float limit:rotX:physics:high = 60
+            float limit:rotX:physics:low = -60
+            float limit:rotY:physics:high = 90
+            float limit:rotY:physics:low = -60
+            float limit:rotZ:physics:high = 50
+            float limit:rotZ:physics:low = -50
+            float limit:transX:physics:high = -1
+            float limit:transX:physics:low = 1
+            float limit:transY:physics:high = -1
+            float limit:transY:physics:low = 1
+            float limit:transZ:physics:high = -1
+            float limit:transZ:physics:low = 1
+            custom token mjcf:rotX:name = "abdomen_x"
+            custom token mjcf:rotY:name = "abdomen_y"
+            custom token mjcf:rotZ:name = "abdomen_z"
+            rel physics:body0 = </amp_humanoid_sword_shield/bodies/pelvis>
+            rel physics:body1 = </amp_humanoid_sword_shield/bodies/torso>
+            float physics:breakForce = 3.4028235e38
+            float physics:breakTorque = 3.4028235e38
+            point3f physics:localPos0 = (0, 0, 0.236151)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (1, 0, 0, 0)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+            float physxJoint:armature = 0.02
+            float physxJoint:maxJointVelocity = 100
+            float physxLimit:rotX:damping = 100
+            float physxLimit:rotX:stiffness = 1000
+            float physxLimit:rotY:damping = 100
+            float physxLimit:rotY:stiffness = 1000
+            float physxLimit:rotZ:damping = 100
+            float physxLimit:rotZ:stiffness = 1000
+        }
+
+        def PhysicsJoint "head" (
+            apiSchemas = ["PhysxJointAPI", "PhysicsLimitAPI:transX", "PhysicsLimitAPI:transY", "PhysicsLimitAPI:transZ", "PhysicsLimitAPI:rotX", "PhysxLimitAPI:rotX", "PhysicsJointStateAPI:angular", "PhysicsDriveAPI:rotX", "PhysicsLimitAPI:rotY", "PhysxLimitAPI:rotY", "PhysicsDriveAPI:rotY", "PhysicsLimitAPI:rotZ", "PhysxLimitAPI:rotZ", "PhysicsDriveAPI:rotZ"]
+        )
+        {
+            float drive:rotX:physics:damping = 0.174533
+            float drive:rotX:physics:stiffness = 1.74533
+            uniform token drive:rotX:physics:type = "force"
+            float drive:rotY:physics:damping = 0.17453
+            float drive:rotY:physics:stiffness = 1.74533
+            uniform token drive:rotY:physics:type = "force"
+            float drive:rotZ:physics:damping = 0.17453
+            float drive:rotZ:physics:stiffness = 1.74533
+            uniform token drive:rotZ:physics:type = "force"
+            float limit:rotX:physics:high = 50
+            float limit:rotX:physics:low = -50
+            float limit:rotY:physics:high = 60
+            float limit:rotY:physics:low = -40
+            float limit:rotZ:physics:high = 45
+            float limit:rotZ:physics:low = -45
+            float limit:transX:physics:high = -1
+            float limit:transX:physics:low = 1
+            float limit:transY:physics:high = -1
+            float limit:transY:physics:low = 1
+            float limit:transZ:physics:high = -1
+            float limit:transZ:physics:low = 1
+            custom token mjcf:rotX:name = "neck_x"
+            custom token mjcf:rotY:name = "neck_y"
+            custom token mjcf:rotZ:name = "neck_z"
+            rel physics:body0 = </amp_humanoid_sword_shield/bodies/torso>
+            rel physics:body1 = </amp_humanoid_sword_shield/bodies/head>
+            float physics:breakForce = 3.4028235e38
+            float physics:breakTorque = 3.4028235e38
+            point3f physics:localPos0 = (0, 0, 0.22389399)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (1, 0, 0, 0)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+            float physxJoint:armature = 0.01
+            float physxJoint:maxJointVelocity = 100
+            float physxLimit:rotX:damping = 10
+            float physxLimit:rotX:stiffness = 100
+            float physxLimit:rotY:damping = 10
+            float physxLimit:rotY:stiffness = 100
+            float physxLimit:rotZ:damping = 10
+            float physxLimit:rotZ:stiffness = 100
+        }
+
+        def PhysicsJoint "right_upper_arm" (
+            apiSchemas = ["PhysxJointAPI", "PhysicsLimitAPI:transX", "PhysicsLimitAPI:transY", "PhysicsLimitAPI:transZ", "PhysicsLimitAPI:rotX", "PhysxLimitAPI:rotX", "PhysicsJointStateAPI:angular", "PhysicsDriveAPI:rotX", "PhysicsLimitAPI:rotY", "PhysxLimitAPI:rotY", "PhysicsDriveAPI:rotY", "PhysicsLimitAPI:rotZ", "PhysxLimitAPI:rotZ", "PhysicsDriveAPI:rotZ"]
+        )
+        {
+            float drive:rotX:physics:damping = 0.69813186
+            float drive:rotX:physics:stiffness = 6.9813185
+            uniform token drive:rotX:physics:type = "force"
+            float drive:rotY:physics:damping = 0.69813
+            float drive:rotY:physics:stiffness = 6.98132
+            uniform token drive:rotY:physics:type = "force"
+            float drive:rotZ:physics:damping = 0.69813
+            float drive:rotZ:physics:stiffness = 6.98132
+            uniform token drive:rotZ:physics:type = "force"
+            float limit:rotX:physics:high = 45
+            float limit:rotX:physics:low = -180
+            float limit:rotY:physics:high = 60
+            float limit:rotY:physics:low = -180
+            float limit:rotZ:physics:high = 90
+            float limit:rotZ:physics:low = -90
+            float limit:transX:physics:high = -1
+            float limit:transX:physics:low = 1
+            float limit:transY:physics:high = -1
+            float limit:transY:physics:low = 1
+            float limit:transZ:physics:high = -1
+            float limit:transZ:physics:low = 1
+            custom token mjcf:rotX:name = "right_shoulder_x"
+            custom token mjcf:rotY:name = "right_shoulder_y"
+            custom token mjcf:rotZ:name = "right_shoulder_z"
+            rel physics:body0 = </amp_humanoid_sword_shield/bodies/torso>
+            rel physics:body1 = </amp_humanoid_sword_shield/bodies/right_upper_arm>
+            float physics:breakForce = 3.4028235e38
+            float physics:breakTorque = 3.4028235e38
+            point3f physics:localPos0 = (-0.02405, -0.18311, 0.24349998)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (1, 0, 0, 0)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+            float physxJoint:armature = 0.02
+            float physxJoint:maxJointVelocity = 100
+            float physxLimit:rotX:damping = 40
+            float physxLimit:rotX:stiffness = 400
+            float physxLimit:rotY:damping = 40
+            float physxLimit:rotY:stiffness = 400
+            float physxLimit:rotZ:damping = 40
+            float physxLimit:rotZ:stiffness = 400
+        }
+
+        def PhysicsRevoluteJoint "right_elbow" (
+            apiSchemas = ["PhysxJointAPI", "PhysxLimitAPI:X", "PhysxLimitAPI:angular", "PhysicsDriveAPI:angular"]
+        )
+        {
+            float drive:angular:physics:damping = 0.5235989
+            float drive:angular:physics:stiffness = 5.235989
+            uniform token physics:axis = "X"
+            rel physics:body0 = </amp_humanoid_sword_shield/bodies/right_upper_arm>
+            rel physics:body1 = </amp_humanoid_sword_shield/bodies/right_lower_arm>
+            float physics:breakForce = 3.4028235e38
+            float physics:breakTorque = 3.4028235e38
+            point3f physics:localPos0 = (0, 0, -0.274788)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (0.7071068, 0, 0, 0.7071067)
+            quatf physics:localRot1 = (0.7071068, 0, 0, 0.7071067)
+            float physics:lowerLimit = -160
+            float physics:upperLimit = 0
+            float physxJoint:armature = 0.01
+            float physxJoint:maxJointVelocity = 5729.58
+            float physxLimit:angular:damping = 0
+            float physxLimit:angular:stiffness = 0
+            float physxLimit:X:damping = 30
+            float physxLimit:X:stiffness = 300
+        }
+
+        def PhysicsJoint "right_hand" (
+            apiSchemas = ["PhysxJointAPI", "PhysicsLimitAPI:transX", "PhysicsLimitAPI:transY", "PhysicsLimitAPI:transZ", "PhysicsLimitAPI:rotX", "PhysxLimitAPI:rotX", "PhysicsJointStateAPI:angular", "PhysicsDriveAPI:rotX", "PhysicsLimitAPI:rotY", "PhysxLimitAPI:rotY", "PhysicsDriveAPI:rotY", "PhysicsLimitAPI:rotZ", "PhysxLimitAPI:rotZ", "PhysicsDriveAPI:rotZ"]
+        )
+        {
+            float drive:rotX:physics:damping = 0.17453296
+            float drive:rotX:physics:stiffness = 1.7453296
+            uniform token drive:rotX:physics:type = "force"
+            float drive:rotY:physics:damping = 0.17453296
+            float drive:rotY:physics:stiffness = 1.7453296
+            uniform token drive:rotY:physics:type = "force"
+            float drive:rotZ:physics:damping = 0.17453296
+            float drive:rotZ:physics:stiffness = 1.7453296
+            uniform token drive:rotZ:physics:type = "force"
+            float limit:rotX:physics:high = 90
+            float limit:rotX:physics:low = -90
+            float limit:rotY:physics:high = 90
+            float limit:rotY:physics:low = -90
+            float limit:rotZ:physics:high = 90
+            float limit:rotZ:physics:low = -90
+            float limit:transX:physics:high = -1
+            float limit:transX:physics:low = 1
+            float limit:transY:physics:high = -1
+            float limit:transY:physics:low = 1
+            float limit:transZ:physics:high = -1
+            float limit:transZ:physics:low = 1
+            custom token mjcf:rotX:name = "right_hand_x"
+            custom token mjcf:rotY:name = "right_hand_y"
+            custom token mjcf:rotZ:name = "right_hand_z"
+            rel physics:body0 = </amp_humanoid_sword_shield/bodies/right_lower_arm>
+            rel physics:body1 = </amp_humanoid_sword_shield/bodies/right_hand>
+            float physics:breakForce = 3.4028235e38
+            float physics:breakTorque = 3.4028235e38
+            point3f physics:localPos0 = (0, 0, -0.258947)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (1, 0, 0, 0)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+            float physxJoint:armature = 0.01
+            float physxJoint:maxJointVelocity = 100
+            float physxLimit:rotX:damping = 10
+            float physxLimit:rotX:stiffness = 100
+            float physxLimit:rotY:damping = 10
+            float physxLimit:rotY:stiffness = 100
+            float physxLimit:rotZ:damping = 10
+            float physxLimit:rotZ:stiffness = 100
+        }
+
+        def PhysicsFixedJoint "sword"
+        {
+            rel physics:body0 = </amp_humanoid_sword_shield/bodies/right_hand>
+            rel physics:body1 = </amp_humanoid_sword_shield/bodies/sword>
+            float physics:breakForce = 3.4028235e38
+            float physics:breakTorque = 3.4028235e38
+            point3f physics:localPos0 = (0.74, 0, 0)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (1, 0, 0, 0)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+        }
+
+        def PhysicsJoint "left_upper_arm" (
+            apiSchemas = ["PhysxJointAPI", "PhysicsLimitAPI:transX", "PhysicsLimitAPI:transY", "PhysicsLimitAPI:transZ", "PhysicsLimitAPI:rotX", "PhysxLimitAPI:rotX", "PhysicsJointStateAPI:angular", "PhysicsDriveAPI:rotX", "PhysicsLimitAPI:rotY", "PhysxLimitAPI:rotY", "PhysicsDriveAPI:rotY", "PhysicsLimitAPI:rotZ", "PhysxLimitAPI:rotZ", "PhysicsDriveAPI:rotZ"]
+        )
+        {
+            float drive:rotX:physics:damping = 0.698132
+            float drive:rotX:physics:stiffness = 6.98132
+            uniform token drive:rotX:physics:type = "force"
+            float drive:rotY:physics:damping = 0.698132
+            float drive:rotY:physics:stiffness = 6.98132
+            uniform token drive:rotY:physics:type = "force"
+            float drive:rotZ:physics:damping = 0.698132
+            float drive:rotZ:physics:stiffness = 6.98132
+            uniform token drive:rotZ:physics:type = "force"
+            float limit:rotX:physics:high = 180
+            float limit:rotX:physics:low = -45
+            float limit:rotY:physics:high = 60
+            float limit:rotY:physics:low = -180
+            float limit:rotZ:physics:high = 90
+            float limit:rotZ:physics:low = -90
+            float limit:transX:physics:high = -1
+            float limit:transX:physics:low = 1
+            float limit:transY:physics:high = -1
+            float limit:transY:physics:low = 1
+            float limit:transZ:physics:high = -1
+            float limit:transZ:physics:low = 1
+            custom token mjcf:rotX:name = "left_shoulder_x"
+            custom token mjcf:rotY:name = "left_shoulder_y"
+            custom token mjcf:rotZ:name = "left_shoulder_z"
+            rel physics:body0 = </amp_humanoid_sword_shield/bodies/torso>
+            rel physics:body1 = </amp_humanoid_sword_shield/bodies/left_upper_arm>
+            float physics:breakForce = 3.4028235e38
+            float physics:breakTorque = 3.4028235e38
+            point3f physics:localPos0 = (-0.02405, 0.18311, 0.24349998)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (1, 0, 0, 0)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+            float physxJoint:armature = 0.02
+            float physxJoint:maxJointVelocity = 100
+            float physxLimit:rotX:damping = 40
+            float physxLimit:rotX:stiffness = 400
+            float physxLimit:rotY:damping = 40
+            float physxLimit:rotY:stiffness = 400
+            float physxLimit:rotZ:damping = 40
+            float physxLimit:rotZ:stiffness = 400
+        }
+
+        def PhysicsRevoluteJoint "left_elbow" (
+            apiSchemas = ["PhysxJointAPI", "PhysxLimitAPI:X", "PhysxLimitAPI:angular", "PhysicsDriveAPI:angular"]
+        )
+        {
+            float drive:angular:physics:damping = 0.5235989
+            float drive:angular:physics:stiffness = 5.235989
+            uniform token physics:axis = "X"
+            rel physics:body0 = </amp_humanoid_sword_shield/bodies/left_upper_arm>
+            rel physics:body1 = </amp_humanoid_sword_shield/bodies/left_lower_arm>
+            float physics:breakForce = 3.4028235e38
+            float physics:breakTorque = 3.4028235e38
+            point3f physics:localPos0 = (0, 0, -0.274788)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (0.7071068, 0, 0, 0.7071067)
+            quatf physics:localRot1 = (0.7071068, 0, 0, 0.7071067)
+            float physics:lowerLimit = -160
+            float physics:upperLimit = 0
+            float physxJoint:armature = 0.01
+            float physxJoint:maxJointVelocity = 5729.58
+            float physxLimit:angular:damping = 0
+            float physxLimit:angular:stiffness = 0
+            float physxLimit:X:damping = 30
+            float physxLimit:X:stiffness = 300
+        }
+
+        def PhysicsFixedJoint "shield"
+        {
+            rel physics:body0 = </amp_humanoid_sword_shield/bodies/left_lower_arm>
+            rel physics:body1 = </amp_humanoid_sword_shield/bodies/shield>
+            float physics:breakForce = 3.4028235e38
+            float physics:breakTorque = 3.4028235e38
+            point3f physics:localPos0 = (0, 0.06999999, -0.12)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (1, 0, 0, 0)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+        }
+
+        def PhysicsFixedJoint "left_hand"
+        {
+            rel physics:body0 = </amp_humanoid_sword_shield/bodies/left_lower_arm>
+            rel physics:body1 = </amp_humanoid_sword_shield/bodies/left_hand>
+            float physics:breakForce = 3.4028235e38
+            float physics:breakTorque = 3.4028235e38
+            point3f physics:localPos0 = (0, 0, -0.258947)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (1, 0, 0, 0)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+        }
+
+        def PhysicsJoint "right_thigh" (
+            apiSchemas = ["PhysxJointAPI", "PhysicsLimitAPI:transX", "PhysicsLimitAPI:transY", "PhysicsLimitAPI:transZ", "PhysicsLimitAPI:rotX", "PhysxLimitAPI:rotX", "PhysicsJointStateAPI:angular", "PhysicsDriveAPI:rotX", "PhysicsLimitAPI:rotY", "PhysxLimitAPI:rotY", "PhysicsDriveAPI:rotY", "PhysicsLimitAPI:rotZ", "PhysxLimitAPI:rotZ", "PhysicsDriveAPI:rotZ"]
+        )
+        {
+            float drive:rotX:physics:damping = 0.8726648
+            float drive:rotX:physics:stiffness = 8.726648
+            uniform token drive:rotX:physics:type = "force"
+            float drive:rotY:physics:damping = 0.8726648
+            float drive:rotY:physics:stiffness = 8.726648
+            uniform token drive:rotY:physics:type = "force"
+            float drive:rotZ:physics:damping = 0.8726648
+            float drive:rotZ:physics:stiffness = 8.726648
+            uniform token drive:rotZ:physics:type = "force"
+            float limit:rotX:physics:high = 15
+            float limit:rotX:physics:low = -60
+            float limit:rotY:physics:high = 60
+            float limit:rotY:physics:low = -140
+            float limit:rotZ:physics:high = 35
+            float limit:rotZ:physics:low = -60
+            float limit:transX:physics:high = -1
+            float limit:transX:physics:low = 1
+            float limit:transY:physics:high = -1
+            float limit:transY:physics:low = 1
+            float limit:transZ:physics:high = -1
+            float limit:transZ:physics:low = 1
+            custom token mjcf:rotX:name = "right_hip_x"
+            custom token mjcf:rotY:name = "right_hip_y"
+            custom token mjcf:rotZ:name = "right_hip_z"
+            rel physics:body0 = </amp_humanoid_sword_shield/bodies/pelvis>
+            rel physics:body1 = </amp_humanoid_sword_shield/bodies/right_thigh>
+            float physics:breakForce = 3.4028235e38
+            float physics:breakTorque = 3.4028235e38
+            point3f physics:localPos0 = (0, -0.084887, 0)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (1, 0, 0, 0)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+            float physxJoint:armature = 0.02
+            float physxJoint:maxJointVelocity = 100
+            float physxLimit:rotX:damping = 50
+            float physxLimit:rotX:stiffness = 500
+            float physxLimit:rotY:damping = 50
+            float physxLimit:rotY:stiffness = 500
+            float physxLimit:rotZ:damping = 50
+            float physxLimit:rotZ:stiffness = 500
+        }
+
+        def PhysicsRevoluteJoint "right_knee" (
+            apiSchemas = ["PhysxJointAPI", "PhysxLimitAPI:X", "PhysxLimitAPI:angular", "PhysicsDriveAPI:angular"]
+        )
+        {
+            float drive:angular:physics:damping = 0.8726648
+            float drive:angular:physics:stiffness = 8.726648
+            uniform token physics:axis = "X"
+            rel physics:body0 = </amp_humanoid_sword_shield/bodies/right_thigh>
+            rel physics:body1 = </amp_humanoid_sword_shield/bodies/right_shin>
+            float physics:breakForce = 3.4028235e38
+            float physics:breakTorque = 3.4028235e38
+            point3f physics:localPos0 = (0, 0, -0.421546)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (0.7071068, 0, 0, 0.7071067)
+            quatf physics:localRot1 = (0.7071068, 0, 0, 0.7071067)
+            float physics:lowerLimit = 0
+            float physics:upperLimit = 160
+            float physxJoint:armature = 0.02
+            float physxJoint:maxJointVelocity = 5729.58
+            float physxLimit:angular:damping = 0
+            float physxLimit:angular:stiffness = 0
+            float physxLimit:X:damping = 50
+            float physxLimit:X:stiffness = 500
+        }
+
+        def PhysicsJoint "right_foot" (
+            apiSchemas = ["PhysxJointAPI", "PhysicsLimitAPI:transX", "PhysicsLimitAPI:transY", "PhysicsLimitAPI:transZ", "PhysicsLimitAPI:rotX", "PhysxLimitAPI:rotX", "PhysicsJointStateAPI:angular", "PhysicsDriveAPI:rotX", "PhysicsLimitAPI:rotY", "PhysxLimitAPI:rotY", "PhysicsDriveAPI:rotY", "PhysicsLimitAPI:rotZ", "PhysxLimitAPI:rotZ", "PhysicsDriveAPI:rotZ"]
+        )
+        {
+            float drive:rotX:physics:damping = 0.69813186
+            float drive:rotX:physics:stiffness = 6.9813185
+            uniform token drive:rotX:physics:type = "force"
+            float drive:rotY:physics:damping = 0.69813186
+            float drive:rotY:physics:stiffness = 6.9813185
+            uniform token drive:rotY:physics:type = "force"
+            float drive:rotZ:physics:damping = 0.69813186
+            float drive:rotZ:physics:stiffness = 6.9813185
+            uniform token drive:rotZ:physics:type = "force"
+            float limit:rotX:physics:high = 30
+            float limit:rotX:physics:low = -30
+            float limit:rotY:physics:high = 55
+            float limit:rotY:physics:low = -55
+            float limit:rotZ:physics:high = 40
+            float limit:rotZ:physics:low = -40
+            float limit:transX:physics:high = -1
+            float limit:transX:physics:low = 1
+            float limit:transY:physics:high = -1
+            float limit:transY:physics:low = 1
+            float limit:transZ:physics:high = -1
+            float limit:transZ:physics:low = 1
+            custom token mjcf:rotX:name = "right_ankle_x"
+            custom token mjcf:rotY:name = "right_ankle_y"
+            custom token mjcf:rotZ:name = "right_ankle_z"
+            rel physics:body0 = </amp_humanoid_sword_shield/bodies/right_shin>
+            rel physics:body1 = </amp_humanoid_sword_shield/bodies/right_foot>
+            float physics:breakForce = 3.4028235e38
+            float physics:breakTorque = 3.4028235e38
+            point3f physics:localPos0 = (0, 0, -0.40987)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (1, 0, 0, 0)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+            float physxJoint:armature = 0.01
+            float physxJoint:maxJointVelocity = 100
+            float physxLimit:rotX:damping = 40
+            float physxLimit:rotX:stiffness = 400
+            float physxLimit:rotY:damping = 40
+            float physxLimit:rotY:stiffness = 400
+            float physxLimit:rotZ:damping = 40
+            float physxLimit:rotZ:stiffness = 400
+        }
+
+        def PhysicsJoint "left_thigh" (
+            apiSchemas = ["PhysxJointAPI", "PhysicsLimitAPI:transX", "PhysicsLimitAPI:transY", "PhysicsLimitAPI:transZ", "PhysicsLimitAPI:rotX", "PhysxLimitAPI:rotX", "PhysicsJointStateAPI:angular", "PhysicsDriveAPI:rotX", "PhysicsLimitAPI:rotY", "PhysxLimitAPI:rotY", "PhysicsDriveAPI:rotY", "PhysicsLimitAPI:rotZ", "PhysxLimitAPI:rotZ", "PhysicsDriveAPI:rotZ"]
+        )
+        {
+            float drive:rotX:physics:damping = 0.8726648
+            float drive:rotX:physics:stiffness = 8.726648
+            uniform token drive:rotX:physics:type = "force"
+            float drive:rotY:physics:damping = 0.8726648
+            float drive:rotY:physics:stiffness = 8.726648
+            uniform token drive:rotY:physics:type = "force"
+            float drive:rotZ:physics:damping = 0.8726648
+            float drive:rotZ:physics:stiffness = 8.726648
+            uniform token drive:rotZ:physics:type = "force"
+            float limit:rotX:physics:high = 60
+            float limit:rotX:physics:low = -15
+            float limit:rotY:physics:high = 60
+            float limit:rotY:physics:low = -140
+            float limit:rotZ:physics:high = 60
+            float limit:rotZ:physics:low = -35
+            float limit:transX:physics:high = -1
+            float limit:transX:physics:low = 1
+            float limit:transY:physics:high = -1
+            float limit:transY:physics:low = 1
+            float limit:transZ:physics:high = -1
+            float limit:transZ:physics:low = 1
+            custom token mjcf:rotX:name = "left_hip_x"
+            custom token mjcf:rotY:name = "left_hip_y"
+            custom token mjcf:rotZ:name = "left_hip_z"
+            rel physics:body0 = </amp_humanoid_sword_shield/bodies/pelvis>
+            rel physics:body1 = </amp_humanoid_sword_shield/bodies/left_thigh>
+            float physics:breakForce = 3.4028235e38
+            float physics:breakTorque = 3.4028235e38
+            point3f physics:localPos0 = (0, 0.084887, 0)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (1, 0, 0, 0)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+            float physxJoint:armature = 0.02
+            float physxJoint:maxJointVelocity = 100
+            float physxLimit:rotX:damping = 50
+            float physxLimit:rotX:stiffness = 500
+            float physxLimit:rotY:damping = 50
+            float physxLimit:rotY:stiffness = 500
+            float physxLimit:rotZ:damping = 50
+            float physxLimit:rotZ:stiffness = 500
+        }
+
+        def PhysicsRevoluteJoint "left_knee" (
+            apiSchemas = ["PhysxJointAPI", "PhysxLimitAPI:X", "PhysxLimitAPI:angular", "PhysicsDriveAPI:angular"]
+        )
+        {
+            float drive:angular:physics:damping = 0.8726648
+            float drive:angular:physics:stiffness = 8.726648
+            uniform token physics:axis = "X"
+            rel physics:body0 = </amp_humanoid_sword_shield/bodies/left_thigh>
+            rel physics:body1 = </amp_humanoid_sword_shield/bodies/left_shin>
+            float physics:breakForce = 3.4028235e38
+            float physics:breakTorque = 3.4028235e38
+            point3f physics:localPos0 = (0, 0, -0.421546)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (0.7071068, 0, 0, 0.7071067)
+            quatf physics:localRot1 = (0.7071068, 0, 0, 0.7071067)
+            float physics:lowerLimit = 0
+            float physics:upperLimit = 160
+            float physxJoint:armature = 0.02
+            float physxJoint:maxJointVelocity = 5729.58
+            float physxLimit:angular:damping = 0
+            float physxLimit:angular:stiffness = 0
+            float physxLimit:X:damping = 50
+            float physxLimit:X:stiffness = 500
+        }
+
+        def PhysicsJoint "left_foot" (
+            apiSchemas = ["PhysxJointAPI", "PhysicsLimitAPI:transX", "PhysicsLimitAPI:transY", "PhysicsLimitAPI:transZ", "PhysicsLimitAPI:rotX", "PhysxLimitAPI:rotX", "PhysicsJointStateAPI:angular", "PhysicsDriveAPI:rotX", "PhysicsLimitAPI:rotY", "PhysxLimitAPI:rotY", "PhysicsDriveAPI:rotY", "PhysicsLimitAPI:rotZ", "PhysxLimitAPI:rotZ", "PhysicsDriveAPI:rotZ"]
+        )
+        {
+            float drive:rotX:physics:damping = 0.69813186
+            float drive:rotX:physics:stiffness = 6.9813185
+            uniform token drive:rotX:physics:type = "force"
+            float drive:rotY:physics:damping = 0.69813186
+            float drive:rotY:physics:stiffness = 6.9813185
+            uniform token drive:rotY:physics:type = "force"
+            float drive:rotZ:physics:damping = 0.69813186
+            float drive:rotZ:physics:stiffness = 6.9813185
+            uniform token drive:rotZ:physics:type = "force"
+            float limit:rotX:physics:high = 30
+            float limit:rotX:physics:low = -30
+            float limit:rotY:physics:high = 55
+            float limit:rotY:physics:low = -55
+            float limit:rotZ:physics:high = 40
+            float limit:rotZ:physics:low = -40
+            float limit:transX:physics:high = -1
+            float limit:transX:physics:low = 1
+            float limit:transY:physics:high = -1
+            float limit:transY:physics:low = 1
+            float limit:transZ:physics:high = -1
+            float limit:transZ:physics:low = 1
+            custom token mjcf:rotX:name = "left_ankle_x"
+            custom token mjcf:rotY:name = "left_ankle_y"
+            custom token mjcf:rotZ:name = "left_ankle_z"
+            rel physics:body0 = </amp_humanoid_sword_shield/bodies/left_shin>
+            rel physics:body1 = </amp_humanoid_sword_shield/bodies/left_foot>
+            float physics:breakForce = 3.4028235e38
+            float physics:breakTorque = 3.4028235e38
+            point3f physics:localPos0 = (0, 0, -0.40987)
+            point3f physics:localPos1 = (0, 0, 0)
+            quatf physics:localRot0 = (1, 0, 0, 0)
+            quatf physics:localRot1 = (1, 0, 0, 0)
+            float physxJoint:armature = 0.01
+            float physxJoint:maxJointVelocity = 100
+            float physxLimit:rotX:damping = 40
+            float physxLimit:rotX:stiffness = 400
+            float physxLimit:rotY:damping = 40
+            float physxLimit:rotY:stiffness = 400
+            float physxLimit:rotZ:damping = 40
+            float physxLimit:rotZ:stiffness = 400
+        }
+    }
+}
+

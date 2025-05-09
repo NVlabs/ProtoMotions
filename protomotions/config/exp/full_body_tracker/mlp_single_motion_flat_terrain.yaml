@@ -1,0 +1,18 @@
+# @package _global_
+
+defaults:
+  - /agent/mimic/agent
+  - /env/mimic
+
+  - /agent/ppo/models/mlp_actor
+  - /agent/ppo/models/mlp_critic
+  - /agent/mimic/models/mlp_actor_target_pose
+  - /agent/mimic/models/mlp_critic_target_pose
+  - /agent/mimic/options/global_tracking
+  - /agent/mimic/options/early_termination_tracking_err
+
+env:
+  config:
+    mimic_target_pose:
+      type: max-coords-future-rel
+      num_future_steps: 2

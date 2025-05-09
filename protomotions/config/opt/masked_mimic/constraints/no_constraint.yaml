@@ -1,0 +1,14 @@
+# @package _global_
+
+env:
+  config:
+    masked_mimic:
+      masked_mimic_masking:
+        joint_masking:
+          masked_mimic_time_gap_probability: 1
+          masked_mimic_repeat_mask_probability: 1
+          time_gap_mask_min_steps: 1000000
+          time_gap_mask_max_steps: 1000001
+
+        target_pose_visible_prob: 0
+        motion_text_embeddings_visible_prob: 0

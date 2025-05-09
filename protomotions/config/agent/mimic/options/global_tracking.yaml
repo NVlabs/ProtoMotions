@@ -1,0 +1,31 @@
+# @package _global_
+
+env:
+  config:
+    mimic_reward_config:
+      component_weights:
+        gr_rew_w: 0.3
+        lr_rew_w: 0
+        gt_rew_w: 0.5
+        rt_rew_w: 0
+        rv_rew_w: 0
+        rav_rew_w: 0
+        gv_rew_w: 0.1
+        gav_rew_w: 0.1
+        kb_rew_w: 0
+        dv_rew_w: 0.0
+        rh_rew_w: 0.2
+        pow_rew_w: 0.00001
+
+      component_coefficients:
+        gt_rew_c: -100
+        rt_rew_c: -120
+        rv_rew_c: -1
+        rav_rew_c: -0.3
+        gv_rew_c: -0.5
+        gav_rew_c: -0.1
+        gr_rew_c: -10
+        lr_rew_c: -2
+        dv_rew_c: -0.005
+        rh_rew_c: -100
+        kbf_rew_c: -0.01

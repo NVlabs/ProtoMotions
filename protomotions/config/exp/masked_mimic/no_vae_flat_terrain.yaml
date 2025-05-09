@@ -1,0 +1,22 @@
+# @package _global_
+
+defaults:
+  - /agent/masked_mimic/agent_no_vae
+  - /env/mimic
+
+  - /agent/masked_mimic/models_no_vae/encoder
+  - /agent/masked_mimic/models_no_vae/text_conditioning
+  - /agent/mimic/options/global_tracking
+  - /agent/mimic/options/early_termination_tracking_err
+
+env:
+  config:
+    mimic_target_pose:
+      enabled: true
+      type: max-coords-future-rel
+      with_time: true
+      num_future_steps: 15
+    masked_mimic:
+      enabled: true
+    humanoid_obs:
+      num_historical_steps: 120

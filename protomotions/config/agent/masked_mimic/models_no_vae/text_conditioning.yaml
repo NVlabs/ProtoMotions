@@ -1,0 +1,37 @@
+# @package _global_
+
+agent:
+  config:
+    modules:
+      motion_text_embeddings_for_transformer_model:
+        _target_: protomotions.agents.common.mlp.MLP_WithNorm
+        _recursive_: false
+        num_in: ${env.config.masked_mimic.motion_text_embeddings.embedding_dim}
+        num_out: ${agent.config.model.config.encoder.config.transformer_token_size}
+        config:
+          obs_key: motion_text_embeddings
+          mask_key: motion_text_embeddings_mask
+          normalize_obs: true
+          norm_clamp_value: 5
+
+          operations:
+            - type: encode
+            - type: reshape
+              new_shape:
+                - batch_size
+                - 1
+                - ${agent.config.modules.motion_text_embeddings_for_transformer_model.num_out}
+          layers:
+            - units: 256
+              activation: relu
+              use_layer_norm: false
+            - units: 256
+              activation: relu
+              use_layer_norm: false
+
+    model:
+      config:
+        encoder:
+          config:
+            input_models:
+              motion_text_embeddings: ${agent.config.modules.motion_text_embeddings_for_transformer_model}

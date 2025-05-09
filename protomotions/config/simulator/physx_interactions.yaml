@@ -1,0 +1,11 @@
+# @package _global_
+defaults:
+  - physx
+
+simulator:
+  config:
+    sim:
+      physx:
+        num_position_iterations: 8
+        num_velocity_iterations: 1
+        contact_offset: 0.002

@@ -1,0 +1,34 @@
+# @package _global_
+
+defaults:
+  - /agent/ppo/agent
+
+agent:
+  _target_: protomotions.agents.mimic.agent_amp.Mimic
+  config:
+    # Setup discriminator structure
+    model:
+      _target_: protomotions.agents.amp.model.AMPModel  # Override main model
+
+    task_reward_w: 0.5
+    discriminator_reward_w: 1.0
+
+    # Mimic parameters
+    gradient_clip_val: 50.0
+    clip_critic_loss: True
+    eval_metric_keys: ["cartesian_err", "gt_err", "dv_rew", "kb_rew", "lr_rew", "rv_rew", "rav_rew", "gr_err", "gr_err_degrees"]
+    eval_length: null
+    eval_num_episodes: 1
+
+    discriminator_weight_decay: 0.0001
+    discriminator_logit_weight_decay: 0.01
+    discriminator_batch_size: 4096
+    discriminator_grad_penalty: 5
+    discriminator_replay_keep_prob: 0.01
+    discriminator_replay_size: 200000
+    num_discriminator_mini_epochs: 3
+
+    # Early termination
+    training_early_termination:
+      early_terminate_cart_err: null
+      early_terminate_success_rate: null

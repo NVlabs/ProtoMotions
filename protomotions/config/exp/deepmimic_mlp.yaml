@@ -1,0 +1,10 @@
+# @package _global_
+
+defaults:
+  - /agent/mimic/agent
+  - /env/mimic
+
+  - /agent/ppo/models/mlp_actor
+  - /agent/ppo/models/mlp_critic
+  - /agent/mimic/models/mlp_actor_phase
+  - /agent/mimic/models/mlp_critic_phase

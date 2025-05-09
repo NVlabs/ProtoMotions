@@ -1,0 +1,36 @@
+# @package _global_
+
+num_envs: 4096
+agent:
+  _target_: protomotions.agents.ppo.agent.PPO
+  _recursive_: False
+  config:
+    # Setup basic actor-critic structure
+    model:
+      _target_: protomotions.agents.ppo.model.PPOModel
+      _recursive_: False
+      config: ???  # Config to be filled by the module-specific configs
+    # PPO parameters
+    num_steps: 32
+    tau: 0.95
+    gamma: 0.99
+    e_clip: 0.2
+    clip_critic_loss: True
+    gradient_clip_val: 0
+    fail_on_bad_grads: False
+    check_grad_mag: True
+    bounds_loss_coef: 10
+    normalize_values: True
+    normalized_val_clamp_value: 5
+    normalize_advantage: True
+    batch_size: 16384
+    task_reward_w: 1.0
+    num_mini_epochs: 1
+    max_eval_steps: null
+    eval_metrics_every: 500
+    eval_metric_keys: [ ]
+    training_early_termination: null
+    num_games: null
+    manual_save_every: 10
+    max_epochs: ${eval:${training_max_steps}//${ngpu}//${num_envs}//${.num_steps}}
+    extra_inputs: null

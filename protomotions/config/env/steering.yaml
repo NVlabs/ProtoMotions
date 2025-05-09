@@ -1,0 +1,22 @@
+# @package _global_
+
+defaults:
+  - base_env
+
+# Env structure
+env:
+  _target_: protomotions.envs.steering.env.Steering
+  config:
+    enable_height_termination: True
+    steering_params:
+      heading_change_steps_min: 40
+      heading_change_steps_max: 150
+      random_heading_probability: 0.2
+      standard_heading_change: 1.57
+      tar_speed_min: 1.2
+      tar_speed_max: 6
+      standard_speed_change: 0.3
+      stop_probability: 0.05
+      obs_size: 3
+
+# Globally accessible parameters
