@@ -10,7 +10,8 @@ class PathFollowing(BaseEnv):
     def __init__(self, config, device: torch.device, *args, **kwargs):
         super().__init__(config=config, device=device, *args, **kwargs)
 
-        self.head_body_id = self.simulator.build_body_ids_tensor(self.config.robot.head_body_name).item()
+        head_body_name = self.config.robot.head_body_name
+        self.head_body_id = self.simulator.build_body_ids_tensor([head_body_name]).item()
 
         self._num_traj_samples = self.config.path_follower_params.num_traj_samples
         self._traj_sample_timestep = (
