@@ -1,0 +1,81 @@
+# @package _global_
+
+defaults:
+  - masked_mimic/base
+  - /env/steering
+  - /terrain/complex
+
+# Fabric configuration
+fabric:
+  _target_: lightning.fabric.Fabric
+  _convert_: all
+  accelerator: gpu
+  devices: 1
+  num_nodes: 1
+  strategy:
+    _target_: lightning.fabric.strategies.DDPStrategy
+  precision: 32-true
+  loggers: null
+
+# Override agent to use masked mimic
+agent:
+  _target_: protomotions.agents.masked_mimic.agent.MaskedMimic
+  _recursive_: False
+  config:
+    expert_model_path: null  # No expert model needed for evaluation
+    vae:
+      noise_type: "zeros"  # Use deterministic behavior for evaluation
+
+# Environment configuration for steering
+env:
+  config:
+    max_episode_length: 300
+    enable_height_termination: True
+    steering_params:
+      heading_change_steps_min: 40
+      heading_change_steps_max: 150
+      random_heading_probability: 0.2
+      standard_heading_change: 1.57
+      tar_speed_min: 1.2
+      tar_speed_max: 6
+      standard_speed_change: 0.3
+      stop_probability: 0.05
+      obs_size: 3
+
+# Evaluation overrides
+eval_overrides:
+  agent:
+    config:
+      expert_model_path: null
+      vae:
+        noise_type: "zeros"  # Deterministic evaluation
+  env:
+    config:
+      max_episode_length: 10000
+      enable_height_termination: True
+  num_envs: 1
+  headless: false
+
+# Global parameters
+ngpu: 1
+nodes: 1
+torch_deterministic: false
+amp_precision: 32-true
+
+# Checkpoint path (will be overridden by command line)
+checkpoint: ???
+
+# Display settings
+headless: false
+
+# Experiment settings
+experiment_name: masked_mimic_steering_eval
+
+# Motion file (required for masked_mimic agent)
+motion_file: data/motions/smpl_humanoid_walk.npy
+
+# Motion synchronization
+sync_motion: false
+
+# Training parameters
+training_max_steps: 1000000 
