@@ -226,7 +226,7 @@ agent:
     num_steps: 32
     fail_on_bad_grads: false
     check_grad_mag: true
-    batch_size: 8192
+    batch_size: 1024
     task_reward_w: 1.0
     num_mini_epochs: 6
     max_eval_steps: null
@@ -765,7 +765,7 @@ checkpoint: null
 experiment_name: maskedmimic
 base_dir: results
 save_dir: ${base_dir}/${experiment_name}
-num_envs: 2048
+num_envs: 4
 motion_manager:
   fixed_motion_per_env: false
   fixed_motion_id: null

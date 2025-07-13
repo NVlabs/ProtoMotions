@@ -1,17 +1,18 @@
 # @package _global_
 
 defaults:
-  - amp_mlp
+  - /agent/amp/agent_with_expert
   - /env/path_follower
-
   - /agent/ppo/models/mlp_actor_terrain
   - /agent/ppo/models/mlp_critic_terrain
+  - /agent/amp/models/mlp_discriminator
   - /terrain/complex
 
 agent:
   config:
     task_reward_w: 0.5
     discriminator_reward_w: 1.0
+    expert_model_path: ???  # Path to pretrained masked mimic model
 
     modules:
       path:
@@ -28,16 +29,82 @@ agent:
     model:
       config:
         actor:
+          _target_: protomotions.agents.ppo.model.PPOActor
+          _recursive_: False
+          num_out: ${robot.number_of_actions}
           config:
+            actor_logstd: -2.9
             mu_model:
+              _target_: protomotions.agents.common.mlp.MultiHeadedMLP
+              _recursive_: False
               config:
+                num_out: ${robot.number_of_actions}
                 input_models:
+                  self_obs:
+                    _target_: protomotions.agents.common.common.Flatten
+                    _recursive_: False
+                    num_in: ${robot.self_obs_size}
+                    num_out: ${.num_in}
+                    config:
+                      obs_key: self_obs
+                      normalize_obs: True
+                      norm_clamp_value: 5
                   path: ${agent.config.modules.path}
+                trunk:
+                  _target_: protomotions.agents.common.mlp.MLP
+                  _recursive_: False
+                  num_out: ${robot.number_of_actions}
+                  config:
+                    layers:
+                      - units: 1024
+                        activation: tanh
+                        use_layer_norm: false
+                      - units: 512
+                        activation: tanh
+                        use_layer_norm: false
 
-    critic:
-      config:
-        input_models:
-          path: ${agent.config.modules.path}
+        actor_optimizer:
+          _target_: torch.optim.Adam
+          lr: 2e-5
+
+        critic:
+          _target_: protomotions.agents.common.mlp.MultiHeadedMLP
+          _recursive_: False
+          num_out: 1
+          config:
+            input_models:
+              self_obs:
+                _target_: protomotions.agents.common.common.Flatten
+                _recursive_: False
+                num_in: ${robot.self_obs_size}
+                num_out: ${.num_in}
+                config:
+                  obs_key: self_obs
+                  normalize_obs: True
+                  norm_clamp_value: 5
+              path: ${agent.config.modules.path}
+            trunk:
+              _target_: protomotions.agents.common.mlp.MLP
+              _recursive_: False
+              num_out: 1
+              config:
+                layers:
+                  - units: 1024
+                    activation: relu
+                    use_layer_norm: false
+                  - units: 512
+                    activation: relu
+                    use_layer_norm: false
+
+        critic_optimizer:
+          _target_: torch.optim.Adam
+          lr: 1e-4
 
     extra_inputs:
       path: true
+      historical_self_obs: true  # Required for AMP discriminator
+
+env:
+  config:
+    humanoid_obs:
+      num_historical_steps: 8  # Required for AMP discriminator

@@ -1,0 +1,11 @@
+# @package _global_
+defaults:
+  # keep the Path-Follower environment
+  - /env/path_follower
+  # drop in the Masked-Mimic agent definition
+  - /agent/masked_mimic/agent
+  - _self_
+
+agent:
+  # checkpoint from the phase-1 tracker you already trained
+  checkpoint: data/pretrained_models/masked_mimic/smpl/last.ckpt   # <- adjust if file name differs

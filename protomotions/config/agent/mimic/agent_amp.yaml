@@ -22,7 +22,7 @@ agent:
 
     discriminator_weight_decay: 0.0001
     discriminator_logit_weight_decay: 0.01
-    discriminator_batch_size: 4096
+    discriminator_batch_size: 1024
     discriminator_grad_penalty: 5
     discriminator_replay_keep_prob: 0.01
     discriminator_replay_size: 200000

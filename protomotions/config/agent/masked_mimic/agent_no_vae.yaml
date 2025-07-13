@@ -1,6 +1,6 @@
 # @package _global_
 
-num_envs: 4096
+num_envs: 4
 agent:
   _target_: protomotions.agents.masked_mimic.agent_no_vae.MaskedMimicNoVae
   _recursive_: False
@@ -74,7 +74,7 @@ agent:
     num_steps: 32
     fail_on_bad_grads: False
     check_grad_mag: True
-    batch_size: 16384
+    batch_size: 1024
     task_reward_w: 1.0
     num_mini_epochs: 6
     max_eval_steps: null

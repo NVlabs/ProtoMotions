@@ -4,7 +4,7 @@ defaults:
   - /agent/ppo/agent
 
 agent:
-  _target_: protomotions.agents.amp.agent.AMP
+  _target_: protomotions.agents.amp.agent_with_expert.AMPWithExpert
   _recursive_: False
   config:
     # Setup discriminator structure
@@ -21,3 +21,6 @@ agent:
     discriminator_replay_keep_prob: 0.01
     discriminator_replay_size: 200000
     num_discriminator_mini_epochs: 3
+
+    # Expert model path for loading pretrained models
+    expert_model_path: ??? 

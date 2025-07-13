@@ -158,7 +158,7 @@ agent:
     normalize_values: true
     normalized_val_clamp_value: 5
     normalize_advantage: true
-    batch_size: 16384
+    batch_size: 1024
     task_reward_w: 1.0
     num_mini_epochs: 1
     max_eval_steps: null
