@@ -1,0 +1,46 @@
+# @package _global_
+
+defaults:
+  - masked_mimic/base
+  - /env/reach
+  - /terrain/complex
+  - _self_
+
+# Training-specific overrides
+agent:
+  config:
+    expert_model_path: data/pretrained_models/masked_mimic/smpl  # Path to pretrained expert model
+    vae:
+      noise_type: "normal"  # Use normal noise during training
+    # Training parameters
+    num_steps: 32
+    batch_size: 128
+    num_mini_epochs: 6
+    eval_metrics_every: 500
+    manual_save_every: 10
+    max_epochs: ${eval:${training_max_steps}//${ngpu}//${num_envs}//${.num_steps}}
+
+# Environment configuration for reach training
+env:
+  config:
+    max_episode_length: 1000
+    enable_height_termination: False
+    # Add reach-specific parameters here if needed
+    # reach_params:
+    #   ...
+
+# Training parameters
+num_envs: 4
+training_max_steps: 10000000
+experiment_name: masked_mimic_reach_training
+headless: true
+
+# Motion file (required for masked_mimic agent)
+motion_file: data/motions/smpl_humanoid_walk.npy
+sync_motion: false
+
+# Global parameters
+ngpu: 1
+nodes: 1
+torch_deterministic: false
+amp_precision: 32-true 

@@ -1,0 +1,21 @@
+# @package _global_
+
+defaults:
+  - base_env
+
+# Env structure
+env:
+  _target_: protomotions.envs.reach.env.MaskedMimicReachHumanoid
+  config:
+    enable_height_termination: True
+    reach_params:
+      reach_body_name: pelvis
+      tar_dist_max: 1.0
+      tar_height_max: 1.2
+      tar_height_min: 0.8
+      change_steps_min: 50
+      change_steps_max: 100
+      reach_steps_min: 20
+      reach_steps_max: 80
+
+# Globally accessible parameters
