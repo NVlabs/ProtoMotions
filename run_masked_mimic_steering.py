@@ -23,6 +23,7 @@ def run_masked_mimic_steering(checkpoint_path, robot="smpl", simulator="isaaclab
     
     # Build the command
     cmd = [
+        "HYDRA_FULL_ERROR=1",
         "PYTHON_PATH", 
         "protomotions/eval_agent.py",
         "+exp=masked_mimic_steering_eval",

@@ -14,7 +14,7 @@ agent:
       noise_type: "normal"  # Use normal noise during training
     # Training parameters
     num_steps: 32
-    batch_size: 1024
+    batch_size: 128
     num_mini_epochs: 6
     eval_metrics_every: 500
     manual_save_every: 10

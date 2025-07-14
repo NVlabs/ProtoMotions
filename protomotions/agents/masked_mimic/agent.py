@@ -64,6 +64,13 @@ class MaskedMimic(PPO):
             self.expert_model_config = OmegaConf.load(
                 Path(self.config.expert_model_path) / "config.yaml"
             )
+
+            print("AAAAAAAAAAAAAAAAAAAAAAAAAAA")
+            print(self.expert_model_config.env.config.mimic_target_pose.num_future_steps)
+            print(self.expert_model_config.env.config.mimic_target_pose.type)
+            print(self.expert_model_config.env.config.mimic_target_pose.with_time)
+            print("AAAAAAAAAAAAAAAAAAAAAAAAAAA")
+
             assert (
                 self.env.mimic_obs_cb.config.mimic_target_pose.num_future_steps
                 == self.expert_model_config.env.config.mimic_target_pose.num_future_steps

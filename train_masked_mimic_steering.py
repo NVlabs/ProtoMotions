@@ -55,6 +55,7 @@ def main():
     
     # Construct training command
     cmd = [
+        "HYDRA_FULL_ERROR=1",
         "PYTHONPATH=/home/rover2/OrcaRL/ProtoMotions",
         "python", "protomotions/train_agent.py",
         "+exp=masked_mimic/steering_training",

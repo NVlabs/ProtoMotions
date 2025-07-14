@@ -2,6 +2,7 @@
 
 defaults:
   - masked_mimic/base
+  - /env/steering
   - /terrain/complex
 
 # Fabric configuration
@@ -25,44 +26,21 @@ agent:
     vae:
       noise_type: "zeros"  # Use deterministic behavior for evaluation
 
-# Environment configuration for mimic (required for masked_mimic agent)
+# Environment configuration for steering
 env:
   config:
     max_episode_length: 300
     enable_height_termination: True
-    # The mimic environment will provide the required masked_mimic observations
-    mimic_target_pose:
-      enabled: true
-      type: max-coords-future-rel
-      with_time: true
-      num_future_steps: 15
-    masked_mimic:
-      enabled: true
-      masked_mimic_masking:
-        joint_masking:
-          masked_mimic_time_gap_probability: 0.1
-          time_gap_mask_min_steps: 1
-          time_gap_mask_max_steps: 11
-          with_conditioning_time_gap_mask_max_steps: 44
-          with_conditioning_max_gap_probability: 0.2
-          masked_mimic_repeat_mask_probability: 0.98
-          masked_mimic_fixed_conditioning: null
-          force_max_conditioned_bodies_prob: 0.1
-          force_small_num_conditioned_bodies_prob: 0.1
-        target_pose_visible_prob: 0.2
-        motion_text_embeddings_visible_prob: 0
-      masked_mimic_target_pose:
-        num_obs_per_sparse_target_pose: 264
-        num_future_steps: 10
-        num_obs_per_joint: 24
-        num_obs_per_target_pose: 432
-      motion_text_embeddings:
-        enabled: false
-        embedding_dim: 512
-      historical_obs:
-        num_historical_conditioned_steps: 15
-    humanoid_obs:
-      num_historical_steps: 120
+    steering_params:
+      heading_change_steps_min: 40
+      heading_change_steps_max: 150
+      random_heading_probability: 0.2
+      standard_heading_change: 1.57
+      tar_speed_min: 1.2
+      tar_speed_max: 6
+      standard_speed_change: 0.3
+      stop_probability: 0.05
+      obs_size: 3
 
 # Evaluation overrides
 eval_overrides:
@@ -91,7 +69,7 @@ checkpoint: ???
 headless: false
 
 # Experiment settings
-experiment_name: masked_mimic_eval
+experiment_name: masked_mimic_steering_eval
 
 # Motion file (required for masked_mimic agent)
 motion_file: data/motions/smpl_humanoid_walk.npy
