@@ -68,6 +68,7 @@ class Transformer(nn.Module):
 
         for model_name, input_model in self.input_models.items():
             input_key = input_model.config.obs_key
+            # print(input_dict)
             if input_key not in input_dict:
                 print(f"Transformer expected to see key {input_key} in input_dict.")
                 # Transformer token will not be created for this key

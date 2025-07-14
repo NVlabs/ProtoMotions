@@ -127,6 +127,16 @@ class PathFollowing(BaseEnv):
     def get_obs(self):
         obs = super().get_obs()
         obs.update({"path": self.path_obs})
+        obs["motion_text_embeddings_mask"] = torch.zeros(self.num_envs, 1, dtype=torch.bool, device=self.device)
+        num_historical_conditioned_steps = getattr(self.config.historical_obs, 'num_historical_conditioned_steps', 15) if hasattr(self.config, 'historical_obs') else 15
+        obs_size = self.self_obs_cb.config.obs_size
+        obs["historical_pose_obs"] = torch.zeros(self.num_envs, num_historical_conditioned_steps * (obs_size + 1), dtype=torch.float, device=self.device)
+        # Match MaskedMimicObs: (num_envs, (10+1)*184)
+        obs["masked_mimic_target_poses"] = torch.zeros(self.num_envs, 11 * 184, dtype=torch.float, device=self.device)
+        obs["motion_text_embeddings"] = torch.zeros(self.num_envs, 512, dtype=torch.float, device=self.device)
+        # Add dummy masks with correct shapes
+        obs["masked_mimic_target_poses_masks"] = torch.zeros(self.num_envs, 11, dtype=torch.bool, device=self.device)
+        obs["masked_mimic_target_bodies_masks"] = torch.zeros(self.num_envs, 10 * 14, dtype=torch.bool, device=self.device)
         return obs
 
     def compute_reward(self):

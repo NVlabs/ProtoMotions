@@ -29,6 +29,12 @@ class MaskedMimicObs(BaseComponent):
             dtype=torch.float,
             device=self.env.device,
         )
+        print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+        print(self.masked_mimic_target_poses)
+        print(self.env.num_envs)
+        print(num_future_steps)
+        print(num_obs_per_sparse_target_pose)
+        print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 
         # Masks indicating which bodies are visible in each future pose
         self.masked_mimic_target_bodies_masks = torch.zeros(
