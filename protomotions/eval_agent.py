@@ -1,5 +1,6 @@
 import os
 import sys
+import platform
 from pathlib import Path
 
 import hydra
@@ -91,8 +92,28 @@ def main(override_config: OmegaConf):
     agent: PPO = instantiate(config.agent, env=env, fabric=fabric)
     agent.setup()
     agent.load(config.checkpoint)
-
-    agent.evaluate_policy()
+    
+    if simulator == "genesis" and platform.system() == "Darwin": 
+        import genesis as gs
+        agent.eval()
+        def run_sim(env, agent, enable_vis):
+            done_indices = None 
+            step = 0
+            while agent.config.max_eval_steps is None or step < agent.config.max_eval_steps:
+                obs = agent.handle_reset(done_indices)
+                actions = agent.model.act(obs)
+                obs, rewards, dones, terminated, extras = agent.env_step(actions)
+                all_done_indices = dones.nonzero(as_tuple=False)
+                done_indices = all_done_indices.squeeze(-1)
+                step += 1
+            
+            if enable_vis:
+                env.simulator._scene.viewer.stop()
+        gs.tools.run_in_another_thread(fn=run_sim, args=(env, agent, True))
+        if True:
+            env.simulator._scene.viewer.start()
+    else:
+        agent.evaluate_policy()
 
 
 if __name__ == "__main__":

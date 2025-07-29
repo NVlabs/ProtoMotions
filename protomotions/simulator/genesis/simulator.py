@@ -43,7 +43,7 @@ class GenesisSimulator(Simulator):
         assert scene_lib is None, "Genesis does not support spawning objects in the scene"
         
         # Initialize the Genesis engine
-        gs.init(backend=gs.gpu)
+        gs.init(backend=gs.cpu) if device.type == "cpu" else gs.init(backend=gs.gpu)
         self._create_sim(visualization_markers)
 
     def _create_sim(self, visualization_markers: Dict) -> None:
@@ -138,8 +138,8 @@ class GenesisSimulator(Simulator):
                 dof_limits_upper.extend(joint.dofs_limit[:, 1])
 
         self._genesis_dof_indices = torch.tensor(self._genesis_dof_indices, device=self.device)
-        self._dof_limits_lower_sim = torch.tensor(dof_limits_lower, device=self.device)
-        self._dof_limits_upper_sim = torch.tensor(dof_limits_upper, device=self.device)
+        self._dof_limits_lower_sim = torch.tensor(dof_limits_lower, device=self.device, dtype=gs.tc_float)
+        self._dof_limits_upper_sim = torch.tensor(dof_limits_upper, device=self.device, dtype=gs.tc_float)
         
         self._scene.build(n_envs=self.num_envs)
         

@@ -21,10 +21,10 @@ class RunningMeanStd(nn.Module):
         super().__init__()
         self.epsilon = epsilon
         self.register_buffer(
-            "mean", torch.zeros(shape, dtype=torch.float64, device=device)
+            "mean", torch.zeros(shape, dtype=torch.float, device=device)
         )
         self.register_buffer(
-            "var", torch.ones(shape, dtype=torch.float64, device=device)
+            "var", torch.ones(shape, dtype=torch.float, device=device)
         )
         # self.count = epsilon
         self.register_buffer("count", torch.ones((), dtype=torch.long, device=device))

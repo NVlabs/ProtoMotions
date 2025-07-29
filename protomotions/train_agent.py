@@ -5,6 +5,7 @@ os.environ["WANDB_SILENT"] = "true"
 os.environ["WANDB_DISABLE_CODE"] = "true"
 
 import sys
+import platform
 from pathlib import Path
 import logging
 import hydra
@@ -43,6 +44,10 @@ log = logging.getLogger(__name__)
 
 @hydra.main(config_path="config", config_name="base")
 def main(config: OmegaConf):
+    if platform.system() == "Darwin":
+        log.info("Found OSX device")
+        config.fabric.accelerator = "mps"
+        config.fabric.strategy = "auto"
     # resolve=False is important otherwise overrides
     # at inference time won't work properly
     # also, I believe this must be done before instantiation

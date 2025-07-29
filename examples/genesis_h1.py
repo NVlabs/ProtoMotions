@@ -1,4 +1,6 @@
 import torch
+import platform
+import genesis as gs
 from protomotions.simulator.genesis.config import GenesisSimulatorConfig, GenesisSimParams
 from protomotions.simulator.genesis.simulator import GenesisSimulator
 from protomotions.simulator.base_simulator.config import (
@@ -104,7 +106,10 @@ simulator_config = GenesisSimulatorConfig(
     w_last=False,  # Genesis uses wxyz quaternions
 )
 
-device = torch.device("cuda")
+if platform.system()=='Darwin':
+    device = torch.device("mps")
+else:
+    device = torch.device("cuda")
 
 # Create a flat terrain using the default config
 terrain_config = TerrainConfig()
@@ -127,11 +132,21 @@ default_state.root_pos[:] = root_pos
 simulator.reset_envs(default_state, env_ids=torch.arange(simulator_config.num_envs, device=device))
 
 # Run the simulation loop
-try:
-    while True:
-        actions = torch.randn(simulator_config.num_envs, simulator_config.robot.number_of_actions, device=device)
-        simulator.step(actions)
-except KeyboardInterrupt:
-    print("\nSimulation stopped by user")
-finally:
-    simulator.close()
+if platform.system() == "Darwin":
+    def run_sim(simulator, sim_config, device):
+        while True:
+            actions = torch.randn(sim_config.num_envs, sim_config.robot.number_of_actions, device=device)
+            simulator.step(actions)
+
+    gs.tools.run_in_another_thread(fn=run_sim, args=(simulator, simulator_config, device))
+    if True:
+        simulator._scene.viewer.start()
+else:
+    try:
+        while True:
+            actions = torch.randn(simulator_config.num_envs, simulator_config.robot.number_of_actions, device=device)
+            simulator.step(actions)
+    except KeyboardInterrupt:
+        print("\nSimulation stopped by user")
+    finally:
+        simulator.close()

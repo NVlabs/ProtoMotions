@@ -362,6 +362,7 @@ class Terrain:
             ),
             device=self.device,
             requires_grad=False,
+            dtype=torch.float
         )
         x = torch.tensor(
             np.linspace(
@@ -371,6 +372,7 @@ class Terrain:
             ),
             device=self.device,
             requires_grad=False,
+            dtype=torch.float
         )
         grid_x, grid_y = torch.meshgrid(x, y)
 
