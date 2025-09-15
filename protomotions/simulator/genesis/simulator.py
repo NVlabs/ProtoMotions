@@ -138,8 +138,9 @@ class GenesisSimulator(Simulator):
                 dof_limits_upper.extend(joint.dofs_limit[:, 1])
 
         self._genesis_dof_indices = torch.tensor(self._genesis_dof_indices, device=self.device)
-        self._dof_limits_lower_sim = torch.tensor(dof_limits_lower, device=self.device, dtype=gs.tc_float)
-        self._dof_limits_upper_sim = torch.tensor(dof_limits_upper, device=self.device, dtype=gs.tc_float)
+        tc_float = torch.float if gs.platform == "macOS" else None
+        self._dof_limits_lower_sim = torch.tensor(dof_limits_lower, device=self.device, dtype=tc_float)
+        self._dof_limits_upper_sim = torch.tensor(dof_limits_upper, device=self.device, dtype=tc_float)
         
         self._scene.build(n_envs=self.num_envs)
         

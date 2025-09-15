@@ -1,4 +1,5 @@
 from typing import Optional, Tuple
+import platform
 
 import torch
 from torch import Tensor, nn
@@ -20,11 +21,12 @@ class RunningMeanStd(nn.Module):
         """
         super().__init__()
         self.epsilon = epsilon
+        tc_float = torch.float if platform.system() == "Darwin" else torch.float64
         self.register_buffer(
-            "mean", torch.zeros(shape, dtype=torch.float, device=device)
+            "mean", torch.zeros(shape, dtype=tc_float, device=device)
         )
         self.register_buffer(
-            "var", torch.ones(shape, dtype=torch.float, device=device)
+            "var", torch.ones(shape, dtype=tc_float, device=device)
         )
         # self.count = epsilon
         self.register_buffer("count", torch.ones((), dtype=torch.long, device=device))
