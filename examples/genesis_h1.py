@@ -132,21 +132,11 @@ default_state.root_pos[:] = root_pos
 simulator.reset_envs(default_state, env_ids=torch.arange(simulator_config.num_envs, device=device))
 
 # Run the simulation loop
-if platform.system() == "Darwin":
-    def run_sim(simulator, sim_config, device):
-        while True:
-            actions = torch.randn(sim_config.num_envs, sim_config.robot.number_of_actions, device=device)
-            simulator.step(actions)
-
-    gs.tools.run_in_another_thread(fn=run_sim, args=(simulator, simulator_config, device))
-    if True:
-        simulator._scene.viewer.start()
-else:
-    try:
-        while True:
-            actions = torch.randn(simulator_config.num_envs, simulator_config.robot.number_of_actions, device=device)
-            simulator.step(actions)
-    except KeyboardInterrupt:
-        print("\nSimulation stopped by user")
-    finally:
-        simulator.close()
+try:
+    while True:
+        actions = torch.randn(simulator_config.num_envs, simulator_config.robot.number_of_actions, device=device)
+        simulator.step(actions)
+except KeyboardInterrupt:
+    print("\nSimulation stopped by user")
+finally:
+    simulator.close()
