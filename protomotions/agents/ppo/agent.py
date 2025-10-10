@@ -179,9 +179,10 @@ class PPO:
 
         # Check if new high score flag is consistent across devices.
         gathered_high_score = self.fabric.all_gather(new_high_score)
-        assert all(
-            [x == gathered_high_score[0] for x in gathered_high_score]
-        ), "New high score flag should be the same across all ranks."
+        if gathered_high_score.dim() != 0:
+            assert all(
+                [x == gathered_high_score[0] for x in gathered_high_score]
+            ), "New high score flag should be the same across all ranks."
 
         if new_high_score:
             score_based_name = "score_based.ckpt"

@@ -2,6 +2,7 @@ import numpy as np
 import math
 import torch
 from scipy import ndimage
+import platform
 
 from protomotions.envs.base_env.env_utils.terrains.subterrain import SubTerrain
 from protomotions.envs.base_env.env_utils.terrains.subterrain_generator import (
@@ -354,6 +355,7 @@ class Terrain:
         """
         Pre-defines the grid for the height-map observation.
         """
+        tc_float = torch.float if platform.system() == "Darwin" else None
         y = torch.tensor(
             np.linspace(
                 -self.config.sample_width,
@@ -362,6 +364,7 @@ class Terrain:
             ),
             device=self.device,
             requires_grad=False,
+            dtype=tc_float
         )
         x = torch.tensor(
             np.linspace(
@@ -371,6 +374,7 @@ class Terrain:
             ),
             device=self.device,
             requires_grad=False,
+            dtype=tc_float
         )
         grid_x, grid_y = torch.meshgrid(x, y)
 

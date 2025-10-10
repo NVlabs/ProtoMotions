@@ -43,7 +43,8 @@ class GenesisSimulator(Simulator):
         assert scene_lib is None, "Genesis does not support spawning objects in the scene"
         
         # Initialize the Genesis engine
-        gs.init(backend=gs.gpu)
+        gs.init(backend=gs.cpu) if device.type == "cpu" else gs.init(backend=gs.gpu)
+        #gs.init(backend=gs.cpu, performance_mode=True) if device.type == "cpu" else gs.init(backend=gs.gpu, performance_mode=True)
         self._create_sim(visualization_markers)
 
     def _create_sim(self, visualization_markers: Dict) -> None:
@@ -129,17 +130,18 @@ class GenesisSimulator(Simulator):
         dof_limits_upper = []
         for joint in self._robot.joints:
             if joint.name in self.robot_config.dof_names:
-                if type(joint.dof_idx_local) is list:
-                    self._genesis_dof_indices.extend(joint.dof_idx_local)
+                if type(joint.dofs_idx_local) is list:
+                    self._genesis_dof_indices.extend(joint.dofs_idx_local)
                 else:
-                    self._genesis_dof_indices.append(joint.dof_idx_local)
+                    self._genesis_dof_indices.append(joint.dofs_idx_local)
 
                 dof_limits_lower.extend(joint.dofs_limit[:, 0])
                 dof_limits_upper.extend(joint.dofs_limit[:, 1])
 
         self._genesis_dof_indices = torch.tensor(self._genesis_dof_indices, device=self.device)
-        self._dof_limits_lower_sim = torch.tensor(dof_limits_lower, device=self.device)
-        self._dof_limits_upper_sim = torch.tensor(dof_limits_upper, device=self.device)
+        tc_float = torch.float if gs.platform == "macOS" else None
+        self._dof_limits_lower_sim = torch.tensor(dof_limits_lower, device=self.device, dtype=tc_float)
+        self._dof_limits_upper_sim = torch.tensor(dof_limits_upper, device=self.device, dtype=tc_float)
         
         self._scene.build(n_envs=self.num_envs)
         
@@ -168,17 +170,17 @@ class GenesisSimulator(Simulator):
         for joint in self._robot.joints:
             if joint.name in self.robot_config.dof_names:
                 common_dof_idx = self.robot_config.dof_names.index(joint.name)
-                if type(joint.dof_idx_local) is list:
-                    for dof_idx_local in joint.dof_idx_local:
-                        dof_offset = dof_idx_local - joint.dof_idx_local[0]
+                if type(joint.dofs_idx_local) is list:
+                    for dofs_idx_local in joint.dofs_idx_local:
+                        dof_offset = dofs_idx_local - joint.dofs_idx_local[0]
                         dof_names.append(self.robot_config.dof_names[common_dof_idx + dof_offset])
                 else:
                     dof_names.append(joint.name)
         
         return SimBodyOrdering(
-            body_names=[link.name for link in self._robot.links],
+            body_names=[link.name for link in self._robot.links if link.name != "base"],
             dof_names=dof_names,
-            contact_sensor_body_names=[link.name for link in self._robot.links],
+            contact_sensor_body_names=[link.name for link in self._robot.links if link.name != "base"],
         )
     
     def _load_object_assets(self) -> None:

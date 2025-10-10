@@ -1,4 +1,6 @@
 import torch
+import platform
+import genesis as gs
 from protomotions.simulator.genesis.config import GenesisSimulatorConfig, GenesisSimParams
 from protomotions.simulator.genesis.simulator import GenesisSimulator
 from protomotions.simulator.base_simulator.config import (
@@ -104,7 +106,10 @@ simulator_config = GenesisSimulatorConfig(
     w_last=False,  # Genesis uses wxyz quaternions
 )
 
-device = torch.device("cuda")
+if platform.system()=='Darwin':
+    device = torch.device("mps")
+else:
+    device = torch.device("cuda")
 
 # Create a flat terrain using the default config
 terrain_config = TerrainConfig()

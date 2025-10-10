@@ -91,7 +91,7 @@ def main(override_config: OmegaConf):
     agent: PPO = instantiate(config.agent, env=env, fabric=fabric)
     agent.setup()
     agent.load(config.checkpoint)
-
+    
     agent.evaluate_policy()
 
 
