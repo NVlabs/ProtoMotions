@@ -10,3 +10,7 @@ results/*
 **/.DS_Store
 
 output/
+
+data/smpl/SMPL_NEUTRAL.pkl
+data/smpl/SMPL_FEMALE.pkl
+data/smpl/SMPL_MALE.pkl

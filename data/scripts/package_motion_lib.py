@@ -1,5 +1,7 @@
+import sys
 import os
 from pathlib import Path
+sys.path.insert(0, "/home/cizinsky/ProtoMotions")
 
 import torch
 import typer

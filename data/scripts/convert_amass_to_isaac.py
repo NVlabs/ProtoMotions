@@ -2,9 +2,12 @@
 # https://github.com/ZhengyiLuo/PHC/blob/master/scripts/data_process/convert_amass_isaac.py
 
 import os
+import sys
 import uuid
 from pathlib import Path
 from typing import Optional
+
+sys.path.insert(0, "/home/cizinsky/ProtoMotions")
 
 import ipdb
 import yaml

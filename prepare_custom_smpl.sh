@@ -15,12 +15,12 @@ PYTHON_BIN=${PYTHON_BIN:-python}
 
 SEQUENCE_NAME="football_high_res"
 PREPROCESS_DIR="/scratch/izar/cizinsky/multiply-output/preprocessing/data/football_high_res"
-WORK_ROOT="/scratch/izar/cizinsky/zurihack/data/${SEQUENCE_NAME}"
+WORK_ROOT="/scratch/izar/cizinsky/zurihack/data/"
 
-FPS=5
+FPS=30
 GENDER="neutral"
 HUMANOID_TYPE="smpl"
-ROBOT_TYPE="h1"
+ROBOT_TYPE="smpl"
 
 # Leave empty to convert every detected track.
 TRACK_IDS=(0)
@@ -30,9 +30,9 @@ TRACK_IDS=(0)
 ###############################################################################
 
 AMASS_EXPORT_DIR="${WORK_ROOT}/amass_export"
-ISAAC_EXPORT_DIR="${WORK_ROOT}/isaac_export"
 MOTION_DESC_PATH="${WORK_ROOT}/motion_descriptors/${SEQUENCE_NAME}.yaml"
 PACKAGED_OUTPUT="${WORK_ROOT}/motion_states/${SEQUENCE_NAME}.pt"
+DATASET_REPO_ROOT="/scratch/izar/cizinsky/zurihack/"
 
 # The conversion script sanitizes the sequence name; mirror the same logic here.
 SANITIZED_SEQUENCE_NAME=${SEQUENCE_NAME// /_}
@@ -47,7 +47,6 @@ CONVERTED_SUBDIR="${SANITIZED_SEQUENCE_NAME}-${ROBOT_TYPE}"
 ###############################################################################
 
 mkdir -p "${AMASS_EXPORT_DIR}"
-mkdir -p "${ISAAC_EXPORT_DIR}"
 mkdir -p "$(dirname "${MOTION_DESC_PATH}")"
 mkdir -p "$(dirname "${PACKAGED_OUTPUT}")"
 
@@ -76,13 +75,18 @@ fi
 ###############################################################################
 
 echo "[2/4] Converting AMASS clips to Isaac format..."
+RETARGET_FLAGS=()
+if [[ "${ROBOT_TYPE}" == "h1" || "${ROBOT_TYPE}" == "g1" ]]; then
+  RETARGET_FLAGS+=(--force-retarget)
+fi
+
 "${PYTHON_BIN}" data/scripts/convert_amass_to_isaac.py \
-  --amass-root-dir "${AMASS_EXPORT_DIR}" \
-  --output-dir "${ISAAC_EXPORT_DIR}" \
-  --humanoid-type "${HUMANOID_TYPE}" \
+  "${AMASS_EXPORT_DIR}" \
   --robot-type "${ROBOT_TYPE}" \
+  --humanoid-type "${HUMANOID_TYPE}" \
+  --output-dir "${AMASS_EXPORT_DIR}" \
   --force-remake \
-  --force-retarget
+  "${RETARGET_FLAGS[@]}"
 
 ###############################################################################
 # Step 3: Build motion descriptor YAML
@@ -90,7 +94,7 @@ echo "[2/4] Converting AMASS clips to Isaac format..."
 
 echo "[3/4] Creating motion descriptor..."
 "${PYTHON_BIN}" data/scripts/create_motion_descriptor.py \
-  "${ISAAC_EXPORT_DIR}" \
+  "${AMASS_EXPORT_DIR}" \
   "${MOTION_DESC_PATH}" \
   --fps "${FPS}" \
   --sequence-subdir "${CONVERTED_SUBDIR}"
@@ -101,9 +105,29 @@ echo "[3/4] Creating motion descriptor..."
 
 echo "[4/4] Packaging MotionLib state..."
 "${PYTHON_BIN}" data/scripts/package_motion_lib.py \
-  motion_file="${MOTION_DESC_PATH}" \
-  amass_data_path="${ISAAC_EXPORT_DIR}" \
-  outpath="${PACKAGED_OUTPUT}" \
-  humanoid_type="${HUMANOID_TYPE}"
+  "${MOTION_DESC_PATH}" \
+  "${AMASS_EXPORT_DIR}" \
+  "${PACKAGED_OUTPUT}" \
+  --humanoid-type "${HUMANOID_TYPE}"
+
+###############################################################################
+# Step 5: Commit and push dataset repo to Hugging Face
+###############################################################################
+
+if [[ -d "${DATASET_REPO_ROOT}/.git" ]]; then
+  echo "[5/5] Syncing dataset repo with Hugging Face..."
+  pushd "${DATASET_REPO_ROOT}" >/dev/null
+  git add .
+  if git diff --cached --quiet; then
+    echo "[5/5] No dataset changes to commit."
+  else
+    COMMIT_MSG="Update ${SEQUENCE_NAME} dataset ($(date -u +'%Y-%m-%dT%H:%M:%SZ'))"
+    git commit -m "${COMMIT_MSG}"
+    git push
+  fi
+  popd >/dev/null
+else
+  echo "[5/5] Skipping dataset sync; no Git repository found at ${DATASET_REPO_ROOT}"
+fi
 
 echo "[DONE] Packaged motion saved to ${PACKAGED_OUTPUT}"

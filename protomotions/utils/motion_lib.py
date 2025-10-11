@@ -94,9 +94,16 @@ class MotionLib(DeviceDtypeModuleMixin):
         self.ref_height_adjust = ref_height_adjust
         self.local_rot_conversion = local_rot_conversion
 
+        if isinstance(key_body_ids, torch.Tensor):
+            key_body_ids_tensor = key_body_ids.to(dtype=torch.long, device=device)
+        else:
+            key_body_ids_tensor = torch.as_tensor(
+                key_body_ids, dtype=torch.long, device=device
+            )
+
         self.register_buffer(
             "key_body_ids",
-            torch.tensor(key_body_ids, dtype=torch.long, device=device),
+            key_body_ids_tensor,
             persistent=False,
         )
 
