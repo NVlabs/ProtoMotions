@@ -422,7 +422,25 @@ class IsaacGymSimulator(Simulator):
             )
             for i in range(self.num_envs):
                 env_ptr = self._gym.create_env(self._sim, lower, upper, num_per_row)
+                
+                # calculate the max aggregate body and shape counts for the humanoid robot
+                max_agg_bodies = self._gym.get_asset_rigid_body_count(humanoid_asset)
+                max_agg_shapes = self._gym.get_asset_rigid_shape_count(humanoid_asset)
+
+                # assume each environment has the same number of objects based on how scenelib is designed right now
+                assert len(self._object_assets) % self.num_envs == 0, "simulation environment has different number of objects"
+                num_obj_per_env = int(len(self._object_assets) // self.num_envs)
+
+                # calculate the max aggregate body and shape counts for the objects
+                for object_asset in self._object_assets[num_obj_per_env*i:num_obj_per_env*(i+1)]:
+                    max_agg_bodies += self._gym.get_asset_rigid_body_count(object_asset)
+                    max_agg_shapes += self._gym.get_asset_rigid_shape_count(object_asset)
+
+                # aggregate body and shapes to save memory
+                self._gym.begin_aggregate(env_ptr, max_agg_bodies, max_agg_shapes, True)
                 self._build_env(i, env_ptr, humanoid_asset, visualization_markers)
+                self._gym.end_aggregate(env_ptr)
+                
                 self._envs.append(env_ptr)
                 progress.update(task, advance=1)
 
