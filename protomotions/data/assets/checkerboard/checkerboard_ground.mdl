@@ -1,0 +1,29 @@
+mdl 1.4;
+
+import ::df::*;
+import ::state::*;
+import ::math::*;
+
+export material checkerboard_procedural()
+= let {
+    // Get texture coordinates - returns float3, extract x and y
+    float3 tex_coord = ::state::texture_coordinate(0);
+    float2 uv = float2(tex_coord.x, tex_coord.y);
+    float2 scaled_uv = uv * 20.0;  // 20x20 repetitions
+    
+    // Create checkerboard pattern using floor function
+    float checker_x = ::math::floor(scaled_uv.x);
+    float checker_y = ::math::floor(scaled_uv.y);
+    float checker = ::math::fmod(checker_x + checker_y, 2.0);
+    
+    // Light gray (0.86) vs dark gray (0.31)
+    color checkerboard_color = checker < 0.5 ? color(0.86, 0.86, 0.86) : color(0.31, 0.31, 0.31);
+    
+} in material(
+    surface: material_surface(
+        scattering: df::diffuse_reflection_bsdf(
+            tint: checkerboard_color,
+            roughness: 0.8
+        )
+    )
+);

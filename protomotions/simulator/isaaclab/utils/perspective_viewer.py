@@ -1,3 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
 import carb
 import numpy as np
 from pxr import Gf, Sdf
@@ -8,39 +23,52 @@ class PerspectiveViewer(object):
     def __init__(self):
         self.viewport_api = None
         self.get_viewport_api()
-        rp = rep.create.render_product("/OmniverseKit_Persp", resolution=(500, 500))  # Lower resolution
-        
+        _ = rep.create.render_product(
+            "/OmniverseKit_Persp", resolution=(500, 500)
+        )  # Lower resolution
+
         # Disable advanced rendering features
         self.disable_advanced_rendering()
 
     def disable_advanced_rendering(self):
         stage = self.viewport_api.stage
         render_settings_path = "/Render/RenderProduct/RenderSettings"
-        
+
         # Create or get the RenderSettings prim
         render_settings = stage.GetPrimAtPath(render_settings_path)
         if not render_settings.IsValid():
             render_settings = stage.DefinePrim(render_settings_path, "RenderSettings")
 
         # Disable ray tracing
-        render_settings.CreateAttribute("rtx:raytracing:enabled", Sdf.ValueTypeNames.Bool).Set(False)
+        render_settings.CreateAttribute(
+            "rtx:raytracing:enabled", Sdf.ValueTypeNames.Bool
+        ).Set(False)
 
         # Disable Global Illumination
-        render_settings.CreateAttribute("rtx:pathtracing:gi:enabled", Sdf.ValueTypeNames.Bool).Set(False)
+        render_settings.CreateAttribute(
+            "rtx:pathtracing:gi:enabled", Sdf.ValueTypeNames.Bool
+        ).Set(False)
 
         # Disable Ambient Occlusion
-        render_settings.CreateAttribute("rtx:ambientOcclusion:enabled", Sdf.ValueTypeNames.Bool).Set(False)
+        render_settings.CreateAttribute(
+            "rtx:ambientOcclusion:enabled", Sdf.ValueTypeNames.Bool
+        ).Set(False)
 
         # Disable Depth of Field
-        render_settings.CreateAttribute("rtx:dof:enabled", Sdf.ValueTypeNames.Bool).Set(False)
+        render_settings.CreateAttribute("rtx:dof:enabled", Sdf.ValueTypeNames.Bool).Set(
+            False
+        )
 
         # Optionally, you can also reduce other quality settings
-        render_settings.CreateAttribute("rtx:pathtracing:maxBounces", Sdf.ValueTypeNames.Int).Set(1)
-        render_settings.CreateAttribute("rtx:pathtracing:maxSamples", Sdf.ValueTypeNames.Int).Set(16)
+        render_settings.CreateAttribute(
+            "rtx:pathtracing:maxBounces", Sdf.ValueTypeNames.Int
+        ).Set(1)
+        render_settings.CreateAttribute(
+            "rtx:pathtracing:maxSamples", Sdf.ValueTypeNames.Int
+        ).Set(16)
 
         # Apply the changes
         stage.SetEditTarget(stage.GetSessionLayer())
-
 
     def get_viewport_api(self):
         if self.viewport_api is None:

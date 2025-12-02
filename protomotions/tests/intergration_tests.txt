@@ -1,0 +1,7 @@
+Manual Integration Tests:
+Multi-dataset: AMASS/GRAB/RigV1
+With Scenes and Without Scene, Terrain or Not
+Multi-robot: SMPL/SMPLX/RigV1/H1_2/G1
+Multi-algorithm: Pure RL/DeepMimic/MaskedMimic/AMP
+Multi-sim
+Tasks: Pre-process / Play Motion / Train / Test

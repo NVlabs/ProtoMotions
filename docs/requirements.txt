@@ -1,0 +1,10 @@
+# Sphinx documentation build requirements
+# This file is independent from project dependencies
+# Used for building documentation without requiring full project installation
+
+sphinx>=7.0
+furo
+sphinx-autodoc-typehints
+sphinx-copybutton
+myst-parser
+

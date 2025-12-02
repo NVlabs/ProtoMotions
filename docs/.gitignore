@@ -1,0 +1,30 @@
+# Sphinx build outputs
+build/
+
+# Sphinx cache
+source/_build/
+
+# Generated documentation
+*.doctree
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+*.egg-info/
+dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+

@@ -1,0 +1,60 @@
+FROM nvidia/cuda:12.1.0-devel-ubuntu20.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    vim \
+    wget \
+    libglu1-mesa-dev \
+    libgl1-mesa-dev \
+    libosmesa6-dev \
+    xvfb \
+    patchelf \
+    ffmpeg \
+    python3.8 \
+    python3.8-dev \
+    python3-pip \
+    build-essential \
+    && update-alternatives --install /usr/bin/python python /usr/bin/python3.8 1 \
+    && update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip
+RUN pip install --upgrade pip
+
+# Set working directory
+WORKDIR /workspace
+
+# Download and extract IsaacGym Preview 4
+RUN wget https://developer.nvidia.com/isaac-gym-preview-4 -O isaacgym.tar.gz \
+    && tar -xzf isaacgym.tar.gz \
+    && rm isaacgym.tar.gz
+
+# Now install IsaacGym from source
+RUN cd isaacgym/python && pip install -e .
+
+# Install PyTorch 2.4 with CUDA 12.1
+RUN pip install torch>=2.2 --index-url https://download.pytorch.org/whl/cu121
+
+# Copy protomotions requirements
+WORKDIR /workspace/protomotions
+COPY requirements_isaacgym.txt .
+
+# Remove torch from requirements since it's already installed
+RUN sed -i '/^torch/d' requirements_isaacgym.txt
+
+# Remove the broken bundled onnx if it exists
+RUN pip uninstall -y onnx || true
+
+# Install remaining Python dependencies
+RUN pip install --no-cache-dir -r requirements_isaacgym.txt
+
+# Don't copy or install protomotions here - it will be synced and installed from 
+# the experiment folder in train_slurm.py. This ensures we always use fresh code
+# and avoids conflicts between old Docker code and newly synced code.
+
+# Default command
+CMD ["/bin/bash"]

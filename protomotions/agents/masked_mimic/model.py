@@ -1,111 +1,176 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
 import torch
-from torch import nn
-from hydra.utils import instantiate
-from protomotions.agents.common.mlp import MultiHeadedMLP
+from tensordict import TensorDict
+from protomotions.utils.hydra_replacement import get_class
+from protomotions.agents.common.common import SequentialModule, MultiOutputModule
+from protomotions.agents.base_agent.model import BaseModel
+
+# Import for type annotations - using TYPE_CHECKING to avoid circular imports
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from protomotions.agents.masked_mimic.config import MaskedMimicModelConfig
 
 
-class VaeModule(nn.Module):
+class FeedForwardModel(BaseModel):
+    """Simple feedforward model for masked mimic without VAE."""
+
     def __init__(self, config):
-        super().__init__()
+        super().__init__(config)
         self.config = config
 
-        self._trunk = instantiate(self.config.trunk)
-        self._mu_head = instantiate(self.config.mu_head)
-        self._logvar_head = instantiate(self.config.logvar_head)
+        TrunkClass: SequentialModule = get_class(self.config.trunk._target_)
+        self._trunk = TrunkClass(config=self.config.trunk)
 
-    def forward(self, input_dict):
-        trunk_out = self._trunk(input_dict)
-        mu = self._mu_head(trunk_out)
-        logvar = self._logvar_head(trunk_out)
-        return {"mu": mu, "logvar": logvar}
+        # Set TensorDict keys
+        self.in_keys = self._trunk.in_keys
+        self.out_keys = ["action"]
 
-
-class VaeDeterministicOutputModel(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.config = config
-
-        # create networks
-        self._encoder: VaeModule = instantiate(
-            self.config.encoder,
-        )
-        self._prior: VaeModule = instantiate(
-            self.config.prior,
-        )
-        self._trunk: MultiHeadedMLP = instantiate(
-            self.config.trunk,
-        )
-
-    def reparameterization(self, mean, std, vae_noise):
-        z = mean + std * vae_noise  # reparameterization trick
-        return z
-
-    def act(self, input_dict: dict, with_encoder: bool = False):
-        prior_out = self._prior(input_dict)
-        if with_encoder:
-            encoder_out = self._encoder(input_dict)
-            mu = prior_out["mu"] + encoder_out["mu"]
-            logvar = encoder_out["logvar"]
-        else:
-            mu = prior_out["mu"]
-            logvar = prior_out["logvar"]
-
-        z = self.reparameterization(
-            mu,
-            torch.exp(0.5 * logvar),
-            input_dict["vae_noise"],
-        )
-        input_dict["vae_latent"] = z
-        action = self._trunk(input_dict)
-        action = torch.tanh(action)
-        
-        return action
-
-    def get_action_and_vae_outputs(self, input_dict: dict):
-        """Get action and VAE outputs by sampling from the encoder.
-
-        This method is used during training to sample from both the encoder and prior networks.
-        The encoder output's mu acts as a residual to the prior's mu, while its logvar is used directly.
-        This allows the encoder to refine the prior's prediction while maintaining the prior's
-        influence on the latent space.
+    def forward(self, tensordict: TensorDict) -> TensorDict:
+        """Forward pass computing action.
 
         Args:
-            input_dict: Dictionary containing model inputs
+            tensordict: TensorDict containing observations.
 
         Returns:
-            Tuple containing:
-            - action: The output action after passing through trunk network
-            - prior_out: Output dictionary from prior network with mu/logvar
-            - encoder_out: Output dictionary from encoder network with mu (as residual) and logvar
+            TensorDict with action added.
         """
-        prior_out = self._prior(input_dict)
-        encoder_out = self._encoder(input_dict)
+        tensordict = self._trunk(tensordict)
+        action = tensordict[self._trunk.config.out_key]
 
-        mu = prior_out["mu"] + encoder_out["mu"]
-        logvar = encoder_out["logvar"]
+        tensordict["action"] = action
+        return tensordict
 
-        if "vae_noise" not in input_dict:
-            # During training, we randomly re-sample the noise.
-            input_dict["vae_noise"] = torch.randn_like(mu)
 
-        z = self.reparameterization(
-            mu,
-            torch.exp(0.5 * logvar),
-            input_dict["vae_noise"],
+class MaskedMimicModel(BaseModel):
+    """MaskedMimic model architecture with Variational Autoencoder (VAE).
+
+    Combines a prior network (acting on sparse observations) and an encoder
+    network (acting on full/expert observations) to learn a latent space for
+    motion control.
+
+    The prior learns to predict the expert's latent distribution from sparse
+    data, enabling the agent to perform robust control when full state info
+    is unavailable during inference.
+
+    Args:
+        config: Configuration for the MaskedMimic model.
+    """
+
+    config: "MaskedMimicModelConfig"
+
+    def __init__(self, config: "MaskedMimicModelConfig"):
+        """Initialize the MaskedMimic model components."""
+        super().__init__(config)
+
+        # create networks
+        EncoderClass = get_class(self.config.encoder._target_)
+        self._encoder: MultiOutputModule = EncoderClass(config=self.config.encoder)
+        PriorClass = get_class(self.config.prior._target_)
+        self._prior: SequentialModule = PriorClass(config=self.config.prior)
+        TrunkClass = get_class(self.config.trunk._target_)
+        self._trunk: SequentialModule = TrunkClass(config=self.config.trunk)
+
+        # Set TensorDict keys (collect from all components)
+        # Include vae_noise as an input requirement
+        trunk_in_keys_without_latents = [
+            key for key in self._trunk.in_keys if key not in ["vae_latent"]
+        ]
+        self.in_keys = list(
+            set(
+                self._prior.in_keys
+                + self._encoder.in_keys
+                + ["vae_noise"]
+                + trunk_in_keys_without_latents
+            )
         )
-
-        input_dict["vae_latent"] = z
-        action = self._trunk(input_dict)
-        action = torch.tanh(action)
-
-        return action, prior_out, encoder_out
+        self.out_keys = ["action", "privileged_action"]
 
     @staticmethod
-    def kl_loss(prior_outs, encoder_outs):
+    def reparameterization(mean, std, vae_noise):
+        """Reparameterization trick: z = mu + std * noise"""
+        z = mean + std * vae_noise
+        return z
+
+    def forward(self, tensordict: TensorDict) -> TensorDict:
+        """Forward pass through MaskedMimic model.
+
+        Always computes both prior and encoder for consistency and ONNX compatibility.
+        Expects vae_noise to be provided in tensordict (generated by agent).
+
+        Args:
+            tensordict: TensorDict containing observations and vae_noise.
+
+        Returns:
+            TensorDict with action and all VAE outputs.
+        """
+        # Compute prior outputs
+        tensordict = self._prior(tensordict)
+        prior_mu = tensordict[self._prior.out_keys[0]]
+        prior_logvar = tensordict[self._prior.out_keys[1]]
+
+        # Reparameterization using external noise
+        std = torch.exp(0.5 * prior_logvar)
+        vae_noise = tensordict["vae_noise"]
+        z = self.reparameterization(
+            prior_mu, std, vae_noise
+        )  # z is the latent code for the action
+        tensordict["vae_latent"] = z
+
+        # Compute non-privileged action (prior path)
+        tensordict = self._trunk(tensordict)
+        action = tensordict[self._trunk.out_keys[0]]
+
+        # Compute encoder outputs
+        tensordict = self._encoder(tensordict)
+        encoder_mu = tensordict[self._encoder.out_keys[0]]
+        encoder_logvar = tensordict[self._encoder.out_keys[1]]
+
+        # Combine: encoder mu is residual to prior mu
+        privileged_mu = prior_mu + encoder_mu
+        privileged_logvar = encoder_logvar  # Use encoder's logvar directly
+
+        # Combine privileged mu and logvar to get privileged z
+        privileged_std = torch.exp(0.5 * privileged_logvar)
+        privileged_z = self.reparameterization(privileged_mu, privileged_std, vae_noise)
+
+        # Compute privileged action (prior + encoder path)
+        tensordict["vae_latent"] = privileged_z
+        tensordict = self._trunk(tensordict)
+        privileged_action = tensordict[self._trunk.out_keys[0]]
+
+        tensordict["action"] = action
+        tensordict["privileged_action"] = privileged_action
+        return tensordict
+
+    def kl_loss(self, tensordict: TensorDict):
+        """Compute KL divergence between encoder and prior.
+
+        Args:
+            tensordict: TensorDict containing prior and encoder outputs.
+
+        Returns:
+            KL divergence tensor.
+        """
         return 0.5 * (
-            prior_outs["logvar"]
-            - encoder_outs["logvar"]
-            + torch.exp(encoder_outs["logvar"]) / torch.exp(prior_outs["logvar"])
-            + encoder_outs["mu"] ** 2 / torch.exp(prior_outs["logvar"])
+            tensordict["prior_logvar"]
+            - tensordict["encoder_logvar"]
+            + torch.exp(tensordict["encoder_logvar"])
+            / torch.exp(tensordict["prior_logvar"])
+            + tensordict["encoder_mu"] ** 2 / torch.exp(tensordict["prior_logvar"])
             - 1
         )

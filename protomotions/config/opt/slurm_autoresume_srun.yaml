@@ -1,8 +1,0 @@
-# @package _global_
-
-fabric:
-  callbacks:
-    - _target_: agents.callbacks.slurm_autoresume_srun.AutoResumeCallbackSrun
-      autoresume_after: ${srun_autoresume_after}
-
-srun_autoresume_after: 12600

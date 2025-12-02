@@ -1,65 +1,153 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+"""Adversarial Motion Priors (AMP) agent implementation.
+
+This module implements the AMP algorithm which extends PPO with a discriminator
+network that provides style rewards. The discriminator learns to distinguish between
+agent and reference motion data, encouraging the agent to produce naturalistic movements
+while accomplishing tasks.
+
+Key Classes:
+    - AMP: Main AMP agent class extending PPO
+
+References:
+    Peng et al. "AMP: Adversarial Motion Priors for Stylized Physics-Based Character Control" (2021)
+"""
+
 import torch
 import logging
 
 from torch import Tensor
-import math
-
+from tensordict import TensorDict
 from lightning.fabric import Fabric
-from hydra.utils import instantiate
+from protomotions.utils.hydra_replacement import instantiate
 
-from protomotions.agents.utils.data_utils import swap_and_flatten01
-from protomotions.utils.replay_buffer import ReplayBuffer
+from protomotions.agents.utils.replay_buffer import ReplayBuffer
 from protomotions.agents.amp.model import AMPModel
-from protomotions.agents.common.common import weight_init
 from protomotions.envs.base_env.env import BaseEnv
+from protomotions.agents.utils.normalization import RewardRunningMeanStd
 from protomotions.agents.ppo.agent import PPO
+from protomotions.agents.amp.config import AMPAgentConfig
+from pathlib import Path
+from typing import Optional, Dict
+
+from protomotions.agents.utils.training import handle_model_grad_clipping
 
 log = logging.getLogger(__name__)
 
 
 class AMP(PPO):
+    """Adversarial Motion Priors (AMP) agent.
+
+    Extends PPO with a discriminator network that learns to distinguish between
+    agent and reference motion data. The discriminator provides a style reward that
+    encourages the agent to produce motions with similar characteristics to the
+    reference dataset. This enables training agents that perform tasks while
+    maintaining natural motion styles.
+
+    The agent combines task rewards with discriminator-based style rewards:
+    - Task reward: From environment (e.g., reaching a target)
+    - Style reward: From discriminator (similarity to reference motions)
+
+    Args:
+        fabric: Lightning Fabric instance for distributed training.
+        env: Environment instance with motion library for reference data.
+        config: AMP-specific configuration including discriminator parameters.
+        root_dir: Optional root directory for saving outputs.
+
+    Attributes:
+        amp_replay_buffer: Replay buffer storing agent transitions for discriminator training.
+        discriminator: Network that distinguishes agent from reference motions.
+
+    Example:
+        >>> fabric = Fabric(devices=4)
+        >>> env = Mimic(config, robot_config, simulator_config, device)
+        >>> agent = AMP(fabric, env, config)
+        >>> agent.setup()
+        >>> agent.train()
+
+    Note:
+        Requires environment with motion library (motion_lib) for sampling reference data.
+    """
+
     # -----------------------------
     # Initialization and Setup
     # -----------------------------
-    def __init__(self, fabric: Fabric, env: BaseEnv, config):
-        super().__init__(fabric, env, config)
-        self.amp_replay_buffer = ReplayBuffer(self.config.discriminator_replay_size).to(
-            self.device
-        )
+    config: AMPAgentConfig
 
-    def setup(self):
-        model: AMPModel = instantiate(self.config.model)
-        model.apply(weight_init)
-        actor_optimizer = instantiate(
-            self.config.model.config.actor_optimizer,
-            params=list(model._actor.parameters()),
+    def __init__(
+        self, fabric: Fabric, env: BaseEnv, config, root_dir: Optional[Path] = None
+    ):
+        super().__init__(fabric, env, config, root_dir=root_dir)
+        self.amp_replay_buffer = ReplayBuffer(
+            self.config.amp_parameters.discriminator_replay_size, device=self.device
         )
-        critic_optimizer = instantiate(
-            self.config.model.config.critic_optimizer,
-            params=list(model._critic.parameters()),
+        self.num_cumulative_bad_transitions = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.int32
         )
+        if self.config.normalize_rewards:
+            self.running_amp_reward_norm = RewardRunningMeanStd(
+                shape=(1,),
+                fabric=self.fabric,
+                gamma=self.gamma,
+                device=self.device,
+                clamp_value=self.config.normalized_reward_clamp_value,
+            )
+        else:
+            self.running_amp_reward_norm = None
+
+    def create_optimizers(self, model: AMPModel):
+        super().create_optimizers(model)
         discriminator_optimizer = instantiate(
-            self.config.model.config.discriminator_optimizer,
+            self.config.model.discriminator_optimizer,
             params=list(model._discriminator.parameters()),
         )
-
-        (
-            self.model,
-            self.actor_optimizer,
-            self.critic_optimizer,
-            self.discriminator_optimizer,
-        ) = self.fabric.setup(
-            model, actor_optimizer, critic_optimizer, discriminator_optimizer
+        self.discriminator, self.discriminator_optimizer = self.fabric.setup(
+            model._discriminator, discriminator_optimizer
         )
-        self.model.mark_forward_method("act")
-        self.model.mark_forward_method("get_action_and_value")
+
+    def load_parameters(self, state_dict):
+        super().load_parameters(state_dict)
+        self.discriminator_optimizer.load_state_dict(
+            state_dict["discriminator_optimizer"]
+        )
+        if self.config.normalize_rewards:
+            self.running_amp_reward_norm.load_state_dict(
+                state_dict["running_amp_reward_norm"]
+            )
+
+    def get_state_dict(self, state_dict):
+        state_dict = super().get_state_dict(state_dict)
+        state_dict["discriminator_optimizer"] = (
+            self.discriminator_optimizer.state_dict()
+        )
+        if self.config.normalize_rewards:
+            state_dict["running_amp_reward_norm"] = (
+                self.running_amp_reward_norm.state_dict()
+            )
+        return state_dict
 
     # -----------------------------
     # Experience Buffer and Dataset Processing
     # -----------------------------
-    def register_extra_experience_buffer_keys(self):
-        super().register_extra_experience_buffer_keys()
+    def register_algorithm_experience_buffer_keys(self):
+        super().register_algorithm_experience_buffer_keys()
         self.experience_buffer.register_key("amp_rewards")
+        if self.config.normalize_rewards:
+            self.experience_buffer.register_key("unnormalized_amp_rewards")
 
     def update_disc_replay_buffer(self, data_dict):
         buf_size = self.amp_replay_buffer.get_buffer_size()
@@ -74,7 +162,7 @@ class AMP(PPO):
         if buf_total_count > buf_size:
             keep_probs = (
                 torch.ones(numel, device=self.device)
-                * self.config.discriminator_replay_keep_prob
+                * self.config.amp_parameters.discriminator_replay_keep_prob
             )
             keep_mask = torch.bernoulli(keep_probs) == 1.0
             for k, v in data_dict.items():
@@ -90,157 +178,242 @@ class AMP(PPO):
 
     @torch.no_grad()
     def process_dataset(self, dataset):
-        historical_self_obs = swap_and_flatten01(
-            self.experience_buffer.historical_self_obs
-        )
+        discriminator_keys = self.model._discriminator.in_keys
 
-        num_samples = historical_self_obs.shape[0]
+        num_samples = dataset[discriminator_keys[0]].shape[0]
 
         if len(self.amp_replay_buffer) == 0:
-            replay_historical_self_obs = historical_self_obs
+            replay_disc_obs = {}
+            for key in discriminator_keys:
+                replay_disc_obs[key] = dataset[key]
         else:
-            replay_dict = self.amp_replay_buffer.sample(num_samples)
-            replay_historical_self_obs = replay_dict["historical_self_obs"]
+            replay_disc_obs = self.amp_replay_buffer.sample(num_samples)
 
-        expert_historical_self_obs = self.get_expert_historical_self_obs(num_samples)
+        expert_disc_obs = self.get_expert_disc_obs(num_samples)
 
-        discriminator_training_data_dict = {
-            "agent_historical_self_obs": historical_self_obs,
-            "replay_historical_self_obs": replay_historical_self_obs,
-            "expert_historical_self_obs": expert_historical_self_obs,
-        }
+        discriminator_training_data_dict = {}
+        for key in discriminator_keys:
+            discriminator_training_data_dict[f"agent_{key}"] = dataset[key]
+            discriminator_training_data_dict[f"replay_{key}"] = replay_disc_obs[key]
+            discriminator_training_data_dict[f"expert_{key}"] = expert_disc_obs[key]
 
         dataset.update(discriminator_training_data_dict)
 
-        self.update_disc_replay_buffer({"historical_self_obs": historical_self_obs})
+        # Add observations to the disc replay buffer
+        disc_data_dict = {}
+        for key in discriminator_keys:
+            disc_data_dict[key] = dataset[key]
+        self.update_disc_replay_buffer(disc_data_dict)
 
         return super().process_dataset(dataset)
 
-    def get_expert_historical_self_obs(self, num_samples: int):
-        motion_ids = self.motion_lib.sample_motions(num_samples)
-        num_steps = self.env.self_obs_cb.config.num_historical_steps
+    def get_expert_disc_obs(self, num_samples: int):
+        motion_ids = self.motion_manager.sample_n_motion_ids(num_samples)
+        motion_times0 = self.motion_manager.sample_time(motion_ids)
 
-        dt = self.env.dt
-        truncate_time = dt * (num_steps - 1)
-
-        # Since negative times are added to these values in build_historical_self_obs_demo,
-        # we shift them into the range [0 + truncate_time, end of clip].
-        motion_times0 = self.motion_lib.sample_time(
-            motion_ids, truncate_time=truncate_time
+        all_historical_self_obs = self.env.self_obs_cb.build_self_obs_demo(
+            motion_ids, motion_times0
         )
-        motion_times0 = motion_times0 + truncate_time
+        historical_self_obs = {}
+        for key in all_historical_self_obs.keys():
+            if key in self.discriminator.in_keys:
+                historical_self_obs[key] = all_historical_self_obs[key].view(
+                    num_samples, -1
+                )
 
-        obs = self.env.self_obs_cb.build_self_obs_demo(
-            motion_ids, motion_times0, num_steps
-        ).clone()
-
-        return obs.view(num_samples, -1)
+        return historical_self_obs
 
     # -----------------------------
     # Reward Calculation
     # -----------------------------
+    def post_env_step_modifications(self, dones, terminated, extras):
+        """Add AMP-specific discriminator-based termination."""
+
+        discriminator_termination = (
+            self.num_cumulative_bad_transitions
+            >= self.config.amp_parameters.discriminator_max_cumulative_bad_transitions
+        )
+
+        terminated = terminated | discriminator_termination
+        dones = dones | terminated
+
+        extras["amp_cumulative_bad_transitions"] = self.num_cumulative_bad_transitions
+        extras["amp_discriminator_termination"] = discriminator_termination
+
+        return dones, terminated, extras
+
     @torch.no_grad()
-    def calculate_extra_reward(self):
-        rew = super().calculate_extra_reward()
+    def record_rollout_step(
+        self,
+        next_obs_td,
+        actions,
+        rewards,
+        dones,
+        terminated,
+        done_indices,
+        extras,
+        step,
+    ):
+        super().record_rollout_step(
+            next_obs_td, actions, rewards, dones, terminated, done_indices, extras, step
+        )
 
-        historical_self_obs = self.experience_buffer.historical_self_obs
-        amp_r = self.model._discriminator.compute_reward(
-            {
-                "historical_self_obs": historical_self_obs.view(
-                    self.num_envs * self.num_steps, -1
-                )
-            }
-        ).view(self.num_steps, self.num_envs)
+        disc_logits = self.discriminator(next_obs_td)[
+            self.discriminator.config.out_keys[0]
+        ]
+        amp_rewards = self.discriminator.compute_disc_reward(disc_logits).flatten()
+        bad_transition = (
+            amp_rewards < self.config.amp_parameters.discriminator_reward_threshold
+        )
+        self.num_cumulative_bad_transitions[bad_transition] += 1
+        self.num_cumulative_bad_transitions[~bad_transition] = 0
 
-        self.experience_buffer.batch_update_data("amp_rewards", amp_r)
+        # Reset cumulative bad transitions for environments that were reset
+        if len(done_indices) > 0:
+            self.num_cumulative_bad_transitions[done_indices] = 0
 
-        extra_reward = amp_r * self.config.discriminator_reward_w + rew
-        return extra_reward
+        if self.config.normalize_rewards:
+            self.experience_buffer.update_data(
+                "unnormalized_amp_rewards", step, amp_rewards
+            )
+            self.running_amp_reward_norm.record_reward(amp_rewards, terminated)
+            amp_rewards = self.running_amp_reward_norm.normalize(amp_rewards)
+        self.experience_buffer.update_data("amp_rewards", step, amp_rewards)
+
+    def get_combined_experience_buffer_rewards(self):
+        rewards = super().get_combined_experience_buffer_rewards()
+        return (
+            rewards
+            + self.experience_buffer.amp_rewards
+            * self.config.amp_parameters.discriminator_reward_w
+        )
 
     # -----------------------------
     # Optimization
     # -----------------------------
-    def extra_optimization_steps(self, batch_dict, batch_idx: int):
-        extra_opt_steps_dict = super().extra_optimization_steps(batch_dict, batch_idx)
-        if batch_idx == 0:
-            self.discriminator_optimizer.zero_grad()
+    def perform_optimization_step(self, batch_dict, batch_idx: int) -> Dict:
+        iter_log_dict = super().perform_optimization_step(batch_dict, batch_idx)
 
-        if batch_idx < self.discriminator_max_num_batches():
+        if batch_idx % self.config.amp_parameters.discriminator_optimization_ratio == 0:
             discriminator_loss, discriminator_loss_dict = self.discriminator_step(
                 batch_dict
             )
-            extra_opt_steps_dict.update(discriminator_loss_dict)
+            iter_log_dict.update(discriminator_loss_dict)
             self.discriminator_optimizer.zero_grad(set_to_none=True)
             self.fabric.backward(discriminator_loss)
-            discriminator_grad_clip_dict = self.handle_model_grad_clipping(
-                self.model._discriminator,
-                self.discriminator_optimizer,
-                "discriminator",
+            discriminator_grad_clip_dict = handle_model_grad_clipping(
+                config=self.config,
+                fabric=self.fabric,
+                model=self.discriminator,
+                optimizer=self.discriminator_optimizer,
+                model_name="discriminator",
             )
-            extra_opt_steps_dict.update(discriminator_grad_clip_dict)
+            iter_log_dict.update(discriminator_grad_clip_dict)
             self.discriminator_optimizer.step()
 
-        return extra_opt_steps_dict
+        return iter_log_dict
 
     def discriminator_step(self, batch_dict):
-        agent_obs = batch_dict["agent_historical_self_obs"][
-            : self.config.discriminator_batch_size
-        ]
-        replay_obs = batch_dict["replay_historical_self_obs"][
-            : self.config.discriminator_batch_size
-        ]
-        expert_obs = batch_dict["expert_historical_self_obs"][
-            : self.config.discriminator_batch_size
-        ]
-        combined_obs = torch.cat([agent_obs, expert_obs], dim=0)
-        combined_obs.requires_grad_(True)
+        agent_obs = {}
+        for key in batch_dict.keys():
+            if "agent_" in key:
+                agent_obs[key.replace("agent_", "")] = batch_dict[key][
+                    : self.config.amp_parameters.discriminator_batch_size
+                ]
+        replay_obs = {}
+        for key in batch_dict.keys():
+            if "replay_" in key:
+                replay_obs[key.replace("replay_", "")] = batch_dict[key][
+                    : self.config.amp_parameters.discriminator_batch_size
+                ]
+        expert_obs = {}
+        for key in batch_dict.keys():
+            if "expert_" in key:
+                expert_obs[key.replace("expert_", "")] = batch_dict[key][
+                    : self.config.amp_parameters.discriminator_batch_size
+                ]
+                expert_obs[key.replace("expert_", "")].requires_grad_(True)
 
-        combined_dict = self.model._discriminator.compute_logits(
-            {"historical_self_obs": combined_obs}, return_norm_obs=True
+        if self.config.amp_parameters.conditional_discriminator:
+            negative_expert_obs = self.produce_negative_expert_obs(batch_dict)
+
+        expert_obs_td = TensorDict(
+            expert_obs, batch_size=self.config.amp_parameters.discriminator_batch_size
         )
-        combined_logits = combined_dict["outs"]
-        combined_norm_obs = combined_dict["norm_historical_self_obs"]
+        expert_obs_td = self.discriminator(expert_obs_td)
+        expert_logits = expert_obs_td[self.discriminator.config.out_keys[0]]
 
-        replay_logits = self.model._discriminator.compute_logits(
-            {"historical_self_obs": replay_obs}
+        expert_norm_obs = []
+        for key in expert_obs_td.keys():
+            if "norm_" in key:
+                expert_norm_obs.append(expert_obs_td[key])
+
+        agent_obs_td = TensorDict(
+            agent_obs, batch_size=self.config.amp_parameters.discriminator_batch_size
         )
+        agent_obs_td = self.discriminator(agent_obs_td)
+        agent_logits = agent_obs_td[self.discriminator.config.out_keys[0]]
 
-        agent_logits = combined_logits[: self.config.discriminator_batch_size]
-        expert_logits = combined_logits[self.config.discriminator_batch_size :]
+        replay_obs_td = TensorDict(
+            replay_obs, batch_size=self.config.amp_parameters.discriminator_batch_size
+        )
+        replay_obs_td = self.discriminator(replay_obs_td)
+        replay_logits = replay_obs_td[self.discriminator.config.out_keys[0]]
+
+        if self.config.amp_parameters.conditional_discriminator:
+            negative_expert_obs_td = TensorDict(
+                negative_expert_obs,
+                batch_size=self.config.amp_parameters.discriminator_batch_size,
+            )
+            negative_expert_obs_td = self.discriminator(negative_expert_obs_td)
+            negative_expert_logits = negative_expert_obs_td[
+                self.discriminator.config.out_keys[0]
+            ]
 
         expert_loss = -torch.nn.functional.logsigmoid(expert_logits).mean()
         unlabeled_loss = torch.nn.functional.softplus(agent_logits).mean()
         replay_loss = torch.nn.functional.softplus(replay_logits).mean()
+        if self.config.amp_parameters.conditional_discriminator:
+            neg_loss = torch.nn.functional.softplus(negative_expert_logits).mean()
 
-        neg_loss = 0.5 * (unlabeled_loss + replay_loss)
+        if self.config.amp_parameters.conditional_discriminator:
+            neg_loss = 0.5 * (unlabeled_loss + replay_loss + neg_loss)
+        else:
+            neg_loss = 0.5 * (unlabeled_loss + replay_loss)
         class_loss = 0.5 * (expert_loss + neg_loss)
 
         # Gradient penalty
         disc_grad = torch.autograd.grad(
-            combined_logits,
-            combined_norm_obs,
-            grad_outputs=torch.ones_like(combined_logits),
+            expert_logits,
+            expert_norm_obs,
+            grad_outputs=torch.ones_like(expert_logits),
             create_graph=True,
             retain_graph=True,
             only_inputs=True,
         )[0]
+
         disc_grad_norm = torch.sum(torch.square(disc_grad), dim=-1)
         disc_grad_penalty = torch.mean(disc_grad_norm)
-        grad_loss: Tensor = self.config.discriminator_grad_penalty * disc_grad_penalty
+        grad_loss: Tensor = (
+            self.config.amp_parameters.discriminator_grad_penalty * disc_grad_penalty
+        )
 
-        if self.config.discriminator_weight_decay > 0:
-            all_weight_params = self.model._discriminator.all_discriminator_weights()
+        if self.config.amp_parameters.discriminator_weight_decay > 0:
+            all_weight_params = self.discriminator.all_discriminator_weights()
             total: Tensor = sum([p.pow(2).sum() for p in all_weight_params])
-            weight_decay_loss: Tensor = total * self.config.discriminator_weight_decay
+            weight_decay_loss: Tensor = (
+                total * self.config.amp_parameters.discriminator_weight_decay
+            )
         else:
             weight_decay_loss = torch.tensor(0.0, device=self.device)
             total = torch.tensor(0.0, device=self.device)
 
-        if self.config.discriminator_logit_weight_decay > 0:
-            logit_params = self.model._discriminator.logit_weights()
+        if self.config.amp_parameters.discriminator_logit_weight_decay > 0:
+            logit_params = self.discriminator.logit_weights()
             logit_total = sum([p.pow(2).sum() for p in logit_params])
             logit_weight_decay_loss: Tensor = (
-                logit_total * self.config.discriminator_logit_weight_decay
+                logit_total
+                * self.config.amp_parameters.discriminator_logit_weight_decay
             )
         else:
             logit_weight_decay_loss = torch.tensor(0.0, device=self.device)
@@ -271,10 +444,20 @@ class AMP(PPO):
                 "discriminator/agent_logit_mean": agent_logits.detach().mean(),
                 "discriminator/replay_logit_mean": replay_logits.detach().mean(),
             }
-            log_dict["discriminator/negative_logit_mean"] = 0.5 * (
-                log_dict["discriminator/agent_logit_mean"]
-                + log_dict["discriminator/replay_logit_mean"]
-            )
+            if self.config.amp_parameters.conditional_discriminator:
+                log_dict["discriminator/negative_expert_logit_mean"] = (
+                    negative_expert_logits.detach().mean()
+                )
+                log_dict["discriminator/negative_logit_mean"] = 0.5 * (
+                    log_dict["discriminator/agent_logit_mean"]
+                    + log_dict["discriminator/replay_logit_mean"]
+                    + log_dict["discriminator/negative_expert_logit_mean"]
+                )
+            else:
+                log_dict["discriminator/negative_logit_mean"] = 0.5 * (
+                    log_dict["discriminator/agent_logit_mean"]
+                    + log_dict["discriminator/replay_logit_mean"]
+                )
 
         return loss, log_dict
 
@@ -289,14 +472,6 @@ class AMP(PPO):
     def compute_neg_acc(negative_logit: Tensor) -> Tensor:
         return (negative_logit < 0).float().mean()
 
-    def discriminator_max_num_batches(self):
-        return math.ceil(
-            self.num_envs
-            * self.num_steps
-            * self.config.num_discriminator_mini_epochs
-            / self.config.batch_size
-        )
-
     # -----------------------------
     # Termination and Logging
     # -----------------------------
@@ -304,5 +479,12 @@ class AMP(PPO):
         self._should_stop = True
 
     def post_epoch_logging(self, training_log_dict):
-        training_log_dict["rewards/amp_rewards"] = self.experience_buffer.amp_rewards.mean()
+        training_log_dict["rewards/amp_rewards"] = (
+            self.experience_buffer.amp_rewards.mean()
+        )
+        if self.config.normalize_rewards:
+            training_log_dict["rewards/unnormalized_amp_rewards"] = (
+                self.experience_buffer.unnormalized_amp_rewards.mean().item()
+            )
+
         super().post_epoch_logging(training_log_dict)

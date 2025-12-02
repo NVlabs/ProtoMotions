@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<robot name="checkerboard_ground">
+  <link name="base_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="checkerboard_ground.obj" scale="1 1 1"/>
+      </geometry>
+      <material name="checkerboard_material">
+        <color rgba="0.8 0.8 0.8 1"/>
+      </material>
+    </visual>
+    <!-- there should be no collision since this checkerboard is used in visualizer only -->
+    <!-- <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="100 100 0.01"/>
+      </geometry>
+    </collision> -->
+    <inertial>
+      <mass value="1000"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="833333.33" ixy="0.0" ixz="0.0" iyy="833333.33" iyz="0.0" izz="1666666.67"/>
+    </inertial>
+  </link>
+</robot>
+

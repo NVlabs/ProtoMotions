@@ -1,8 +1,0 @@
-# @package _global_
-
-simulator:
-  config:
-    sim:
-      flex:
-        num_inner_iterations: 10
-        warm_start: 0.25

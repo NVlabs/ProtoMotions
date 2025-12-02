@@ -1,37 +1,6 @@
 #usda 1.0
 (
-    customLayerData = {
-        dictionary cameraSettings = {
-            dictionary Front = {
-                double3 position = (50000.000000000015, -1.1102230246251565e-11, 0)
-                double radius = 500
-            }
-            dictionary Perspective = {
-                double3 position = (5, 4.9999999999999964, 5.000000000000003)
-                double3 target = (1.7763568394002505e-15, -3.552713678800501e-15, 8.881784197001252e-16)
-            }
-            dictionary Right = {
-                double3 position = (0, -50000, -1.1102230246251565e-11)
-                double radius = 500
-            }
-            dictionary Top = {
-                double3 position = (0, 0, 50000)
-                double radius = 500
-            }
-            string boundCamera = "/OmniverseKit_Persp"
-        }
-        dictionary omni_layer = {
-            dictionary muteness = {
-            }
-        }
-        dictionary renderSettings = {
-        }
-    }
     defaultPrim = "amp_humanoid"
-    endTimeCode = 100
-    metersPerUnit = 1
-    startTimeCode = 0
-    timeCodesPerSecond = 24
     upAxis = "Z"
 )
 
@@ -842,7 +811,7 @@ def Xform "amp_humanoid" (
     def "joints"
     {
         def PhysicsJoint "torso" (
-            prepend apiSchemas = ["PhysxJointAPI", "PhysicsLimitAPI:transX", "PhysicsLimitAPI:transY", "PhysicsLimitAPI:transZ", "PhysicsLimitAPI:rotX", "PhysxLimitAPI:rotX", "PhysicsJointStateAPI:angular", "PhysicsDriveAPI:rotX", "PhysicsLimitAPI:rotY", "PhysxLimitAPI:rotY", "PhysicsDriveAPI:rotY", "PhysicsLimitAPI:rotZ", "PhysxLimitAPI:rotZ", "PhysicsDriveAPI:rotZ", "PhysicsArticulationRootAPI", "PhysxArticulationAPI"]
+            prepend apiSchemas = ["PhysxJointAPI", "PhysicsLimitAPI:transX", "PhysicsLimitAPI:transY", "PhysicsLimitAPI:transZ", "PhysicsLimitAPI:rotX", "PhysxLimitAPI:rotX", "PhysicsJointStateAPI:angular", "PhysicsDriveAPI:rotX", "PhysicsLimitAPI:rotY", "PhysxLimitAPI:rotY", "PhysicsDriveAPI:rotY", "PhysicsLimitAPI:rotZ", "PhysxLimitAPI:rotZ", "PhysicsDriveAPI:rotZ"]
         )
         {
             float drive:rotX:physics:damping = 1.7453296
