@@ -1,3 +1,18 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
 import sys
 from isaacgym import gymapi, gymtorch, gymutil  # type: ignore[misc]
 import torch
@@ -5,20 +20,34 @@ from torch import Tensor
 import numpy as np
 from rich.progress import Progress
 import os
-from protomotions.envs.base_env.env_utils.terrains.terrain import Terrain
-from protomotions.envs.base_env.env_utils.terrains.flat_terrain import FlatTerrain
-from protomotions.utils.scene_lib import SceneLib
-from isaac_utils import torch_utils
-from typing import Dict, Optional
-from protomotions.simulator.base_simulator.robot_state import RobotState
-from protomotions.simulator.base_simulator.simulator import Simulator
+from protomotions.components.terrains.terrain import Terrain
+from protomotions.components.terrains.config import CombineMode
+from protomotions.components.scene_lib import (
+    SceneLib,
+    PrimitiveSceneObject,
+    SceneObject,
+    BoxSceneObject,
+    SphereSceneObject,
+    CylinderSceneObject,
+    MeshSceneObject,
+)
+from protomotions.utils import torch_utils
+from typing import Dict, Optional, List, Tuple
+from protomotions.simulator.base_simulator.simulator_state import (
+    RobotState,
+    RootOnlyState,
+    StateConversion,
+    ObjectState,
+    ResetState,
+)
+from protomotions.simulator.base_simulator.simulator import Simulator, ControlType
 from protomotions.simulator.base_simulator.config import (
     MarkerState,
-    ControlType,
-    VisualizationMarker,
+    VisualizationMarkerConfig,
     SimBodyOrdering,
-    SimulatorConfig
+    SimulatorConfig,
 )
+import tempfile
 
 
 class IsaacGymSimulator(Simulator):
@@ -26,20 +55,33 @@ class IsaacGymSimulator(Simulator):
     def __init__(
         self,
         config: SimulatorConfig,
-        terrain: Terrain,
+        robot_config,
+        terrain: Optional[Terrain],
         device: torch.device,
-        scene_lib: Optional[SceneLib] = None,
-        visualization_markers: Optional[Dict[str, VisualizationMarker]] = None,
+        scene_lib: SceneLib,
+        custom_key_handlers: Optional[Dict[str, callable]] = None,
     ) -> None:
-        super().__init__(config=config, scene_lib=scene_lib, terrain=terrain, visualization_markers=visualization_markers, device=device)
+        super().__init__(
+            config=config,
+            robot_config=robot_config,
+            scene_lib=scene_lib,
+            terrain=terrain,
+            device=device,
+        )
+
+        # Store custom key handlers
+        self._custom_key_handlers = custom_key_handlers or {}
+
+        # Create temporary directory for primitive URDFs
+        self._temp_dir = tempfile.TemporaryDirectory()
 
         # Handle the case where device.index is None
         if self.device.index is None:
-            if self.device.type == 'cuda':
+            if self.device.type == "cuda":
                 # Try to get the default CUDA device index
                 try:
                     device_index = torch.cuda.current_device()
-                except:
+                except Exception:
                     device_index = 0
             else:
                 device_index = 0
@@ -48,16 +90,32 @@ class IsaacGymSimulator(Simulator):
 
         self._graphics_device_id = device_index
         if self.headless is True:
-            self._graphics_device_id = -1
+            self._graphics_device_id = 0
 
         self._gym = gymapi.acquire_gym()
 
-        # create envs, sim and viewer
+        # Prepare for marker setup (will be populated in _create_simulation)
         self._marker_handles = [[] for _ in range(self.num_envs)]
+        self._marker_names_ordering = []
+
+        # Texture cache: maps texture file paths to gymapi texture handles
+        self._texture_handles = {}
+
+    def _create_simulation(self) -> None:
+        """Create the IsaacGym simulation environment.
+
+        Called by base class _initialize_with_markers() after visualization markers
+        are set. Creates simulation, viewer, and acquires tensors.
+        """
+        # Update marker names ordering from visualization markers
         self._marker_names_ordering = (
-            list(visualization_markers.keys()) if visualization_markers else []
+            list(self._visualization_markers.keys())
+            if self._visualization_markers
+            else []
         )
-        self._create_sim(visualization_markers)
+
+        # Create simulation and environments
+        self._create_sim(self._visualization_markers)
         self._gym.prepare_sim(self._sim)
         self._enable_viewer_sync = True
         self._viewer = None
@@ -66,7 +124,9 @@ class IsaacGymSimulator(Simulator):
         if not self.headless:
             # subscribe to keyboard shortcuts
             self._viewer = self._gym.create_viewer(self._sim, gymapi.CameraProperties())
-            self._gym.subscribe_viewer_keyboard_event(self._viewer, gymapi.KEY_Q, "QUIT")
+            self._gym.subscribe_viewer_keyboard_event(
+                self._viewer, gymapi.KEY_Q, "QUIT"
+            )
             self._gym.subscribe_viewer_keyboard_event(
                 self._viewer, gymapi.KEY_V, "toggle_viewer_sync"
             )
@@ -85,6 +145,12 @@ class IsaacGymSimulator(Simulator):
             self._gym.subscribe_viewer_keyboard_event(
                 self._viewer, gymapi.KEY_O, "toggle_camera_target"
             )
+            self._gym.subscribe_viewer_keyboard_event(
+                self._viewer, gymapi.KEY_M, "toggle_markers"
+            )
+
+            # Subscribe to custom key handlers
+            self._register_custom_key_handlers()
 
             # set the camera position based on up axis
             sim_params = self._gym.get_sim_params(self._sim)
@@ -131,10 +197,10 @@ class IsaacGymSimulator(Simulator):
 
         self._object_root_states = self._root_states.view(
             self.num_envs, num_actors, actor_root_state.shape[-1]
-        )[..., 1: self._num_objects_per_scene + 1, :]
+        )[..., 1 : self.scene_lib.num_objects_per_scene + 1, :]
         self._object_indices = torch_utils.to_torch(
             self._object_indices, dtype=torch.int32, device=self.device
-        )
+        ).view(self.num_envs, self.scene_lib.num_objects_per_scene)
 
         self._humanoid_actor_ids = num_actors * torch.arange(
             self.num_envs, device=self.device, dtype=torch.int32
@@ -163,60 +229,37 @@ class IsaacGymSimulator(Simulator):
             ..., : self._num_bodies, 10:13
         ]
 
-        self._reset_states = RobotState(
-            root_pos=torch.zeros(
-                self.num_envs, 3, dtype=torch.float, device=self.device
-            ),
-            root_rot=torch.zeros(
-                self.num_envs, 4, dtype=torch.float, device=self.device
-            ),
-            root_vel=torch.zeros(
-                self.num_envs, 3, dtype=torch.float, device=self.device
-            ),
-            root_ang_vel=torch.zeros(
-                self.num_envs, 3, dtype=torch.float, device=self.device
-            ),
-            dof_pos=torch.zeros(
-                self.num_envs, self._num_dof, dtype=torch.float, device=self.device
-            ),
-            dof_vel=torch.zeros(
-                self.num_envs, self._num_dof, dtype=torch.float, device=self.device
-            ),
-            rigid_body_pos=torch.zeros(
-                self.num_envs, self._num_bodies, 3, dtype=torch.float, device=self.device
-            ),
-            rigid_body_rot=torch.zeros(
-                self.num_envs, self._num_bodies, 4, dtype=torch.float, device=self.device
-            ),
-            rigid_body_vel=torch.zeros(
-                self.num_envs, self._num_bodies, 3, dtype=torch.float, device=self.device
-            ),
-            rigid_body_ang_vel=torch.zeros(
-                self.num_envs, self._num_bodies, 3, dtype=torch.float, device=self.device
-            ),
-        )
+        # self._reset_states = RobotState(
+        #     dof_pos=torch.zeros(
+        #         self.num_envs, self._num_dof, dtype=torch.float, device=self.device
+        #     ),
+        #     dof_vel=torch.zeros(
+        #         self.num_envs, self._num_dof, dtype=torch.float, device=self.device
+        #     ),
+        #     rigid_body_pos=torch.zeros(
+        #         self.num_envs, self._num_bodies, 3, dtype=torch.float, device=self.device
+        #     ),
+        #     rigid_body_rot=torch.zeros(
+        #         self.num_envs, self._num_bodies, 4, dtype=torch.float, device=self.device
+        #     ),
+        #     rigid_body_vel=torch.zeros(
+        #         self.num_envs, self._num_bodies, 3, dtype=torch.float, device=self.device
+        #     ),
+        #     rigid_body_ang_vel=torch.zeros(
+        #         self.num_envs, self._num_bodies, 3, dtype=torch.float, device=self.device
+        #     ),
+        #     state_conversion=StateConversion.SIMULATOR,
+        # )
 
-        initial_humanoid_root_states = self._humanoid_root_states.clone()
-        initial_humanoid_root_states[:, 7:13] = 0
-        self._isaacgym_default_state = RobotState(
-            root_pos=initial_humanoid_root_states[:, :3],
-            root_rot=initial_humanoid_root_states[:, 3:7],
-            root_vel=initial_humanoid_root_states[:, 7:10],
-            root_ang_vel=initial_humanoid_root_states[:, 10:13],
-            dof_pos=self._dof_pos.clone(),
-            dof_vel=self._dof_vel.clone(),
-            rigid_body_pos=self._rigid_body_pos.clone(),
-            rigid_body_rot=self._rigid_body_rot.clone(),
-            rigid_body_vel=self._rigid_body_vel.clone(),
-            rigid_body_ang_vel=self._rigid_body_ang_vel.clone(),
-        )
+        self._rigid_body_vel[:, 0, :] = 0
+        self._rigid_body_ang_vel[:, 0, :] = 0
 
         contact_force_tensor = gymtorch.wrap_tensor(contact_force_tensor)
         self._contact_forces = contact_force_tensor.view(
             self.num_envs, bodies_per_env, 3
         )[..., : self._num_bodies, :]
 
-        if self.scene_lib is None or self.scene_lib.num_objects_per_scene == 0:
+        if self.scene_lib.num_objects_per_scene == 0:
             self._object_contact_forces = None
         else:
             self._object_contact_forces = contact_force_tensor.view(
@@ -226,10 +269,86 @@ class IsaacGymSimulator(Simulator):
         if not self.headless:
             self._init_camera()
 
-        if visualization_markers:
+        if self._visualization_markers:
             self._build_marker_state_tensors()
 
+    def _register_custom_key_handlers(self) -> None:
+        """Register custom keyboard event handlers"""
+        # Define available keys for custom handlers (1-0 for consistency with IsaacLab)
+        available_keys = {
+            "1": gymapi.KEY_1,
+            "2": gymapi.KEY_2,
+            "3": gymapi.KEY_3,
+            "4": gymapi.KEY_4,
+            "5": gymapi.KEY_5,
+            "6": gymapi.KEY_6,
+            "7": gymapi.KEY_7,
+            "8": gymapi.KEY_8,
+            "9": gymapi.KEY_9,
+            "0": gymapi.KEY_0,
+        }
+
+        # Register custom key handlers
+        for key_name, handler in self._custom_key_handlers.items():
+            if key_name in available_keys:
+                action_name = f"custom_{key_name}"
+                self._gym.subscribe_viewer_keyboard_event(
+                    self._viewer, available_keys[key_name], action_name
+                )
+            else:
+                print(f"Warning: Key '{key_name}' not available for custom handlers")
+                print(f"Available keys: {list(available_keys.keys())}")
+
     # ===== Group 2: Environment Setup & Configuration =====
+    def _create_humanoid_asset_options(self) -> gymapi.AssetOptions:
+        """Create asset options for the humanoid with robot config applied.
+
+        Returns:
+            gymapi.AssetOptions with default values and robot config overrides applied
+        """
+        asset_options = gymapi.AssetOptions()
+        asset_options.angular_damping = 0.01
+        asset_options.max_angular_velocity = 100.0
+
+        def set_value_if_not_none(prev_value, new_value):
+            return new_value if new_value is not None else prev_value
+
+        asset_config_options = [
+            "replace_cylinder_with_capsule",
+            "thickness",
+            "max_angular_velocity",
+            "max_linear_velocity",
+            "density",
+            "angular_damping",
+            "linear_damping",
+            "disable_gravity",
+            "fix_base_link",
+        ]
+        for option in asset_config_options:
+            option_value = set_value_if_not_none(
+                getattr(asset_options, option), getattr(self.robot_config.asset, option)
+            )
+            setattr(asset_options, option, option_value)
+
+        asset_options.collapse_fixed_joints = True  # Always collapse fixed joints. The MJCF file can define whether a fixed joint should not be collapsed.
+
+        return asset_options
+
+    def _load_humanoid_asset(self):
+        """Load the humanoid asset from file.
+
+        Returns:
+            Loaded asset handle (opaque gymapi handle)
+        """
+        asset_root = self.robot_config.asset.asset_root
+        asset_file = self.robot_config.asset.asset_file_name
+        asset_path = os.path.join(asset_root, asset_file)
+        asset_root = os.path.dirname(asset_path)
+        asset_file = os.path.basename(asset_path)
+
+        asset_options = self._create_humanoid_asset_options()
+        return self._gym.load_asset(self._sim, asset_root, asset_file, asset_options)
+
     def _load_marker_asset(self) -> None:
         asset_root = "protomotions/data/assets/urdf/"
         asset_file = "traj_marker.urdf"
@@ -258,44 +377,32 @@ class IsaacGymSimulator(Simulator):
             self._sim, asset_root, arrow_asset_file, asset_options
         )
 
-    def _set_sim_params_up_axis(self, sim_params: gymapi.SimParams, axis: str) -> int:
-        if axis == "z":
-            sim_params.up_axis = gymapi.UP_AXIS_Z
-            sim_params.gravity.x = 0
-            sim_params.gravity.y = 0
-            sim_params.gravity.z = -9.81
-            return 2
-        return 1
-
     def _add_terrain(self) -> None:
         print("Adding terrain")
-        if isinstance(self.terrain, FlatTerrain):
-            # configure the ground plane
-            plane_params = gymapi.PlaneParams()
-            plane_params.normal = gymapi.Vec3(0, 0, 1)
-            plane_params.distance = 0
-            plane_params.static_friction = self.config.plane.static_friction
-            plane_params.dynamic_friction = self.config.plane.dynamic_friction
-            plane_params.restitution = self.config.plane.restitution
+        tm_params = gymapi.TriangleMeshParams()
+        tm_params.nb_vertices = self.terrain.vertices.shape[0]
+        tm_params.nb_triangles = self.terrain.triangles.shape[0]
+        tm_params.transform.p.x = 0
+        tm_params.transform.p.y = 0
+        tm_params.transform.p.z = 0.0
+        # IsaacGym only supports "average" friction combine mode (PhysX default)
+        assert (
+            self.terrain.sim_config.combine_mode == CombineMode.AVERAGE
+        ), "IsaacGym only supports average friction combine mode"
+        tm_params.static_friction = self.terrain.sim_config.static_friction
+        tm_params.dynamic_friction = self.terrain.sim_config.dynamic_friction
+        tm_params.restitution = self.terrain.sim_config.restitution
 
-            # create the ground plane
-            self._gym.add_ground(self._sim, plane_params)
-        else:
-            tm_params = gymapi.TriangleMeshParams()
-            tm_params.nb_vertices = self.terrain.vertices.shape[0]
-            tm_params.nb_triangles = self.terrain.triangles.shape[0]
-            tm_params.transform.p.x = 0
-            tm_params.transform.p.y = 0
-            tm_params.transform.p.z = 0.0
-            tm_params.static_friction = self.config.plane.static_friction
-            tm_params.dynamic_friction = self.config.plane.dynamic_friction
-            tm_params.restitution = self.config.plane.restitution
-            self._gym.add_triangle_mesh(
-                self._sim,
-                self.terrain.vertices.flatten(order="C"),
-                self.terrain.triangles.flatten(order="C"),
-                tm_params,
-            )
+        vertices = self.terrain.vertices
+        height_offset = self.terrain.sim_config.height_offset
+        vertices[..., 2] += height_offset
+
+        self._gym.add_triangle_mesh(
+            self._sim,
+            self.terrain.vertices.flatten(order="C"),
+            self.terrain.triangles.flatten(order="C"),
+            tm_params,
+        )
         print("Terrain added")
 
     def _parse_sim_params(self) -> gymapi.SimParams:
@@ -317,18 +424,24 @@ class IsaacGymSimulator(Simulator):
         gymutil.parse_sim_config(self.config.sim, sim_params)
         return sim_params
 
-    def _create_sim(self, visualization_markers: Optional[Dict[str, VisualizationMarker]] = None) -> None:
+    def _create_sim(
+        self,
+        visualization_markers: Optional[Dict[str, VisualizationMarkerConfig]] = None,
+    ) -> None:
         self._sim_params = self._parse_sim_params()
+
+        # Set Z axis to up.
+        self._sim_params.up_axis = gymapi.UP_AXIS_Z
+        self._sim_params.gravity.x = 0
+        self._sim_params.gravity.y = 0
+        self._sim_params.gravity.z = -9.81
+
         self._physics_engine = gymapi.SIM_PHYSX
 
-        self._plane_static_friction = self.config.plane.static_friction
-        self._plane_dynamic_friction = self.config.plane.dynamic_friction
-        self._plane_restitution = self.config.plane.restitution
-
-        self._up_axis_idx = self._set_sim_params_up_axis(self._sim_params, "z")
-
         sim = self._gym.create_sim(
-            self._graphics_device_id if self.device.index is None else self.device.index,
+            self._graphics_device_id
+            if self.device.index is None
+            else self.device.index,
             self._graphics_device_id,
             self._physics_engine,
             self._sim_params,
@@ -339,7 +452,8 @@ class IsaacGymSimulator(Simulator):
 
         self._sim = sim
 
-        self._add_terrain()
+        if self.terrain is not None:
+            self._add_terrain()
         self._load_marker_asset()
 
         self._create_envs(
@@ -349,153 +463,105 @@ class IsaacGymSimulator(Simulator):
         )
 
     def _create_envs(
-        self, spacing: float, num_per_row: int, visualization_markers: Optional[Dict[str, VisualizationMarker]] = None
+        self,
+        spacing: float,
+        num_per_row: int,
+        visualization_markers: Optional[Dict[str, VisualizationMarkerConfig]] = None,
     ) -> None:
         lower = gymapi.Vec3(0.0, 0.0, 0.0)
         upper = gymapi.Vec3(spacing, spacing, spacing)
 
-        asset_root = self.robot_config.asset.asset_root
-        asset_file = self.robot_config.asset.asset_file_name
+        # Load the base humanoid asset
+        self._humanoid_asset = humanoid_asset = self._load_humanoid_asset()
 
-        asset_path = os.path.join(asset_root, asset_file)
-        asset_root = os.path.dirname(asset_path)
-        asset_file = os.path.basename(asset_path)
-
-        asset_options = gymapi.AssetOptions()
-        asset_options.angular_damping = 0.01
-        asset_options.max_angular_velocity = 100.0
-        asset_options.default_dof_drive_mode = gymapi.DOF_MODE_NONE
-
-        def set_value_if_not_none(prev_value, new_value):
-            return new_value if new_value is not None else prev_value
-
-        asset_config_options = [
-            "collapse_fixed_joints",
-            "replace_cylinder_with_capsule",
-            "flip_visual_attachments",
-            "armature",
-            "thickness",
-            "max_angular_velocity",
-            "max_linear_velocity",
-            "density",
-            "angular_damping",
-            "linear_damping",
-            "disable_gravity",
-            "fix_base_link",
-            "default_dof_drive_mode",
-        ]
-        for option in asset_config_options:
-            option_value = set_value_if_not_none(
-                getattr(asset_options, option), getattr(self.robot_config.asset, option)
-            )
-            setattr(asset_options, option, option_value)
-
-        self._humanoid_asset = humanoid_asset = self._gym.load_asset(
-            self._sim, asset_root, asset_file, asset_options
+        # Create multiple asset variants for friction domain randomization if needed
+        self._humanoid_assets_for_friction = self._create_friction_randomized_assets(
+            humanoid_asset
         )
 
         robot_num_bodies = self._gym.get_asset_rigid_body_count(humanoid_asset)
         assert (
-            robot_num_bodies == self.robot_config.num_bodies
-        ), f"Number of bodies in the config {self.robot_config.num_bodies} doesn't match provided robot {robot_num_bodies}"
+            robot_num_bodies == self._num_bodies
+        ), f"Number of bodies in the config {self._num_bodies} doesn't match provided robot {robot_num_bodies}"
         self._dof_names = self._gym.get_asset_dof_names(humanoid_asset)
         robot_num_dof = self._gym.get_asset_dof_count(humanoid_asset)
-        assert robot_num_dof == len(
-            self.robot_config.dof_names
-        ), f"Number of dofs in the config {len(self.robot_config.dof_names)} doesn't match provided robot {robot_num_dof}"
+        assert (
+            robot_num_dof == len(self._dof_names)
+        ), f"Number of dofs in the config {len(self._dof_names)} doesn't match provided robot {robot_num_dof}"
         self._num_joints = self._gym.get_asset_joint_count(humanoid_asset)
 
         self._humanoid_handles = []
         self._object_handles = []
         self._object_indices = []
         self._envs = []
-        dof_limits_lower = []
-        dof_limits_upper = []
 
-        self._object_assets = []
-        if self.scene_lib is not None and self.scene_lib.total_spawned_scenes > 0:
+        self._object_assets = {}
+        if self.scene_lib.num_scenes() > 0:
             self._load_object_assets()
 
         with Progress() as progress:
             task = progress.add_task(
                 f"[cyan]Creating {self.num_envs} environments...", total=self.num_envs
             )
-            for i in range(self.num_envs):
+            for env_id in range(self.num_envs):
                 env_ptr = self._gym.create_env(self._sim, lower, upper, num_per_row)
-                self._build_env(i, env_ptr, humanoid_asset, visualization_markers)
+                # Get the appropriate asset for this environment (for friction domain randomization)
+                env_asset = self._get_asset_for_env(env_id)
+                self._build_env(env_id, env_ptr, env_asset, visualization_markers)
                 self._envs.append(env_ptr)
                 progress.update(task, advance=1)
 
-        dof_prop = self._gym.get_actor_dof_properties(
-            self._envs[0], self._humanoid_handles[0]
-        )
-        for j in range(len(dof_prop["upper"])):
-            if dof_prop["lower"][j] > dof_prop["upper"][j]:
-                dof_limits_lower.append(dof_prop["upper"][j])
-                dof_limits_upper.append(dof_prop["lower"][j])
-            else:
-                dof_limits_lower.append(dof_prop["lower"][j])
-                dof_limits_upper.append(dof_prop["upper"][j])
-
-        self._dof_limits_lower_sim = torch_utils.to_torch(
-            dof_limits_lower, device=self.device
-        )
-        self._dof_limits_upper_sim = torch_utils.to_torch(
-            dof_limits_upper, device=self.device
-        )
-
     def _load_object_assets(self) -> None:
-        if self.scene_lib.total_spawned_scenes > 0:
+        if self.scene_lib.num_scenes() > 0:
             self._object_names = []
+
+            # Count assets
+            asset_count = sum(
+                1 for scene in self.scene_lib.scenes for obj in scene.objects
+            )
 
             with Progress() as progress:
                 task = progress.add_task(
                     "[green]Loading object assets...",
-                    total=len(self.scene_lib.object_spawn_list),
+                    total=asset_count,
                 )
 
-                for i, object_info in enumerate(self.scene_lib.object_spawn_list):
-                    object_name = os.path.splitext(
-                        os.path.basename(object_info.object_path)
-                    )[0]
+                # Iterate through all scenes and their objects
+                for scene in self.scene_lib.scenes:
+                    for obj in scene.objects:
+                        # Skip if we've already processed this object type
+                        if not obj.is_first_instance:
+                            progress.update(task, advance=1)
+                            continue
 
-                    if object_info.is_first_instance:
-                        object_options_dict = object_info.object_options.to_dict()
-                        object_asset_options = gymapi.AssetOptions()
-                        if object_options_dict.get("vhacd_enabled", False):
-                            object_asset_options.vhacd_params = gymapi.VhacdParams()
-                        for key, value in object_options_dict.items():
-                            if type(value) is dict:
-                                if hasattr(object_asset_options, key):
-                                    object_asset_sub_options = getattr(
-                                        object_asset_options, key
-                                    )
-                                    for sub_key, sub_value in value.items():
-                                        if hasattr(object_asset_sub_options, sub_key):
-                                            setattr(
-                                                object_asset_sub_options,
-                                                sub_key,
-                                                sub_value,
-                                            )
-                                else:
-                                    print(
-                                        f"Warning: {key} is not a valid option for object asset"
-                                    )
-                            else:
-                                if hasattr(object_asset_options, key):
-                                    if key == "default_dof_drive_mode":
-                                        value = getattr(gymapi, value)
-                                    setattr(object_asset_options, key, value)
-                                else:
-                                    print(
-                                        f"Warning: {key} is not a valid option for object asset"
-                                    )
+                        first_object_id = obj.first_instance_id
+                        if isinstance(obj, PrimitiveSceneObject):
+                            # Handle primitive shapes by creating temporary URDFs
+                            urdf_path = self._create_primitive_urdf(obj)
+                            object_name = os.path.splitext(os.path.basename(urdf_path))[
+                                0
+                            ]
+                            asset_path = urdf_path
+                        else:
+                            # Handle mesh objects
+                            assert isinstance(obj, MeshSceneObject)
+                            object_name = os.path.splitext(
+                                os.path.basename(obj.object_path)
+                            )[0]
+                            asset_path = obj.object_path
+
+                        asset_root = os.path.dirname(asset_path)
+                        asset_file = os.path.basename(asset_path)
+
+                        # Create asset options
+                        object_asset_options = self._create_asset_options(obj)
+
+                        # Load object asset and store in dictionary
                         object_asset = self._gym.load_asset(
-                            self._sim,
-                            os.path.dirname(object_info.object_path),
-                            f"{object_name}.urdf",
-                            object_asset_options,
+                            self._sim, asset_root, asset_file, object_asset_options
                         )
+
+                        # Add force sensor - common for both types
                         sensor_pose = gymapi.Transform()
                         sensor_options = gymapi.ForceSensorProperties()
                         sensor_options.enable_forward_dynamics_forces = False
@@ -504,19 +570,120 @@ class IsaacGymSimulator(Simulator):
                         self._gym.create_asset_force_sensor(
                             object_asset, 0, sensor_pose, sensor_options
                         )
-                    else:
-                        object_asset = self._object_assets[object_info.first_instance_id]
+                        self._object_names.append(object_name)
+                        self._object_assets[first_object_id] = object_asset
 
-                    self._object_assets.append(object_asset)
-                    self._object_names.append(object_name)
-                    progress.update(task, advance=1)
+                        progress.update(task, advance=1)
 
             print(
                 f"=========== Total number of unique objects is {len(self._object_assets)}"
             )
 
+    def _create_asset_options(self, obj: SceneObject) -> gymapi.AssetOptions:
+        """
+        Create asset options for an object based on its configuration.
+
+        Args:
+            obj: The SceneObject instance.
+
+        Returns:
+            The configured asset options.
+        """
+        object_asset_options = gymapi.AssetOptions()
+        object_asset_options.default_dof_drive_mode = gymapi.DOF_MODE_NONE
+        object_options_dict = obj.options.to_dict()
+
+        if object_options_dict.get("vhacd_enabled", False):
+            object_asset_options.vhacd_params = gymapi.VhacdParams()
+        for key, value in object_options_dict.items():
+            if type(value) is dict:
+                if hasattr(object_asset_options, key):
+                    object_asset_sub_options = getattr(object_asset_options, key)
+                    for sub_key, sub_value in value.items():
+                        if hasattr(object_asset_sub_options, sub_key):
+                            setattr(
+                                object_asset_sub_options,
+                                sub_key,
+                                sub_value,
+                            )
+                else:
+                    print(f"Warning: {key} is not a valid option for object asset")
+            else:
+                if hasattr(object_asset_options, key):
+                    setattr(object_asset_options, key, value)
+                else:
+                    print(f"Warning: {key} is not a valid option for object asset")
+        return object_asset_options
+
+    def _create_primitive_urdf(self, obj: PrimitiveSceneObject) -> str:
+        """
+        Create a URDF file for a primitive shape.
+
+        Args:
+            obj: The PrimitiveSceneObject instance.
+
+        Returns:
+            The path to the created URDF file.
+        """
+        # Create a temporary directory if it doesn't exist
+        temp_dir = self._temp_dir.name
+
+        # Generate a unique filename based on the primitive ID
+        urdf_filename = f"{obj.object_identifier}.urdf"
+        urdf_path = os.path.join(temp_dir, urdf_filename)
+
+        # Skip if the file already exists
+        if os.path.exists(urdf_path):
+            return urdf_path
+
+        # Get primitive dimensions from the object
+        if isinstance(obj, BoxSceneObject):
+            box_size = f"{obj.width} {obj.depth} {obj.height}"
+            geometry_xml = f'<box size="{box_size}"/>'
+        elif isinstance(obj, SphereSceneObject):
+            radius = obj.radius
+            geometry_xml = f'<sphere radius="{radius}"/>'
+        elif isinstance(obj, CylinderSceneObject):
+            radius = obj.radius
+            height = obj.height
+            geometry_xml = f'<cylinder radius="{radius}" length="{height}"/>'
+        else:
+            raise ValueError(f"Unsupported primitive shape: {obj.object_identifier}")
+
+        # Create the URDF XML content
+        urdf_content = f"""<?xml version="1.0"?>
+<robot name="{obj.object_identifier}">
+  <link name="base_link">
+    <visual>
+      <geometry>
+        {geometry_xml}
+      </geometry>
+    </visual>
+    <collision>
+      <geometry>
+        {geometry_xml}
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="1.0"/>
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+    </inertial>
+  </link>
+</robot>
+"""
+
+        # Write the URDF file
+        with open(urdf_path, "w") as f:
+            f.write(urdf_content)
+
+        return urdf_path
+
     def _build_env(
-        self, env_id: int, env_ptr, humanoid_asset, visualization_markers: Optional[Dict[str, VisualizationMarker]] = None
+        self,
+        env_id: int,
+        env_ptr,
+        humanoid_asset,
+        visualization_markers: Optional[Dict[str, VisualizationMarkerConfig]] = None,
     ) -> None:
         col_group = env_id
         col_filter = 0 if self.robot_config.asset.self_collisions else 1
@@ -539,7 +706,7 @@ class IsaacGymSimulator(Simulator):
 
         self._gym.enable_actor_dof_force_sensors(env_ptr, humanoid_handle)
 
-        for j in range(self.robot_config.num_bodies):
+        for j in range(self._num_bodies):
             self._gym.set_rigid_body_color(
                 env_ptr,
                 humanoid_handle,
@@ -548,90 +715,90 @@ class IsaacGymSimulator(Simulator):
                 gymapi.Vec3(0.54, 0.85, 0.2),
             )
 
-        dof_prop = self._gym.get_asset_dof_properties(humanoid_asset)
+        dof_props = self._gym.get_actor_dof_properties(env_ptr, humanoid_handle)
+
+        for dof_name, dof_info in self.robot_config.control.control_info.items():
+            if dof_info.effort_limit is not None:
+                dof_props["effort"][
+                    self.robot_config.kinematic_info.dof_names.index(dof_name)
+                ] = dof_info.effort_limit
+            if dof_info.velocity_limit is not None:
+                dof_props["velocity"][
+                    self.robot_config.kinematic_info.dof_names.index(dof_name)
+                ] = dof_info.velocity_limit
+
         if self.control_type == ControlType.BUILT_IN_PD:
-            dof_prop["driveMode"] = gymapi.DOF_MODE_POS
+            dof_props["driveMode"] = gymapi.DOF_MODE_POS
         else:
-            dof_prop["driveMode"] = gymapi.DOF_MODE_EFFORT
+            dof_props["driveMode"] = gymapi.DOF_MODE_EFFORT
 
-        self._gym.set_actor_dof_properties(env_ptr, humanoid_handle, dof_prop)
+        # Set PD gains for built-in PD controller
+        for i in range(self._num_dof):
+            dof_name = self.robot_config.kinematic_info.dof_names[i]
+            stiffness = self.robot_config.control.control_info[dof_name].stiffness
+            damping = self.robot_config.control.control_info[dof_name].damping
+            armature = self.robot_config.control.control_info[dof_name].armature
+            friction = self.robot_config.control.control_info[dof_name].friction
+            if not self.control_type == ControlType.BUILT_IN_PD:
+                # Manual PD controller handles stiffness-damping.
+                # This disables additional stiffness-damping that is added by the built-in PD controller.
+                stiffness = 0.0
+                damping = 0.0
 
-        filter_ints = self.robot_config.asset.filter_ints
-        if filter_ints is not None:
-            props = self._gym.get_actor_rigid_shape_properties(env_ptr, humanoid_handle)
-            assert len(filter_ints) == len(props)
-            for p_idx in range(len(props)):
-                props[p_idx].filter = filter_ints[p_idx]
-            self._gym.set_actor_rigid_shape_properties(env_ptr, humanoid_handle, props)
+            dof_props["stiffness"][i] = stiffness
+            dof_props["damping"][i] = damping
+            dof_props["armature"][i] = armature
+            dof_props["friction"][i] = friction
+
+        self._gym.set_actor_dof_properties(env_ptr, humanoid_handle, dof_props)
+
+        # dof_props_debug = self._gym.get_actor_dof_properties(env_ptr, humanoid_handle)
+        # # ('hasLimits', 'lower', 'upper', 'driveMode', 'velocity', 'effort', 'stiffness', 'damping', 'friction', 'armature')
+        # # driveMode: Drive mode (0=None, 1=Position, 2=Velocity, 3=Effort)
+        # print(f"=========== dof_props field names: {dof_props_debug.dtype.names}")
+        # print(f"=========== dof_props: \n {dof_props_debug}")
+
+        # Apply COM domain randomization to this specific actor (must be done right after actor creation)
+        self._apply_com_domain_randomization_to_actor(env_ptr, humanoid_handle, env_id)
 
         self._humanoid_handles.append(humanoid_handle)
 
-        if self.scene_lib is not None and self.scene_lib.num_objects_per_scene > 0:
+        if self.scene_lib.num_objects_per_scene > 0:
             self._build_object_playground(env_id, env_ptr)
 
         self._build_markers(env_id, env_ptr, visualization_markers)
 
     def _build_object_playground(self, env_id: int, env_ptr) -> None:
-        print(f"=========== Building object playground for env {env_id}")
+        """
+        Build playground of scene objects. Different scenes can be created for different envs.
+
+        Args:
+            env_id: Environment ID to build objects for.
+            env_ptr: Environment pointer.
+        """
+
         col_group = env_id
         col_filter = 0
         segmentation_id = 0
 
-        scene_spawn_info = self.scene_lib.scenes[env_id]
-        scene_offset = self.scene_lib.scene_offsets[env_id]
+        scene = self.scene_lib.scenes[env_id]
 
-        height_at_scene_origin = self.terrain.get_ground_heights(
-            torch.tensor(
-                [[scene_offset[0], scene_offset[1]]],
-                device=self.device,
-                dtype=torch.float,
-            )
-        ).item()
-        self._scene_position.append(
-            torch.tensor(
-                [scene_offset[0], scene_offset[1], height_at_scene_origin],
-                device=self.device,
-                dtype=torch.float,
-            )
-        )
-        self._object_dims.append([])
+        # Get scene offset for dummy spawn position
+        scene_offset_x, scene_offset_y = self.scene_lib.scene_offsets[env_id]
 
-        for obj in scene_spawn_info.objects:
-            # Get the spawn info for this object which contains the correct ID
-            object_spawn_info = next(
-                info
-                for info in self.scene_lib.object_spawn_list
-                if info.object_path == obj.object_path
-                and (info.is_first_instance or info.first_instance_id == info.id)
-            )
-            object_id = object_spawn_info.id
+        # Process each object in the scene
+        # Objects spawned at scene offset (x,y) with z=0 - actual positions set via reset_envs()
+        for obj_idx, obj in enumerate(scene.objects):
+            # Get the asset directly using first_instance_id
+            object_asset = self._object_assets[obj.first_instance_id]
 
-            object_asset = self._object_assets[object_id]
-            object_name = object_spawn_info.object_path.split("/")[-1].split(".")[0]
+            # Spawn at scene offset to avoid collision, actual pose set via reset
             object_pose = gymapi.Transform()
+            object_pose.p = gymapi.Vec3(scene_offset_x, scene_offset_y, 0.0)
+            object_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
 
-            global_object_position = torch.tensor(
-                [
-                    scene_offset[0] + obj.translation[0],
-                    scene_offset[1] + obj.translation[1],
-                    0 + obj.translation[2],
-                ],
-                device=self.device,
-                dtype=torch.float,
-            )
-
-            object_pose.p = gymapi.Vec3(
-                global_object_position[0],
-                global_object_position[1],
-                global_object_position[2],
-            )
-            object_pose.r = gymapi.Quat(
-                obj.rotation[0],
-                obj.rotation[1],
-                obj.rotation[2],
-                obj.rotation[3],
-            )
-
+            # Create object instance in the environment
+            object_name = f"object_{obj_idx}"
             object_handle = self._gym.create_actor(
                 env_ptr,
                 object_asset,
@@ -641,25 +808,80 @@ class IsaacGymSimulator(Simulator):
                 col_filter,
                 segmentation_id,
             )
+
+            # Store handle and index for this object
             self._object_handles.append(object_handle)
             object_idx = self._gym.get_actor_index(
                 env_ptr, object_handle, gymapi.DOMAIN_SIM
             )
             self._object_indices.append(object_idx)
-            object_dims = torch.tensor(object_spawn_info.object_dims, device=self.device, dtype=torch.float)
-            self._object_dims[-1].append(object_dims)
 
-        self._object_dims[-1] = torch.stack(self._object_dims[-1]).reshape(
-            self._num_objects_per_scene, -1
-        )
+            # Apply texture if specified in object options
+            if hasattr(obj, "options") and obj.options is not None:
+                texture_path = obj.options.to_dict().get("texture_path")
+                if texture_path and not self.headless:
+                    self._apply_texture_to_object(env_ptr, object_handle, texture_path)
 
-    def _build_markers(self, env_id: int, env_ptr, visualization_markers: Optional[Dict[str, VisualizationMarker]] = None) -> None:
+    def _apply_texture_to_object(
+        self, env_ptr, object_handle, texture_path: str
+    ) -> None:
+        """
+        Apply a texture to an object's rigid bodies.
+
+        Args:
+            env_ptr: Environment pointer
+            object_handle: Handle to the object/actor
+            texture_path: Path to the texture file (absolute or relative)
+        """
+        # Load texture if not already in cache
+        if texture_path not in self._texture_handles:
+            # Expand path if it's relative
+            if not os.path.isabs(texture_path):
+                # Try to resolve relative to project root or as-is
+                abs_path = os.path.abspath(texture_path)
+                if os.path.exists(abs_path):
+                    texture_path = abs_path
+
+            if os.path.exists(texture_path):
+                texture_handle = self._gym.create_texture_from_file(
+                    self._sim, texture_path
+                )
+
+                if texture_handle == gymapi.INVALID_HANDLE:
+                    print(f"Warning: Failed to load texture from {texture_path}")
+                    return
+                else:
+                    self._texture_handles[texture_path] = texture_handle
+                    print(f"Loaded texture: {os.path.basename(texture_path)}")
+            else:
+                print(f"Warning: Texture file not found: {texture_path}")
+                return
+
+        # Apply texture to all rigid bodies of this object
+        texture_handle = self._texture_handles.get(texture_path)
+        if texture_handle is not None:
+            num_bodies = self._gym.get_actor_rigid_body_count(env_ptr, object_handle)
+            for body_idx in range(num_bodies):
+                self._gym.set_rigid_body_texture(
+                    env_ptr,
+                    object_handle,
+                    body_idx,
+                    gymapi.MESH_VISUAL,  # Apply to visual mesh only
+                    texture_handle,
+                )
+
+    def _build_markers(
+        self,
+        env_id: int,
+        env_ptr,
+        visualization_markers: Optional[Dict[str, VisualizationMarkerConfig]] = None,
+    ) -> None:
         """Build visualization markers for the environment.
 
         Args:
             env_id (int): Environment ID to build markers for
             env_ptr: Environment pointer from IsaacGym
-            visualization_markers (Dict[str, VisualizationMarker]): Dictionary mapping marker names to their configurations
+            visualization_markers (Dict[str, VisualizationMarkerConfig]): Dictionary mapping marker names to their configurations
         """
         if visualization_markers is None:
             return
@@ -702,10 +924,10 @@ class IsaacGymSimulator(Simulator):
 
     def _build_marker_state_tensors(self):
         num_actors = self._get_num_actors_per_env()
-        if self._num_objects_per_scene > 0:
+        if self.scene_lib.num_objects_per_scene > 0:
             self._marker_states = self._root_states.view(
                 self.num_envs, num_actors, self._root_states.shape[-1]
-            )[..., 1 + self._num_objects_per_scene:, :]
+            )[..., 1 + self.scene_lib.num_objects_per_scene :, :]
         else:
             self._marker_states = self._root_states.view(
                 self.num_envs, num_actors, self._root_states.shape[-1]
@@ -722,15 +944,17 @@ class IsaacGymSimulator(Simulator):
 
     # ===== Group 3: Simulation Steps & State Management =====
     def _physics_step(self) -> None:
+        # For BUILT_IN_PD, set targets once before loop (efficiency)
+        # For PROPORTIONAL/TORQUE, apply inside loop (needs fresh DOF state each substep)
         if self.control_type == ControlType.BUILT_IN_PD:
-            self._apply_pd_control()
+            self._apply_control()
         for i in range(self.decimation):
-            if not self.control_type == ControlType.BUILT_IN_PD:
-                self._apply_motor_forces()
+            if self.control_type != ControlType.BUILT_IN_PD:
+                self._apply_control()
             self._simulate()
             if self.device.type == "cpu":
                 self._gym.fetch_results(self._sim, True)
-            if not self.control_type == ControlType.BUILT_IN_PD:
+            if self.control_type != ControlType.BUILT_IN_PD:
                 self._gym.refresh_dof_state_tensor(self._sim)
         self._refresh_sim_tensors()
 
@@ -738,42 +962,39 @@ class IsaacGymSimulator(Simulator):
         self._gym.refresh_dof_state_tensor(self._sim)
         self._gym.refresh_actor_root_state_tensor(self._sim)
         self._gym.refresh_rigid_body_state_tensor(self._sim)
-
-        if len(self.reset_env_ids) > 0:
-            env_ids = self.reset_env_ids
-            self._humanoid_root_states[env_ids, 0:3] = self._reset_states.root_pos[
-                env_ids
-            ]
-            self._humanoid_root_states[env_ids, 3:7] = self._reset_states.root_rot[
-                env_ids
-            ]
-            self._humanoid_root_states[env_ids, 7:10] = self._reset_states.root_vel[
-                env_ids
-            ]
-            self._humanoid_root_states[env_ids, 10:13] = self._reset_states.root_ang_vel[
-                env_ids
-            ]
-
-            self._dof_pos[env_ids] = self._reset_states.dof_pos[env_ids]
-            self._dof_vel[env_ids] = self._reset_states.dof_vel[env_ids]
-
-            self._rigid_body_pos[env_ids] = self._reset_states.rigid_body_pos[env_ids]
-            self._rigid_body_rot[env_ids] = self._reset_states.rigid_body_rot[env_ids]
-            self._rigid_body_vel[env_ids] = self._reset_states.rigid_body_vel[env_ids]
-            self._rigid_body_ang_vel[env_ids] = self._reset_states.rigid_body_ang_vel[
-                env_ids
-            ]
-            self.reset_env_ids = []
-
         self._gym.refresh_force_sensor_tensor(self._sim)
         self._gym.refresh_dof_force_tensor(self._sim)
         self._gym.refresh_net_contact_force_tensor(self._sim)
 
-    def _update_simulator_tensors_after_reset(
-        self, env_ids: Optional[torch.Tensor]
+    def _set_simulator_env_state(
+        self,
+        new_states: ResetState,
+        new_object_states: ObjectState = None,
+        env_ids: torch.Tensor = None,
     ) -> None:
+        if env_ids is None:
+            env_ids = torch.arange(self.num_envs, device=self.device)
+
+        # Set new states
+        self._humanoid_root_states[env_ids, 0:3] = new_states.root_pos
+        self._humanoid_root_states[env_ids, 3:7] = new_states.root_rot
+        self._humanoid_root_states[env_ids, 7:10] = new_states.root_vel
+        self._humanoid_root_states[env_ids, 10:13] = new_states.root_ang_vel
+
+        self._dof_pos[env_ids] = new_states.dof_pos
+        self._dof_vel[env_ids] = new_states.dof_vel
+
         actor_ids = self._humanoid_actor_ids[env_ids]
         set_root_state_ids = actor_ids
+
+        if new_object_states is not None:
+            self._object_root_states[env_ids, :, 0:3] = new_object_states.root_pos
+            self._object_root_states[env_ids, :, 3:7] = new_object_states.root_rot
+            self._object_root_states[env_ids, :, 7:10] = new_object_states.root_vel
+            self._object_root_states[env_ids, :, 10:13] = new_object_states.root_ang_vel
+
+            object_ids = self._object_indices[env_ids].flatten()
+            set_root_state_ids = torch.cat((set_root_state_ids, object_ids), dim=0)
 
         self._gym.set_actor_root_state_tensor_indexed(
             self._sim,
@@ -787,43 +1008,16 @@ class IsaacGymSimulator(Simulator):
             gymtorch.unwrap_tensor(actor_ids),
             len(actor_ids),
         )
-        self._gym.set_dof_position_target_tensor_indexed(
-            self._sim,
-            gymtorch.unwrap_tensor(self._dof_pos.contiguous()),
-            gymtorch.unwrap_tensor(actor_ids),
-            len(actor_ids),
-        )
+
+        if self.control_type == ControlType.BUILT_IN_PD:
+            self._gym.set_dof_position_target_tensor_indexed(
+                self._sim,
+                gymtorch.unwrap_tensor(self._dof_pos.contiguous()),
+                gymtorch.unwrap_tensor(actor_ids),
+                len(actor_ids),
+            )
+
         self._refresh_sim_tensors()
-
-    def _set_simulator_env_state(
-        self, new_states: RobotState, env_ids: Optional[torch.Tensor]
-    ) -> None:
-        self._humanoid_root_states[env_ids, 0:3] = new_states.root_pos
-        self._humanoid_root_states[env_ids, 3:7] = new_states.root_rot
-        self._humanoid_root_states[env_ids, 7:10] = new_states.root_vel
-        self._humanoid_root_states[env_ids, 10:13] = new_states.root_ang_vel
-
-        self._dof_pos[env_ids] = new_states.dof_pos
-        self._dof_vel[env_ids] = new_states.dof_vel
-
-        self._rigid_body_pos[env_ids] = new_states.rigid_body_pos
-        self._rigid_body_rot[env_ids] = new_states.rigid_body_rot
-        self._rigid_body_vel[env_ids] = new_states.rigid_body_vel
-        self._rigid_body_ang_vel[env_ids] = new_states.rigid_body_ang_vel
-
-        self._reset_states.root_pos[env_ids] = new_states.root_pos.clone()
-        self._reset_states.root_rot[env_ids] = new_states.root_rot.clone()
-        self._reset_states.root_vel[env_ids] = new_states.root_vel.clone()
-        self._reset_states.root_ang_vel[env_ids] = new_states.root_ang_vel.clone()
-        self._reset_states.dof_pos[env_ids] = new_states.dof_pos.clone()
-        self._reset_states.dof_vel[env_ids] = new_states.dof_vel.clone()
-        self._reset_states.rigid_body_pos[env_ids] = new_states.rigid_body_pos.clone()
-        self._reset_states.rigid_body_rot[env_ids] = new_states.rigid_body_rot.clone()
-        self._reset_states.rigid_body_vel[env_ids] = new_states.rigid_body_vel.clone()
-        self._reset_states.rigid_body_ang_vel[env_ids] = (
-            new_states.rigid_body_ang_vel.clone()
-        )
-        self.reset_env_ids = env_ids
 
     def _simulate(self) -> None:
         self._gym.simulate(self._sim)
@@ -832,9 +1026,6 @@ class IsaacGymSimulator(Simulator):
         self._gym.refresh_dof_state_tensor(self._sim)
 
     # ===== Group 4: State Getters =====
-    def _get_simulator_default_state(self) -> RobotState:
-        return self._isaacgym_default_state
-
     def _get_num_actors_per_env(self) -> int:
         num_actors = self._root_states.shape[0] // self.num_envs
         return num_actors
@@ -843,14 +1034,11 @@ class IsaacGymSimulator(Simulator):
         return SimBodyOrdering(
             body_names=self._gym.get_asset_rigid_body_names(self._humanoid_asset),
             dof_names=self._gym.get_asset_dof_names(self._humanoid_asset),
-            contact_sensor_body_names=self._gym.get_asset_rigid_body_names(
-                self._humanoid_asset
-            ),
         )
 
     def _get_simulator_root_state(
         self, env_ids: Optional[torch.Tensor] = None
-    ) -> RobotState:
+    ) -> RootOnlyState:
         root_pos = self._humanoid_root_states[..., :3].clone()
         root_rot = self._humanoid_root_states[..., 3:7].clone()
         root_vel = self._humanoid_root_states[..., 7:10].clone()
@@ -860,16 +1048,17 @@ class IsaacGymSimulator(Simulator):
             root_rot = root_rot[env_ids]
             root_vel = root_vel[env_ids]
             root_ang_vel = root_ang_vel[env_ids]
-        return RobotState(
+        return RootOnlyState(
             root_pos=root_pos,
             root_rot=root_rot,
             root_vel=root_vel,
             root_ang_vel=root_ang_vel,
+            state_conversion=StateConversion.SIMULATOR,
         )
 
     def _get_simulator_object_root_state(
         self, env_ids: Optional[torch.Tensor] = None
-    ) -> RobotState:
+    ) -> ObjectState:
         root_pos = self._object_root_states[..., :3].clone()
         root_rot = self._object_root_states[..., 3:7].clone()
         root_vel = self._object_root_states[..., 7:10].clone()
@@ -879,24 +1068,31 @@ class IsaacGymSimulator(Simulator):
             root_rot = root_rot[env_ids]
             root_vel = root_vel[env_ids]
             root_ang_vel = root_ang_vel[env_ids]
-        return RobotState(
+        return ObjectState(
             root_pos=root_pos,
             root_rot=root_rot,
             root_vel=root_vel,
             root_ang_vel=root_ang_vel,
+            state_conversion=StateConversion.SIMULATOR,
         )
 
-    def _get_simulator_bodies_contact_buf(self, env_ids=None):
+    def _get_simulator_bodies_contact_buf(self, env_ids=None) -> RobotState:
         contact_forces = self._contact_forces.clone()
         if env_ids is not None:
             contact_forces = contact_forces[env_ids]
-        return contact_forces
+        return RobotState(
+            rigid_body_contact_forces=contact_forces,
+            state_conversion=StateConversion.SIMULATOR,
+        )
 
-    def _get_simulator_object_contact_buf(self, env_ids=None):
+    def _get_simulator_object_contact_buf(self, env_ids=None) -> ObjectState:
         object_contact_forces = self._object_contact_forces.clone()
         if env_ids is not None:
             object_contact_forces = object_contact_forces[env_ids]
-        return object_contact_forces
+        return ObjectState(
+            contact_forces=object_contact_forces,
+            state_conversion=StateConversion.SIMULATOR,
+        )
 
     def _get_simulator_bodies_state(
         self, env_ids: Optional[torch.Tensor] = None
@@ -915,13 +1111,16 @@ class IsaacGymSimulator(Simulator):
             rigid_body_rot=body_rot,
             rigid_body_vel=body_vel,
             rigid_body_ang_vel=body_ang_vel,
+            state_conversion=StateConversion.SIMULATOR,
         )
 
-    def _get_simulator_dof_forces(self, env_ids=None):
+    def _get_simulator_dof_forces(self, env_ids=None) -> RobotState:
         dof_forces = self._dof_force_tensor.clone()
         if env_ids is not None:
             dof_forces = dof_forces[env_ids]
-        return dof_forces
+        return RobotState(
+            dof_forces=dof_forces, state_conversion=StateConversion.SIMULATOR
+        )
 
     def _get_simulator_dof_state(
         self, env_ids: Optional[torch.Tensor] = None
@@ -934,33 +1133,264 @@ class IsaacGymSimulator(Simulator):
         return RobotState(
             dof_pos=dof_pos,
             dof_vel=dof_vel,
+            state_conversion=StateConversion.SIMULATOR,
+        )
+
+    def _get_simulator_dof_limits_for_verification(
+        self,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Retrieve DOF limits from IsaacGym's internal API for verification purposes only.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]: A tuple of (lower_limits, upper_limits)
+                                              in IsaacGym's DOF ordering.
+        """
+        # Extract limits from the first environment
+        dof_prop = self._gym.get_actor_dof_properties(
+            self._envs[0], self._humanoid_handles[0]
+        )
+        dof_limits_lower = []
+        dof_limits_upper = []
+        for j in range(len(dof_prop["upper"])):
+            if dof_prop["lower"][j] > dof_prop["upper"][j]:
+                dof_limits_lower.append(dof_prop["upper"][j])
+                dof_limits_upper.append(dof_prop["lower"][j])
+            else:
+                dof_limits_lower.append(dof_prop["lower"][j])
+                dof_limits_upper.append(dof_prop["upper"][j])
+
+        return (
+            torch_utils.to_torch(dof_limits_lower, device=self.device),
+            torch_utils.to_torch(dof_limits_upper, device=self.device),
         )
 
     # ===== Group 5: Control & Computation Methods =====
-    def _apply_pd_control(self) -> None:
-        common_pd_tar = self._action_to_pd_targets(self._common_actions)
-        isaacgym_pd_tar = common_pd_tar[:, self.data_conversion.dof_convert_to_sim]
-        pd_tar_tensor = gymtorch.unwrap_tensor(isaacgym_pd_tar)
+    def _apply_simulator_pd_targets(self, pd_targets: torch.Tensor) -> None:
+        """Applies PD position targets using IsaacGym's internal PD controller."""
+        pd_tar_tensor = gymtorch.unwrap_tensor(pd_targets)
         self._gym.set_dof_position_target_tensor(self._sim, pd_tar_tensor)
 
-    def _apply_motor_forces(self) -> None:
-        common_torques = self._compute_torques(self._common_actions)
-        isaacgym_torques = common_torques[:, self.data_conversion.dof_convert_to_sim]
-        torques_tensor = gymtorch.unwrap_tensor(isaacgym_torques)
+    def _apply_simulator_torques(self, torques: torch.Tensor) -> None:
+        """Applies torques to the robot DOFs."""
+        torques_tensor = gymtorch.unwrap_tensor(torques)
         self._gym.set_dof_actuation_force_tensor(self._sim, torques_tensor)
 
     def _push_robot(self):
-        forces = torch.zeros((1, self._rigid_body_state.shape[0], 3), device=self.device, dtype=torch.float)
-        torques = torch.zeros((1, self._rigid_body_state.shape[0], 3), device=self.device, dtype=torch.float)
-        
+        forces = torch.zeros(
+            (1, self._rigid_body_state.shape[0], 3),
+            device=self.device,
+            dtype=torch.float,
+        )
+        torques = torch.zeros(
+            (1, self._rigid_body_state.shape[0], 3),
+            device=self.device,
+            dtype=torch.float,
+        )
+
         # Apply force to the pelvis
         for i in range(self._rigid_body_state.shape[0] // self._num_bodies):
             forces[:, i * self._num_bodies, :] = -8000
             forces[:, i * self._num_bodies, :] = -8000
 
-        self._gym.apply_rigid_body_force_tensors(self._sim, gymtorch.unwrap_tensor(forces), gymtorch.unwrap_tensor(torques), gymapi.ENV_SPACE)
+        self._gym.apply_rigid_body_force_tensors(
+            self._sim,
+            gymtorch.unwrap_tensor(forces),
+            gymtorch.unwrap_tensor(torques),
+            gymapi.ENV_SPACE,
+        )
 
-    # ===== Group 6: Rendering & Visualization =====
+    # ===== Group 6: Domain Randomization =====
+    # - IsaacGym: Must set friction on asset before actor creation
+    #   Solution: Create min(num_buckets, num_envs) assets, evenly distribute to environments
+
+    def _create_friction_randomized_assets(self, base_asset) -> List:
+        """Create multiple asset copies with different friction/restitution values for domain randomization.
+
+        Due to IsaacGym limitation, friction must be set on assets before actor creation.
+        We create min(num_buckets, num_envs) asset variants and distribute them across environments.
+        Matches IsaacLab's approach of creating min(num_buckets, num_envs) samples.
+
+        Both IsaacGym and IsaacLab use "average" friction combine mode (PhysX default):
+            effective_friction = (robot_friction + terrain_friction) / 2
+
+        Note: IsaacGym only has single friction property (not separate static/dynamic like IsaacLab).
+        We use static_friction as the representative value.
+
+        # TODO: in IsaacGym, we apply friction to ALL shapes, not per-body, body_indices is not used.
+
+        Returns:
+            List of asset handles, one per friction sample. Returns [base_asset] if no friction DR.
+        """
+        if (
+            self._domain_randomization is None
+            or "friction" not in self._domain_randomization
+        ):
+            return [base_asset]  # No friction randomization, use single asset
+
+        # Note: base simulator already creates min(num_buckets, num_envs) samples
+        num_assets_to_create = self._domain_randomization["friction"][
+            "static_friction"
+        ].shape[0]
+        # body_indices stored for reference but not used (we apply friction to all shapes)
+        # body_indices = self._domain_randomization["friction"]["body_indices"]
+
+        print(
+            f"Creating {num_assets_to_create} asset variants for friction domain randomization"
+        )
+
+        assets = []
+        for i in range(num_assets_to_create):
+            # Load a fresh asset for each friction variant
+            asset = self._load_humanoid_asset()
+
+            # Apply friction and restitution for this asset (using index i directly, since samples are pre-randomized)
+            # Note: base simulator already sampled random values in _process_friction_domain_randomization
+            shape_props = self._gym.get_asset_rigid_shape_properties(asset)
+
+            # Note: In IsaacGym, we apply friction to ALL shapes, not per-body
+            # The body_indices tell us which bodies we want to randomize, but we need to
+            # apply the sampled friction value to all shapes uniformly for simplicity
+            # (Mapping body->shape indices is complex and not exposed in IsaacGym API)
+
+            # Use the first body's randomized values for all shapes (simplified approach)
+            # For most configs like body_names=[".*"], all bodies get the same randomization anyway
+            sampled_friction = self._domain_randomization["friction"][
+                "static_friction"
+            ][i, 0].item()
+            sampled_restitution = self._domain_randomization["friction"]["restitution"][
+                i, 0
+            ].item()
+
+            for shape_prop in shape_props:
+                # Use pre-randomized friction value directly (no adjustment needed - both sims use average mode)
+                # Note: IsaacGym only has single friction property, not separate static/dynamic
+                shape_prop.friction = sampled_friction
+                shape_prop.restitution = sampled_restitution
+
+            self._gym.set_asset_rigid_shape_properties(asset, shape_props)
+            assets.append(asset)
+
+        print(f"Created {len(assets)} friction-randomized asset variants")
+        return assets
+
+    def _get_asset_for_env(self, env_id: int):
+        """Get the appropriate asset for a given environment ID.
+
+        For friction domain randomization, evenly distributes asset buckets across environments.
+        This ensures each friction bucket is used approximately equally.
+
+        Args:
+            env_id: Environment ID
+
+        Returns:
+            Asset handle to use for this environment
+        """
+        if len(self._humanoid_assets_for_friction) == 1:
+            # No friction randomization, single asset
+            return self._humanoid_assets_for_friction[0]
+
+        # Evenly distribute buckets across environments using modulo
+        # e.g., 64 buckets for 4096 envs: env 0->bucket 0, env 1->bucket 1, ..., env 64->bucket 0, etc.
+        num_buckets = len(self._humanoid_assets_for_friction)
+        bucket_id = env_id % num_buckets
+        return self._humanoid_assets_for_friction[bucket_id]
+
+    def _update_body_com_and_inertia(self, body_prop, offset: List[float]) -> None:
+        """
+        Update a single rigid body's Center of Mass and inertia tensor using parallel axis theorem.
+
+        Args:
+            body_prop: Single rigid body property object from IsaacGym
+            offset: [dx, dy, dz] offset in meters for the Center of Mass
+
+        The parallel axis theorem: I_new = I_old + m * (r²·I - r⊗r)
+        Where:
+        - I_new: new inertia tensor about new axis
+        - I_old: original inertia tensor about center of mass
+        - m: mass of the body
+        - r: offset vector [dx, dy, dz]
+        - r²: dot product r·r
+        - r⊗r: outer product of r
+        """
+
+        mass = body_prop.mass
+        dx, dy, dz = offset
+
+        # Update Center of Mass
+        body_prop.com.x += dx
+        body_prop.com.y += dy
+        body_prop.com.z += dz
+
+        # Apply parallel axis theorem to inertia tensor
+        # Original inertia matrix (IsaacGym stores as [Ixx, Iyy, Izz, Ixy, Ixz, Iyz])
+        Ixx_old = body_prop.inertia.x.x
+        Iyy_old = body_prop.inertia.y.y
+        Izz_old = body_prop.inertia.z.z
+        Ixy_old = body_prop.inertia.x.y
+        Ixz_old = body_prop.inertia.x.z
+        Iyz_old = body_prop.inertia.y.z
+
+        # Parallel axis theorem corrections
+        r_squared = dx * dx + dy * dy + dz * dz
+
+        # New inertia components
+        Ixx_new = Ixx_old + mass * (
+            r_squared - dx * dx
+        )  # = Ixx_old + mass * (dy² + dz²)
+        Iyy_new = Iyy_old + mass * (
+            r_squared - dy * dy
+        )  # = Iyy_old + mass * (dx² + dz²)
+        Izz_new = Izz_old + mass * (
+            r_squared - dz * dz
+        )  # = Izz_old + mass * (dx² + dy²)
+        Ixy_new = Ixy_old - mass * dx * dy
+        Ixz_new = Ixz_old - mass * dx * dz
+        Iyz_new = Iyz_old - mass * dy * dz
+
+        # Update inertia tensor
+        body_prop.inertia.x.x = Ixx_new
+        body_prop.inertia.y.y = Iyy_new
+        body_prop.inertia.z.z = Izz_new
+        body_prop.inertia.x.y = Ixy_new
+        body_prop.inertia.y.x = Ixy_new  # Symmetric
+        body_prop.inertia.x.z = Ixz_new
+        body_prop.inertia.z.x = Ixz_new  # Symmetric
+        body_prop.inertia.y.z = Iyz_new
+        body_prop.inertia.z.y = Iyz_new  # Symmetric
+
+    def _apply_com_domain_randomization_to_actor(
+        self, env_ptr, humanoid_handle, env_id: int
+    ) -> None:
+        """Apply center of mass domain randomization to a specific actor.
+
+        IMPORTANT: In IsaacGym, this must be called right after actor creation in _build_env().
+
+        Args:
+            env_ptr: Environment pointer
+            humanoid_handle: Actor handle for the humanoid
+            env_id: Environment ID for this actor
+        """
+        if (
+            self._domain_randomization is None
+            or "center_of_mass" not in self._domain_randomization
+        ):
+            return
+
+        body_props = self._gym.get_actor_rigid_body_properties(env_ptr, humanoid_handle)
+
+        body_indices = self._domain_randomization["center_of_mass"]["body_indices"]
+        com_offsets = self._domain_randomization["center_of_mass"]["com"][env_id]
+
+        for idx, body_idx in enumerate(body_indices):
+            offset = com_offsets[idx].cpu().numpy().tolist()
+            self._update_body_com_and_inertia(body_props[body_idx], offset)
+
+        self._gym.set_actor_rigid_body_properties(
+            env_ptr, humanoid_handle, body_props, recomputeInertia=False
+        )
+
+    # ===== Group 7: Rendering & Visualization =====
     def _init_camera(self) -> None:
         self._gym.refresh_actor_root_state_tensor(self._sim)
         self._cam_prev_char_pos = (
@@ -1005,6 +1435,18 @@ class IsaacGymSimulator(Simulator):
                     self._requested_reset()
                 elif evt.action == "toggle_camera_target" and evt.value > 0:
                     self._toggle_camera_target()
+                elif evt.action == "toggle_markers" and evt.value > 0:
+                    self._toggle_markers()
+                elif evt.action.startswith("custom_") and evt.value > 0:
+                    # Handle custom key events
+                    key_name = evt.action[7:]  # Remove "custom_" prefix
+                    if key_name in self._custom_key_handlers:
+                        try:
+                            self._custom_key_handlers[key_name]()
+                        except Exception as e:
+                            print(
+                                f"Error executing custom key handler for '{key_name}': {e}"
+                            )
 
             if self.device.type != "cpu":
                 self._gym.fetch_results(self._sim, True)
@@ -1016,8 +1458,10 @@ class IsaacGymSimulator(Simulator):
                 self._gym.poll_viewer_events(self._viewer)
         super().render()
 
-    def _update_simulator_markers(self, markers_state: Optional[Dict[str, MarkerState]] = None) -> None:
-        if markers_state is None:
+    def _update_simulator_markers(
+        self, markers_state: Optional[Dict[str, MarkerState]] = None
+    ) -> None:
+        if markers_state is None or len(self._marker_names_ordering) == 0:
             return
 
         markers_translations = torch.cat(
@@ -1050,9 +1494,15 @@ class IsaacGymSimulator(Simulator):
         )
 
     def close(self) -> None:
+        super().close()
         if self._viewer:
             self._gym.destroy_viewer(self._viewer)
         self._gym.destroy_sim(self._sim)
+
+        # Clean up the temporary directory
+        print("Cleaning up the temporary directory")
+        print(self._temp_dir)
+        self._temp_dir.cleanup()
 
     def _update_camera(self) -> None:
         self._gym.refresh_actor_root_state_tensor(self._sim)
@@ -1074,7 +1524,9 @@ class IsaacGymSimulator(Simulator):
             )
             height_offset = 0
 
-        current_cam_transform = self._gym.get_viewer_camera_transform(self._viewer, None)
+        current_cam_transform = self._gym.get_viewer_camera_transform(
+            self._viewer, None
+        )
         current_cam_pos = np.array(
             [
                 current_cam_transform.p.x,

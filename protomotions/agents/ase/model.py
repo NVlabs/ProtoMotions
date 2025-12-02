@@ -1,117 +1,107 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
 import torch
 from torch import nn
 from typing import List
-from hydra.utils import instantiate
-from protomotions.agents.common.mlp import MLP_WithNorm
-from protomotions.agents.ppo.model import PPOModel
-from protomotions.utils import model_utils
+from tensordict import TensorDict
+from protomotions.agents.amp.model import Discriminator, AMPModel
+from protomotions.agents.ase.config import ASEDiscriminatorEncoderConfig
+from protomotions.agents.common.common import MultiOutputModule
 
 DISC_LOGIT_INIT_SCALE = 1.0
 ENC_LOGIT_INIT_SCALE = 0.1
 
 
-class ASEDiscriminatorEncoder(nn.Module):
-    def __init__(self, config, num_in: int):
-        super().__init__()
-        self.config = config
-        self.trunk = MLP_WithNorm(config.trunk, num_in, config.trunk.num_out)
-        self.trunk_output_activation = model_utils.get_activation_func(config.trunk.output_activation)
-        
-        self.encoder = torch.nn.Linear(config.trunk.num_out, config.encoder.num_out)
-        torch.nn.init.uniform_(self.encoder.weight, -ENC_LOGIT_INIT_SCALE, ENC_LOGIT_INIT_SCALE)
-        torch.nn.init.zeros_(self.encoder.bias)
-        
-        self.discriminator = torch.nn.Linear(config.trunk.num_out, 1)
-        torch.nn.init.uniform_(self.discriminator.weight, -DISC_LOGIT_INIT_SCALE, DISC_LOGIT_INIT_SCALE)
+class ASEDiscriminatorEncoder(Discriminator):
+    """Discriminator with MI encoder head for ASE.
 
-    def forward(self, input_dict: dict) -> torch.Tensor:
-        """Forward pass through the discriminator network.
+    Inherits from Discriminator and adds an encoder head for mutual information learning.
+    """
 
-        Args:
-            input_dict (dict): Dictionary containing input tensors, must contain 'historical_self_obs'.
+    config: ASEDiscriminatorEncoderConfig
 
-        Returns:
-            torch.Tensor: Discriminator output, sigmoid probability of being expert data. Shape (batch_size, 1).
-        """
-        outs = self.trunk(input_dict)
-        outs = self.trunk_output_activation(outs)
-        outs = self.discriminator(outs)
-        return torch.sigmoid(outs)
-    
-    def mi_enc_forward(self, input_dict: dict) -> torch.Tensor:
-        """Forward pass through the encoder network for Mutual Information maximization.
+    def __init__(self, config: ASEDiscriminatorEncoderConfig):
+        super().__init__(config)
 
-        Args:
-            input_dict (dict): Dictionary containing input tensors, must contain 'historical_self_obs'.
+        self._encoder_initialized = False
 
-        Returns:
-            torch.Tensor: Normalized encoder output. Shape (batch_size, encoder_output_dim).
-        """
-        outs = self.trunk(input_dict)
-        outs = self.trunk_output_activation(outs)
-        outs = self.encoder(outs)
-        return torch.nn.functional.normalize(outs, dim=-1)
+    def _initialize_encoder_weights(self):
+        """Initialize encoder weights after materialization."""
+        encoder = None
+        final_module = self.sequential_models[-1]
+        assert isinstance(
+            final_module, MultiOutputModule
+        ), "Final module must be a MultiOutputModule"
+        for model in final_module.output_models:
+            if model.out_keys[0] == "mi_enc_output":  # Found the encoder module
+                encoder = model
+                break
 
-    def compute_logits(
-        self, input_dict: dict, return_norm_obs: bool = False
-    ) -> torch.Tensor:
-        """Computes logits from the discriminator network.
+        assert encoder is not None, "Encoder module not found"
+
+        if (
+            not self._encoder_initialized
+            and hasattr(encoder, "weight")
+            and encoder.weight is not None
+        ):
+            torch.nn.init.uniform_(
+                encoder.weight, -ENC_LOGIT_INIT_SCALE, ENC_LOGIT_INIT_SCALE
+            )
+            torch.nn.init.zeros_(encoder.bias)
+            self._encoder_initialized = True
+
+    def forward(self, tensordict: TensorDict) -> TensorDict:
+        """Forward pass computing discriminator and MI encoder outputs.
 
         Args:
-            input_dict (dict): Dictionary containing input tensors, must contain 'historical_self_obs'.
-            return_norm_obs (bool, optional): Whether to return normalized observations. Defaults to False.
+            tensordict: TensorDict containing observations and latents.
 
         Returns:
-            torch.Tensor: Discriminator logits. Shape (batch_size, 1) or dictionary with logits and normalized observations.
+            TensorDict with disc_logits and mi_enc_output added.
         """
-        outs = self.trunk(input_dict, return_norm_obs=return_norm_obs)
-        if return_norm_obs:
-            outs["outs"] = self.trunk_output_activation(outs["outs"])
-            outs["outs"] = self.discriminator(outs["outs"])
-        else:
-            outs = self.trunk_output_activation(outs)
-            outs = self.discriminator(outs)
-        
-        return outs
+        # Call parent (Discriminator forward) - adds disc_logits
+        tensordict = super().forward(tensordict)
 
-    def compute_reward(self, input_dict: dict, eps: float = 1e-7) -> torch.Tensor:
-        """Computes the reward signal from the discriminator output.
+        # Initialize encoder weights after materialization
+        self._initialize_encoder_weights()
 
-        Args:
-            input_dict (dict): Dictionary containing input tensors, must contain 'historical_self_obs'.
-            eps (float, optional): Small epsilon value to clamp discriminator output for numerical stability. Defaults to 1e-7.
+        return tensordict
 
-        Returns:
-            torch.Tensor: Reward tensor. Shape (batch_size, 1).
-        """
-        s = self.forward(input_dict)
-        s = torch.clamp(s, eps, 1 - eps)
-        reward = -(1 - s).log()
-        return reward
-
-    def compute_mi_reward(self, obs, latents):
+    def compute_mi_reward(
+        self, tensordict: TensorDict, mi_hypersphere_reward_shift: bool
+    ):
         """Computes the Mutual Information based reward.
 
         Args:
-            obs (torch.Tensor): Observation tensor. Shape (batch_size, obs_dim).
-            latents (torch.Tensor): Latent variable tensor. Shape (batch_size, latent_dim).
+            tensordict: TensorDict with mi_enc_output and latents.
+            mi_hypersphere_reward_shift: Whether to shift reward to [0, 1].
 
         Returns:
-            torch.Tensor: Mutual Information reward tensor. Shape (batch_size, 1).
+            torch.Tensor: Mutual Information reward tensor.
         """
-        obs = self.trunk(obs)
-        obs = self.trunk_output_activation(obs)
-        enc_pred = self.encoder(obs)
-        enc_pred = torch.nn.functional.normalize(enc_pred, dim=-1)
-        
+        enc_pred = tensordict["mi_enc_output"]
+        latents = tensordict["latents"]
         neg_err = -self.calc_von_mises_fisher_enc_error(enc_pred, latents)
-        if self.config.ase_parameters.mi_hypersphere_reward_shift:
+        if mi_hypersphere_reward_shift:
             reward = (neg_err + 1) / 2
         else:
             reward = torch.clamp_min(neg_err, 0.0)
-        
+
         return reward
-    
+
     def calc_von_mises_fisher_enc_error(self, enc_pred, latent):
         """Calculates the Von Mises-Fisher error between predicted and true latent vectors.
 
@@ -126,67 +116,172 @@ class ASEDiscriminatorEncoder(nn.Module):
         err = -torch.sum(err, dim=-1, keepdim=True)
         return err
 
-    def all_weights(self):
-        """Returns all weights of the discriminator encoder network.
+    def _get_weights_from_module(self, module):
+        """Helper to recursively get weights by explicitly traversing structure.
+
+        Args:
+            module: Module to extract weights from.
 
         Returns:
-            List[nn.Parameter]: List of weight parameters.
+            List of weight parameters.
+        """
+        weights = []
+
+        # If it's a SequentialModule, recursively process its sequential_models
+        if hasattr(module, "sequential_models"):
+            for sub_model in module.sequential_models:
+                weights.extend(self._get_weights_from_module(sub_model))
+
+        # If it's a MultiInputModule, recursively process its input_models
+        elif hasattr(module, "input_models") and isinstance(
+            module.input_models, nn.ModuleList
+        ):
+            for sub_model in module.input_models:
+                weights.extend(self._get_weights_from_module(sub_model))
+
+        # If it's a MultiOutputModule, recursively process its output_models
+        elif hasattr(module, "output_models"):
+            for sub_model in module.output_models:
+                weights.extend(self._get_weights_from_module(sub_model))
+
+        # If it has an mlp Sequential, process that
+        elif hasattr(module, "mlp") and isinstance(module.mlp, nn.Sequential):
+            for layer in module.mlp:
+                if hasattr(layer, "weight") and isinstance(layer.weight, nn.Parameter):
+                    weights.append(layer.weight)
+
+        # Otherwise, check if this module itself has weights
+        elif hasattr(module, "weight") and isinstance(module.weight, nn.Parameter):
+            weights.append(module.weight)
+
+        return weights
+
+    def all_weights(self):
+        """Returns all weights from all sequential modules (trunk + discriminator + encoder).
+
+        Uses explicit walking to avoid duplicates in nested structures.
+
+        Returns:
+            List[nn.Parameter]: List of all weight parameters.
         """
         weights: list[nn.Parameter] = []
-        for mod in self.trunk.mlp.modules():
-            if isinstance(mod, nn.Linear):
-                weights.append(mod.weight)
-        for mod in self.modules():
-            if isinstance(mod, nn.Linear):
-                weights.append(mod.weight)
+
+        # Walk through all sequential models
+        for seq_model in self.sequential_models:
+            if isinstance(seq_model, MultiOutputModule):
+                # Include all output models (both discriminator and encoder)
+                for output_model in seq_model.output_models:
+                    weights.extend(self._get_weights_from_module(output_model))
+            else:
+                weights.extend(self._get_weights_from_module(seq_model))
+
         return weights
 
     def all_discriminator_weights(self):
-        """Returns all weights of the discriminator part of the network.
+        """Returns weights of discriminator part only (excludes encoder head).
+
+        Explicitly walks through sequential_models to avoid including encoder head.
 
         Returns:
             List[nn.Parameter]: List of discriminator weight parameters.
         """
         weights: list[nn.Parameter] = []
-        for mod in self.trunk.mlp.modules():
-            if isinstance(mod, nn.Linear):
-                weights.append(mod.weight)
-        weights.append(self.logit_weights()[0])
+
+        # Walk through sequential models
+        for seq_model in self.sequential_models:
+            if isinstance(seq_model, MultiOutputModule):
+                # Only include discriminator head, not encoder
+                for output_model in seq_model.output_models:
+                    if (
+                        hasattr(output_model, "out_keys")
+                        and "mi_enc_output" in output_model.out_keys
+                    ):
+                        continue  # Skip encoder head
+                    # Include this output module's weights
+                    weights.extend(self._get_weights_from_module(output_model))
+            else:
+                # Include all weights from this module
+                weights.extend(self._get_weights_from_module(seq_model))
+
         return weights
 
     def logit_weights(self) -> List[nn.Parameter]:
         """Returns the weights of the final discriminator layer.
 
         Returns:
-            List[nn.Parameter]: List containing the weight parameter of the discriminator's linear layer.
+            List[nn.Parameter]: List containing the weight parameter of the discriminator's output layer.
         """
-        return [self.discriminator.weight]
-    
+        weights = []
+
+        # Find discriminator head in MultiOutputModule
+        for seq_model in self.sequential_models:
+            if isinstance(seq_model, MultiOutputModule):
+                for output_model in seq_model.output_models:
+                    # Find the discriminator head (outputs disc_logits)
+                    if (
+                        hasattr(output_model, "out_keys")
+                        and "disc_logits" in output_model.out_keys
+                    ):
+                        # Get the final layer weight
+                        if hasattr(output_model, "mlp") and len(output_model.mlp) > 0:
+                            final_layer = output_model.mlp[-1]
+                            if hasattr(final_layer, "weight"):
+                                weights.append(final_layer.weight)
+                        break
+                break
+
+        return weights
+
     def all_enc_weights(self):
-        """Returns all weights of the encoder part of the network.
+        """Returns all weights of the encoder part only (includes trunk + encoder head).
 
         Returns:
             List[nn.Parameter]: List of encoder weight parameters.
         """
         weights: list[nn.Parameter] = []
-        for mod in self.trunk.mlp.modules():
-            if isinstance(mod, nn.Linear):
-                weights.append(mod.weight)
-        weights.append(self.encoder.weight)
+
+        # Get trunk weights (all Sequential modules before MultiOutput)
+        for seq_model in self.sequential_models:
+            if isinstance(seq_model, MultiOutputModule):
+                # Found MultiOutput, only get encoder head weights
+                for output_model in seq_model.output_models:
+                    if (
+                        hasattr(output_model, "out_keys")
+                        and "mi_enc_output" in output_model.out_keys
+                    ):
+                        # This is the encoder head
+                        weights.extend(self._get_weights_from_module(output_model))
+                break  # Don't continue past MultiOutput
+            else:
+                # Include trunk weights
+                weights.extend(self._get_weights_from_module(seq_model))
+
         return weights
 
     def enc_weights(self) -> List[nn.Parameter]:
-        """Returns the weights of the final encoder layer.
+        """Returns the weights of the final encoder layer only.
 
         Returns:
-            List[nn.Parameter]: List containing the weight parameter of the encoder's linear layer.
+            List[nn.Parameter]: List containing the weight parameter of the encoder's output layer.
         """
-        return [self.encoder.weight]
+        weights = []
+        # Find the encoder head in MultiOutputModule
+        for seq_model in self.sequential_models:
+            if isinstance(seq_model, MultiOutputModule):
+                for output_model in seq_model.output_models:
+                    if (
+                        hasattr(output_model, "out_keys")
+                        and "mi_enc_output" in output_model.out_keys
+                    ):
+                        # Get the final layer weight
+                        if hasattr(output_model, "mlp") and len(output_model.mlp) > 0:
+                            final_layer = output_model.mlp[-1]
+                            if hasattr(final_layer, "weight"):
+                                weights.append(final_layer.weight)
+                        break
+                break
+        return weights
 
 
-class ASEModel(PPOModel):
-    def __init__(self, config):
-        super().__init__(config)
-        self._discriminator: ASEDiscriminatorEncoder = instantiate(
-            self.config.ase_discriminator_encoder,
-        )
+# ASE just uses AMPModel - the discriminator is ASEDiscriminatorEncoder instead
+ASEModel = AMPModel

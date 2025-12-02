@@ -1,463 +1,366 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+"""Proximal Policy Optimization (PPO) agent implementation.
+
+This module implements the PPO algorithm for reinforcement learning. PPO is an
+on-policy algorithm that uses clipped surrogate objectives for stable policy updates.
+It collects experience through environment interaction and performs multiple epochs
+of minibatch updates using Generalized Advantage Estimation (GAE).
+
+Key Classes:
+    - PPO: Main PPO agent class extending BaseAgent
+
+References:
+    Schulman et al. "Proximal Policy Optimization Algorithms" (2017)
+"""
+
 import torch
-import os
+from torch import Tensor
+from tensordict import TensorDict
+
 import logging
 
-from torch import Tensor
-
-import time
-import math
 from pathlib import Path
 from typing import Optional, Tuple, Dict
 
 from lightning.fabric import Fabric
 
-from hydra.utils import instantiate
-from isaac_utils import torch_utils
+from protomotions.utils.hydra_replacement import instantiate, get_class
 
-from protomotions.utils.time_report import TimeReport
-from protomotions.utils.average_meter import AverageMeter, TensorAverageMeterDict
-from protomotions.agents.utils.data_utils import DictDataset, ExperienceBuffer
 from protomotions.agents.ppo.model import PPOModel
-from protomotions.agents.common.common import weight_init, get_params
+from protomotions.agents.common.common import weight_init
 from protomotions.envs.base_env.env import BaseEnv
-from protomotions.utils.running_mean_std import RunningMeanStd
-from rich.progress import track
-from protomotions.agents.ppo.utils import discount_values, bounds_loss
+from protomotions.agents.utils.normalization import combine_moments
+from protomotions.agents.ppo.utils import discount_values
+from protomotions.agents.ppo.config import PPOAgentConfig
+from protomotions.agents.base_agent.agent import BaseAgent
+from protomotions.agents.utils.training import bounds_loss, handle_model_grad_clipping
 
 log = logging.getLogger(__name__)
 
 
-class PPO:
+class PPO(BaseAgent):
+    """Proximal Policy Optimization (PPO) agent.
+
+    Implements the PPO algorithm for training reinforcement learning policies.
+    PPO uses clipped surrogate objectives to enable stable policy updates while
+    maintaining sample efficiency. This implementation supports actor-critic
+    architecture with separate optimizers for policy and value networks.
+
+    The agent collects experience through environment interaction, computes
+    advantages using Generalized Advantage Estimation (GAE), and performs
+    multiple epochs of minibatch updates on the collected data.
+
+    Args:
+        fabric: Lightning Fabric instance for distributed training.
+        env: Environment instance to train on.
+        config: PPO-specific configuration including learning rates, clip parameters, etc.
+        root_dir: Optional root directory for saving outputs.
+
+    Attributes:
+        tau: GAE lambda parameter for advantage estimation.
+        e_clip: PPO clipping parameter for policy updates.
+        actor: Policy network.
+        critic: Value network.
+
+    Example:
+        >>> fabric = Fabric(devices=4)
+        >>> env = Steering(config, robot_config, simulator_config, device)
+        >>> agent = PPO(fabric, env, config)
+        >>> agent.setup()
+        >>> agent.train()
+    """
+
     # -----------------------------
     # Initialization and Setup
     # -----------------------------
-    def __init__(self, fabric: Fabric, env: BaseEnv, config):
-        self.fabric = fabric
-        self.device: torch.device = fabric.device
-        self.env = env
-        self.motion_lib = self.env.motion_lib
-        self.config = config
+    config: PPOAgentConfig
 
-        self.num_envs: int = self.env.config.num_envs
-        self.num_steps: int = config.num_steps
-        self.gamma: float = config.gamma
-        self.tau: float = config.tau
-        self.e_clip: float = config.e_clip
-        self.num_mini_epochs: int = config.num_mini_epochs
-        self.task_reward_w: float = config.task_reward_w
-        self._should_stop: bool = False
+    def __init__(
+        self,
+        fabric: Fabric,
+        env: BaseEnv,
+        config: PPOAgentConfig,
+        root_dir: Optional[Path] = None,
+    ):
+        super().__init__(fabric, env, config, root_dir)
+        self.tau: float = self.config.tau
+        self.e_clip: float = self.config.e_clip
 
-        if self.config.normalize_values:
-            self.running_val_norm = RunningMeanStd(
-                shape=(1,),
-                device=self.device,
-                clamp_value=self.config.normalized_val_clamp_value,
-            )
+        # Initialize EMA for advantage normalization
+        if (
+            self.config.advantage_normalization.enabled
+            and self.config.advantage_normalization.use_ema
+        ):
+            self.adv_mean_ema = torch.zeros(1, device=self.device, dtype=torch.float32)
+            self.adv_std_ema = torch.ones(1, device=self.device, dtype=torch.float32)
         else:
-            self.running_val_norm = None
+            self.adv_mean_ema = None
+            self.adv_std_ema = None
 
-        # timer
-        self.time_report = TimeReport()
+    def create_model(self):
+        """Create PPO actor-critic model.
 
-        self.current_lengths = torch.zeros(
-            self.num_envs, dtype=torch.long, device=self.device
-        )
-        self.current_rewards = torch.zeros(
-            self.num_envs, dtype=torch.float, device=self.device
-        )
+        Instantiates the PPO model with actor and critic networks, applies
+        weight initialization, and returns the model.
 
-        self.episode_reward_meter = AverageMeter(1, 100).to(self.device)
-        self.episode_length_meter = AverageMeter(1, 100).to(self.device)
-        self.episode_env_tensors = TensorAverageMeterDict()
-        self.step_count = 0
-        self.current_epoch = 0
-        self.fit_start_time = None
-        self.best_evaluated_score = None
-
-        self.force_full_restart = False
-
-    @property
-    def should_stop(self):
-        return self.fabric.broadcast(self._should_stop)
-
-    def setup(self):
-        model: PPOModel = instantiate(self.config.model)
+        Returns:
+            PPOModel instance with initialized weights.
+        """
+        PPOModelClass = get_class(self.config.model._target_)
+        model: PPOModel = PPOModelClass(config=self.config.model)
         model.apply(weight_init)
+        return model
+
+    def create_optimizers(self, model: PPOModel):
+        """Create separate optimizers for actor and critic.
+
+        Sets up Adam optimizers for policy and value networks with independent
+        learning rates. Uses Fabric for distributed training setup.
+
+        Args:
+            model: PPOModel with actor and critic networks.
+        """
         actor_optimizer = instantiate(
-            self.config.model.config.actor_optimizer,
+            self.config.model.actor_optimizer,
             params=list(model._actor.parameters()),
         )
+        self.actor, self.actor_optimizer = self.fabric.setup(
+            model._actor, actor_optimizer
+        )
+        # Actor now only has forward() method
+
         critic_optimizer = instantiate(
-            self.config.model.config.critic_optimizer,
+            self.config.model.critic_optimizer,
             params=list(model._critic.parameters()),
         )
-
-        self.model, self.actor_optimizer, self.critic_optimizer = self.fabric.setup(
-            model, actor_optimizer, critic_optimizer
+        self.critic, self.critic_optimizer = self.fabric.setup(
+            model._critic, critic_optimizer
         )
-        self.model.mark_forward_method("act")
-        self.model.mark_forward_method("get_action_and_value")
-
-    def load(self, checkpoint: Path):
-        if checkpoint is not None:
-            checkpoint = Path(checkpoint).resolve()
-            print(f"Loading model from checkpoint: {checkpoint}")
-            state_dict = torch.load(checkpoint, map_location=self.device)
-            self.load_parameters(state_dict)
-            
-            env_checkpoint = checkpoint.resolve().parent / f"env_{self.fabric.global_rank}.ckpt"
-            if env_checkpoint.exists():
-                print(f"Loading env checkpoint: {env_checkpoint}")
-                env_state_dict = torch.load(env_checkpoint, map_location=self.device)
-                self.env.load_state_dict(env_state_dict)
 
     def load_parameters(self, state_dict):
-        self.current_epoch = state_dict["epoch"]
+        """Load PPO-specific parameters from checkpoint.
 
-        if "step_count" in state_dict:
-            self.step_count = state_dict["step_count"]
-        if "run_start_time" in state_dict:
-            self.fit_start_time = state_dict["run_start_time"]
+        Loads actor, critic, and optimizer states. Preserves config overrides
+        for actor_logstd if specified at command line.
 
-        self.best_evaluated_score = state_dict.get("best_evaluated_score", None)
+        Args:
+            state_dict: Checkpoint state dictionary containing model and optimizer states.
+        """
+        # Save current logstd value to preserve config overrides
+        current_logstd = self.actor.logstd.data.clone()
+        current_actor_logstd_config = self.config.model.actor.actor_logstd
 
-        self.model.load_state_dict(state_dict["model"])
+        super().load_parameters(state_dict)
+
+        # Restore logstd if it was overridden in config (different from checkpoint)
+        checkpoint_logstd = self.actor.logstd.data
+        if not torch.allclose(current_logstd, checkpoint_logstd, atol=1e-6):
+            print(
+                f"Preserving overridden actor_logstd: {current_actor_logstd_config} "
+                f"(checkpoint had: {checkpoint_logstd[0].item():.3f})"
+            )
+            self.actor.logstd.data = current_logstd
+
         self.actor_optimizer.load_state_dict(state_dict["actor_optimizer"])
         self.critic_optimizer.load_state_dict(state_dict["critic_optimizer"])
 
-        if self.config.normalize_values:
-            self.running_val_norm.load_state_dict(state_dict["running_val_norm"])
-
-        self.episode_reward_meter.load_state_dict(state_dict["episode_reward_meter"])
-        self.episode_length_meter.load_state_dict(state_dict["episode_length_meter"])
+        # Load EMA state if available
+        if (
+            self.config.advantage_normalization.enabled
+            and self.config.advantage_normalization.use_ema
+        ):
+            if "adv_mean_ema" in state_dict:
+                self.adv_mean_ema.copy_(state_dict["adv_mean_ema"])
+            if "adv_std_ema" in state_dict:
+                self.adv_std_ema.copy_(state_dict["adv_std_ema"])
 
     # -----------------------------
     # Model Saving and State Dict
     # -----------------------------
     def get_state_dict(self, state_dict):
-        extra_state_dict = {
-            "model": self.model.state_dict(),
-            "actor_optimizer": self.actor_optimizer.state_dict(),
-            "critic_optimizer": self.critic_optimizer.state_dict(),
-            "epoch": self.current_epoch,
-            "step_count": self.step_count,
-            "run_start_time": self.fit_start_time,
-            "episode_reward_meter": self.episode_reward_meter.state_dict(),
-            "episode_length_meter": self.episode_length_meter.state_dict(),
-            "best_evaluated_score": self.best_evaluated_score,
-        }
+        extra_state_dict = super().get_state_dict(state_dict)
+        extra_state_dict.update(
+            {
+                "actor_optimizer": self.actor_optimizer.state_dict(),
+                "critic_optimizer": self.critic_optimizer.state_dict(),
+            }
+        )
 
-        if self.config.normalize_values:
-            extra_state_dict["running_val_norm"] = self.running_val_norm.state_dict()
+        # Save EMA state
+        if (
+            self.config.advantage_normalization.enabled
+            and self.config.advantage_normalization.use_ema
+        ):
+            extra_state_dict["adv_mean_ema"] = self.adv_mean_ema
+            extra_state_dict["adv_std_ema"] = self.adv_std_ema
+
         state_dict.update(extra_state_dict)
         return state_dict
-
-    def save(self, path=None, name="last.ckpt", new_high_score=False):
-        if path is None:
-            path = self.fabric.loggers[0].log_dir
-        root_dir = Path.cwd() / Path(self.fabric.loggers[0].root_dir)
-        save_dir = Path.cwd() / Path(path)
-        state_dict = self.get_state_dict({})
-        self.fabric.save(save_dir / name, state_dict)
-
-        if self.fabric.global_rank == 0:
-            if root_dir != save_dir:
-                if (root_dir / "last.ckpt").is_symlink():
-                    (root_dir / "last.ckpt").unlink()
-                # Make root_dir / "last.ckpt" point to the new checkpoint.
-                # Calculate the relative path and create a symbolic link.
-                relative_path = Path(os.path.relpath(save_dir / name, root_dir))
-                (root_dir / "last.ckpt").symlink_to(relative_path)
-                log.info(f"saved checkpoint, {root_dir / 'last.ckpt'}")
-        self.fabric.barrier()
-        
-        # Save env state for all ranks to the same directory.
-        rank_0_path = (root_dir / "last.ckpt").resolve().parent
-        env_checkpoint = rank_0_path / f"env_{self.fabric.global_rank}.ckpt"
-        env_state_dict = self.env.get_state_dict()
-        torch.save(env_state_dict, env_checkpoint)
-
-        # Check if new high score flag is consistent across devices.
-        gathered_high_score = self.fabric.all_gather(new_high_score)
-        if gathered_high_score.dim() != 0:
-            assert all(
-                [x == gathered_high_score[0] for x in gathered_high_score]
-            ), "New high score flag should be the same across all ranks."
-
-        if new_high_score:
-            score_based_name = "score_based.ckpt"
-            self.fabric.save(save_dir / score_based_name, state_dict)
-            print(
-                f"New best performing controller found with score {self.best_evaluated_score}. Model saved to {save_dir / score_based_name}."
-            )
-            if self.fabric.global_rank == 0:
-                if root_dir != save_dir:
-                    if (root_dir / "score_based.ckpt").is_symlink():
-                        (root_dir / "score_based.ckpt").unlink()
-                    # Create symlink for the best score checkpoint.
-                    relative_path = Path(os.path.relpath(save_dir / name, root_dir))
-                    (root_dir / "score_based.ckpt").symlink_to(relative_path)
 
     # -----------------------------
     # Experience Buffer and Training Loop
     # -----------------------------
-    def register_extra_experience_buffer_keys(self):
-        pass
-
-    def fit(self):
-        # Setup experience buffer
-        self.experience_buffer = ExperienceBuffer(self.num_envs, self.num_steps).to(
-            self.device
-        )
+    def register_algorithm_experience_buffer_keys(self):
+        super().register_algorithm_experience_buffer_keys()
+        # PPO-specific keys that are computed after rollout (not from model forward)
         self.experience_buffer.register_key(
-            "self_obs", shape=(self.env.config.robot.self_obs_size,)
-        )
+            "next_value", shape=(getattr(self.experience_buffer, "value").shape[2:])
+        )  # Computed in post_train_env_step
         self.experience_buffer.register_key(
-            "actions", shape=(self.env.config.robot.number_of_actions,)
-        )
-        self.experience_buffer.register_key("rewards")
-        self.experience_buffer.register_key("extra_rewards")
-        self.experience_buffer.register_key("total_rewards")
-        self.experience_buffer.register_key("dones", dtype=torch.long)
-        self.experience_buffer.register_key("values")
-        self.experience_buffer.register_key("next_values")
-        self.experience_buffer.register_key("returns")
-        self.experience_buffer.register_key("advantages")
-        self.experience_buffer.register_key("neglogp")
-        self.register_extra_experience_buffer_keys()
-
-        if self.config.get("extra_inputs", None) is not None:
-            obs = self.env.get_obs()
-            for key in self.config.extra_inputs.keys():
-                assert (
-                    key in obs
-                ), f"Key {key} not found in obs returned from env: {obs.keys()}"
-                env_tensor = obs[key]
-                shape = env_tensor.shape
-                dtype = env_tensor.dtype
-                self.experience_buffer.register_key(key, shape=shape[1:], dtype=dtype)
-
-        # Force reset on fit start
-        done_indices = None
-        if self.fit_start_time is None:
-            self.fit_start_time = time.time()
-        self.fabric.call("on_fit_start", self)
-
-        while self.current_epoch < self.config.max_epochs:
-            self.epoch_start_time = time.time()
-
-            # Set networks in eval mode so that normalizers are not updated
-            self.eval()
-            with torch.no_grad():
-                self.fabric.call("before_play_steps", self)
-
-                for step in track(
-                    range(self.num_steps),
-                    description=f"Epoch {self.current_epoch}, collecting data...",
-                ):
-                    obs = self.handle_reset(done_indices)
-                    self.experience_buffer.update_data("self_obs", step, obs["self_obs"])
-                    if self.config.get("extra_inputs", None) is not None:
-                        for key in self.config.extra_inputs:
-                            self.experience_buffer.update_data(key, step, obs[key])
-
-                    action, neglogp, value = self.model.get_action_and_value(obs)
-                    self.experience_buffer.update_data("actions", step, action)
-                    self.experience_buffer.update_data("neglogp", step, neglogp)
-                    if self.config.normalize_values:
-                        value = self.running_val_norm.normalize(value, un_norm=True)
-                    self.experience_buffer.update_data("values", step, value)
-
-                    # Check for NaNs in observations and actions
-                    for key in obs.keys():
-                        if torch.isnan(obs[key]).any():
-                            print(f"NaN in {key}: {obs[key]}")
-                            raise ValueError("NaN in obs")
-                    if torch.isnan(action).any():
-                        raise ValueError(f"NaN in action: {action}")
-
-                    # Step the environment
-                    next_obs, rewards, dones, terminated, extras = self.env_step(action)
-
-                    all_done_indices = dones.nonzero(as_tuple=False)
-                    done_indices = all_done_indices.squeeze(-1)
-
-                    # Update logging metrics with the environment feedback
-                    self.post_train_env_step(rewards, dones, done_indices, extras, step)
-
-                    self.experience_buffer.update_data("rewards", step, rewards)
-                    self.experience_buffer.update_data("dones", step, dones)
-
-                    next_value = self.model._critic(next_obs).flatten()
-                    if self.config.normalize_values:
-                        next_value = self.running_val_norm.normalize(
-                            next_value, un_norm=True
-                        )
-                    next_value = next_value * (1 - terminated.float())
-                    self.experience_buffer.update_data("next_values", step, next_value)
-
-                    self.step_count += self.get_step_count_increment()
-
-                # After data collection, compute rewards, advantages, and returns.
-                rewards = self.experience_buffer.rewards
-                extra_rewards = self.calculate_extra_reward()
-                self.experience_buffer.batch_update_data("extra_rewards", extra_rewards)
-                total_rewards = rewards + extra_rewards
-                self.experience_buffer.batch_update_data("total_rewards", total_rewards)
-
-                advantages = discount_values(
-                    self.experience_buffer.dones,
-                    self.experience_buffer.values,
-                    total_rewards,
-                    self.experience_buffer.next_values,
-                    self.gamma,
-                    self.tau,
-                )
-                returns = advantages + self.experience_buffer.values
-                self.experience_buffer.batch_update_data("returns", returns)
-
-                if self.config.normalize_advantage:
-                    advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-                self.experience_buffer.batch_update_data("advantages", advantages)
-
-            training_log_dict = self.optimize_model()
-            training_log_dict["epoch"] = self.current_epoch
-            self.current_epoch += 1
-            self.fabric.call("after_train", self)
-
-            # Save model checkpoint at specified intervals before evaluation.
-            if self.current_epoch % self.config.manual_save_every == 0:
-                self.save()
-
-            if (
-                self.config.eval_metrics_every is not None
-                and self.current_epoch > 0
-                and self.current_epoch % self.config.eval_metrics_every == 0
-            ):
-                eval_log_dict, evaluated_score = self.calc_eval_metrics()
-                evaluated_score = self.fabric.broadcast(evaluated_score, src=0)
-                if evaluated_score is not None:
-                    if (
-                        self.best_evaluated_score is None
-                        or evaluated_score >= self.best_evaluated_score
-                    ):
-                        self.best_evaluated_score = evaluated_score
-                        self.save(new_high_score=True)
-                training_log_dict.update(eval_log_dict)
-
-            self.post_epoch_logging(training_log_dict)
-            self.env.on_epoch_end(self.current_epoch)
-
-            if self.should_stop:
-                self.save()
-                return
-
-        self.time_report.report()
-        self.save()
-        self.fabric.call("on_fit_end", self)
+            "returns"
+        )  # Computed in pre_process_dataset
+        self.experience_buffer.register_key(
+            "advantages"
+        )  # Computed in pre_process_dataset
 
     # -----------------------------
     # Environment Interaction Helpers
     # -----------------------------
-    def handle_reset(self, done_indices=None):
-        if self.force_full_restart:
-            done_indices = None
-            self.force_full_restart = False
-        obs = self.env.reset(done_indices)
-        return obs
+    def record_rollout_step(
+        self,
+        next_obs_td: TensorDict,
+        actions,
+        rewards,
+        dones,
+        terminated,
+        done_indices,
+        extras,
+        step,
+    ):
+        """Record PPO-specific data: next value estimates for GAE computation."""
+        super().record_rollout_step(
+            next_obs_td, actions, rewards, dones, terminated, done_indices, extras, step
+        )
 
-    def env_step(self, actions):
-        obs, rewards, dones, extras = self.env.step(actions)
-        rewards = rewards * self.task_reward_w
-        terminated = extras["terminate"]
-        return obs, rewards, dones, terminated, extras
-
-    def post_train_env_step(self, rewards, dones, done_indices, extras, step):
-        self.current_rewards += rewards
-        self.current_lengths += 1
-
-        self.episode_reward_meter.update(self.current_rewards[done_indices])
-        self.episode_length_meter.update(self.current_lengths[done_indices])
-
-        not_dones = 1.0 - dones.float()
-        self.current_rewards = self.current_rewards * not_dones
-        self.current_lengths = self.current_lengths * not_dones
-
-        self.episode_env_tensors.add(extras["to_log"])
+        # Use model forward to get next value
+        next_output_td = self.model._critic(next_obs_td)
+        next_value = next_output_td["value"] * (1 - terminated.float()).unsqueeze(-1)
+        self.experience_buffer.update_data("next_value", step, next_value)
 
     # -----------------------------
     # Optimization
     # -----------------------------
-    def optimize_model(self) -> Dict:
-        dataset = self.process_dataset(self.experience_buffer.make_dict())
-        self.train()
-        training_log_dict = {}
+    def perform_optimization_step(self, batch_dict, batch_idx) -> Dict:
+        """Perform one PPO optimization step on a minibatch.
 
-        for batch_idx in track(
-            range(self.max_num_batches()),
-            description=f"Epoch {self.current_epoch}, training...",
+        Computes actor and critic losses, performs backpropagation, clips gradients,
+        and updates both networks.
+
+        Args:
+            batch_dict: Dictionary containing minibatch data (obs, actions, advantages, etc.).
+            batch_idx: Index of current batch (unused but kept for compatibility).
+
+        Returns:
+            Dictionary of training metrics (losses, clip fraction, etc.).
+        """
+        iter_log_dict = {}
+        # Update actor
+        actor_loss, actor_loss_dict = self.actor_step(batch_dict)
+        iter_log_dict.update(actor_loss_dict)
+
+        # Check if we should skip actor update for this epoch
+        # Once triggered, skip all remaining batches (same distribution)
+        if (
+            not self._skip_actor_for_epoch
+            and self.config.actor_clip_frac_threshold is not None
         ):
-            iter_log_dict = {}
-            dataset_idx = batch_idx % len(dataset)
+            clip_frac = actor_loss_dict["actor/clip_frac"].item()
+            # Synchronize clip_frac across all GPUs
+            if self.fabric.world_size > 1 and torch.distributed.is_initialized():
+                clip_frac_tensor = torch.tensor(clip_frac, device=self.device)
+                torch.distributed.all_reduce(
+                    clip_frac_tensor, op=torch.distributed.ReduceOp.SUM
+                )
+                clip_frac = (clip_frac_tensor / self.fabric.world_size).item()
 
-            # Reshuffle dataset at the beginning of each mini epoch if configured.
-            if dataset_idx == 0 and batch_idx != 0 and dataset.do_shuffle:
-                dataset.shuffle()
-            batch_dict = dataset[dataset_idx]
+            if clip_frac > self.config.actor_clip_frac_threshold:
+                self._skip_actor_for_epoch = True
+                if self.fabric.global_rank == 0:
+                    log.warning(
+                        f"Epoch {self.current_epoch}: Skipping actor updates for remaining batches "
+                        f"(clip_frac {clip_frac:.3f} > {self.config.actor_clip_frac_threshold})"
+                    )
 
-            # Check for NaNs in the batch.
-            for key in batch_dict.keys():
-                if torch.isnan(batch_dict[key]).any():
-                    print(f"NaN in {key}: {batch_dict[key]}")
-                    raise ValueError("NaN in training")
-
-            # Update actor
-            actor_loss, actor_loss_dict = self.actor_step(batch_dict)
-            iter_log_dict.update(actor_loss_dict)
+        if not self._skip_actor_for_epoch:
             self.actor_optimizer.zero_grad(set_to_none=True)
             self.fabric.backward(actor_loss)
-            actor_grad_clip_dict = self.handle_model_grad_clipping(
-                self.model._actor, self.actor_optimizer, "actor"
+            actor_grad_clip_dict = handle_model_grad_clipping(
+                config=self.config,
+                fabric=self.fabric,
+                model=self.actor,
+                optimizer=self.actor_optimizer,
+                model_name="actor",
             )
             iter_log_dict.update(actor_grad_clip_dict)
             self.actor_optimizer.step()
-
-            # Update critic
-            critic_loss, critic_loss_dict = self.critic_step(batch_dict)
-            iter_log_dict.update(critic_loss_dict)
-            self.critic_optimizer.zero_grad(set_to_none=True)
-            self.fabric.backward(critic_loss)
-            critic_grad_clip_dict = self.handle_model_grad_clipping(
-                self.model._critic, self.critic_optimizer, "critic"
+            iter_log_dict["actor/update_skipped"] = torch.tensor(
+                0.0, device=self.device
             )
-            iter_log_dict.update(critic_grad_clip_dict)
-            self.critic_optimizer.step()
+        else:
+            iter_log_dict["actor/update_skipped"] = torch.tensor(
+                1.0, device=self.device
+            )
 
-            # Extra optimization steps if needed.
-            extra_opt_steps_dict = self.extra_optimization_steps(batch_dict, batch_idx)
-            iter_log_dict.update(extra_opt_steps_dict)
+        # Update critic
+        critic_loss, critic_loss_dict = self.critic_step(batch_dict)
+        iter_log_dict.update(critic_loss_dict)
+        self.critic_optimizer.zero_grad(set_to_none=True)
+        self.fabric.backward(critic_loss)
+        critic_grad_clip_dict = handle_model_grad_clipping(
+            config=self.config,
+            fabric=self.fabric,
+            model=self.critic,
+            optimizer=self.critic_optimizer,
+            model_name="critic",
+        )
+        iter_log_dict.update(critic_grad_clip_dict)
+        self.critic_optimizer.step()
 
-            for k, v in iter_log_dict.items():
-                if k in training_log_dict:
-                    training_log_dict[k][0] += v
-                    training_log_dict[k][1] += 1
-                else:
-                    training_log_dict[k] = [v, 1]
-
-        for k, v in training_log_dict.items():
-            training_log_dict[k] = v[0] / v[1]
-
-        self.eval()
-        return training_log_dict
+        return iter_log_dict
 
     def actor_step(self, batch_dict) -> Tuple[Tensor, Dict]:
-        dist = self.model._actor(batch_dict)
-        logstd = self.model._actor.logstd
-        std = torch.exp(logstd)
-        neglogp = self.model.neglogp(batch_dict["actions"], dist.mean, std, logstd)
+        """Compute actor loss and perform policy update.
 
-        # Compute probability ratio between new and old policy.
-        ratio = torch.exp(batch_dict["neglogp"] - neglogp)
+        Computes PPO clipped surrogate objective plus optional bounds loss and
+        extra algorithm-specific losses.
+
+        Args:
+            batch_dict: Minibatch containing obs, actions, old neglogp, advantages.
+
+        Returns:
+            Tuple of (actor_loss, log_dict) where:
+                - actor_loss: Total actor loss for backprop
+                - log_dict: Dictionary of actor metrics for logging
+        """
+        # Forward through actor to get current policy's distribution
+        batch_td = TensorDict(batch_dict, batch_size=batch_dict["action"].shape[0])
+        batch_td = self.actor(batch_td)
+
+        mean_action = batch_td["mean_action"]
+
+        # Recompute neglogp for the actions that were actually taken (from experience buffer)
+        # We need the current policy's evaluation, not the sampled action's neglogp
+        mu = mean_action  # Already tanh-bounded
+        std = torch.exp(self.actor.logstd)
+        dist = torch.distributions.Normal(mu, std)
+        current_neglogp = -dist.log_prob(batch_dict["action"]).sum(dim=-1)
+
+        # Compute probability ratio between new and old policy
+        ratio = torch.exp(batch_dict["neglogp"] - current_neglogp)
         surr1 = batch_dict["advantages"] * ratio
         surr2 = batch_dict["advantages"] * torch.clamp(
             ratio, 1.0 - self.e_clip, 1.0 + self.e_clip
@@ -467,13 +370,14 @@ class PPO:
         clipped = clipped.detach().float().mean()
 
         if self.config.bounds_loss_coef > 0:
-            b_loss: Tensor = bounds_loss(dist.mean) * self.config.bounds_loss_coef
+            b_loss: Tensor = bounds_loss(mean_action) * self.config.bounds_loss_coef
         else:
             b_loss = torch.zeros(self.num_envs, device=self.device)
 
         actor_ppo_loss = ppo_loss.mean()
         b_loss = b_loss.mean()
-        extra_loss, extra_actor_log_dict = self.calculate_extra_actor_loss(batch_dict, dist)
+        extra_loss, extra_actor_log_dict = self.calculate_extra_actor_loss(batch_td)
+
         actor_loss = actor_ppo_loss + b_loss + extra_loss
 
         log_dict = {
@@ -484,154 +388,197 @@ class PPO:
             "losses/actor_loss": actor_loss.detach(),
         }
         log_dict.update(extra_actor_log_dict)
+
+        # Memory optimization: Detach intermediate tensors that won't be used for gradients
+        # This prevents unnecessary gradient graph retention
+        ratio = ratio.detach()
+        surr1 = surr1.detach()
+        surr2 = surr2.detach()
+        ppo_loss = ppo_loss.detach()
+
         return actor_loss, log_dict
 
-    def calculate_extra_actor_loss(self, batch_dict, dist) -> Tuple[Tensor, Dict]:
+    def calculate_extra_actor_loss(self, batch_td) -> Tuple[Tensor, Dict]:
+        """Calculate additional actor losses beyond PPO objective.
+
+        Subclasses can override to add custom actor losses (e.g., entropy bonus,
+        auxiliary losses). Default implementation returns zero loss.
+
+        Args:
+            batch_td: Minibatch data.
+
+        Returns:
+            Tuple of (extra_loss, log_dict) with additional loss and metrics.
+        """
         return torch.tensor(0.0, device=self.device), {}
 
     def critic_step(self, batch_dict) -> Tuple[Tensor, Dict]:
-        values = self.model._critic(batch_dict).flatten()
+        # Convert to TensorDict for model processing
+        batch_td = TensorDict(batch_dict, batch_size=batch_dict["action"].shape[0])
+        batch_td = self.critic(batch_td)
+        values = batch_td["value"]
+
         if self.config.clip_critic_loss:
-            critic_loss_unclipped = (values - batch_dict["returns"]).pow(2)
-            v_clipped = batch_dict["values"] + torch.clamp(
-                values - batch_dict["values"],
+            critic_loss_unclipped = (values - batch_dict["returns"].unsqueeze(-1)).pow(
+                2
+            )
+            v_clipped = batch_dict["value"] + torch.clamp(
+                values - batch_dict["value"],
                 -self.config.e_clip,
                 self.config.e_clip,
             )
-            critic_loss_clipped = (v_clipped - batch_dict["returns"]).pow(2)
+            critic_loss_clipped = (v_clipped - batch_dict["returns"].unsqueeze(-1)).pow(
+                2
+            )
             critic_loss_max = torch.max(critic_loss_unclipped, critic_loss_clipped)
-            critic_loss = 0.5 * critic_loss_max.mean()
+            critic_loss = critic_loss_max.mean()
+
+            # Memory optimization: Detach intermediate tensors
+            critic_loss_unclipped = critic_loss_unclipped.detach()
+            v_clipped = v_clipped.detach()
+            critic_loss_clipped = critic_loss_clipped.detach()
+            critic_loss_max = critic_loss_max.detach()
         else:
-            critic_loss = 0.5 * (batch_dict["returns"] - values).pow(2).mean()
+            critic_loss = (batch_dict["returns"].unsqueeze(-1) - values).pow(2).mean()
+
         log_dict = {"losses/critic_loss": critic_loss.detach()}
+
+        # Memory optimization: Detach values tensor if not needed for gradients
+        values = values.detach()
+
         return critic_loss, log_dict
 
-    def handle_model_grad_clipping(self, model, optimizer, model_name):
-        params = get_params(list(model.parameters()))
-        grad_norm_before_clip = torch_utils.grad_norm(params)
-        if self.config.check_grad_mag:
-            bad_grads = (
-                torch.isnan(grad_norm_before_clip) or grad_norm_before_clip > 1000000.0
-            )
-        else:
-            bad_grads = torch.isnan(grad_norm_before_clip)
-
-        bad_grads_count = 0
-        if bad_grads:
-            if self.config.fail_on_bad_grads:
-                all_params = torch.cat(
-                    [p.grad.view(-1) for p in params if p.grad is not None],
-                    dim=0,
-                )
-                raise ValueError(
-                    f"NaN gradient in {model_name}"
-                    + f" {all_params.isfinite().logical_not().float().mean().item()}"
-                    + f" {all_params.abs().min().item()}"
-                    + f" {all_params.abs().max().item()}"
-                    + f" {grad_norm_before_clip.item()}"
-                )
-            else:
-                bad_grads_count = 1
-                for p in params:
-                    if p.grad is not None:
-                        p.grad.zero_()
-
-        if self.config.gradient_clip_val > 0:
-            self.fabric.clip_gradients(
-                model,
-                optimizer,
-                max_norm=self.config.gradient_clip_val,
-                error_if_nonfinite=True,
-            )
-        grad_norm_after_clip = torch_utils.grad_norm(params)
-        clip_dict = {
-            f"{model_name}/grad_norm_before_clip": grad_norm_before_clip.detach(),
-            f"{model_name}/grad_norm_after_clip": grad_norm_after_clip.detach(),
-            f"{model_name}/bad_grads_count": bad_grads_count,
-        }
-        return clip_dict
-
     # -----------------------------
-    # Evaluation and Logging
+    # Optimization Override
     # -----------------------------
-    @torch.no_grad()
-    def calc_eval_metrics(self) -> Tuple[Dict, Optional[float]]:
-        return {}, None
+    def optimize_model(self) -> Dict:
+        # Reset epoch-level actor skip flag
+        self._skip_actor_for_epoch = False
 
-    @torch.no_grad()
-    def evaluate_policy(self):
-        self.eval()
-        done_indices = None  # Force reset on first entry
-        step = 0
-        while self.config.max_eval_steps is None or step < self.config.max_eval_steps:
-            obs = self.handle_reset(done_indices)
-            # Obtain actor predictions
-            actions = self.model.act(obs)
-            # Step the environment
-            obs, rewards, dones, terminated, extras = self.env_step(actions)
-            all_done_indices = dones.nonzero(as_tuple=False)
-            done_indices = all_done_indices.squeeze(-1)
-            step += 1
-
-    def post_epoch_logging(self, training_log_dict: Dict):
-        end_time = time.time()
-        log_dict = {
-            "info/episode_length": self.episode_length_meter.get_mean().item(),
-            "info/episode_reward": self.episode_reward_meter.get_mean().item(),
-            "info/frames": torch.tensor(self.step_count),
-            "info/gframes": torch.tensor(self.step_count / (10**9)),
-            "times/fps_last_epoch": (self.num_steps * self.get_step_count_increment())
-            / (end_time - self.epoch_start_time),
-            "times/fps_total": self.step_count / (end_time - self.fit_start_time),
-            "times/training_hours": (end_time - self.fit_start_time) / 3600,
-            "times/training_minutes": (end_time - self.fit_start_time) / 60,
-            "times/last_epoch_seconds": (end_time - self.epoch_start_time),
-            "rewards/task_rewards": self.experience_buffer.rewards.mean().item(),
-            "rewards/extra_rewards": self.experience_buffer.extra_rewards.mean().item(),
-            "rewards/total_rewards": self.experience_buffer.total_rewards.mean().item(),
-        }
-        env_log_dict = self.episode_env_tensors.mean_and_clear()
-        env_log_dict = {f"env/{k}": v for k, v in env_log_dict.items()}
-        if len(env_log_dict) > 0:
-            log_dict.update(env_log_dict)
-        log_dict.update(training_log_dict)
-        self.fabric.log_dict(log_dict)
+        training_log_dict = super().optimize_model()
+        # Merge advantage normalization logs if available
+        if hasattr(self, "_adv_norm_log"):
+            training_log_dict.update(self._adv_norm_log)
+        return training_log_dict
 
     # -----------------------------
     # Helper Functions
     # -----------------------------
-    def eval(self):
-        self.model.eval()
-
-    def train(self):
-        self.model.train()
-
     @torch.no_grad()
-    def calculate_extra_reward(self):
-        return torch.zeros(self.num_steps, self.num_envs, device=self.device)
-
-    def max_num_batches(self):
-        return math.ceil(
-            self.num_envs * self.num_steps * self.num_mini_epochs / self.config.batch_size
+    def pre_process_dataset(self):
+        """
+        Pre-process the dataset to compute advantages and returns.
+        This is called before process_dataset.
+        """
+        advantages = discount_values(
+            self.experience_buffer.dones,
+            self.experience_buffer.value.squeeze(-1),
+            self.experience_buffer.total_rewards,
+            self.experience_buffer.next_value.squeeze(-1),
+            self.gamma,
+            self.tau,
         )
+        returns = advantages + self.experience_buffer.value.squeeze(-1)
+        assert torch.all(torch.isfinite(returns)), f"Returns are not finite: {returns}"
+        self.experience_buffer.batch_update_data("returns", returns)
 
-    def get_step_count_increment(self):
-        return self.num_envs * self.fabric.world_size  # fabric.world_size = num gpu * num nodes
+        adv_norm_log = {}
+        # Log raw advantage stats
+        adv_norm_log["adv_norm/raw_mean"] = advantages.mean().item()
+        adv_norm_log["adv_norm/raw_std"] = advantages.std().item()
+        adv_norm_log["adv_norm/raw_min"] = advantages.min().item()
+        adv_norm_log["adv_norm/raw_max"] = advantages.max().item()
+        if self.config.advantage_normalization.enabled:
+            if self.config.advantage_normalization.use_ema:
+                # EMA-based advantage normalization with clamping
 
-    def extra_optimization_steps(self, batch_dict, batch_idx: int):
-        return {}
+                # Apply safety minimum std to prevent extreme normalization
+                adv_std_safe = torch.clamp(
+                    self.adv_std_ema, min=self.config.advantage_normalization.min_std
+                )
 
-    def terminate_early(self):
-        self._should_stop = True
+                # Normalize advantages using EMA stats (from previous iteration)
+                if self.config.advantage_normalization.shift_mean:
+                    advantages_normalized = (
+                        advantages - self.adv_mean_ema
+                    ) / adv_std_safe
+                else:
+                    advantages_normalized = advantages / adv_std_safe
 
-    @torch.no_grad()
-    def process_dataset(self, dataset):
-        if self.config.normalize_values:
-            self.running_val_norm.update(dataset["values"])
-            self.running_val_norm.update(dataset["returns"])
+                # Clamp normalized advantages (z-scores)
+                clamp_range = self.config.advantage_normalization.clamp_range
+                advantages_clamped = torch.clamp(
+                    advantages_normalized, -clamp_range, clamp_range
+                )
 
-            dataset["values"] = self.running_val_norm.normalize(dataset["values"])
-            dataset["returns"] = self.running_val_norm.normalize(dataset["returns"])
+                # Compute clamp fraction for logging
+                clamp_frac = (
+                    (torch.abs(advantages_normalized) > clamp_range).float().mean()
+                )
 
-        dataset = DictDataset(self.config.batch_size, dataset, shuffle=True)
-        return dataset
+                # De-normalize the clamped values to get the actual values used
+                if self.config.advantage_normalization.shift_mean:
+                    advantages_denorm = (
+                        advantages_clamped * adv_std_safe + self.adv_mean_ema
+                    )
+                else:
+                    advantages_denorm = advantages_clamped * adv_std_safe
+
+                # Update EMA on GPU 0 using de-normalized clamped advantages
+                if self.fabric.global_rank == 0:
+                    batch_mean = advantages_denorm.mean()
+                    batch_std = advantages_denorm.std() + 1e-8
+                    # EMA update: new = alpha * batch + (1 - alpha) * old
+                    ema_alpha = self.config.advantage_normalization.ema_alpha
+                    self.adv_mean_ema = (
+                        ema_alpha * batch_mean + (1 - ema_alpha) * self.adv_mean_ema
+                    )
+                    self.adv_std_ema = (
+                        ema_alpha * batch_std + (1 - ema_alpha) * self.adv_std_ema
+                    )
+
+                # Broadcast EMA stats from GPU 0 to all GPUs
+                if self.fabric.world_size > 1 and torch.distributed.is_initialized():
+                    torch.distributed.broadcast(self.adv_mean_ema, src=0)
+                    torch.distributed.broadcast(self.adv_std_ema, src=0)
+
+                # Store advantage normalization stats for logging
+                adv_norm_log["adv_norm/mean_ema"] = self.adv_mean_ema.item()
+                adv_norm_log["adv_norm/std_ema"] = self.adv_std_ema.item()
+                adv_norm_log["adv_norm/clamp_frac"] = clamp_frac.item()
+
+                advantages = advantages_clamped
+            else:
+                # Original batch-based advantage normalization (no logging)
+                mean = advantages.mean()
+                var = advantages.var()
+                count = advantages.numel()
+
+                if self.fabric.world_size > 1:
+                    all_means = self.fabric.all_gather(mean)
+                    all_vars = self.fabric.all_gather(var)
+                    all_counts = self.fabric.all_gather(count)
+
+                    if self.fabric.global_rank == 0:
+                        mean, var, count = combine_moments(
+                            all_means, all_vars, all_counts
+                        )
+
+                # Fabric broadcast returns a tensor on the source rank, so we need to move it to the device of the current rank.
+                updated_mean = self.fabric.broadcast(mean, src=0).to(self.device)
+                updated_var = self.fabric.broadcast(var, src=0).to(self.device)
+
+                if self.config.advantage_normalization.shift_mean:
+                    advantages = (advantages - updated_mean) / (
+                        torch.sqrt(updated_var) + 1e-8
+                    )
+                else:
+                    advantages = advantages / (torch.sqrt(updated_var) + 1e-8)
+
+        assert torch.all(
+            torch.isfinite(advantages)
+        ), f"Advantages are not finite: {advantages}"
+        self.experience_buffer.batch_update_data("advantages", advantages)
+
+        # Store logs for later use
+        self._adv_norm_log = adv_norm_log

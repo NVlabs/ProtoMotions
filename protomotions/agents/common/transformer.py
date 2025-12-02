@@ -1,186 +1,167 @@
-from copy import copy
+# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+"""Transformer architecture for sequential modeling.
+
+This module implements transformer-based networks for processing temporal information
+in reinforcement learning. Used primarily in motion tracking and MaskedMimic agents
+for handling sequential observations.
+
+Key Classes:
+    - Transformer: Main transformer model with positional encoding
+    - PositionalEncoding: Sinusoidal positional encodings for sequence position
+
+Key Features:
+    - Multi-head self-attention for temporal dependencies
+    - Multiple input heads with different encoders
+    - Positional encoding for sequence awareness
+    - Flexible output heads (single or multi-headed)
+"""
 
 import torch
 from torch import nn
-import numpy as np
+from tensordict import TensorDict
+from tensordict.nn import TensorDictModuleBase
 
-from protomotions.utils.model_utils import get_activation_func
-
-from hydra.utils import instantiate
-
-
-class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_len=5000):
-        super(PositionalEncoding, self).__init__()
-
-        pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(
-            torch.arange(0, d_model, 2).float() * (-np.log(10000.0) / d_model)
-        )
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0)
-
-        self.pe = nn.Parameter(pe, requires_grad=False)
-
-    def forward(self, x):
-        x = x + self.pe[:, : x.shape[1], : x.shape[2]]
-        return x
+from protomotions.agents.utils.training import get_activation_func
+from protomotions.agents.common.config import TransformerConfig
 
 
-class Transformer(nn.Module):
-    def __init__(self, config, num_out: int):
+class Transformer(TensorDictModuleBase):
+    """Transformer network for sequential observation processing.
+
+    Processes multi-modal sequential inputs through separate encoders, combines them
+    into a sequence of tokens, and applies transformer layers for temporal modeling.
+    Used in motion tracking agents to process future reference poses.
+
+    Args:
+        config: Transformer configuration specifying architecture parameters.
+
+    Attributes:
+        input_models: Dictionary of input encoders for different observation types.
+        sequence_pos_encoder: Positional encoding layer.
+        seqTransEncoder: Stack of transformer encoder layers.
+        in_keys: List of input keys collected from all input models.
+        out_keys: List containing output key.
+
+    Example:
+        >>> config = TransformerConfig()
+        >>> model = Transformer(config)
+        >>> output_td = model(tensordict)
+    """
+
+    def __init__(self, config: TransformerConfig):
         super().__init__()
         self.config = config
 
-        self.mask_keys = {}
-        input_models = {}
+        # Set TensorDict keys
+        self.in_keys = self.config.in_keys
+        self.out_keys = self.config.out_keys
 
-        for input_key, input_config in config.input_models.items():
-            input_models[input_key] = instantiate(input_config)
-            self.mask_keys[input_key] = input_config.config.get("mask_key", None)
+        self.output_activation = None
+        if self.config.output_activation is not None:
+            self.output_activation = get_activation_func(self.config.output_activation)
 
-        self.input_models = nn.ModuleDict(input_models)
-        self.feature_size = self.config.transformer_token_size * len(input_models)
+        # Extract all input tokens that aren't masks.
+        token_input_keys = []
+        mask_keys = (
+            [value for value in self.config.input_and_mask_mapping.values()]
+            if self.config.input_and_mask_mapping
+            else []
+        )
+        for in_key in self.in_keys:
+            if in_key not in mask_keys:
+                token_input_keys.append(in_key)
+        self._token_input_keys = token_input_keys
 
         # Transformer layers
-        self.sequence_pos_encoder = PositionalEncoding(config.latent_dim)
         seqTransEncoderLayer = nn.TransformerEncoderLayer(
-            d_model=config.latent_dim,
-            nhead=config.num_heads,
-            dim_feedforward=config.ff_size,
-            dropout=config.dropout,
-            activation=get_activation_func(config.activation, return_type="functional"),
+            d_model=self.config.latent_dim,
+            nhead=self.config.num_heads,
+            dim_feedforward=self.config.ff_size,
+            dropout=self.config.dropout,
+            activation=get_activation_func(
+                self.config.activation, return_type="functional"
+            ),
+            batch_first=True,
         )
         self.seqTransEncoder = nn.TransformerEncoder(
-            seqTransEncoderLayer, num_layers=config.num_layers
+            seqTransEncoderLayer, num_layers=self.config.num_layers
         )
 
-        if config.get("output_model", None) is not None:
-            self.output_model = instantiate(config.output_model)
+    def forward(self, tensordict: TensorDict) -> TensorDict:
+        """Forward pass through transformer.
 
-    def get_extracted_features(self, input_dict):
-        batch_size = next(iter(input_dict.values())).shape[0]
-        device = next(iter(input_dict.values())).device
-        cat_obs = []
-        cat_mask = []
+        Args:
+            tensordict: TensorDict containing all input observations.
 
-        for model_name, input_model in self.input_models.items():
-            input_key = input_model.config.obs_key
-            if input_key not in input_dict:
-                print(f"Transformer expected to see key {input_key} in input_dict.")
-                # Transformer token will not be created for this key
-                # This acts similar to masking out the token
-                continue
-
-            key_obs = input_dict[input_key]
-
-            if input_model.config.get("operations", None) is not None:
-                for operation in input_model.config.get("operations", []):
-                    if operation.type == "permute":
-                        key_obs = key_obs.permute(*operation.new_order)
-                    elif operation.type == "reshape":
-                        new_shape = copy(operation.new_shape)
-                        if new_shape[0] == "batch_size":
-                            new_shape[0] = batch_size
-                        key_obs = key_obs.reshape(*new_shape)
-                    elif operation.type == "squeeze":
-                        key_obs = key_obs.squeeze(dim=operation.squeeze_dim)
-                    elif operation.type == "unsqueeze":
-                        key_obs = key_obs.unsqueeze(dim=operation.unsqueeze_dim)
-                    elif operation.type == "expand":
-                        key_obs = key_obs.expand(*operation.expand_shape)
-                    elif operation.type == "positional_encoding":
-                        key_obs = self.sequence_pos_encoder(key_obs)
-                    elif operation.type == "encode":
-                        key_obs = {input_key: key_obs}
-                        key_obs = input_model(key_obs)
-                    elif operation.type == "mask_multiply":
-                        num_mask_dims = len(
-                            input_dict[self.mask_keys[model_name]].shape
-                        )
-                        num_obs_dims = len(key_obs.shape)
-                        extra_needed_dims = num_obs_dims - num_mask_dims
-                        key_obs = key_obs * input_dict[self.mask_keys[model_name]].view(
-                            *input_dict[self.mask_keys[model_name]].shape,
-                            *((1,) * extra_needed_dims),
-                        )
-                    elif operation.type == "mask_multiply_concat":
-                        num_mask_dims = len(
-                            input_dict[self.mask_keys[model_name]].shape
-                        )
-                        num_obs_dims = len(key_obs.shape)
-                        extra_needed_dims = num_obs_dims - num_mask_dims
-                        key_obs = key_obs * input_dict[self.mask_keys[model_name]].view(
-                            *input_dict[self.mask_keys[model_name]].shape,
-                            *((1,) * extra_needed_dims),
-                        )
-                        key_obs = torch.cat(
-                            [
-                                key_obs,
-                                input_dict[self.mask_keys[model_name]].view(
-                                    *input_dict[self.mask_keys[model_name]].shape,
-                                    *((1,) * extra_needed_dims),
-                                ),
-                            ],
-                            dim=-1,
-                        )
-                    elif operation.type == "concat_obs":
-                        to_add_obs = input_dict[operation.obs_key]
-                        if len(to_add_obs.shape) != len(key_obs.shape):
-                            to_add_obs = to_add_obs.unsqueeze(1).expand(
-                                to_add_obs.shape[0],
-                                key_obs.shape[1],
-                                to_add_obs.shape[-1],
-                            )
-                        key_obs = torch.cat([key_obs, to_add_obs], dim=-1)
-                    else:
-                        raise NotImplementedError(
-                            f"Operation {operation} not implemented"
-                        )
+        Returns:
+            TensorDict with transformer output added at self.out_keys[0].
+        """
+        all_tokens = []
+        for in_key in self._token_input_keys:
+            if tensordict[in_key].dim() == 2:
+                all_tokens.append(tensordict[in_key].unsqueeze(1))
             else:
-                key_obs = {input_key: key_obs}
-                key_obs = input_model(key_obs)
+                all_tokens.append(tensordict[in_key])
+        all_tokens = torch.cat(all_tokens, dim=1)
 
-            if len(key_obs.shape) == 2:
-                # Add a sequence dimension
-                key_obs = key_obs.unsqueeze(1)
+        all_masks = []
+        for in_key in self._token_input_keys:
+            if (
+                self.config.input_and_mask_mapping
+                and in_key in self.config.input_and_mask_mapping
+            ):
+                mask_key = self.config.input_and_mask_mapping[in_key]
 
-            cat_obs.append(key_obs)
-
-            if self.mask_keys[model_name] is not None:
-                key_mask = input_dict[self.mask_keys[model_name]]
                 # Our mask is 1 for valid and 0 for invalid
                 # The transformer expects the mask to be 0 for valid and 1 for invalid
-                key_mask = key_mask.logical_not()
+                mask = tensordict[mask_key].logical_not()
+                if tensordict[mask_key].dim() == 1:
+                    all_masks.append(mask.unsqueeze(1))
+                else:
+                    all_masks.append(mask)
             else:
-                key_mask = torch.zeros(
-                    batch_size,
-                    key_obs.shape[1],
-                    dtype=torch.bool,
-                    device=device,
-                )
-            cat_mask.append(key_mask)
+                if tensordict[in_key].dim() == 2:
+                    all_masks.append(
+                        torch.zeros(
+                            tensordict.batch_size[0],
+                            1,
+                            dtype=torch.bool,
+                            device=tensordict[in_key].device,
+                        )
+                    )
+                else:
+                    all_masks.append(
+                        torch.zeros(
+                            tensordict.batch_size[0],
+                            tensordict[in_key].shape[1],
+                            dtype=torch.bool,
+                            device=tensordict[in_key].device,
+                        )
+                    )
+        all_masks = torch.cat(all_masks, dim=1)
 
-        # Concatenate all the features
-        cat_obs = torch.cat(cat_obs, dim=1)
-        cat_mask = torch.cat(cat_mask, dim=1)
+        output = self.seqTransEncoder(
+            all_tokens, src_key_padding_mask=all_masks
+        )  # [batch, seq_len, features]
+        output = output[:, 0, :]  # [batch, features] - take first token
 
-        # obs creation works in batch_first but transformer expects seq_len first
-        cat_obs = cat_obs.permute(1, 0, 2).contiguous()  # [seq_len, bs, d]
+        if self.output_activation is not None:
+            output = self.output_activation(output)
 
-        cur_mask = cat_mask.unsqueeze(1).expand(-1, cat_obs.shape[0], -1)
-        cur_mask = torch.repeat_interleave(cur_mask, self.config.num_heads, dim=0)
+        tensordict[self.out_keys[0]] = output
 
-        output = self.seqTransEncoder(cat_obs, mask=cur_mask)[0]  # [bs, d]
-
-        return output
-
-    def forward(self, input_dict):
-        output = self.get_extracted_features(input_dict)
-
-        if self.config.get("output_model", None) is not None:
-            output = self.output_model(output)
-
-        return output
+        return tensordict

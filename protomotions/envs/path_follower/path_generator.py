@@ -1,9 +1,33 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
 import numpy as np
 import torch
 
+from protomotions.envs.obs.config import PathGeneratorConfig
+
 
 class PathGenerator:
-    def __init__(self, config, device, num_envs, episode_dur, height_conditioned):
+    def __init__(
+        self,
+        config: PathGeneratorConfig,
+        device: torch.device,
+        num_envs: int,
+        episode_dur: float,
+        height_conditioned: bool,
+    ):
         self.config = config
         self.device = device
 
@@ -48,8 +72,10 @@ class PathGenerator:
             sharp_mask = torch.bernoulli(sharp_probs) == 1.0
             dtheta[sharp_mask] = dtheta_sharp[sharp_mask]
 
-            if self.config.get('use_forward_path_only', False):
-                dtheta[:, 0] = np.pi * torch.ones(n, device=self.device)  # straight path
+            if self.config.use_forward_path_only:
+                dtheta[:, 0] = np.pi * torch.ones(
+                    n, device=self.device
+                )  # straight path
             else:
                 dtheta[:, 0] = np.pi * (
                     2 * torch.rand([n], device=self.device) - 1.0
@@ -61,7 +87,7 @@ class PathGenerator:
                 self.config.start_speed_max - self.config.speed_min
             ) * torch.rand([n], device=self.device) + self.config.speed_min  # Speed
 
-            dspeed_z = (2 * torch.rand([n, num_verts - 1], device=self.device) - 1.0)
+            dspeed_z = 2 * torch.rand([n, num_verts - 1], device=self.device) - 1.0
             dspeed_z *= self.config.accel_z_max * self.dt
 
             speed_z = torch.zeros_like(dspeed_z)
@@ -76,14 +102,14 @@ class PathGenerator:
                 else:
                     speed_z[:, i] = dspeed_z[:, i]  # Initial velocity
 
-                speed_z[:, i] = torch.clip(speed_z[:, i],
-                                         -self.config.speed_z_max,
-                                         self.config.speed_z_max)
+                speed_z[:, i] = torch.clip(
+                    speed_z[:, i], -self.config.speed_z_max, self.config.speed_z_max
+                )
 
                 head_height[:, i + 1] = head_height[:, i] + speed_z[:, i] * self.dt
-                head_height[:, i + 1] = torch.clip(head_height[:, i + 1],
-                                                   min=self.head_min,
-                                                   max=self.head_max)
+                head_height[:, i + 1] = torch.clip(
+                    head_height[:, i + 1], min=self.head_min, max=self.head_max
+                )
                 if self.use_naive_path_generator:
                     max_speed = self.config.speed_max
                 else:

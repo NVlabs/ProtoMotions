@@ -1,0 +1,8 @@
+# Checkerboard ground material
+newmtl checkerboard_material
+Ka 1.0 1.0 1.0
+Kd 1.0 1.0 1.0
+Ks 0.1 0.1 0.1
+Ns 10.0
+map_Kd checkerboard_texture.png
+

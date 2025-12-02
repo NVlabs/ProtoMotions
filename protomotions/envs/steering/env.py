@@ -1,88 +1,134 @@
-import numpy as np
+# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+"""Steering task environment for locomotion control.
+
+This module implements a steering task where the agent must walk in a target direction
+at a target speed. The target direction and speed change periodically to encourage
+versatile locomotion capabilities.
+
+Key Classes:
+    - Steering: Steering task environment
+
+Key Features:
+    - Variable target speeds (including stopping)
+    - Periodic heading changes with random variations
+    - Visual markers for target direction
+    - Rewards for velocity and heading matching
+"""
+
 import torch
-from torch import Tensor
-from isaac_utils import rotations, torch_utils
+from protomotions.utils import rotations
 from protomotions.envs.base_env.env import BaseEnv
-from protomotions.simulator.base_simulator.config import MarkerConfig, VisualizationMarker, MarkerState
+from protomotions.envs.obs.steering_obs import SteeringObs
+from protomotions.simulator.base_simulator.config import (
+    MarkerConfig,
+    VisualizationMarkerConfig,
+    MarkerState,
+)
 
 
 class Steering(BaseEnv):
-    def __init__(self, config, device: torch.device, *args, **kwargs):
-        super().__init__(config=config, device=device, *args, **kwargs)
+    """Steering task environment for humanoid locomotion.
 
-        self._tar_speed_min = self.config.steering_params.tar_speed_min
-        self._tar_speed_max = self.config.steering_params.tar_speed_max
+    Trains agents to walk in a target direction at a target speed. The agent
+    receives observations of the target heading and speed, and is rewarded for
+    moving in the correct direction at the correct velocity. The target direction
+    and speed change periodically during training to encourage versatile locomotion.
 
-        self._heading_change_steps_min = (
-            self.config.steering_params.heading_change_steps_min
-        )
-        self._heading_change_steps_max = (
-            self.config.steering_params.heading_change_steps_max
-        )
-        self._random_heading_probability = (
-            self.config.steering_params.random_heading_probability
-        )
-        self._standard_heading_change = (
-            self.config.steering_params.standard_heading_change
-        )
-        self._standard_speed_change = self.config.steering_params.standard_speed_change
-        self._stop_probability = self.config.steering_params.stop_probability
+    Key features:
+    - Variable target speeds (can include stopping)
+    - Periodic heading changes with random variations
+    - Visual markers showing target direction
+    - Rewards for matching target velocity and heading
 
-        self.steering_obs = torch.zeros(
-            (self.config.num_envs, self.config.steering_params.obs_size),
+    Args:
+        config: Steering environment configuration.
+        device: PyTorch device for computations.
+        *args: Additional arguments passed to BaseEnv.
+        **kwargs: Additional keyword arguments passed to BaseEnv.
+
+    Attributes:
+        steering_obs_cb: Steering observation component that manages task state.
+
+    Example:
+        >>> config = SteeringEnvConfig()
+        >>> env = Steering(config, robot_config, simulator_config, device)
+        >>> obs, _ = env.reset()
+        >>> next_obs, rewards, dones, info = env.step(actions)
+    """
+
+    def __init__(
+        self,
+        config,
+        robot_config,
+        device: torch.device,
+        terrain,
+        simulator,
+        scene_lib,
+        motion_lib,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(
+            config=config,
+            robot_config=robot_config,
             device=device,
-            dtype=torch.float,
+            terrain=terrain,
+            simulator=simulator,
+            scene_lib=scene_lib,
+            motion_lib=motion_lib,
+            *args,
+            **kwargs,
         )
 
-        self._heading_change_steps = torch.zeros(
-            [self.num_envs], device=self.device, dtype=torch.int64
-        )
+        # Initialize steering observation component (manages all task state)
+        self.steering_obs_cb = SteeringObs(self.config.steering_obs, self)
+
+        # Previous root position for reward computation
         self._prev_root_pos = torch.zeros(
             [self.num_envs, 3], device=self.device, dtype=torch.float
         )
 
-        self._tar_dir_theta = torch.zeros(
-            self.num_envs, device=self.device, dtype=torch.float
-        )
-        self._tar_dir = torch.zeros(
-            [self.num_envs, 2], device=self.device, dtype=torch.float
-        )
-        self._tar_dir[..., 0] = 1.0
+    def create_visualization_markers(self, headless: bool):
+        visualization_markers = super().create_visualization_markers(headless)
 
-        self._tar_speed = torch.ones(
-            [self.num_envs], device=self.device, dtype=torch.float
-        )
+        if headless:
+            return visualization_markers
 
-    def create_visualization_markers(self):
-        if self.config.headless:
-            return {}
-
-        visualization_markers = super().create_visualization_markers()
-        
-        steering_markers = []
-        steering_markers.append(MarkerConfig(size="regular"))
-        steering_markers_cfg = VisualizationMarker(
-            type="arrow",
-            color=(0.0, 1.0, 1.0),
-            markers=steering_markers
+        steering_markers = [MarkerConfig(size="regular")]
+        steering_markers_cfg = VisualizationMarkerConfig(
+            type="arrow", color=(0.0, 1.0, 1.0), markers=steering_markers
         )
         visualization_markers["steering_markers"] = steering_markers_cfg
 
         return visualization_markers
 
     def get_markers_state(self):
-        if self.config.headless:
+        if self.simulator.headless:
             return {}
 
         markers_state = super().get_markers_state()
 
-        marker_root_pos = self.simulator.get_root_state().root_pos
-        marker_root_pos[..., 0:2] += self._tar_dir
+        marker_root_pos = self.simulator.get_root_state().root_pos.clone()
+        marker_root_pos[..., 0:2] += self.steering_obs_cb.tar_dir
 
         heading_axis = torch.zeros_like(marker_root_pos)
         heading_axis[..., -1] = 1.0
         marker_rot = rotations.quat_from_angle_axis(
-            self._tar_dir_theta, heading_axis, True
+            self.steering_obs_cb.tar_dir_theta, heading_axis, True
         )
         markers_state["steering_markers"] = MarkerState(
             translation=marker_root_pos.view(self.num_envs, -1, 3),
@@ -91,148 +137,45 @@ class Steering(BaseEnv):
 
         return markers_state
 
-    def reset(self, env_ids=None):
+    def reset(self, env_ids=None, sample_flat=False, disable_motion_resample=False):
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=self.device, dtype=torch.long)
-        if len(env_ids) > 0:
-            self.reset_heading_task(env_ids)
-        return super().reset(env_ids)
-
-    def post_physics_step(self):
-        super().post_physics_step()
-        self.check_update_task()
-
-    def check_update_task(self):
-        reset_task_mask = self.progress_buf >= self._heading_change_steps
-        rest_env_ids = reset_task_mask.nonzero(as_tuple=False).flatten()
-        if len(rest_env_ids) > 0:
-            self.reset_heading_task(rest_env_ids)
-
-    def reset_heading_task(self, env_ids):
-        n = len(env_ids)
-        if np.random.binomial(1, self._random_heading_probability):
-            dir_theta = 2 * np.pi * torch.rand(n, device=self.device) - np.pi
-            tar_speed = (self._tar_speed_max - self._tar_speed_min) * torch.rand(
-                n, device=self.device
-            ) + self._tar_speed_min
-        else:
-            dir_delta_theta = (
-                2 * self._standard_heading_change * torch.rand(n, device=self.device)
-                - self._standard_heading_change
-            )
-            # map tar_dir_theta back to [0, 2pi], add delta, project back into [0, 2pi] and then shift.
-            dir_theta = (dir_delta_theta + self._tar_dir_theta[env_ids] + np.pi) % (
-                2 * np.pi
-            ) - np.pi
-
-            speed_delta = (
-                2 * self._standard_speed_change * torch.rand(n, device=self.device)
-                - self._standard_speed_change
-            )
-            tar_speed = torch.clamp(
-                speed_delta + self._tar_speed[env_ids],
-                min=self._tar_speed_min,
-                max=self._tar_speed_max,
-            )
-
-        tar_dir = torch.stack([torch.cos(dir_theta), torch.sin(dir_theta)], dim=-1)
-
-        change_steps = torch.randint(
-            low=self._heading_change_steps_min,
-            high=self._heading_change_steps_max,
-            size=(n,),
-            device=self.device,
-            dtype=torch.int64,
+        obs, info = super().reset(
+            env_ids, sample_flat, disable_motion_resample=disable_motion_resample
         )
-
-        stop_probs = torch.ones(n, device=self.device) * self._stop_probability
-        should_stop = torch.bernoulli(stop_probs)
-
-        self._tar_speed[env_ids] = tar_speed * (1.0 - should_stop)
-        self._tar_dir_theta[env_ids] = dir_theta
-        self._tar_dir[env_ids] = tar_dir
-        self._heading_change_steps[env_ids] = self.progress_buf[env_ids] + change_steps
+        if len(env_ids) > 0:
+            self.steering_obs_cb.reset_task(env_ids)
+        return obs, info
 
     def compute_observations(self, env_ids=None):
         super().compute_observations(env_ids)
 
         if env_ids is None:
-            root_states = self.simulator.get_root_state()
-            tar_dir = self._tar_dir
-            tar_speed = self._tar_speed
-        else:
-            root_states = self.simulator.get_root_state(env_ids)
-            tar_dir = self._tar_dir[env_ids]
-            tar_speed = self._tar_speed[env_ids]
+            env_ids = torch.arange(self.num_envs, device=self.device, dtype=torch.long)
 
-        obs = compute_heading_observations(root_states.root_rot, tar_dir, tar_speed)
-        self.steering_obs[env_ids] = obs
+        # Compute steering observations (callback handles everything internally)
+        self.steering_obs_cb.compute_observations(env_ids)
 
     def get_obs(self):
         obs = super().get_obs()
-        obs.update({"steering": self.steering_obs})
+        obs.update(self.steering_obs_cb.get_obs())
         return obs
 
-    def compute_reward(self):
-        root_pos = self.simulator.get_root_state().root_pos
-        self.rew_buf[:] = compute_heading_reward(
-            root_pos, self._prev_root_pos, self._tar_dir, self._tar_speed, self.dt
-        )
-        self._prev_root_pos[:] = root_pos
+    def _get_reward_context(self):
+        """Extend reward context with steering-specific variables."""
+        context = super()._get_reward_context()
 
+        # Add steering-specific context for reward computation
+        context["tar_dir"] = self.steering_obs_cb.tar_dir
+        context["tar_speed"] = self.steering_obs_cb.tar_speed
+        context["prev_root_pos"] = self._prev_root_pos
 
-#####################################################################
-###=========================jit functions=========================###
-#####################################################################
+        return context
 
-
-@torch.jit.script
-def compute_heading_observations(
-    root_rot: Tensor, tar_dir: Tensor, tar_speed: Tensor
-) -> Tensor:
-    tar_dir3d = torch.cat([tar_dir, torch.zeros_like(tar_dir[..., 0:1])], dim=-1)
-    heading_rot = torch_utils.calc_heading_quat_inv(root_rot, True)
-
-    local_tar_dir = rotations.quat_rotate(heading_rot, tar_dir3d, True)
-    local_tar_dir = local_tar_dir[..., 0:2]
-
-    tar_speed = tar_speed.unsqueeze(-1)
-
-    obs = torch.cat([local_tar_dir, tar_speed], dim=-1)
-    return obs
-
-
-@torch.jit.script
-def compute_heading_reward(
-    root_pos: Tensor,
-    prev_root_pos: Tensor,
-    tar_dir: Tensor,
-    tar_speed: Tensor,
-    dt: float,
-) -> Tensor:
-    vel_err_scale = 0.25
-    tangent_err_w = 0.1
-
-    delta_root_pos = root_pos - prev_root_pos
-    root_vel = delta_root_pos / dt
-    tar_dir_speed = torch.sum(tar_dir * root_vel[..., :2], dim=-1)
-
-    tar_dir_vel = tar_dir_speed.unsqueeze(-1) * tar_dir
-    tangent_vel = root_vel[..., :2] - tar_dir_vel
-
-    tangent_speed = torch.sum(tangent_vel, dim=-1)
-
-    tar_vel_err = tar_speed - tar_dir_speed
-    tangent_vel_err = tangent_speed
-    dir_reward = torch.exp(
-        -vel_err_scale
-        * (
-            tar_vel_err * tar_vel_err
-            + tangent_err_w * tangent_vel_err * tangent_vel_err
-        )
-    )
-
-    speed_mask = tar_dir_speed < -0.5
-    dir_reward[speed_mask] = 0
-
-    return dir_reward
+    def post_physics_step(self):
+        """Update environment state after physics simulation step."""
+        # Check if heading task needs updating (before observations are computed)
+        self.steering_obs_cb.check_update_task()
+        super().post_physics_step()
+        # Update prev_root_pos for next step's reward computation (after reward computed)
+        self._prev_root_pos[:] = self.simulator.get_root_state().root_pos

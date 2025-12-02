@@ -1,0 +1,24 @@
+# Checkerboard ground plane
+# Large plane at z=0 for visualization
+mtllib checkerboard_ground.mtl
+
+# Vertices (100m x 100m plane centered at origin)
+v -50.0 -50.0 0.0
+v 50.0 -50.0 0.0
+v 50.0 50.0 0.0
+v -50.0 50.0 0.0
+
+# UV coordinates (repeat texture 20x20 times for 0.5m squares)
+vt 0.0 0.0
+vt 20.0 0.0
+vt 20.0 20.0
+vt 0.0 20.0
+
+# Normals (pointing up in Z)
+vn 0.0 0.0 1.0
+
+# Face (two triangles forming a quad)
+usemtl checkerboard_material
+f 1/1/1 2/2/1 3/3/1
+f 1/1/1 3/3/1 4/4/1
+

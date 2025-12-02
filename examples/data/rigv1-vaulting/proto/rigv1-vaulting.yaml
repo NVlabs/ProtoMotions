@@ -1,0 +1,5 @@
+motions:
+- file: generated_vault_over_small_obstacle.motion
+  fps: 30
+  idx: 0
+  weight: 1.0

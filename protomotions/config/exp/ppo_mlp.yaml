@@ -1,8 +1,0 @@
-# @package _global_
-
-defaults:
-  - /agent/ppo/agent
-  - /env/base_env
-
-  - /agent/ppo/models/mlp_actor
-  - /agent/ppo/models/mlp_critic

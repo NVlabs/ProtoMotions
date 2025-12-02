@@ -1,64 +1,145 @@
-from isaac_utils import torch_utils, rotations
+# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+"""Path following task environment for navigation.
+
+This module implements a path following task where agents must follow predefined
+trajectories. The agent receives observations of future waypoints along the path
+and is rewarded for staying close to the path and making forward progress.
+
+Key Classes:
+    - PathFollowing: Path following task environment
+
+Key Features:
+    - Multiple future waypoint observations (via PathObs component)
+    - Path generation (straight lines, curves, complex trajectories)
+    - Visual path markers
+    - Configurable path complexity
+    - Reward via reward component system
+"""
 
 import torch
-from torch import Tensor
-from protomotions.envs.path_follower.path_generator import PathGenerator
+
 from protomotions.envs.base_env.env import BaseEnv
-from protomotions.simulator.base_simulator.config import MarkerConfig, VisualizationMarker, MarkerState
+from protomotions.envs.obs.path_obs import PathObs
+from protomotions.simulator.base_simulator.config import (
+    MarkerConfig,
+    VisualizationMarkerConfig,
+    MarkerState,
+)
+from protomotions.components.pose_lib import build_body_ids_tensor
+from protomotions.envs.path_follower.config import PathFollowerEnvConfig
+from protomotions.envs.utils.terminations import (
+    combine_fall_termination,
+    check_max_length_term,
+    check_path_distance_term,
+    check_path_height_term,
+)
+
 
 class PathFollowing(BaseEnv):
-    def __init__(self, config, device: torch.device, *args, **kwargs):
-        super().__init__(config=config, device=device, *args, **kwargs)
+    """Path following task environment for humanoid locomotion.
 
-        head_body_name = self.config.robot.head_body_name
-        self.head_body_id = self.simulator.build_body_ids_tensor([head_body_name]).item()
+    Trains agents to follow predefined paths in the environment. The agent receives
+    observations of future waypoints along the path and is rewarded for staying close
+    to the path and making forward progress. Paths can be straight lines, curves, or
+    complex trajectories.
 
-        self._num_traj_samples = self.config.path_follower_params.num_traj_samples
-        self._traj_sample_timestep = (
-            self.config.path_follower_params.traj_sample_timestep
-        )
+    The environment samples multiple future positions along the path and provides them
+    as observations to the agent. Visual markers show the path waypoints during
+    visualization. This task is useful for training navigation behaviors that can be
+    combined with style rewards (e.g., via AMP).
 
-        self.path_obs = torch.zeros(
-            (
-                self.config.num_envs,
-                self.config.path_follower_params.path_obs_size,
-            ),
+    Args:
+        config: Path following configuration including path generator parameters.
+        device: PyTorch device for computations.
+        *args: Additional arguments passed to BaseEnv.
+        **kwargs: Additional keyword arguments passed to BaseEnv.
+
+    Attributes:
+        path_obs_cb: Path observation component (manages path generator and observations).
+        head_body_id: Index of the head body for tracking agent position.
+
+    Example:
+        >>> config = PathFollowerEnvConfig()
+        >>> env = PathFollowing(config, robot_config, simulator_config, device)
+        >>> obs, _ = env.reset()
+        >>> next_obs, rewards, dones, info = env.step(actions)
+    """
+
+    config: PathFollowerEnvConfig
+
+    def __init__(
+        self,
+        config: PathFollowerEnvConfig,
+        robot_config,
+        device: torch.device,
+        terrain,
+        simulator,
+        scene_lib,
+        motion_lib,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(
+            config=config,
+            robot_config=robot_config,
             device=device,
-            dtype=torch.float,
+            terrain=terrain,
+            simulator=simulator,
+            scene_lib=scene_lib,
+            motion_lib=motion_lib,
+            *args,
+            **kwargs,
         )
 
-        self._fail_dist = 4.0
-        self._fail_height_dist = 0.5
+        # Get head body ID for tracking
+        self.head_body_id = build_body_ids_tensor(
+            self.robot_config.kinematic_info.body_names,
+            self.robot_config.common_naming_to_robot_body_names["head_body_name"],
+            self.device,
+        ).item()
 
-        self.build_path_generator()
+        # Initialize path observation component
+        self.path_obs_cb = PathObs(self.config.path_obs, self)
+        self.path_obs_cb.build_path_generator(self.head_body_id)
 
-    def create_visualization_markers(self):
-        if self.config.headless:
-            return {}
+    def create_visualization_markers(self, headless: bool):
+        visualization_markers = super().create_visualization_markers(headless)
 
-        visualization_markers = super().create_visualization_markers()
+        if headless:
+            return visualization_markers
 
-        path_markers = []
-        for i in range(self.config.path_follower_params.num_traj_samples):
-            path_markers.append(MarkerConfig(size="regular"))
-        path_markers_cfg = VisualizationMarker(
-            type="sphere",
-            color=(1.0, 0.0, 0.0),
-            markers=path_markers
+        num_samples = self.config.path_obs.num_traj_samples
+        path_markers = [MarkerConfig(size="regular") for _ in range(num_samples)]
+        path_markers_cfg = VisualizationMarkerConfig(
+            type="sphere", color=(1.0, 0.0, 0.0), markers=path_markers
         )
         visualization_markers["path_markers"] = path_markers_cfg
 
         return visualization_markers
 
     def get_markers_state(self):
-        if self.config.headless:
+        if self.simulator.headless:
             return {}
 
         markers_state = super().get_markers_state()
 
-        traj_samples = self.fetch_path_samples().clone()
-        if not self.config.path_follower_params.height_conditioned:
-            traj_samples[..., 2] = 0.8  # CT hack
+        traj_samples = self.path_obs_cb.fetch_path_samples().clone()
+        if not self.path_obs_cb.height_conditioned:
+            traj_samples[..., 2] = 0.8  # Set height to 0.8m when not height conditioned
 
         ground_below_marker = self.terrain.get_ground_heights(
             traj_samples[..., :2].view(-1, 2)
@@ -78,23 +159,38 @@ class PathFollowing(BaseEnv):
     ###############################################################
     # Handle resets
     ###############################################################
-    def reset(self, env_ids=None):
-        obs = super().reset(env_ids)
+    def _reset_path_generator(self, env_ids, root_pos: torch.Tensor):
+        """Reset path generator with ground-relative head position.
 
-        if env_ids is None:
-            env_ids = torch.arange(self.num_envs, device=self.device, dtype=torch.long)
-        bodies_positions = self.simulator.get_bodies_state(env_ids).rigid_body_pos
-        head_position = bodies_positions[:, self.head_body_id]
+        Args:
+            env_ids: Environment indices being reset.
+            root_pos: Root positions from reset state [len(env_ids), 3].
+        """
+        # Build head position from root x,y and approximate head height
+        head_position = root_pos.clone()
+        height_below_head = self.terrain.get_ground_heights(head_position).squeeze(1)
+        head_position[..., 2] -= height_below_head
 
-        if len(env_ids) > 0:
-            flat_reset_head_position = head_position.view(-1, 3)
-            ground_below_reset_head = self.terrain.get_ground_heights(
-                head_position[..., :2]
-            )
-            flat_reset_head_position[..., 2] -= ground_below_reset_head.view(-1)
-            self.path_generator.reset(env_ids, flat_reset_head_position)
+        # Reset path starting from ground-relative head position
+        self.path_obs_cb.reset_path(env_ids, head_position)
 
-        return obs
+    def compute_default_reset_state(self, env_ids, sample_flat: bool = False):
+        """Reset environments to default state and initialize path."""
+        new_states, new_object_states = super().compute_default_reset_state(
+            env_ids, sample_flat
+        )
+        self._reset_path_generator(env_ids, new_states.root_pos)
+        return new_states, new_object_states
+
+    def compute_ref_reset_state(
+        self, env_ids, motion_ids, motion_times, sample_flat: bool = False
+    ):
+        """Reset environments from reference motion and initialize path."""
+        new_states, new_object_states = super().compute_ref_reset_state(
+            env_ids, motion_ids, motion_times, sample_flat
+        )
+        self._reset_path_generator(env_ids, new_states.root_pos)
+        return new_states, new_object_states
 
     ###############################################################
     # Environment step logic
@@ -105,250 +201,111 @@ class PathFollowing(BaseEnv):
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=self.device, dtype=torch.long)
 
-        bodies_positions = self.simulator.get_bodies_state(env_ids).rigid_body_pos
-        root_states = self.simulator.get_root_state(env_ids)
-        ground_below_head = torch.min(bodies_positions, dim=1).values[..., 2]
-        head_position = bodies_positions[:, self.head_body_id, :]
-
-        traj_samples = self.fetch_path_samples(env_ids)
-
-        flat_head_position = head_position.view(-1, 3)
-        flat_head_position[..., 2] -= ground_below_head.view(-1)
-
-        obs = compute_path_observations(
-            root_states.root_rot,
-            flat_head_position,
-            traj_samples,
-            self.config.path_follower_params.height_conditioned,
-        )
-
-        self.path_obs[env_ids] = obs
+        # Compute path observations (callback handles everything internally)
+        self.path_obs_cb.compute_observations(env_ids)
 
     def get_obs(self):
         obs = super().get_obs()
-        obs.update({"path": self.path_obs})
+        obs.update(self.path_obs_cb.get_obs())
         return obs
 
-    def compute_reward(self):
-        bodies_positions = self.simulator.get_bodies_state().rigid_body_pos
-        head_position = bodies_positions[:, self.head_body_id, :]
+    def _get_reward_context(self):
+        """Extend reward context with path-specific variables."""
+        context = super()._get_reward_context()
 
-        time = self.progress_buf * self.dt
-        env_ids = torch.arange(self.num_envs, device=self.device, dtype=torch.long)
-        tar_pos = self.path_generator.calc_pos(env_ids, time)
+        # Get current robot state
+        current_state = self.simulator.get_robot_state()
+        bodies_positions = current_state.rigid_body_pos
+        head_position = bodies_positions[:, self.head_body_id, :].clone()
 
+        # Get ground-relative head position
         ground_below_head = torch.min(bodies_positions, dim=1).values[..., 2]
-        head_position[..., 2] -= ground_below_head.view(-1)
+        head_position[..., 2] -= ground_below_head
 
-        self.rew_buf[:] = compute_path_reward(
-            head_position, tar_pos, self.config.path_follower_params.height_conditioned
-        )
+        # Get target position from path
+        tar_pos = self.path_obs_cb.calc_target_pos()
 
-    def compute_reset(self):
-        time = self.progress_buf * self.dt
+        # Add path-specific context for reward computation
+        context["head_pos"] = head_position
+        context["tar_pos"] = tar_pos
+        context["height_conditioned"] = self.path_obs_cb.height_conditioned
+
+        return context
+
+    def check_resets_and_terminations(self):
+        """Check reset and termination conditions for path following.
+
+        Returns:
+            Tuple of (reset_buf, terminate_buf) boolean tensors
+        """
         env_ids = torch.arange(self.num_envs, device=self.device, dtype=torch.long)
-        tar_pos = self.path_generator.calc_pos(env_ids, time)
+        tar_pos = self.path_obs_cb.calc_target_pos(env_ids)
 
         bodies_positions = self.simulator.get_bodies_state().rigid_body_pos
-        bodies_contact_buf = self.self_obs_cb.body_contacts.clone()
 
+        # Adjust body positions relative to ground
+        bodies_positions = bodies_positions.clone()
         bodies_positions[..., 2] -= (
             torch.min(bodies_positions, dim=1).values[:, 2].view(-1, 1)
         )
 
-        self.reset_buf[:], self.terminate_buf[:] = compute_humanoid_reset(
-            self.reset_buf,
-            self.progress_buf,
-            bodies_contact_buf,
-            self.non_termination_contact_body_ids,
-            bodies_positions,
-            tar_pos,
-            self.config.max_episode_length,
-            self._fail_dist,
-            self._fail_height_dist,
-            self.config.enable_height_termination,
-            self.config.path_follower_params.enable_path_termination,
-            self.config.path_follower_params.height_conditioned,
-            self.termination_heights
-            + self.terrain.get_ground_heights(
+        # Get binary contact flags from simulator
+        all_body_contacts = self.simulator.get_binary_body_contacts(
+            threshold=0.01
+        ).rigid_body_contacts
+
+        terminated = torch.zeros_like(self.reset_buf, dtype=torch.bool)
+
+        # Check for falls (contact + height conditions)
+        if self.config.enable_height_termination:
+            ground_heights = self.terrain.get_ground_heights(
                 bodies_positions[:, self.head_body_id, :2]
-            ),
-            self.head_body_id,
+            )
+            adjusted_termination_heights = self.termination_heights + ground_heights
+
+            has_fallen = combine_fall_termination(
+                all_body_contacts,
+                bodies_positions,
+                adjusted_termination_heights,
+                self.non_termination_contact_body_ids,
+                self.progress_buf,
+            )
+            terminated = terminated | has_fallen
+
+        # Check path-specific termination conditions
+        path_cfg = self.config.path_obs
+        if path_cfg.enable_path_termination:
+            head_pos = bodies_positions[..., self.head_body_id, :]
+
+            # Check distance from path
+            tar_fail = check_path_distance_term(
+                head_pos,
+                tar_pos,
+                path_cfg.fail_dist,
+                self.progress_buf,
+                min_progress=10,
+            )
+            terminated = terminated | tar_fail
+
+        # Check height deviation from path (if height-conditioned and path termination enabled)
+        if (
+            path_cfg.enable_path_termination
+            and path_cfg.path_generator.height_conditioned
+        ):
+            head_pos = bodies_positions[..., self.head_body_id, :]
+            tar_height_fail = check_path_height_term(
+                head_pos,
+                tar_pos,
+                path_cfg.fail_height_dist,
+                self.progress_buf,
+                min_progress=10,
+            )
+            terminated = terminated | tar_height_fail
+
+        # Check max episode length
+        max_length_reached = check_max_length_term(
+            self.progress_buf, self.config.max_episode_length
         )
+        reset_buf = max_length_reached | terminated
 
-    ###############################################################
-    # Helpers
-    ###############################################################
-    def build_path_generator(self):
-        episode_dur = self.config.max_episode_length * self.dt
-        self.path_generator = PathGenerator(
-            self.config.path_follower_params.path_generator,
-            self.device,
-            self.num_envs,
-            episode_dur,
-            self.config.path_follower_params.height_conditioned,
-        )
-
-    def fetch_path_samples(self, env_ids=None):
-        # 5 seconds with 0.5 second intervals, 10 samples.
-        if env_ids is None:
-            env_ids = torch.arange(self.num_envs, device=self.device, dtype=torch.long)
-
-        timestep_beg = self.progress_buf[env_ids] * self.dt
-        timesteps = torch.arange(
-            self._num_traj_samples, device=self.device, dtype=torch.float
-        )
-        timesteps = timesteps * self._traj_sample_timestep
-        traj_timesteps = timestep_beg.unsqueeze(-1) + timesteps
-
-        env_ids_tiled = torch.broadcast_to(env_ids.unsqueeze(-1), traj_timesteps.shape)
-
-        traj_samples_flat = self.path_generator.calc_pos(
-            env_ids_tiled.flatten(), traj_timesteps.flatten()
-        )
-        traj_samples = torch.reshape(
-            traj_samples_flat,
-            shape=(
-                env_ids.shape[0],
-                self._num_traj_samples,
-                traj_samples_flat.shape[-1],
-            ),
-        )
-
-        return traj_samples
-
-
-#####################################################################
-###=========================jit functions=========================###
-#####################################################################
-
-
-@torch.jit.script
-def compute_path_observations(
-    root_rot: Tensor,
-    head_states: Tensor,
-    traj_samples: Tensor,
-    height_conditioned: bool,
-) -> Tensor:
-    heading_rot = torch_utils.calc_heading_quat_inv(root_rot, True)
-
-    heading_rot_exp = torch.broadcast_to(
-        heading_rot.unsqueeze(-2),
-        (heading_rot.shape[0], traj_samples.shape[1], heading_rot.shape[1]),
-    )
-    heading_rot_exp = torch.reshape(
-        heading_rot_exp,
-        (heading_rot_exp.shape[0] * heading_rot_exp.shape[1], heading_rot_exp.shape[2]),
-    )
-
-    traj_samples_delta = traj_samples - head_states.unsqueeze(-2)
-
-    traj_samples_delta_flat = torch.reshape(
-        traj_samples_delta,
-        (
-            traj_samples_delta.shape[0] * traj_samples_delta.shape[1],
-            traj_samples_delta.shape[2],
-        ),
-    )
-
-    local_traj_pos = rotations.quat_rotate(
-        heading_rot_exp, traj_samples_delta_flat, True
-    )
-    if not height_conditioned:
-        local_traj_pos = local_traj_pos[..., 0:2]
-
-    obs = torch.reshape(
-        local_traj_pos,
-        (traj_samples.shape[0], traj_samples.shape[1] * local_traj_pos.shape[1]),
-    )
-    return obs
-
-
-@torch.jit.script
-def compute_path_reward(head_pos, tar_pos, height_conditioned):
-    # type: (Tensor, Tensor, bool) -> Tensor
-    pos_err_scale = 2.0
-    height_err_scale = 10.0
-
-    pos_diff = tar_pos[..., 0:2] - head_pos[..., 0:2]
-    pos_err = torch.sum(pos_diff * pos_diff, dim=-1)
-    height_diff = tar_pos[..., 2] - head_pos[..., 2]
-    height_err = height_diff * height_diff
-
-    pos_reward = torch.exp(-pos_err_scale * pos_err)
-    height_reward = torch.exp(-height_err_scale * height_err)
-
-    if height_conditioned:
-        reward = (pos_reward + height_reward) * 0.5
-    else:
-        reward = pos_reward
-
-    return reward
-
-
-@torch.jit.script
-def compute_humanoid_reset(
-    reset_buf,
-    progress_buf,
-    contact_buf,
-    non_termination_contact_body_ids,
-    rigid_body_pos,
-    tar_pos,
-    max_episode_length,
-    fail_dist,
-    fail_height_dist,
-    enable_early_termination,
-    enable_path_termination,
-    enable_height_termination,
-    termination_heights,
-    head_body_id,
-):
-    # type: (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, float, float, float, bool, bool, bool, Tensor, int) -> Tuple[Tensor, Tensor]
-    terminated = torch.zeros_like(reset_buf)
-
-    if enable_early_termination:
-        masked_contact_buf = contact_buf.clone()
-        masked_contact_buf[:, non_termination_contact_body_ids, :] = 0
-        fall_contact = torch.any(torch.abs(masked_contact_buf) > 0.1, dim=-1)
-        fall_contact = torch.any(fall_contact, dim=-1)
-
-        body_height = rigid_body_pos[..., 2]
-        fall_height = body_height < termination_heights
-        fall_height[:, non_termination_contact_body_ids] = False
-        fall_height = torch.any(fall_height, dim=-1)
-
-        has_fallen = torch.logical_and(fall_contact, fall_height)
-        # first timestep can sometimes still have nonzero contact forces
-        # so only check after first couple of steps
-        has_fallen *= progress_buf > 1
-    else:
-        has_fallen = progress_buf < -1
-
-    if enable_path_termination:
-        head_pos = rigid_body_pos[..., head_body_id, :]
-        tar_delta = tar_pos - head_pos
-        tar_dist_sq = torch.sum(tar_delta * tar_delta, dim=-1)
-        tar_overall_fail = tar_dist_sq > fail_dist * fail_dist
-
-        if enable_height_termination:
-            tar_height = tar_pos[..., 2]
-            height_delta = tar_height - head_pos[..., 2]
-            tar_head_dist_sq = height_delta * height_delta
-            tar_height_fail = tar_head_dist_sq > fail_height_dist * fail_height_dist
-            tar_height_fail *= progress_buf > 20
-
-            tar_fail = torch.logical_or(tar_overall_fail, tar_height_fail)
-        else:
-            tar_fail = tar_overall_fail
-    else:
-        tar_fail = progress_buf < -1
-
-    has_failed = torch.logical_or(has_fallen, tar_fail)
-
-    terminated = torch.where(has_failed, torch.ones_like(reset_buf), terminated)
-
-    reset = torch.where(
-        progress_buf >= max_episode_length - 1, torch.ones_like(reset_buf), terminated
-    )
-
-    return reset, terminated
+        return reset_buf, terminated

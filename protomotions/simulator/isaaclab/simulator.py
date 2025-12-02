@@ -1,62 +1,96 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
 import torch
 
 import isaaclab.sim as sim_utils
 from isaaclab.scene import InteractiveScene
 from isaaclab.sim import SimulationContext, PhysxCfg
-from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
+from isaaclab.markers import VisualizationMarkers as IsaacLabVisualizationMarkers
+from isaaclab.markers import VisualizationMarkersCfg as IsaacLabVisualizationMarkersCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
-from easydict import EasyDict
-from protomotions.envs.base_env.env_utils.terrains.terrain import Terrain
-from protomotions.utils.scene_lib import SceneLib
+from protomotions.components.terrains.terrain import Terrain
+from protomotions.components.scene_lib import (
+    SceneLib,
+    MeshSceneObject,
+    BoxSceneObject,
+    SphereSceneObject,
+    CylinderSceneObject,
+)
 import os
 from pathlib import Path
-import xml.etree.ElementTree as ET
 import numpy as np
 from typing import Dict, List, Any, Optional, Tuple
 from protomotions.simulator.isaaclab.utils.scene import SceneCfg
+from protomotions.simulator.isaaclab.config import (
+    IsaacLabSimulatorConfig,
+    ProtoMotionsIsaacLabMarkers,
+)
 from protomotions.simulator.base_simulator.simulator import Simulator
 from protomotions.simulator.base_simulator.config import (
     MarkerState,
-    ControlType,
-    VisualizationMarker,
+    VisualizationMarkerConfig,
     SimBodyOrdering,
-    SimulatorConfig,
 )
-from protomotions.simulator.base_simulator.robot_state import RobotState
+from protomotions.simulator.base_simulator.simulator_state import (
+    RobotState,
+    RootOnlyState,
+    StateConversion,
+    ObjectState,
+    ResetState,
+)
 
 
 class IsaacLabSimulator(Simulator):
+    config: IsaacLabSimulatorConfig
+
     # =====================================================
     # Group 1: Initialization & Configuration
     # =====================================================
     def __init__(
         self,
-        config: SimulatorConfig,
+        config: IsaacLabSimulatorConfig,
+        robot_config,
         terrain: Terrain,
         device: torch.device,
         simulation_app: Any,
-        scene_lib: Optional[SceneLib] = None,
-        visualization_markers: Optional[Dict[str, VisualizationMarker]] = None,
+        scene_lib: SceneLib,
+        custom_key_handlers: Optional[Dict[str, callable]] = None,
     ) -> None:
         """
-        Initialize the IsaacLabSimulator.
+        Initialize the IsaacLabSimulator shell.
 
         Parameters:
             config (SimulatorConfig): The configuration dictionary.
+            robot_config (RobotConfig): The robot configuration.
             terrain (Terrain): Terrain data for simulation.
             device (torch.device): Device to use for computation.
             simulation_app (Any): The simulation application instance.
-            scene_lib (Optional[SceneLib], optional): The scene library containing scene and object data.
-            visualization_markers (Optional[Dict[str, VisualizationMarker]], optional): Configuration for visualization markers.
+            scene_lib (SceneLib): Scene library (always provided, can be empty).
         """
         super().__init__(
             config=config,
+            robot_config=robot_config,
             scene_lib=scene_lib,
             terrain=terrain,
-            visualization_markers=visualization_markers,
             device=device,
         )
+
+        # Store custom key handlers
+        self._custom_key_handlers = custom_key_handlers or {}
 
         sim_cfg = sim_utils.SimulationCfg(
             device=str(device),
@@ -83,14 +117,34 @@ class IsaacLabSimulator(Simulator):
             self._setup_keyboard()
         print("[INFO]: Setup complete...")
 
+    def _create_simulation(self) -> None:
+        """Create the IsaacLab simulation environment.
+
+        Called by base class _initialize_with_markers() after visualization markers
+        are set. Completes scene setup and resets simulation.
+        """
         self._robot = self._scene["robot"]
-        self._contact_sensor = self._scene["contact_sensor"]
+        # Build a mapping from body name to contact sensor (if it exists)
+        self._contact_sensor_map = {}
+        for body_name in self._body_names:
+            if f"contact_sensor_{body_name}" in self._scene.keys():
+                self._contact_sensor_map[body_name] = self._scene[
+                    f"contact_sensor_{body_name}"
+                ]
+
         self._object = []
-        if self.scene_lib is not None and self.scene_lib.total_spawned_scenes > 0:
+        self._object_contact_sensor = []
+        if self.scene_lib.num_scenes() > 0:
             for obj_idx in range(self.scene_lib.num_objects_per_scene):
                 self._object.append(self._scene[f"object_{obj_idx}"])
-        if visualization_markers:
-            self._build_markers(visualization_markers)
+                if f"object_{obj_idx}_contact_sensor" in self._scene.keys():
+                    self._object_contact_sensor.append(
+                        self._scene[f"object_{obj_idx}_contact_sensor"]
+                    )
+                else:
+                    self._object_contact_sensor.append(None)
+        if self._visualization_markers:
+            self._build_markers(self._visualization_markers)
         self._sim.reset()
 
     def _get_scene_cfg(self) -> SceneCfg:
@@ -101,7 +155,7 @@ class IsaacLabSimulator(Simulator):
             SceneCfg: The constructed scene configuration.
         """
         scene_cfgs = None
-        if self.scene_lib is not None and self.scene_lib.total_spawned_scenes > 0:
+        if self.scene_lib.num_scenes() > 0:
             scene_cfgs, self._initial_scene_pos = self._preprocess_object_playground()
 
         scene_cfg = SceneCfg(
@@ -111,6 +165,8 @@ class IsaacLabSimulator(Simulator):
             env_spacing=2.0,
             scene_cfgs=scene_cfgs,
             terrain=self.terrain,
+            replicate_physics=scene_cfgs
+            is None,  # When there are objects, disable physics replication
         )
         return scene_cfg
 
@@ -123,122 +179,41 @@ class IsaacLabSimulator(Simulator):
         """
         print("=========== Building object playground")
 
-        objects_cfgs = []
-        for _ in range(self.scene_lib.num_objects_per_scene):
-            objects_cfgs.append([])
+        # Spawn objects at origin (actual positions set via reset_envs later)
         initial_obj_pos = torch.zeros(
             (self.num_envs, self.scene_lib.num_objects_per_scene, 7),
             device=self.device,
             dtype=torch.float,
         )
+        # Set identity quaternions (wxyz format for IsaacLab)
+        initial_obj_pos[..., 3] = 1.0  # w=1 for identity quaternion
 
-        for scene_idx, scene_spawn_info in enumerate(self.scene_lib.scenes):
-            scene_offset = self.scene_lib.scene_offsets[scene_idx]
+        # Build object configurations for IsaacLab
+        objects_cfgs = []
+        for _ in range(self.scene_lib.num_objects_per_scene):
+            objects_cfgs.append([])
 
-            height_at_scene_origin = self.terrain.get_ground_heights(
-                torch.tensor(
-                    [[scene_offset[0], scene_offset[1]]],
-                    device=self.device,
-                    dtype=torch.float,
-                )
-            ).item()
-            self._scene_position.append(
-                torch.tensor(
-                    [scene_offset[0], scene_offset[1], height_at_scene_origin],
-                    device=self.device,
-                    dtype=torch.float,
-                )
-            )
-            self._object_dims.append([])
-
-            for obj_idx, obj in enumerate(scene_spawn_info.objects):
-                # Get the spawn info for this object which contains the correct ID
-                object_spawn_info = next(
-                    info
-                    for info in self.scene_lib.object_spawn_list
-                    if info.object_path == obj.object_path
-                    and (info.is_first_instance or info.first_instance_id == info.id)
-                )
-
-                file_extension = object_spawn_info.object_path.split("/")[-1].split(
-                    "."
-                )[-1]
-
-                assert file_extension in [
-                    "usd",
-                    "usda",
-                    "urdf",
-                ], f"Object asset [{obj.object_path}] must be a USD/URDF file"
-
-                # Calculate the global position of the object
-                global_object_position = torch.tensor(
-                    [
-                        scene_offset[0] + obj.translation[0],
-                        scene_offset[1] + obj.translation[1],
-                        0 + obj.translation[2],
-                    ],
-                    device=self.device,
-                    dtype=torch.float,
-                )
-
-                initial_obj_pos[scene_idx, obj_idx, :3] = global_object_position
-                initial_obj_pos[scene_idx, obj_idx, 3:] = torch.tensor(
-                    [
-                        obj.rotation[3],
-                        obj.rotation[0],
-                        obj.rotation[1],
-                        obj.rotation[2],
-                    ],
-                    device=self.device,
-                    dtype=torch.float,
-                )  # Convert xyzw to wxyz
-
-                main_dir_path = (
-                    f"{os.path.dirname(os.path.abspath(__file__))}/../../../"
-                )
-                asset_path = Path(
-                    os.path.join(main_dir_path, obj.object_path)
-                ).resolve()
-
+        for env_id, scene in enumerate(self.scene_lib.scenes):
+            for obj_idx, obj in enumerate(scene.objects):
                 # Common properties based on object options
                 rigid_props = sim_utils.RigidBodyPropertiesCfg(
-                    kinematic_enabled=obj.options.fix_base_link
+                    kinematic_enabled=obj.options.fix_base_link,
                 )
                 collision_props = sim_utils.CollisionPropertiesCfg(
                     contact_offset=0.002,
                     rest_offset=0.0,
                 )
 
-                if file_extension == "urdf":
-                    # Parse the URDF file
-                    tree = ET.parse(asset_path)
-                    root = tree.getroot()
-
-                    # Get the box dimensions from the collision geometry
-                    link = root.find("link")
-                    collision = link.find("collision")
-                    geometry = collision.find("geometry")
-                    box = geometry.find("box")
-                    size = box.get("size").split(" ")
-
-                    spawn_cfg = sim_utils.CuboidCfg(
-                        size=(
-                            float(size[0]),
-                            float(size[1]),
-                            float(size[2]),
-                        ),
-                        visual_material=sim_utils.PreviewSurfaceCfg(
-                            diffuse_color=(1.0, 0.6, 0.2), metallic=0.2
-                        ),
-                        rigid_props=rigid_props,
-                        mass_props=sim_utils.MassPropertiesCfg(
-                            mass=1.0, density=obj.options.density
-                        ),
-                        collision_props=collision_props,
+                # Handle different object types
+                if isinstance(obj, MeshSceneObject):
+                    main_dir_path = (
+                        f"{os.path.dirname(os.path.abspath(__file__))}/../../../"
                     )
-                else:
+                    asset_path = Path(
+                        os.path.join(main_dir_path, obj.object_path)
+                    ).resolve()
+
                     spawn_cfg = sim_utils.UsdFileCfg(
-                        activate_contact_sensors=True,
                         usd_path=str(asset_path),
                         rigid_props=rigid_props,
                         collision_props=collision_props,
@@ -246,15 +221,45 @@ class IsaacLabSimulator(Simulator):
                             diffuse_color=(0.2, 0.7, 0.3), metallic=0.2
                         ),
                     )
-                objects_cfgs[obj_idx].append(spawn_cfg)
+                elif isinstance(obj, BoxSceneObject):
+                    spawn_cfg = sim_utils.CuboidCfg(
+                        size=(obj.width, obj.depth, obj.height),
+                        visual_material=sim_utils.PreviewSurfaceCfg(
+                            diffuse_color=(0.8, 0.3, 0.3), metallic=0.2
+                        ),
+                        rigid_props=rigid_props,
+                        mass_props=sim_utils.MassPropertiesCfg(mass=-1, density=100),
+                        collision_props=collision_props,
+                    )
+                elif isinstance(obj, SphereSceneObject):
+                    spawn_cfg = sim_utils.SphereCfg(
+                        radius=obj.radius,
+                        visual_material=sim_utils.PreviewSurfaceCfg(
+                            diffuse_color=(0.3, 0.3, 0.8), metallic=0.2
+                        ),
+                        rigid_props=rigid_props,
+                        mass_props=sim_utils.MassPropertiesCfg(
+                            mass=-1, density=obj.options.density
+                        ),
+                        collision_props=collision_props,
+                    )
+                elif isinstance(obj, CylinderSceneObject):
+                    spawn_cfg = sim_utils.CylinderCfg(
+                        radius=obj.radius,
+                        height=obj.height,
+                        visual_material=sim_utils.PreviewSurfaceCfg(
+                            diffuse_color=(0.3, 0.8, 0.3), metallic=0.2
+                        ),
+                        rigid_props=rigid_props,
+                        mass_props=sim_utils.MassPropertiesCfg(
+                            mass=-1, density=obj.options.density
+                        ),
+                        collision_props=collision_props,
+                    )
+                else:
+                    raise ValueError(f"Unsupported object type: {type(obj)}")
 
-                object_dims = torch.tensor(
-                    object_spawn_info.object_dims, device=self.device, dtype=torch.float
-                )
-                self._object_dims[-1].append(object_dims)
-            self._object_dims[-1] = torch.stack(self._object_dims[-1]).reshape(
-                self._num_objects_per_scene, -1
-            )
+                objects_cfgs[obj_idx].append(spawn_cfg)
 
         return objects_cfgs, initial_obj_pos
 
@@ -264,48 +269,85 @@ class IsaacLabSimulator(Simulator):
         """
         from isaaclab.devices.keyboard.se2_keyboard import Se2Keyboard
 
-        self.keyboard_interface = Se2Keyboard()
+        try:
+            # Try Isaac Sim 5.0.0+ API - requires a cfg parameter with sim_device
+            from dataclasses import dataclass
+
+            @dataclass
+            class Se2KeyboardCfg:
+                v_x_sensitivity: float = 0.8
+                v_y_sensitivity: float = 0.4
+                omega_z_sensitivity: float = 1.0
+                sim_device: str = "cuda:0"  # Add required sim_device attribute
+
+            cfg = Se2KeyboardCfg()
+            self.keyboard_interface = Se2Keyboard(cfg=cfg)
+        except (TypeError, ImportError):
+            try:
+                # Try older API without cfg parameter
+                self.keyboard_interface = Se2Keyboard()
+            except TypeError:
+                # Fallback for older versions with individual parameters
+                self.keyboard_interface = Se2Keyboard(
+                    v_x_sensitivity=0.8, v_y_sensitivity=0.4, omega_z_sensitivity=1.0
+                )
+
         self.keyboard_interface.add_callback("R", self._requested_reset)
-        self.keyboard_interface.add_callback("U", self._update_inference_parameters)
         self.keyboard_interface.add_callback("L", self._toggle_video_record)
         self.keyboard_interface.add_callback(";", self._cancel_video_record)
         self.keyboard_interface.add_callback("Q", self.close)
         self.keyboard_interface.add_callback("O", self._toggle_camera_target)
         self.keyboard_interface.add_callback("J", self._push_robot)
+        self.keyboard_interface.add_callback("M", self._toggle_markers)
+
+        # Register custom key handlers for keys 1-0
+        self._register_custom_key_handlers()
+
+    def _register_custom_key_handlers(self) -> None:
+        """Register custom keyboard event handlers for keys 1-0"""
+        # Define available keys for custom handlers (1-0)
+        available_keys = {
+            "1": "NUMPAD_1",
+            "2": "NUMPAD_2",
+            "3": "NUMPAD_3",
+            "4": "NUMPAD_4",
+            "5": "NUMPAD_5",
+            "6": "NUMPAD_6",
+            "7": "NUMPAD_7",
+            "8": "NUMPAD_8",
+            "9": "NUMPAD_9",
+            "0": "NUMPAD_0",
+        }
+
+        # Register custom key handlers
+        for key_name, handler in self._custom_key_handlers.items():
+            if key_name in available_keys.keys():
+                try:
+                    self.keyboard_interface.add_callback(
+                        available_keys[key_name], handler
+                    )
+                    print(f"Registered custom key handler for '{key_name}'")
+                    # input()
+                except Exception as e:
+                    print(
+                        f"Warning: Failed to register custom key handler for '{key_name}': {e}"
+                    )
+            else:
+                print(f"Warning: Key '{key_name}' not available for custom handlers")
+                print(f"Available keys: {list(available_keys.keys())}")
 
     # =====================================================
     # Group 2: Environment Setup & Configuration
     # =====================================================
-    def on_environment_ready(self) -> None:
+    def _finalize_setup(self) -> None:
         """
         Configure initial environment settings when the simulation is ready.
         This includes setting up joint limits and initializing state tensors.
         """
-        self._isaaclab_default_state = RobotState(
-            root_pos=self._robot.data.root_pos_w.clone(),
-            root_rot=self._robot.data.root_quat_w.clone(),
-            root_vel=torch.zeros(
-                (len(self._robot.data.root_pos_w), 3), device=self.device
-            ),
-            root_ang_vel=torch.zeros(
-                (len(self._robot.data.root_pos_w), 3), device=self.device
-            ),
-            dof_pos=self._robot.data.joint_pos.clone(),
-            dof_vel=self._robot.data.joint_vel.clone(),
-            rigid_body_pos=self._robot.data.body_pos_w.clone(),
-            rigid_body_rot=self._robot.data.body_quat_w.clone(),
-            rigid_body_vel=self._robot.data.body_lin_vel_w.clone(),
-            rigid_body_ang_vel=self._robot.data.body_ang_vel_w.clone(),
-        )
-
-        dof_limits = self._robot.data.joint_limits.clone()
-        self._dof_limits_lower_sim = dof_limits[0, :, 0].to(self.device)
-        self._dof_limits_upper_sim = dof_limits[0, :, 1].to(self.device)
-
-        super().on_environment_ready()
+        super()._finalize_setup()
 
         # Update initial object positions
-        if self.scene_lib is not None and self.scene_lib.total_spawned_scenes > 0:
+        if self.scene_lib.num_scenes() > 0:
             objects_start_pos = torch.zeros(
                 (self.num_envs, 13), device=self.device, dtype=torch.float
             )
@@ -313,53 +355,119 @@ class IsaacLabSimulator(Simulator):
                 objects_start_pos[:, :7] = self._initial_scene_pos[:, obj_idx, :]
                 object.write_root_state_to_sim(objects_start_pos)
 
+        self._apply_domain_randomization_if_needed()
+
+    def _apply_domain_randomization_if_needed(self) -> None:
+        all_env_ids = torch.arange(self.config.num_envs, dtype=torch.int)
+        if (
+            self._domain_randomization is not None
+            and "friction" in self._domain_randomization
+        ):
+            # Adapted from https://github.com/isaac-sim/IsaacLab/blob/be083bf1f70466e1d41bf9ffdc405bb89394e92c/source/isaaclab/isaaclab/envs/mdp/events.py#L203
+            num_shapes_per_body = []
+            for link_path in self._robot.root_physx_view.link_paths[0]:
+                link_physx_view = self._robot._physics_sim_view.create_rigid_body_view(
+                    link_path
+                )
+                num_shapes_per_body.append(link_physx_view.max_shapes)
+            # ensure the parsing is correct
+            num_shapes = sum(num_shapes_per_body)
+            expected_shapes = self._robot.root_physx_view.max_shapes
+            if num_shapes != expected_shapes:
+                raise ValueError(
+                    "Randomization term 'randomize_rigid_body_material' failed to parse the number of shapes per body."
+                    f" Expected total shapes: {expected_shapes}, but got: {num_shapes}."
+                )
+
+            materials = self._robot.root_physx_view.get_material_properties()
+            body_names = [
+                self.robot_config.kinematic_info.body_names[
+                    self._domain_randomization["friction"]["body_indices"][idx]
+                ]
+                for idx in range(
+                    len(self._domain_randomization["friction"]["body_indices"])
+                )
+            ]
+            isaaclab_body_ids, _ = self._robot.find_bodies(
+                body_names, preserve_order=True
+            )
+            for idx in range(
+                len(self._domain_randomization["friction"]["body_indices"])
+            ):
+                # bodies may span multiple "shapes" in the physx view, so we need to assign the materials to the correct shapes
+                start_idx = sum(num_shapes_per_body[: isaaclab_body_ids[idx]])
+                end_idx = start_idx + num_shapes_per_body[isaaclab_body_ids[idx]]
+
+                num_buckets = self._domain_randomization["friction"][
+                    "static_friction"
+                ].shape[0]
+                bucket_ids = torch.randint(0, num_buckets, (self.num_envs,))
+                # assign the new materials
+                # material samples are of shape: num_env_ids x total_num_shapes x 3
+                materials[:, start_idx:end_idx, 0] = self._domain_randomization[
+                    "friction"
+                ]["static_friction"][bucket_ids, idx].unsqueeze(-1)
+                materials[:, start_idx:end_idx, 1] = self._domain_randomization[
+                    "friction"
+                ]["dynamic_friction"][bucket_ids, idx].unsqueeze(-1)
+                materials[:, start_idx:end_idx, 2] = self._domain_randomization[
+                    "friction"
+                ]["restitution"][bucket_ids, idx].unsqueeze(-1)
+            self._robot.root_physx_view.set_material_properties(
+                materials, indices=all_env_ids
+            )
+
+        if (
+            self._domain_randomization is not None
+            and "center_of_mass" in self._domain_randomization
+        ):
+            # get the current com of the bodies (num_assets, num_bodies)
+            coms = self._robot.root_physx_view.get_coms().clone()
+
+            # Randomize the com in range
+            coms[
+                :, self._domain_randomization["center_of_mass"]["body_indices"], :3
+            ] += self._domain_randomization["center_of_mass"]["com"].to(coms.device)
+
+            # Set the new comsfa
+            self._robot.root_physx_view.set_coms(coms, all_env_ids)
+
     # =====================================================
     # Group 3: Simulation Steps & State Management
     # =====================================================
     def _physics_step(self) -> None:
         """
         Advance the simulation by stepping for a number of iterations equal to the decimation factor.
-        Applies PD control or motor forces as required.
         """
         for idx in range(self.decimation):
-            if self.control_type == ControlType.BUILT_IN_PD:
-                self._apply_pd_control()
-            else:
-                self._apply_motor_forces()
+            self._apply_control()
             self._scene.write_data_to_sim()
             self._sim.step(render=False)
             if (idx + 1) % self.decimation == 0 and not self.headless:
                 self._sim.render()
             self._scene.update(dt=self._sim.get_physics_dt())
 
-    def _apply_pd_control(self) -> None:
-        """
-        Apply PD control by converting actions into PD targets and updating joint targets accordingly.
-        """
-        common_pd_tar = self._action_to_pd_targets(self._common_actions)
-        isaaclab_pd_tar = common_pd_tar[:, self.data_conversion.dof_convert_to_sim]
-        self._robot.set_joint_position_target(isaaclab_pd_tar, joint_ids=None)
+    def _apply_simulator_pd_targets(self, pd_targets: torch.Tensor) -> None:
+        """Applies PD position targets using IsaacLab's internal PD controller."""
+        self._robot.set_joint_position_target(pd_targets, joint_ids=None)
 
-    def _apply_motor_forces(self) -> None:
-        """
-        Apply motor forces to the robot.
-
-        Raises:
-            NotImplementedError: Not supported yet.
-        """
-        common_torques = self._compute_torques(self._common_actions)
-        isaaclab_torques = common_torques[:, self.data_conversion.dof_convert_to_sim]
-        self._robot.set_joint_effort_target(isaaclab_torques, joint_ids=None)
+    def _apply_simulator_torques(self, torques: torch.Tensor) -> None:
+        """Applies torques to the robot DOFs."""
+        self._robot.set_joint_effort_target(torques, joint_ids=None)
 
     def _set_simulator_env_state(
-        self, new_states: RobotState, env_ids: Optional[torch.Tensor]
+        self,
+        new_states: ResetState,
+        new_object_states: ObjectState = None,
+        env_ids: torch.Tensor = None,
     ) -> None:
         """
         Apply the provided state to the simulation by writing root and joint states.
 
         Parameters:
-            new_states (RobotState): The new simulation state.
-            env_ids (Optional[torch.Tensor]): Specific environment IDs to update.
+            new_states (ResetState): The new simulation state.
+            new_object_states (ObjectState): The new object state.
+            env_ids (torch.Tensor): Specific environment IDs to update.
         """
         init_root_state = torch.cat(
             [
@@ -371,33 +479,40 @@ class IsaacLabSimulator(Simulator):
             dim=-1,
         )
         self._robot.write_root_state_to_sim(init_root_state, env_ids)
+        self._robot.set_joint_position_target(
+            new_states.dof_pos, joint_ids=None, env_ids=env_ids
+        )
         self._robot.write_joint_state_to_sim(
             new_states.dof_pos, new_states.dof_vel, None, env_ids
         )
+        if new_object_states is not None:
+            init_object_root_state = torch.cat(
+                [
+                    new_object_states.root_pos,
+                    new_object_states.root_rot,
+                    new_object_states.root_vel,
+                    new_object_states.root_ang_vel,
+                ],
+                dim=-1,
+            ).reshape(len(env_ids), self.scene_lib.num_objects_per_scene, 13)
+            for object_idx in range(self.scene_lib.num_objects_per_scene):
+                self._object[object_idx].write_root_state_to_sim(
+                    init_object_root_state[:, object_idx], env_ids
+                )
 
     # =====================================================
     # Group 4: State Getters
     # =====================================================
-    def _get_simulator_default_state(self) -> RobotState:
-        """
-        Retrieve the default simulation state based on the initialized values.
-
-        Returns:
-            RobotState: The default state containing positions, orientations, velocities, etc.
-        """
-        return self._isaaclab_default_state
-
     def _get_sim_body_ordering(self) -> SimBodyOrdering:
         """
-        Obtain the ordering of body, degree-of-freedom, and contact sensor names.
+        Obtain the ordering of body and degree-of-freedom names.
 
         Returns:
-            SimBodyOrdering: An object containing the body names, DOF names, and contact sensor body names.
+            SimBodyOrdering: An object containing the body names and DOF names.
         """
         return SimBodyOrdering(
             body_names=self._robot.data.body_names,
             dof_names=self._robot.data.joint_names,
-            contact_sensor_body_names=self._contact_sensor.body_names,
         )
 
     def _get_simulator_bodies_state(
@@ -439,11 +554,12 @@ class IsaacLabSimulator(Simulator):
             rigid_body_rot=isaacsim_bodies_rotations,
             rigid_body_vel=isaacsim_bodies_velocities,
             rigid_body_ang_vel=isaacsim_bodies_ang_velocities,
+            state_conversion=StateConversion.SIMULATOR,
         )
 
     def _get_simulator_dof_forces(
         self, env_ids: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+    ) -> RobotState:
         """
         Retrieve applied torque forces for the robot's degrees of freedom.
 
@@ -456,7 +572,9 @@ class IsaacLabSimulator(Simulator):
         isaacsim_dof_forces = self._robot.data.applied_torque.clone()
         if env_ids is not None:
             isaacsim_dof_forces = isaacsim_dof_forces[env_ids]
-        return isaacsim_dof_forces
+        return RobotState(
+            dof_forces=isaacsim_dof_forces, state_conversion=StateConversion.SIMULATOR
+        )
 
     def _get_simulator_dof_state(
         self, env_ids: Optional[torch.Tensor] = None
@@ -478,38 +596,65 @@ class IsaacLabSimulator(Simulator):
         return RobotState(
             dof_pos=isaacsim_dof_pos,
             dof_vel=isaacsim_dof_vel,
+            state_conversion=StateConversion.SIMULATOR,
         )
+
+    def _get_simulator_dof_limits_for_verification(
+        self,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Retrieve DOF limits from IsaacLab's internal API for verification purposes only.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]: A tuple of (lower_limits, upper_limits)
+                                              in IsaacLab's DOF ordering.
+        """
+        # Extract limits from the robot data
+        dof_limits = self._robot.data.joint_pos_limits.clone()
+        # IsaacLab stores limits as [num_envs, num_dofs, 2], we take from first env
+        return dof_limits[0, :, 0].to(self.device), dof_limits[0, :, 1].to(self.device)
 
     def _get_simulator_bodies_contact_buf(
         self, env_ids: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+    ) -> RobotState:
         """
-        Retrieve the contact force buffer for simulation bodies.
+        Retrieve the contact force buffer for simulation bodies in sim body order.
 
         Parameters:
             env_ids (Optional[torch.Tensor]): Specific environments to query.
 
         Returns:
-            torch.Tensor: Tensor containing the contact forces.
+            RobotState: Robot state containing contact forces in simulator body order.
         """
-        if self._contact_sensor.data.force_matrix_w is not None:
-            isaacsim_rb_contacts = (
-                self._contact_sensor.data.force_matrix_w.clone().view(
-                    self.num_envs, self._num_bodies, -1, 3
+        # Get simulator body ordering
+        sim_body_names = self._robot.data.body_names
+        num_bodies = len(sim_body_names)
+
+        # Pre-allocate tensor for contact forces (initialized to zeros)
+        rigid_body_contact_forces = torch.zeros(
+            self.num_envs, num_bodies, 3, device=self.device
+        )
+
+        # Fill in contact forces for bodies that have sensors
+        for body_idx, body_name in enumerate(sim_body_names):
+            if body_name in self._contact_sensor_map:
+                contact_sensor = self._contact_sensor_map[body_name]
+                # net_forces_w has shape [num_envs, 1, 3], extract the single body dimension
+                rigid_body_contact_forces[:, body_idx, :] = (
+                    contact_sensor.data.net_forces_w.clone()[:, 0, :]
                 )
-            )
-            isaacsim_rb_contacts = isaacsim_rb_contacts.sum(dim=2)
-        else:
-            isaacsim_rb_contacts = self._contact_sensor.data.net_forces_w.clone().view(
-                self.num_envs, self._num_bodies, 3
-            )
+
         if env_ids is not None:
-            isaacsim_rb_contacts = isaacsim_rb_contacts[env_ids]
-        return isaacsim_rb_contacts
+            rigid_body_contact_forces = rigid_body_contact_forces[env_ids]
+        return RobotState(
+            rigid_body_contact_forces=rigid_body_contact_forces,
+            state_conversion=StateConversion.SIMULATOR,
+        )
 
     def _get_simulator_object_contact_buf(
-        self, env_ids: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self,
+        env_ids: Optional[torch.Tensor] = None,
+    ) -> ObjectState:
         """
         Retrieve the contact buffer for simulation objects.
 
@@ -519,18 +664,30 @@ class IsaacLabSimulator(Simulator):
         Returns:
             torch.Tensor: The object contact buffer.
         """
-        if self.scene_lib is not None and self.scene_lib.total_spawned_scenes > 0:
+        if self.scene_lib.num_scenes() > 0:
             object_forces = []
             for obj_idx in range(self.scene_lib.num_objects_per_scene):
-                object_forces.append(
-                    self._object[obj_idx].data.net_contact_forces_w.clone()
-                )
+                if self._object_contact_sensor[obj_idx] is not None:
+                    object_forces.append(
+                        self._object_contact_sensor[obj_idx].data.force_matrix_w.clone()
+                    )
+                else:
+                    object_forces.append(
+                        torch.zeros(
+                            self.num_envs,
+                            1,
+                            1,
+                            3,
+                            device=self.device,
+                            dtype=torch.float,
+                        )
+                    )
             if env_ids is not None:
                 object_forces = object_forces[env_ids]
-            return torch.stack(object_forces, dim=1)
+            return torch.cat(object_forces, dim=1)
         else:
             return_tensor = torch.zeros(
-                self.num_envs, 1, 3, device=self.device, dtype=torch.float
+                self.num_envs, 1, 1, 3, device=self.device, dtype=torch.float
             )
             if env_ids is not None:
                 return_tensor = return_tensor[env_ids]
@@ -538,7 +695,7 @@ class IsaacLabSimulator(Simulator):
 
     def _get_simulator_root_state(
         self, env_ids: Optional[torch.Tensor] = None
-    ) -> RobotState:
+    ) -> RootOnlyState:
         """
         Retrieve the root state (position, rotation, velocity) of the robot.
 
@@ -546,7 +703,7 @@ class IsaacLabSimulator(Simulator):
             env_ids (Optional[torch.Tensor]): Specific environments to query.
 
         Returns:
-            RobotState: The robot's root state.
+            RootOnlyState: The robot's root state.
         """
         isaacsim_root_pos = self._robot.data.root_pos_w.clone()
         isaacsim_root_rot = self._robot.data.root_quat_w.clone()
@@ -557,16 +714,17 @@ class IsaacLabSimulator(Simulator):
             isaacsim_root_rot = isaacsim_root_rot[env_ids]
             isaacsim_root_vel = isaacsim_root_vel[env_ids]
             isaacsim_root_ang_vel = isaacsim_root_ang_vel[env_ids]
-        return RobotState(
+        return RootOnlyState(
             root_pos=isaacsim_root_pos,
             root_rot=isaacsim_root_rot,
             root_vel=isaacsim_root_vel,
             root_ang_vel=isaacsim_root_ang_vel,
+            state_conversion=StateConversion.SIMULATOR,
         )
 
     def _get_simulator_object_root_state(
         self, env_ids: Optional[torch.Tensor] = None
-    ) -> RobotState:
+    ) -> ObjectState:
         """
         Retrieve the combined root state for all simulation objects.
 
@@ -574,7 +732,7 @@ class IsaacLabSimulator(Simulator):
             env_ids (Optional[torch.Tensor]): Specific environments to query.
 
         Returns:
-            RobotState: The objects' root state.
+            ObjectState: The objects' root state.
         """
         isaacsim_root_pos = []
         isaacsim_root_rot = []
@@ -596,11 +754,12 @@ class IsaacLabSimulator(Simulator):
             isaacsim_root_rot = isaacsim_root_rot[env_ids]
             isaacsim_root_vel = isaacsim_root_vel[env_ids]
             isaacsim_root_ang_vel = isaacsim_root_ang_vel[env_ids]
-        return RobotState(
+        return ObjectState(
             root_pos=isaacsim_root_pos,
             root_rot=isaacsim_root_rot,
             root_vel=isaacsim_root_vel,
             root_ang_vel=isaacsim_root_ang_vel,
+            state_conversion=StateConversion.SIMULATOR,
         )
 
     def get_num_actors_per_env(self) -> int:
@@ -711,26 +870,27 @@ class IsaacLabSimulator(Simulator):
         """
         Close the simulation application and perform cleanup.
         """
+        super().close()
         self._simulation_app.close()
 
     def _build_markers(
-        self, visualization_markers: Dict[str, VisualizationMarker]
+        self, visualization_markers: Dict[str, VisualizationMarkerConfig]
     ) -> None:
         """Build and configure visualization markers.
 
         Args:
-            visualization_markers (Dict[str, VisualizationMarker]): Dictionary mapping marker names to their configurations
+            visualization_markers (Dict[str, VisualizationMarkerConfig]): Dictionary mapping marker names to their configurations
         """
-        self._visualization_markers = {}
+        self._visualization_markers: Dict[str, ProtoMotionsIsaacLabMarkers] = {}
         if visualization_markers is None:
             return
 
         for marker_name, markers_cfg in visualization_markers.items():
             if markers_cfg.type == "sphere":
-                marker_obj_cfg = VisualizationMarkersCfg(
+                marker_obj_cfg = IsaacLabVisualizationMarkersCfg(
                     prim_path=f"/Visuals/{marker_name}",
                     markers={
-                        "sphere": sim_utils.SphereCfg(
+                        "marker": sim_utils.SphereCfg(
                             radius=1,
                             visual_material=sim_utils.PreviewSurfaceCfg(
                                 diffuse_color=(
@@ -743,10 +903,10 @@ class IsaacLabSimulator(Simulator):
                     },
                 )
             elif markers_cfg.type == "arrow":
-                marker_obj_cfg = VisualizationMarkersCfg(
+                marker_obj_cfg = IsaacLabVisualizationMarkersCfg(
                     prim_path=f"/Visuals/{marker_name}",
                     markers={
-                        "arrow_x": sim_utils.UsdFileCfg(
+                        "marker": sim_utils.UsdFileCfg(
                             usd_path=f"{ISAAC_NUCLEUS_DIR}/Props/UIElements/arrow_x.usd",
                             scale=(1.0, 1.0, 1.0),
                             visual_material=sim_utils.PreviewSurfaceCfg(
@@ -780,13 +940,14 @@ class IsaacLabSimulator(Simulator):
                         scale = 0.5
                     marker_scale.append([scale, 0.2 * scale, 0.2 * scale])
 
-            self._visualization_markers[marker_name] = EasyDict(
-                {
-                    "marker": VisualizationMarkers(marker_obj_cfg),
-                    "scale": torch.tensor(marker_scale, device=self.device).repeat(
-                        self.num_envs, 1
-                    ),
-                }
+            if len(marker_scale) == 0:
+                continue
+
+            self._visualization_markers[marker_name] = ProtoMotionsIsaacLabMarkers(
+                marker=IsaacLabVisualizationMarkers(marker_obj_cfg),
+                scale=torch.tensor(marker_scale, device=self.device).repeat(
+                    self.num_envs, 1
+                ),
             )
 
     def _update_simulator_markers(
@@ -801,6 +962,11 @@ class IsaacLabSimulator(Simulator):
             return
 
         for marker_name, markers_state_item in markers_state.items():
+            if markers_state_item.translation.numel() == 0:
+                continue
+            assert (
+                marker_name in self._visualization_markers
+            ), f"Marker {marker_name} passed to update_markers but not defined at instantiation"
             marker_dict = self._visualization_markers[marker_name]
             marker_dict.marker.visualize(
                 translations=markers_state_item.translation.view(-1, 3),
