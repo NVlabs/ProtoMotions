@@ -58,7 +58,7 @@ Train your robot to perform AMASS motor skills in **12 hours**, by just changing
 
 ### 🔬 Sim2Sim Testing
 
-One-click test (`--simulator=isaacgym` → `--simulator=newton`) of robot control policies on **H1_2** or **G1** in different physics engines (newly released [**NVIDIA Newton**](https://github.com/newton-physics/newton), built upon MuJoCo Warp).
+One-click test (`--simulator=isaacgym` → `--simulator=newton`) of robot control policies on **H1_2** or **G1** in different physics engines (newly released [**NVIDIA Newton**](https://github.com/newton-physics/newton), built upon MuJoCo Warp). Policies shown below only use observations you could actually get from real hardwares.
 
 <p align="center">
   <img src="data/static/h12-g1-newton-sim2sim.gif" alt="H1_2/G1 sim2sim" height="280">
