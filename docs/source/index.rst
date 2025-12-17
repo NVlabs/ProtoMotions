@@ -53,6 +53,7 @@ Quick Links
    getting_started/installation
    getting_started/quickstart
    getting_started/amass_preparation
+   getting_started/phuma_preparation
 
 .. toctree::
    :maxdepth: 1

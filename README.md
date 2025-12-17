@@ -150,6 +150,7 @@ And you're good to go!
 - [Installation Guide](https://protomotions.github.io/getting_started/installation.html)
 - [Quick Start](https://protomotions.github.io/getting_started/quickstart.html)
 - [AMASS Data Preparation](https://protomotions.github.io/getting_started/amass_preparation.html)
+- [PHUMA Data Preparation](https://protomotions.github.io/getting_started/phuma_preparation.html)
 - [Tutorials](https://protomotions.github.io/tutorials/)
 - [API Reference](https://protomotions.github.io/api_reference/)
 
