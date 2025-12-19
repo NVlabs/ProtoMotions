@@ -33,6 +33,7 @@ Run the following commands to download the PHUMA dataset and set up the project:
 
 .. code-block:: bash
 
+   conda install -c conda-forge huggingface_hub
    cd data
    git clone https://github.com/DAVIAN-Robotics/PHUMA.git
    cd PHUMA
@@ -49,7 +50,7 @@ conversion and packaging pipeline:
 .. code-block:: bash
 
    cd /path/to/ProtoMotions
-   python data/scripts/convert_phuma_to_proto.py <phuma_root_dir> <output_dir> \
+   python data/scripts/convert_phuma_to_motionlib.py <phuma_root_dir> <output_dir> \
         --humanoid-type <humanoid_type> \
         --motion-config <config1.yaml> [--motion-config <config2.yaml> ...]
 
@@ -68,14 +69,14 @@ conversion and packaging pipeline:
 .. code-block:: bash
 
     # Use g1 humanoid
-    python data/scripts/convert_phuma_to_proto.py /path/to/PHUMA/data /path/to/output \
+    python data/scripts/convert_phuma_to_motionlib.py /path/to/PHUMA/data /path/to/output \
         --humanoid-type g1 \
         --motion-config data/yaml_files/g1_phuma_train.yaml \
         --motion-config data/yaml_files/g1_phuma_val.yaml \
         --motion-config data/yaml_files/g1_phuma_unseen_video.yaml
 
     # Use h1_2 humanoid
-    python data/scripts/convert_phuma_to_proto.py /path/to/PHUMA/data /path/to/output \
+    python data/scripts/convert_phuma_to_motionlib.py /path/to/PHUMA/data /path/to/output \
         --humanoid-type h1_2 \
         --motion-config data/yaml_files/h1_2_phuma_train.yaml \
         --motion-config data/yaml_files/h1_2_phuma_val.yaml \

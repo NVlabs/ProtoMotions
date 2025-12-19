@@ -18,7 +18,7 @@
 Automates the PHUMA to MotionLib conversion pipeline.
 
 This script runs the two-step process:
-1. Convert PHUMA .npz files to ProtoMotions .motion files (using motion-config YAMLs)
+1. Convert PHUMA .npy files to ProtoMotions .motion files (using motion-config YAMLs)
 2. Package each motion-config into its own .pt MotionLib file
 
 Usage:
