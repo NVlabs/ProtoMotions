@@ -29,15 +29,16 @@ Downloading PHUMA Dataset
 
 Download the PHUMA dataset from `DAVIAN-Robotics/PHUMA <https://huggingface.co/datasets/DAVIAN-Robotics/PHUMA>`_.
 
-Run the following commands to download the PHUMA dataset and set up the project:
+Perform the following steps to download the PHUMA dataset:
+
+1. Clone the `PHUMA <https://github.com/DAVIAN-Robotics/PHUMA>`_ repo and follow the installation instructions in the PHUMA repo. We recommend using a clean conda environment.
+2. run `bash setup_phuma.sh`
+
+Errors related to huggingface may be solved by running 
 
 .. code-block:: bash
 
    conda install -c conda-forge huggingface_hub
-   cd data
-   git clone https://github.com/DAVIAN-Robotics/PHUMA.git
-   cd PHUMA
-   bash setup_phuma.sh
 
 The dataset is downloaded into the ``data/PHUMA/data`` folder, contains the retargeted data for 2 different humanoids: ``g1`` and ``h1_2``.
 
