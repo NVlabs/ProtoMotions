@@ -30,7 +30,6 @@ As many modules may import torch internally, it is best practice to simply detec
 at the top and import it right away.
 """
 
-# Parse arguments first (argparse is safe, doesn't import torch)
 import argparse
 
 parser = argparse.ArgumentParser()
@@ -56,25 +55,18 @@ AppLauncher = import_simulator_before_torch(args.simulator)
 
 # Now safe to import everything else including torch
 from protomotions.simulator.base_simulator.config import SimulatorConfig  # noqa: E402
-from protomotions.envs.mimic.env import Mimic  # noqa: E402
-from protomotions.envs.mimic.config import (  # noqa: E402
-    MimicEnvConfig,
-    MimicMotionManagerConfig,
-    MimicObsConfig,
-    MimicEarlyTerminationEntry,
+from protomotions.envs.base_env.env import BaseEnv  # noqa: E402
+from protomotions.envs.base_env.config import EnvConfig, RewardComponentConfig, TerminationComponentConfig  # noqa: E402
+from protomotions.envs.motion_manager.config import MimicMotionManagerConfig  # noqa: E402
+from protomotions.envs.obs.observation_component import ObservationComponentConfig  # noqa: E402
+from protomotions.envs.control.mimic_control import MimicControlConfig  # noqa: E402
+from protomotions.envs.obs import (  # noqa: E402
+    max_coords_obs_factory,
+    previous_actions_factory,
+    mimic_target_poses_max_coords_factory,
 )
-from protomotions.envs.obs.config import (  # noqa: E402
-    HumanoidObsConfig,
-    MaxCoordsSelfObsConfig,
-    MimicTargetPoseConfig,
-    MimicPhaseObsConfig,
-    MimicTimeLeftObsConfig,
-)
-from protomotions.envs.base_env.config import RewardComponentConfig  # noqa: E402
-from protomotions.envs.utils.rewards import (  # noqa: E402
-    mean_squared_error_exp,
-    rotation_error_exp,
-)
+from protomotions.envs.rewards import mean_squared_error_exp, rotation_error_exp, norm  # noqa: E402
+from protomotions.envs.terminations import max_joint_err  # noqa: E402
 from protomotions.components.motion_lib import MotionLibConfig  # noqa: E402
 from protomotions.components.terrains.config import TerrainConfig  # noqa: E402
 from protomotions.agents.ppo.config import (  # noqa: E402
@@ -136,12 +128,101 @@ print("\n=== DeepMimic Configuration ===")
 print(f"Motion file: {motion_file}")
 print("This tutorial shows how to train a policy to imitate this motion")
 
-# Configure mimic observations - this is key for imitation learning
-print("\n=== Mimic Observations Configuration ===")
-print("Configuring comprehensive mimic observations:")
-print("  → Phase observations: sin/cos of motion progress (cyclical)")
-print("  → Time left observations: remaining time in current motion")
-print("  → Target pose observations: future reference poses for policy")
+# Configure modular components - this is key for imitation learning
+print("\n=== Modular Component Configuration ===")
+print("Using modular component system for DeepMimic:")
+print("  → MimicControl: Manages reference motion tracking")
+print("  → Observation components: Robot state + target poses")
+print("  → Reward components: Tracking rewards for imitation")
+print("  → Termination components: End on tracking failure")
+
+# Control component - MimicControl manages reference motion
+control_components = {
+    "mimic": MimicControlConfig(
+        bootstrap_on_episode_end=True,  # Continue at end of motion
+    )
+}
+
+# Observation components - using factory functions
+observation_components = {
+    # Current robot state
+    "max_coords_obs": max_coords_obs_factory(),
+    # Previous actions
+    "previous_actions": previous_actions_factory(),
+    # Mimic target poses - reference motion for policy to track
+    "mimic_target_poses": mimic_target_poses_max_coords_factory(
+        with_velocities=True,
+        num_future_steps=1,
+    ),
+}
+
+# Reward components - tracking rewards for imitation learning
+reward_components = {
+    "action_smoothness": RewardComponentConfig(
+        function=norm,
+        variables={"x": "current_actions - previous_actions"},
+        weight=-0.02,
+    ),
+    "position_tracking": RewardComponentConfig(
+        function=mean_squared_error_exp,
+        variables={
+            "x": "current_state_rigid_body_pos",
+            "ref_x": "ref_state_rigid_body_pos",
+            "coefficient": -100.0,
+        },
+        weight=0.5,
+    ),
+    "rotation_tracking": RewardComponentConfig(
+        function=rotation_error_exp,
+        variables={
+            "q": "current_state_rigid_body_rot",
+            "ref_q": "ref_state_rigid_body_rot",
+            "coefficient": -5.0,
+        },
+        weight=0.3,
+    ),
+    "velocity_tracking": RewardComponentConfig(
+        function=mean_squared_error_exp,
+        variables={
+            "x": "current_state_rigid_body_vel",
+            "ref_x": "ref_state_rigid_body_vel",
+            "coefficient": -0.5,
+        },
+        weight=0.1,
+    ),
+    "angular_velocity_tracking": RewardComponentConfig(
+        function=mean_squared_error_exp,
+        variables={
+            "x": "current_state_rigid_body_ang_vel",
+            "ref_x": "ref_state_rigid_body_ang_vel",
+            "coefficient": -0.1,
+        },
+        weight=0.1,
+    ),
+}
+
+# Termination components - end episode on tracking failure
+termination_components = {
+    "tracking_error": TerminationComponentConfig(
+        function=max_joint_err,
+        variables={
+            "current_rigid_body_pos": "current_state_rigid_body_pos",
+            "ref_rigid_body_pos": "ref_state_rigid_body_pos",
+            "threshold": 0.5,  # Terminate if any joint > 0.5m from reference
+        },
+    ),
+}
+
+print("\nControl Components:")
+print("  - 'mimic': MimicControl for reference motion management")
+print("\nObservation Components:")
+print("  - 'max_coords_obs': Current robot state")
+print("  - 'previous_actions': Action history")
+print("  - 'mimic_target_poses': Reference poses to track")
+print("\nReward Components:")
+print("  - Position, rotation, velocity tracking + action smoothness")
+print("\nTermination Components:")
+print("  - 'tracking_error': End episode if tracking error > 0.5m")
 
 from protomotions.components.scene_lib import (  # noqa: E402
     ObjectOptions,
@@ -178,105 +259,35 @@ chair = MeshSceneObject(
 
 scene = Scene(objects=[chair], humanoid_motion_id=0)
 
-# Create environment configuration (similar to mimic_environment tutorial)
-env_config = MimicEnvConfig(
+# Create environment configuration with modular components
+env_config = EnvConfig(
     max_episode_length=300,
-    # Uses reference motion resets automatically (motion_lib is set)
-    sync_motion=False,  # Policy training mode (not kinematic)
-    humanoid_obs=HumanoidObsConfig(
-        max_coords_obs=MaxCoordsSelfObsConfig(
-            enabled=True,
-            local_obs=True,
-            root_height_obs=True,
-            observe_contacts=False,
-            num_historical_steps=2,
-        ),
-    ),
-    mimic_obs=MimicObsConfig(
-        enabled=True,  # Enable mimic observations
-        mimic_phase_obs=MimicPhaseObsConfig(
-            enabled=False  # phase observations (sin/cos of motion progress)
-        ),
-        mimic_time_left_obs=MimicTimeLeftObsConfig(
-            enabled=False  # time left observations are similar to phase, but in absolute time left and not percentage of the motion
-        ),
-        mimic_target_pose=MimicTargetPoseConfig(
-            enabled=True,  # Enable target pose observations
-            future_steps=1,  # Look 1 step ahead
-            with_time=True,  # Include time information
-            with_contacts=False,  # This demo motion does not specify contact information
-            with_velocities=True,  # Include velocity information
-        ),
-    ),
+    # Modular components
+    control_components=control_components,
+    observation_components=observation_components,
+    reward_components=reward_components,
+    termination_components=termination_components,
+    # Motion manager configuration
     motion_manager=MimicMotionManagerConfig(
         init_start_prob=1.0,  # Always start from beginning for consistent training
-        resample_on_reset=False,  # When failing to track, do not resample the motion. Instead, reset the character to the correct position and orientation at the current motion time.
+        resample_on_reset=False,  # Reset to current motion time instead of resampling
     ),
-    # Reward configuration using dictionary format with reward functions
-    reward_config={
-        # Mimic tracking rewards - matching body positions and rotations
-        "gt_rew": RewardComponentConfig(
-            function=mean_squared_error_exp,
-            variables={
-                "x": "current_state.rigid_body_pos",
-                "ref_x": "ref_state.rigid_body_pos",
-                "coefficient": -100.0,
-            },
-            weight=0.5,
-        ),
-        "gr_rew": RewardComponentConfig(
-            function=rotation_error_exp,
-            variables={
-                "q": "current_state.rigid_body_rot",
-                "ref_q": "ref_state.rigid_body_rot",
-                "coefficient": -5.0,
-            },
-            weight=0.3,
-        ),
-        "gv_rew": RewardComponentConfig(
-            function=mean_squared_error_exp,
-            variables={
-                "x": "current_state.rigid_body_vel",
-                "ref_x": "ref_state.rigid_body_vel",
-                "coefficient": -0.5,
-            },
-            weight=0.1,
-        ),
-        "gav_rew": RewardComponentConfig(
-            function=mean_squared_error_exp,
-            variables={
-                "x": "current_state.rigid_body_ang_vel",
-                "ref_x": "ref_state.rigid_body_ang_vel",
-                "coefficient": -0.1,
-            },
-            weight=0.1,
-        ),
-    },
-    mimic_early_termination=[
-        MimicEarlyTerminationEntry(
-            mimic_early_termination_key="max_joint_err",  # Early terminate based on the max_joint_err, the maximal error of any joint from the reference motion.
-            mimic_early_termination_thresh=0.5,  # The threshold is set to 0.5 meters.
-            less_than=False,  # The termination will trigger when the max_joint_err is greater than the threshold (not less than).
-        )
-    ],
 )
 
 print("\n=== Environment Configuration ===")
-print("Environment type: Mimic (for imitation learning)")
-print(f"Sync motion: {env_config.sync_motion} (policy training mode)")
+print("Environment type: BaseEnv with modular MimicControl")
 print(f"Episode length: {env_config.max_episode_length}")
-print("Motion sampling: Always start from beginning for consistent training")
-print(f"Mimic observations: {env_config.mimic_obs.enabled}")
-print(f"Phase observations: {env_config.mimic_obs.mimic_phase_obs.enabled}")
-print(f"Time left observations: {env_config.mimic_obs.mimic_time_left_obs.enabled}")
-print(f"Target pose observations: {env_config.mimic_obs.mimic_target_pose.enabled}")
+print(f"Control components: {list(control_components.keys())}")
+print(f"Observation components: {list(observation_components.keys())}")
+print(f"Reward components: {list(reward_components.keys())}")
+print(f"Termination components: {list(termination_components.keys())}")
 print(f"Resample on reset: {env_config.motion_manager.resample_on_reset}")
 
 
 # Create terrain with simple flat configuration
 from protomotions.components.terrains.terrain import Terrain  # noqa: E402
 
-terrain_config = TerrainConfig()  # Simple flat terrain for this demo (default is flat)
+terrain_config = TerrainConfig()
 terrain = Terrain(config=terrain_config, num_envs=simulator_cfg.num_envs, device=device)
 
 scene_lib_config = SceneLibConfig(scene_file=None)
@@ -305,8 +316,8 @@ simulator = SimulatorClass(
     **extra_simulator_params,
 )
 
-# Create the environment
-env = Mimic(
+# Create the environment with modular components
+env = BaseEnv(
     config=env_config,
     robot_config=robot_cfg,
     device=device,
@@ -314,14 +325,13 @@ env = Mimic(
     motion_lib=motion_lib,
     terrain=terrain,
     scene_lib=scene_lib,
-    **extra_simulator_params,
 )
 
 print("\n=== Environment Initialization ===")
-print("Mimic environment created successfully")
+print("BaseEnv with MimicControl created successfully")
 print(f"Motion library loaded: {env.motion_lib is not None}")
 print(f"Motion manager type: {type(env.motion_manager).__name__}")
-print(f"Mimic observations callback: {hasattr(env, 'mimic_obs_cb')}")
+print(f"Control components: {list(env.control_manager.components.keys())}")
 
 # Reset environment and get initial observations
 print("\n=== Environment Reset ===")
@@ -438,7 +448,6 @@ print(f"  - Model output keys: {agent_config.model.out_keys}")
 print(f"  - Actor output size: {agent_config.model.actor.num_out}")
 print(f"  - Critic output size: {agent_config.model.critic.num_out}")
 
-# Create Fabric for distributed training (even for single GPU)
 from lightning.fabric import Fabric  # noqa: E402
 from protomotions.utils.fabric_config import FabricConfig  # noqa: E402
 
@@ -449,7 +458,8 @@ fabric_config = FabricConfig(
     callbacks=[],
 )
 
-fabric: Fabric = Fabric(**fabric_config.to_dict())
+from dataclasses import asdict  # noqa: E402
+fabric: Fabric = Fabric(**asdict(fabric_config))
 fabric.launch()
 
 print("\n=== Fabric Configuration ===")
@@ -524,24 +534,29 @@ finally:
     env.close()
 
 print("\n=== Tutorial Summary ===")
-print("This tutorial demonstrated:")
-print("1. How to configure a PPO agent for imitation learning:")
+print("This tutorial demonstrated the complete DeepMimic pipeline:")
+print("")
+print("1. Modular Environment Components:")
+print("   - MimicControl: Manages reference motion and provides ref_state context")
+print("   - Observation components: max_coords_obs, mimic_target_poses, previous_actions")
+print("   - Reward components: Position, rotation, velocity tracking + smoothness")
+print("   - Termination components: End episode on tracking failure")
+print("")
+print("2. PPO Agent Configuration:")
 print("   - Actor network: Maps observations to actions using MLPWithConcatConfig")
 print("   - Critic network: Maps observations to value estimates")
-print("   - Simple concatenation of observation keys with normalization")
-print("2. How to set up training parameters:")
+print("   - in_keys: Specify which observation components to use")
+print("")
+print("3. Training Parameters:")
 print("   - Learning rates (actor vs critic)")
 print("   - Batch size and training steps")
 print("   - Gradient clipping for stability")
-print("3. How agent-environment interaction works:")
-print("   - Agent.get_action_and_value(obs) → actions, log_probs, values")
-print("   - env.step(actions) → new_obs, rewards, dones, infos")
-print("4. How to collect rollout data for training")
-print("5. How mimic rewards encourage motion tracking")
-print("\nKey DeepMimic Concepts:")
-print("- Policy Learning: Neural network learns to map observations to actions")
-print("- Value Estimation: Critic estimates future rewards for policy optimization")
-print("- Observation Keys: in_keys specify which observations to use")
-print("- Imitation Learning: Policy learns to reproduce reference motion")
-print("\nBuilds on Tutorial 6: Adds agent training to mimic environment")
+print("")
+print("Key DeepMimic Concepts:")
+print("- Modular Design: All components configured via dictionaries")
+print("- Context System: MimicControl provides ref_state for rewards/observations")
+print("- Termination: Episodes end when tracking error exceeds threshold")
+print("- Policy Learning: Neural network learns to reproduce reference motion")
+print("")
+print("Builds on Tutorial 6: Adds PPO agent training to modular mimic environment")
 print("This completes the full pipeline: Simulator → Environment → Agent!")

@@ -174,41 +174,80 @@ class MotionManager:
 
     def _setup_motion_exclusion(self):
         """
-        Setup motion exclusion based on config.exclude_motion_ids
-        Stores excluded motion IDs to be applied during each sampling operation.
+        Setup motion exclusion based on config.exclude_motions_file and/or config.exclude_motion_ids.
+        If both are provided, combines them (union).
         """
-        exclude_motion_ids = self.config.exclude_motion_ids
+        excluded_set = set()
 
-        if exclude_motion_ids is None:
-            # No exclusions
+        if self.config.exclude_motions_file is not None:
+            file_ids = self._load_exclusions_from_file(self.config.exclude_motions_file)
+            if file_ids:
+                excluded_set.update(file_ids)
+
+        if self.config.exclude_motion_ids is not None:
+            if isinstance(self.config.exclude_motion_ids, (list, ListConfig)):
+                excluded_set.update(self.config.exclude_motion_ids)
+            else:
+                raise ValueError(
+                    f"exclude_motion_ids must be None or list of integers, got {type(self.config.exclude_motion_ids)}"
+                )
+
+        if len(excluded_set) == 0:
             self.excluded_motion_ids = None
             return
 
-        if isinstance(exclude_motion_ids, (list, ListConfig)):
-            # Store specific motion IDs to exclude
-            motion_ids = list(exclude_motion_ids)
-            total_motions = self.motion_lib.num_motions()
+        motion_ids = sorted(excluded_set)
+        total_motions = self.motion_lib.num_motions()
+        for motion_id in motion_ids:
+            if motion_id < 0 or motion_id >= total_motions:
+                raise ValueError(
+                    f"Exclude motion ID {motion_id} is out of range [0, {total_motions-1}]"
+                )
 
-            # Validate motion IDs
-            for motion_id in motion_ids:
-                if motion_id < 0 or motion_id >= total_motions:
-                    raise ValueError(
-                        f"Exclude motion ID {motion_id} is out of range [0, {total_motions-1}]"
-                    )
+        self.excluded_motion_ids = torch.tensor(
+            motion_ids, dtype=torch.long, device=self.device
+        )
 
-            # Store excluded motion IDs as tensor for efficient indexing
-            self.excluded_motion_ids = torch.tensor(
-                motion_ids, dtype=torch.long, device=self.device
-            )
-
-            print(
-                f"Motion Manager: Will exclude {len(motion_ids)} motions from sampling"
-            )
+        print(f"Motion Manager: Excluding {len(motion_ids)} motions from sampling")
+        if len(motion_ids) <= 50:
             print(f"Excluded motion IDs: {motion_ids}")
+
+    def _load_exclusions_from_file(self, file_path: str) -> Optional[list]:
+        """Load motion IDs to exclude from a file (one ID per line)."""
+        import re
+        from pathlib import Path
+
+        path = Path(file_path)
+
+        if path.is_file():
+            # Direct file path provided
+            pass
+        elif path.is_dir():
+            # Directory provided - look for failed_motions subdirectory
+            failed_motions_dir = path / "failed_motions"
+            if failed_motions_dir.exists():
+                pattern = re.compile(r"failed_motions_epoch_(\d+)_rank_0\.txt")
+                epoch_files = []
+                for fp in failed_motions_dir.iterdir():
+                    match = pattern.match(fp.name)
+                    if match:
+                        epoch_files.append((int(match.group(1)), fp))
+                if epoch_files:
+                    epoch_files.sort(key=lambda x: x[0], reverse=True)
+                    path = epoch_files[0][1]
+                    print(f"Motion Manager: Using failed motions from {path}")
         else:
-            raise ValueError(
-                f"exclude_motion_ids must be None or list of integers, got {type(exclude_motion_ids)}"
-            )
+            print(f"Warning: exclude_motions_file not found: {path}")
+            return None
+
+        if not path.exists():
+            print(f"Warning: exclude_motions_file not found: {path}")
+            return None
+
+        with open(path, "r") as f:
+            motion_ids = [int(line.strip()) for line in f if line.strip()]
+        print(f"Motion Manager: Loaded {len(motion_ids)} motion IDs to exclude from {path}")
+        return motion_ids
 
     def _apply_motion_exclusions(self):
         """

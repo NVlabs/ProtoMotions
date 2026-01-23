@@ -39,7 +39,7 @@ from protomotions.components.pose_lib import (
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
-from convert_amass_to_proto import convert_amass_to_motion
+from convert_amass_to_proto import convert_amass_to_motion, foot_offsets_dict
 
 
 @dataclass
@@ -74,84 +74,106 @@ def amass_to_amassx(file_path):
 
 
 def check_floating_and_suggest_bound(
-    rigid_body_pos, fps, bad_height_threshold=0.20, bad_duration_threshold=0.5
+    rigid_body_pos,
+    fps,
+    bad_height_threshold=0.15,
+    bad_duration_threshold=0.3,
+    good_height_threshold=0.05,
+    foot_offset=0.0,
 ):
     """
-    Check if motion has floating issues and suggest a bound to fix it.
+    Check if motion has floating issues and suggest a trim bound.
 
-    This function looks for segments where any joint is > 20cm for more than 0.5 seconds.
-    If found, it finds the first frame BEFORE that segment where the lowest joint went above 10cm,
-    and returns that as a suggested bound.
-
-    Args:
-        rigid_body_pos: (T, N, 3) tensor of rigid body positions
-        fps: frames per second of the motion (after downsampling)
-        bad_height_threshold: height threshold for bad floating (default 0.20m = 20cm)
-        bad_duration_threshold: duration threshold for bad floating (default 0.5s)
-
-    Returns:
-        has_bad_floating: bool indicating if motion has bad floating issues
-        suggested_bound_time: time to bound at (in seconds), or None if no issue
-        max_consecutive_duration: maximum duration of consecutive floating in seconds
-        bad_start_time: start time of the worst floating segment
-        bad_end_time: end time of the worst floating segment
+    Detects: (1) floating segments exceeding duration threshold, (2) motion ending mid-air.
+    Returns suggested trim point at last grounded frame before the problematic segment.
     """
-    # Find the lowest point in each frame (minimum z-coordinate across all bodies)
+    effective_bad_threshold = bad_height_threshold + foot_offset
+    effective_good_threshold = good_height_threshold + foot_offset
+
     min_heights = rigid_body_pos[:, :, 2].min(dim=1).values  # (T,)
+    num_frames = min_heights.shape[0]
+    is_floating = min_heights > effective_bad_threshold
 
-    # Check which frames are above the bad threshold (20cm)
-    is_above_bad_threshold = min_heights > bad_height_threshold  # (T,)
+    if not is_floating.any():
+        return False, None, 0.0, 0.0, 0.0, None
 
-    # Find consecutive sequences of bad floating frames
+    # Find floating segment runs via transition detection
+    padded = torch.cat([torch.tensor([False], device=is_floating.device), is_floating])
+    transitions = padded[1:] != padded[:-1]
+    transition_indices = torch.where(transitions)[0]
+
     max_consecutive_frames = 0
-    current_consecutive = 0
-    start_floating = 0
     max_start_frame = 0
     max_end_frame = 0
+    starts_floating = is_floating[0].item()
 
-    for frame, is_floating in enumerate(is_above_bad_threshold):
-        if is_floating:
-            current_consecutive += 1
-            if current_consecutive > max_consecutive_frames:
-                max_consecutive_frames = current_consecutive
-                max_start_frame = start_floating
-                max_end_frame = frame
-        else:
-            current_consecutive = 0
-            start_floating = frame + 1
+    if len(transition_indices) == 0:
+        if starts_floating:
+            max_consecutive_frames = num_frames
+            max_start_frame = 0
+            max_end_frame = num_frames - 1
+    else:
+        idx_list = transition_indices.tolist()
+        if starts_floating:
+            idx_list = [0] + idx_list
+        if is_floating[-1].item():
+            idx_list.append(num_frames)
 
-    # Convert frames to seconds
+        # idx_list has pairs: [start1, end1, start2, end2, ...]
+        for i in range(0, len(idx_list) - 1, 2):
+            start = idx_list[i]
+            end = idx_list[i + 1] - 1
+            run_length = end - start + 1
+            if run_length > max_consecutive_frames:
+                max_consecutive_frames = run_length
+                max_start_frame = start
+                max_end_frame = end
+
     max_consecutive_duration = max_consecutive_frames / fps
-
-    # Check if bad floating duration exceeds threshold
     has_bad_floating = max_consecutive_duration >= bad_duration_threshold
 
+    ends_floating = is_floating[-1].item()
+    end_floating_start_frame = None
+
+    if ends_floating:
+        non_floating_frames = torch.where(~is_floating)[0]
+        if len(non_floating_frames) > 0:
+            end_floating_start_frame = non_floating_frames[-1].item() + 1
+        else:
+            end_floating_start_frame = 0
+
     suggested_bound_time = None
+    trim_start_frame = None
+    trim_reason = None
+
     if has_bad_floating:
-        # Find the first frame BEFORE the bad segment where lowest joint went above 10cm
-        # Look backwards from max_start_frame
-        good_height_threshold = 0.10  # 10cm
+        trim_start_frame = max_start_frame
+        trim_reason = "duration_exceeded"
+    elif ends_floating and end_floating_start_frame is not None:
+        trim_start_frame = end_floating_start_frame
+        trim_reason = "ends_floating"
+        has_bad_floating = True
 
-        for frame in range(max_start_frame - 1, -1, -1):
-            if min_heights[frame] <= good_height_threshold:
-                # This frame is good (below 10cm), so the bound should be after this frame
-                suggested_bound_frame = frame + 1
-                break
-
-        # If we didn't find a good frame, set bound to start
-        if suggested_bound_frame is None:
+    if trim_start_frame is not None:
+        if trim_start_frame > 0:
+            search_region = min_heights[:trim_start_frame]
+            good_frames = torch.where(search_region <= effective_good_threshold)[0]
+            if len(good_frames) > 0:
+                suggested_bound_frame = good_frames[-1].item() + 1
+            else:
+                suggested_bound_frame = 0
+        else:
             suggested_bound_frame = 0
 
-        # Convert suggested bound from downsampled FPS back to original FPS
-        # Calculate the downsampling ratio
-        suggested_bound_time = suggested_bound_frame * 1.0 / fps
+        suggested_bound_time = suggested_bound_frame / fps
 
     return (
         has_bad_floating,
         suggested_bound_time,
         max_consecutive_duration,
-        max_start_frame * 1.0 / fps,
-        max_end_frame * 1.0 / fps,
+        max_start_frame / fps,
+        max_end_frame / fps,
+        trim_reason,
     )
 
 
@@ -183,14 +205,14 @@ def is_valid_motion(
             motion_occlusion_data = occlusion_data[key]
             break
 
+    # Match PHC filtering logic exactly:
+    # - If motion is in occlusion data with "sitting"/"airborne" + idxes → trim at bound
+    # - If motion is in occlusion data with any other issue → skip (irrecoverable)
+    # - If motion is NOT in occlusion data → include (no bound)
     if not options.ignore_occlusions and len(motion_occlusion_data) > 0:
         issue = motion_occlusion_data.get("issue", "")
-        if (
-            issue == "sitting" or issue == "airborne"
-        ) and "idxes" in motion_occlusion_data:
-            bound = motion_occlusion_data["idxes"][
-                0
-            ]  # This bound is calculated assuming 30 FPS
+        if (issue == "sitting" or issue == "airborne") and "idxes" in motion_occlusion_data:
+            bound = motion_occlusion_data["idxes"][0]  # Bound assumes 30 FPS
             if bound < 10:
                 options.occlusion_bound += 1
                 print("bound too small", motion_name, bound)
@@ -245,6 +267,9 @@ def process_dataset_split(
     split_name: str,
     motion_fps_data: Optional[dict] = None,
     check_floating: bool = False,
+    floating_height_threshold: float = 0.15,
+    floating_duration_threshold: float = 0.3,
+    floating_cut_threshold: float = 0.05,
     kinematic_info=None,
     joint_names=None,
     mujoco_joint_names=None,
@@ -368,57 +393,53 @@ def process_dataset_split(
                                 output_fps=30,
                             )
 
-                            # Check for floating and get suggested bound
                             (
                                 has_bad_floating,
                                 suggested_bound_time,
                                 max_duration,
                                 bad_start_time,
                                 bad_end_time,
+                                trim_reason,
                             ) = check_floating_and_suggest_bound(
                                 motion_obj.rigid_body_pos,
                                 motion_fps,
-                                bad_height_threshold=0.20,
-                                bad_duration_threshold=0.5,
+                                bad_height_threshold=floating_height_threshold,
+                                bad_duration_threshold=floating_duration_threshold,
+                                good_height_threshold=floating_cut_threshold,
+                                foot_offset=foot_offsets_dict.get(humanoid_type, 0.0),
                             )
 
                             if has_bad_floating:
                                 if (
                                     suggested_bound_time is not None
                                     and suggested_bound_time >= 0.3
-                                ):  # ~ 10 frames, but in seconds
-                                    old_end_time = (
-                                        end_time if end_time else duration_seconds
-                                    )
+                                ):  # ~10 frames
+                                    old_end_time = end_time if end_time else duration_seconds
                                     end_time = suggested_bound_time
 
-                                    print(
-                                        f"✂️  Adjusting {rel_path_motion} bound due to floating:"
+                                    reason_str = (
+                                        "ends floating"
+                                        if trim_reason == "ends_floating"
+                                        else f"floating {max_duration:.2f}s"
                                     )
-                                    print(
-                                        f"   - Bad floating: {max_duration:.2f}s at times {bad_start_time:.2f}s-{bad_end_time:.2f}s"
-                                    )
-                                    print(
-                                        f"   - New bound: {suggested_bound_time:.2f}s ({old_end_time:.2f}s -> {end_time:.2f}s)"
-                                    )
+                                    print(f"✂️  Adjusting {rel_path_motion} ({reason_str}):")
+                                    if trim_reason == "duration_exceeded":
+                                        print(f"   - Bad segment: {bad_start_time:.2f}s-{bad_end_time:.2f}s")
+                                    print(f"   - Trimmed: {old_end_time:.2f}s -> {end_time:.2f}s")
 
                                     adjusted_bound_count += 1
                                 else:
-                                    # Can't salvage this motion, skip it
                                     floating_count += 1
-                                    print(
-                                        f"⚠️  Skipping {rel_path_motion} due to unsalvageable floating: {max_duration:.2f}s"
+                                    reason_str = (
+                                        "ends floating with no grounded portion"
+                                        if trim_reason == "ends_floating"
+                                        else f"unsalvageable floating: {max_duration:.2f}s"
                                     )
+                                    print(f"⚠️  Skipping {rel_path_motion}: {reason_str}")
                                     continue
 
                         except Exception as e:
-                            print(
-                                f"Warning: Could not check floating for {rel_path_motion}: {e}"
-                            )
-                            import traceback
-
-                            traceback.print_exc()
-                            # Continue processing if floating check fails
+                            print(f"Warning: Could not check floating for {rel_path_motion}: {e}")
 
                     # Create motion entry
                     motion_entry = create_motion_entry(
@@ -478,6 +499,24 @@ def main():
         "--check_floating",
         action="store_true",
         help="Check for floating issues in motions",
+    )
+    parser.add_argument(
+        "--floating_height_threshold",
+        type=float,
+        default=0.1,
+        help="Height threshold (m) for detecting floating. Default: 0.1 (10cm)",
+    )
+    parser.add_argument(
+        "--floating_duration_threshold",
+        type=float,
+        default=1,
+        help="Duration threshold (s) for bad floating. Default: 1",
+    )
+    parser.add_argument(
+        "--floating_cut_threshold",
+        type=float,
+        default=0.05,
+        help="Height threshold (m) for finding clean cut points. Default: 0.05 (5cm)",
     )
 
     args = parser.parse_args()
@@ -578,6 +617,9 @@ def main():
             split_name,
             motion_fps_data,
             check_floating=args.check_floating,
+            floating_height_threshold=args.floating_height_threshold,
+            floating_duration_threshold=args.floating_duration_threshold,
+            floating_cut_threshold=args.floating_cut_threshold,
             kinematic_info=kinematic_info,
             joint_names=joint_names,
             mujoco_joint_names=mujoco_joint_names,

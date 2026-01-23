@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+"""Configuration classes for IsaacLab simulator."""
+
 from dataclasses import dataclass, field
 from typing import Any
 from protomotions.simulator.base_simulator.config import SimParams, SimulatorConfig
@@ -24,24 +26,46 @@ import torch
 class ProtoMotionsIsaacLabMarkers:
     """Configuration for a single marker instance."""
 
-    marker: Any
-    scale: torch.Tensor
+    marker: Any = field(
+        default=None,
+        metadata={"help": "Marker object reference."}
+    )
+    scale: torch.Tensor = field(
+        default=None,
+        metadata={"help": "Marker scale tensor."}
+    )
 
 
 @dataclass
 class IsaacLabPhysXParams(IsaacGymPhysXParams):
-    """PhysX physics engine parameters."""
+    """PhysX physics engine parameters with IsaacLab extensions."""
 
-    gpu_found_lost_pairs_capacity: int = 2**21
-    gpu_max_rigid_contact_count: int = 2**23
-    gpu_found_lost_aggregate_pairs_capacity: int = 2**25
+    gpu_found_lost_pairs_capacity: int = field(
+        default=2**21,
+        metadata={"help": "GPU capacity for found/lost collision pairs."}
+    )
+    gpu_max_rigid_contact_count: int = field(
+        default=2**23,
+        metadata={"help": "Maximum GPU rigid contact count."}
+    )
+    gpu_found_lost_aggregate_pairs_capacity: int = field(
+        default=2**25,
+        metadata={"help": "GPU capacity for aggregate found/lost pairs."}
+    )
+    gpu_max_rigid_patch_count: int = field(
+        default=5 * 2**15,
+        metadata={"help": "Maximum GPU rigid patch count."}
+    )
 
 
 @dataclass
 class IsaacLabSimParams(SimParams):
-    """PhysX-specific simulation parameters used by IsaacGym and IsaacLab."""
+    """PhysX-specific simulation parameters for IsaacLab."""
 
-    physx: IsaacLabPhysXParams = field(default_factory=IsaacLabPhysXParams)
+    physx: IsaacLabPhysXParams = field(
+        default_factory=IsaacLabPhysXParams,
+        metadata={"help": "PhysX engine parameters."}
+    )
 
 
 @dataclass
@@ -49,5 +73,11 @@ class IsaacLabSimulatorConfig(SimulatorConfig):
     """Configuration specific to IsaacLab simulator."""
 
     _target_: str = "protomotions.simulator.isaaclab.simulator.IsaacLabSimulator"
-    w_last: bool = False
-    sim: IsaacLabSimParams = field(default_factory=IsaacLabSimParams)
+    w_last: bool = field(
+        default=False,
+        metadata={"help": "Quaternion format: False for wxyz (IsaacLab convention)."}
+    )
+    sim: IsaacLabSimParams = field(
+        default_factory=IsaacLabSimParams,
+        metadata={"help": "IsaacLab-specific simulation parameters."}
+    )

@@ -15,7 +15,7 @@
 #
 from protomotions.robot_configs.base import RobotConfig
 from protomotions.simulator.base_simulator.config import SimulatorConfig
-from protomotions.envs.mimic.config import MimicEnvConfig
+from protomotions.envs.base_env.config import EnvConfig
 from protomotions.agents.ppo.config import PPOAgentConfig
 import argparse
 
@@ -42,129 +42,78 @@ def motion_lib_config(args: argparse.Namespace):
     return MotionLibConfig(motion_file=args.motion_file)
 
 
-def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> MimicEnvConfig:
+def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
     """Build environment configuration (training defaults)."""
-    from protomotions.envs.mimic.config import (
-        MimicEarlyTerminationEntry,
-        MimicMotionManagerConfig,
+    from protomotions.envs.motion_manager.config import MimicMotionManagerConfig
+    from protomotions.envs.control.mimic_control import MimicControlConfig
+    from protomotions.envs.obs import (
+        max_coords_obs_factory,
+        historical_max_coords_obs_factory,
+        historical_actions_factory,
+        mimic_target_poses_max_coords_factory,
     )
-    from protomotions.envs.obs.config import (
-        FuturePoseType,
-        MimicTargetPoseConfig,
-        MimicObsConfig,
-        MaxCoordsSelfObsConfig,
-        HumanoidObsConfig,
+    from protomotions.envs.rewards import (
+        action_smoothness_factory,
+        gt_rew_factory,
+        gr_rew_factory,
+        gv_rew_factory,
+        gav_rew_factory,
+        rh_rew_factory,
+        pow_rew_factory,
     )
-    from protomotions.envs.base_env.config import RewardComponentConfig
-    from protomotions.envs.utils.rewards import (
-        mean_squared_error_exp,
-        rotation_error_exp,
-        power_consumption_sum,
-        norm,
-    )
+    from protomotions.envs.terminations import tracking_error_factory
 
-    mimic_early_termination = [
-        MimicEarlyTerminationEntry(
-            mimic_early_termination_key="max_joint_err",
-            mimic_early_termination_thresh=0.5,
-            less_than=False,
+    # Control components
+    control_components = {
+        "mimic": MimicControlConfig(
+            bootstrap_on_episode_end=True,
         )
-    ]
-
-    # Unified reward configuration - all components in one dict
-    reward_config = {
-        # Base rewards
-        "action_smoothness": RewardComponentConfig(
-            function=norm,
-            variables={
-                "x": "current_actions - previous_actions",
-            },
-            weight=-0.02,
-        ),
-        # Mimic tracking rewards
-        "gt_rew": RewardComponentConfig(
-            function=mean_squared_error_exp,
-            variables={
-                "x": "current_state.rigid_body_pos",
-                "ref_x": "ref_state.rigid_body_pos",
-                "coefficient": "-100.0",
-            },
-            weight=0.5,
-        ),
-        "gr_rew": RewardComponentConfig(
-            function=rotation_error_exp,
-            variables={
-                "q": "current_state.rigid_body_rot",
-                "ref_q": "ref_state.rigid_body_rot",
-                "coefficient": "-5.0",
-            },
-            weight=0.3,
-        ),
-        "gv_rew": RewardComponentConfig(
-            function=mean_squared_error_exp,
-            variables={
-                "x": "current_state.rigid_body_vel",
-                "ref_x": "ref_state.rigid_body_vel",
-                "coefficient": "-0.5",
-            },
-            weight=0.1,
-        ),
-        "gav_rew": RewardComponentConfig(
-            function=mean_squared_error_exp,
-            variables={
-                "x": "current_state.rigid_body_ang_vel",
-                "ref_x": "ref_state.rigid_body_ang_vel",
-                "coefficient": "-0.1",
-            },
-            weight=0.1,
-        ),
-        "rh_rew": RewardComponentConfig(
-            function=mean_squared_error_exp,
-            variables={
-                "x": "current_state.rigid_body_pos[:, 0, 2]",
-                "ref_x": "ref_state.rigid_body_pos[:, 0, 2]",
-                "coefficient": "-100.0",
-            },
-            weight=0.2,
-        ),
-        "pow_rew": RewardComponentConfig(
-            function=power_consumption_sum,
-            variables={
-                "dof_forces": "current_state.dof_forces",
-                "dof_vel": "current_state.dof_vel",
-                "use_torque_squared": "False",
-            },
-            weight=-1e-5,
-            min_value=-0.5,
-            zero_during_grace_period=True,
-        ),
     }
 
-    env_config: MimicEnvConfig = MimicEnvConfig(
+    # Observation components configuration
+    observation_components = {
+        # Humanoid self-observations (current state)
+        "max_coords_obs": max_coords_obs_factory(),
+        # Historical observations for AMP discriminator (from StateHistoryBuffer)
+        "historical_max_coords_obs": historical_max_coords_obs_factory(),
+        # Historical actions
+        "historical_previous_actions": historical_actions_factory(),
+        # Mimic target poses
+        "mimic_target_poses": mimic_target_poses_max_coords_factory(with_velocities=True),
+    }
+
+    # Termination components
+    termination_components = {
+        "tracking_error": tracking_error_factory(threshold=0.5),
+    }
+
+    # Reward components
+    reward_components = {
+        "action_smoothness": action_smoothness_factory(weight=-0.02),
+        "gt_rew": gt_rew_factory(weight=0.5, coefficient=-100.0),
+        "gr_rew": gr_rew_factory(weight=0.3, coefficient=-5.0),
+        "gv_rew": gv_rew_factory(weight=0.1, coefficient=-0.5),
+        "gav_rew": gav_rew_factory(weight=0.1, coefficient=-0.1),
+        "rh_rew": rh_rew_factory(weight=0.2, coefficient=-100.0),
+        "pow_rew": pow_rew_factory(weight=-1e-5, min_value=-0.5),
+    }
+
+    return EnvConfig(
         max_episode_length=1000,
-        reward_config=reward_config,
-        mimic_early_termination=mimic_early_termination,
-        mimic_bootstrap_on_episode_end=True,
-        mimic_obs=MimicObsConfig(
-            enabled=True,
-            mimic_target_pose=MimicTargetPoseConfig(
-                enabled=True, type=FuturePoseType.MAX_COORDS, with_velocities=True
-            ),
-        ),
+        num_state_history_steps=8,  # Historical obs for AMP discriminator
+        control_components=control_components,
+        observation_components=observation_components,
+        termination_components=termination_components,
+        reward_components=reward_components,
         motion_manager=MimicMotionManagerConfig(
             init_start_prob=0.2,
             resample_on_reset=True,
         ),
-        humanoid_obs=HumanoidObsConfig(
-            max_coords_obs=MaxCoordsSelfObsConfig(enabled=True, num_historical_steps=8),
-        ),
     )
-
-    return env_config
 
 
 def agent_config(
-    robot_config: RobotConfig, env_config: MimicEnvConfig, args: argparse.Namespace
+    robot_config: RobotConfig, env_config: EnvConfig, args: argparse.Namespace
 ) -> PPOAgentConfig:
     from protomotions.agents.common.config import MLPWithConcatConfig, MLPLayerConfig
     from protomotions.agents.ppo.config import (
@@ -212,7 +161,7 @@ def agent_config(
     discriminator_config = DiscriminatorConfig(
         in_keys=["historical_max_coords_obs"],
         out_keys=["disc_logits"],
-        input_models=[
+        models=[
             MLPWithConcatConfig(
                 in_keys=["historical_max_coords_obs"],
                 out_keys=["disc_logits"],
@@ -279,6 +228,9 @@ def apply_inference_overrides(
     simulator_cfg: SimulatorConfig,
     env_cfg,
     agent_cfg,
+    terrain_cfg,
+    motion_lib_cfg,
+    scene_lib_cfg,
     args: argparse.Namespace,
 ):
     # Reuse the mimic apply_inference_overrides function
@@ -287,7 +239,7 @@ def apply_inference_overrides(
     )
 
     apply_inference_overrides_fn = import_experiment_relative_eval_overrides("mlp.py")
-    apply_inference_overrides_fn(robot_cfg, simulator_cfg, env_cfg, agent_cfg, args)
+    apply_inference_overrides_fn(robot_cfg, simulator_cfg, env_cfg, agent_cfg, terrain_cfg, motion_lib_cfg, scene_lib_cfg, args)
 
     # Reuse the amp apply_inference_overrides function
     from protomotions.utils.config_utils import (
@@ -297,4 +249,4 @@ def apply_inference_overrides(
     apply_inference_overrides_fn = import_experiment_relative_eval_overrides(
         "../amp/mlp.py"
     )
-    apply_inference_overrides_fn(robot_cfg, simulator_cfg, env_cfg, agent_cfg, args)
+    apply_inference_overrides_fn(robot_cfg, simulator_cfg, env_cfg, agent_cfg, terrain_cfg, motion_lib_cfg, scene_lib_cfg, args)

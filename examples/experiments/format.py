@@ -15,7 +15,7 @@
 #
 from protomotions.simulator.base_simulator.config import SimulatorConfig
 from protomotions.robot_configs.base import RobotConfig
-from protomotions.envs.mimic.config import MimicEnvConfig
+from protomotions.envs.base_env.config import EnvConfig
 from protomotions.agents.ppo.config import PPOAgentConfig
 import argparse
 
@@ -113,7 +113,7 @@ def motion_lib_config(args: argparse.Namespace):
     return MotionLibConfig(motion_file=motion_file)
 
 
-def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> MimicEnvConfig:
+def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
     """
     Build environment configuration (training defaults).
 
@@ -124,7 +124,7 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> MimicEnvConf
 
 
 def agent_config(
-    robot_cfg: RobotConfig, env_cfg: MimicEnvConfig, args: argparse.Namespace
+    robot_cfg: RobotConfig, env_cfg: EnvConfig, args: argparse.Namespace
 ) -> PPOAgentConfig:
     """
     Build agent configuration (training defaults).

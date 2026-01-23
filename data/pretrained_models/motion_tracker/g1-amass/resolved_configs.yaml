@@ -1,19 +1,19 @@
 robot:
   asset:
     asset_root: protomotions/data/assets
-    self_collisions: true
+    self_collisions: 'True'
     asset_file_name: mjcf/g1_bm_box_feet.xml
-    usd_asset_file_name: usd/g1_bm/g1_bm.usda
+    usd_asset_file_name: usd/g1_bm_box_feet/g1_bm_box_feet.usda
     usd_bodies_root_prim_path: /World/envs/env_.*/Robot/pelvis/
-    replace_cylinder_with_capsule: true
-    thickness: 0.01
-    max_angular_velocity: 1000.0
-    max_linear_velocity: 1000.0
-    density: 0.001
-    angular_damping: 0.0
-    linear_damping: 0.0
-    disable_gravity: null
-    fix_base_link: null
+    replace_cylinder_with_capsule: 'True'
+    thickness: '0.01'
+    max_angular_velocity: '1000.0'
+    max_linear_velocity: '1000.0'
+    density: '0.001'
+    angular_damping: '0.0'
+    linear_damping: '0.0'
+    disable_gravity: None
+    fix_base_link: None
   common_naming_to_robot_body_names:
     all_left_foot_bodies:
     - left_ankle_roll_link
@@ -25,9 +25,9 @@ robot:
     - right_rubber_hand
     head_body_name:
     - head
-    torso_body_name: &id003
+    torso_body_name:
     - torso_link
-  default_root_height: 0.8
+  default_root_height: '0.8'
   default_dof_pos:
   - 0.0
   - 0.0
@@ -69,289 +69,290 @@ robot:
   - left_rubber_hand
   - right_rubber_hand
   non_termination_contact_bodies: all
-  init_state: null
-  mimic_small_marker_bodies: null
-  contact_pairs_multiplier: 16
+  init_state: None
+  mimic_small_marker_bodies: None
+  anchor_body_name: torso_link
+  contact_pairs_multiplier: '16'
   control:
     override_control_info:
       .*_hip_(pitch|yaw)_joint:
-        stiffness: 40.17923847137318
-        damping: 2.5578897650279457
-        armature: 0.01017752
-        friction: null
-        effort_limit: 88
-        velocity_limit: 32
+        stiffness: '40.17923847137318'
+        damping: '2.5578897650279457'
+        armature: '0.01017752'
+        friction: None
+        effort_limit: '88'
+        velocity_limit: '32'
       .*_hip_roll_joint:
-        stiffness: 99.09842777666113
-        damping: 6.3088018534966395
-        armature: 0.025101925
-        friction: null
-        effort_limit: 139
-        velocity_limit: 20
+        stiffness: '99.09842777666113'
+        damping: '6.3088018534966395'
+        armature: '0.025101925'
+        friction: None
+        effort_limit: '139'
+        velocity_limit: '20'
       .*_knee_joint:
-        stiffness: 99.09842777666113
-        damping: 6.3088018534966395
-        armature: 0.025101925
-        friction: null
-        effort_limit: 139
-        velocity_limit: 20
+        stiffness: '99.09842777666113'
+        damping: '6.3088018534966395'
+        armature: '0.025101925'
+        friction: None
+        effort_limit: '139'
+        velocity_limit: '20'
       .*_ankle_.*:
-        stiffness: 28.50124619574858
-        damping: 1.814445686584846
-        armature: 0.00721945
-        friction: null
-        effort_limit: 50
-        velocity_limit: 37
+        stiffness: '28.50124619574858'
+        damping: '1.814445686584846'
+        armature: '0.00721945'
+        friction: None
+        effort_limit: '50'
+        velocity_limit: '37'
       waist_yaw_joint:
-        stiffness: 40.17923847137318
-        damping: 2.5578897650279457
-        armature: 0.01017752
-        friction: null
-        effort_limit: 88
-        velocity_limit: 32
+        stiffness: '40.17923847137318'
+        damping: '2.5578897650279457'
+        armature: '0.01017752'
+        friction: None
+        effort_limit: '88'
+        velocity_limit: '32'
       waist_(roll|pitch)_joint:
-        stiffness: 28.50124619574858
-        damping: 1.814445686584846
-        armature: 0.00721945
-        friction: null
-        effort_limit: 50
-        velocity_limit: 37
+        stiffness: '28.50124619574858'
+        damping: '1.814445686584846'
+        armature: '0.00721945'
+        friction: None
+        effort_limit: '50'
+        velocity_limit: '37'
       .*_(shoulder|elbow)_.*:
-        stiffness: 14.25062309787429
-        damping: 0.907222843292423
-        armature: 0.003609725
-        friction: null
-        effort_limit: 25
-        velocity_limit: 37
+        stiffness: '14.25062309787429'
+        damping: '0.907222843292423'
+        armature: '0.003609725'
+        friction: None
+        effort_limit: '25'
+        velocity_limit: '37'
       .*_wrist_roll_joint:
-        stiffness: 14.25062309787429
-        damping: 0.907222843292423
-        armature: 0.003609725
-        friction: null
-        effort_limit: 25
-        velocity_limit: 37
+        stiffness: '14.25062309787429'
+        damping: '0.907222843292423'
+        armature: '0.003609725'
+        friction: None
+        effort_limit: '25'
+        velocity_limit: '37'
       .*_wrist_pitch_joint:
-        stiffness: 16.77832748089279
-        damping: 1.06814150219
-        armature: 0.00425
-        friction: null
-        effort_limit: 5
-        velocity_limit: 22
+        stiffness: '16.77832748089279'
+        damping: '1.06814150219'
+        armature: '0.00425'
+        friction: None
+        effort_limit: '5'
+        velocity_limit: '22'
       .*_wrist_yaw_joint:
-        stiffness: 16.77832748089279
-        damping: 1.06814150219
-        armature: 0.00425
-        friction: null
-        effort_limit: 5
-        velocity_limit: 22
-    control_type: built_in_pd
-    action_scale: 1.0
-    clamp_actions: 1.0
-    soft_pos_limit: 0.9
+        stiffness: '16.77832748089279'
+        damping: '1.06814150219'
+        armature: '0.00425'
+        friction: None
+        effort_limit: '5'
+        velocity_limit: '22'
+    control_type: ControlType.BUILT_IN_PD
+    action_scale: '1.0'
+    clamp_actions: '1.0'
+    soft_pos_limit: '0.9'
     control_info:
       left_hip_pitch_joint:
-        stiffness: 40.17923847137318
-        damping: 2.5578897650279457
-        armature: 0.01017752
-        friction: 0.03
-        effort_limit: 88
-        velocity_limit: 32
+        stiffness: '40.17923847137318'
+        damping: '2.5578897650279457'
+        armature: '0.01017752'
+        friction: '0.03'
+        effort_limit: '88'
+        velocity_limit: '32'
       left_hip_roll_joint:
-        stiffness: 99.09842777666113
-        damping: 6.3088018534966395
-        armature: 0.025101925
-        friction: 0.03
-        effort_limit: 139
-        velocity_limit: 20
+        stiffness: '99.09842777666113'
+        damping: '6.3088018534966395'
+        armature: '0.025101925'
+        friction: '0.03'
+        effort_limit: '139'
+        velocity_limit: '20'
       left_hip_yaw_joint:
-        stiffness: 40.17923847137318
-        damping: 2.5578897650279457
-        armature: 0.01017752
-        friction: 0.03
-        effort_limit: 88
-        velocity_limit: 32
+        stiffness: '40.17923847137318'
+        damping: '2.5578897650279457'
+        armature: '0.01017752'
+        friction: '0.03'
+        effort_limit: '88'
+        velocity_limit: '32'
       left_knee_joint:
-        stiffness: 99.09842777666113
-        damping: 6.3088018534966395
-        armature: 0.025101925
-        friction: 0.03
-        effort_limit: 139
-        velocity_limit: 20
+        stiffness: '99.09842777666113'
+        damping: '6.3088018534966395'
+        armature: '0.025101925'
+        friction: '0.03'
+        effort_limit: '139'
+        velocity_limit: '20'
       left_ankle_pitch_joint:
-        stiffness: 28.50124619574858
-        damping: 1.814445686584846
-        armature: 0.00721945
-        friction: 0.03
-        effort_limit: 50
-        velocity_limit: 37
+        stiffness: '28.50124619574858'
+        damping: '1.814445686584846'
+        armature: '0.00721945'
+        friction: '0.03'
+        effort_limit: '50'
+        velocity_limit: '37'
       left_ankle_roll_joint:
-        stiffness: 28.50124619574858
-        damping: 1.814445686584846
-        armature: 0.00721945
-        friction: 0.03
-        effort_limit: 50
-        velocity_limit: 37
+        stiffness: '28.50124619574858'
+        damping: '1.814445686584846'
+        armature: '0.00721945'
+        friction: '0.03'
+        effort_limit: '50'
+        velocity_limit: '37'
       right_hip_pitch_joint:
-        stiffness: 40.17923847137318
-        damping: 2.5578897650279457
-        armature: 0.01017752
-        friction: 0.03
-        effort_limit: 88
-        velocity_limit: 32
+        stiffness: '40.17923847137318'
+        damping: '2.5578897650279457'
+        armature: '0.01017752'
+        friction: '0.03'
+        effort_limit: '88'
+        velocity_limit: '32'
       right_hip_roll_joint:
-        stiffness: 99.09842777666113
-        damping: 6.3088018534966395
-        armature: 0.025101925
-        friction: 0.03
-        effort_limit: 139
-        velocity_limit: 20
+        stiffness: '99.09842777666113'
+        damping: '6.3088018534966395'
+        armature: '0.025101925'
+        friction: '0.03'
+        effort_limit: '139'
+        velocity_limit: '20'
       right_hip_yaw_joint:
-        stiffness: 40.17923847137318
-        damping: 2.5578897650279457
-        armature: 0.01017752
-        friction: 0.03
-        effort_limit: 88
-        velocity_limit: 32
+        stiffness: '40.17923847137318'
+        damping: '2.5578897650279457'
+        armature: '0.01017752'
+        friction: '0.03'
+        effort_limit: '88'
+        velocity_limit: '32'
       right_knee_joint:
-        stiffness: 99.09842777666113
-        damping: 6.3088018534966395
-        armature: 0.025101925
-        friction: 0.03
-        effort_limit: 139
-        velocity_limit: 20
+        stiffness: '99.09842777666113'
+        damping: '6.3088018534966395'
+        armature: '0.025101925'
+        friction: '0.03'
+        effort_limit: '139'
+        velocity_limit: '20'
       right_ankle_pitch_joint:
-        stiffness: 28.50124619574858
-        damping: 1.814445686584846
-        armature: 0.00721945
-        friction: 0.03
-        effort_limit: 50
-        velocity_limit: 37
+        stiffness: '28.50124619574858'
+        damping: '1.814445686584846'
+        armature: '0.00721945'
+        friction: '0.03'
+        effort_limit: '50'
+        velocity_limit: '37'
       right_ankle_roll_joint:
-        stiffness: 28.50124619574858
-        damping: 1.814445686584846
-        armature: 0.00721945
-        friction: 0.03
-        effort_limit: 50
-        velocity_limit: 37
+        stiffness: '28.50124619574858'
+        damping: '1.814445686584846'
+        armature: '0.00721945'
+        friction: '0.03'
+        effort_limit: '50'
+        velocity_limit: '37'
       waist_yaw_joint:
-        stiffness: 40.17923847137318
-        damping: 2.5578897650279457
-        armature: 0.01017752
-        friction: 0.03
-        effort_limit: 88
-        velocity_limit: 32
+        stiffness: '40.17923847137318'
+        damping: '2.5578897650279457'
+        armature: '0.01017752'
+        friction: '0.03'
+        effort_limit: '88'
+        velocity_limit: '32'
       waist_roll_joint:
-        stiffness: 28.50124619574858
-        damping: 1.814445686584846
-        armature: 0.00721945
-        friction: 0.03
-        effort_limit: 50
-        velocity_limit: 37
+        stiffness: '28.50124619574858'
+        damping: '1.814445686584846'
+        armature: '0.00721945'
+        friction: '0.03'
+        effort_limit: '50'
+        velocity_limit: '37'
       waist_pitch_joint:
-        stiffness: 28.50124619574858
-        damping: 1.814445686584846
-        armature: 0.00721945
-        friction: 0.03
-        effort_limit: 50
-        velocity_limit: 37
+        stiffness: '28.50124619574858'
+        damping: '1.814445686584846'
+        armature: '0.00721945'
+        friction: '0.03'
+        effort_limit: '50'
+        velocity_limit: '37'
       left_shoulder_pitch_joint:
-        stiffness: 14.25062309787429
-        damping: 0.907222843292423
-        armature: 0.003609725
-        friction: 0.03
-        effort_limit: 25
-        velocity_limit: 37
+        stiffness: '14.25062309787429'
+        damping: '0.907222843292423'
+        armature: '0.003609725'
+        friction: '0.03'
+        effort_limit: '25'
+        velocity_limit: '37'
       left_shoulder_roll_joint:
-        stiffness: 14.25062309787429
-        damping: 0.907222843292423
-        armature: 0.003609725
-        friction: 0.03
-        effort_limit: 25
-        velocity_limit: 37
+        stiffness: '14.25062309787429'
+        damping: '0.907222843292423'
+        armature: '0.003609725'
+        friction: '0.03'
+        effort_limit: '25'
+        velocity_limit: '37'
       left_shoulder_yaw_joint:
-        stiffness: 14.25062309787429
-        damping: 0.907222843292423
-        armature: 0.003609725
-        friction: 0.03
-        effort_limit: 25
-        velocity_limit: 37
+        stiffness: '14.25062309787429'
+        damping: '0.907222843292423'
+        armature: '0.003609725'
+        friction: '0.03'
+        effort_limit: '25'
+        velocity_limit: '37'
       left_elbow_joint:
-        stiffness: 14.25062309787429
-        damping: 0.907222843292423
-        armature: 0.003609725
-        friction: 0.03
-        effort_limit: 25
-        velocity_limit: 37
+        stiffness: '14.25062309787429'
+        damping: '0.907222843292423'
+        armature: '0.003609725'
+        friction: '0.03'
+        effort_limit: '25'
+        velocity_limit: '37'
       left_wrist_roll_joint:
-        stiffness: 14.25062309787429
-        damping: 0.907222843292423
-        armature: 0.003609725
-        friction: 0.03
-        effort_limit: 25
-        velocity_limit: 37
+        stiffness: '14.25062309787429'
+        damping: '0.907222843292423'
+        armature: '0.003609725'
+        friction: '0.03'
+        effort_limit: '25'
+        velocity_limit: '37'
       left_wrist_pitch_joint:
-        stiffness: 16.77832748089279
-        damping: 1.06814150219
-        armature: 0.00425
-        friction: 0.03
-        effort_limit: 5
-        velocity_limit: 22
+        stiffness: '16.77832748089279'
+        damping: '1.06814150219'
+        armature: '0.00425'
+        friction: '0.03'
+        effort_limit: '5'
+        velocity_limit: '22'
       left_wrist_yaw_joint:
-        stiffness: 16.77832748089279
-        damping: 1.06814150219
-        armature: 0.00425
-        friction: 0.03
-        effort_limit: 5
-        velocity_limit: 22
+        stiffness: '16.77832748089279'
+        damping: '1.06814150219'
+        armature: '0.00425'
+        friction: '0.03'
+        effort_limit: '5'
+        velocity_limit: '22'
       right_shoulder_pitch_joint:
-        stiffness: 14.25062309787429
-        damping: 0.907222843292423
-        armature: 0.003609725
-        friction: 0.03
-        effort_limit: 25
-        velocity_limit: 37
+        stiffness: '14.25062309787429'
+        damping: '0.907222843292423'
+        armature: '0.003609725'
+        friction: '0.03'
+        effort_limit: '25'
+        velocity_limit: '37'
       right_shoulder_roll_joint:
-        stiffness: 14.25062309787429
-        damping: 0.907222843292423
-        armature: 0.003609725
-        friction: 0.03
-        effort_limit: 25
-        velocity_limit: 37
+        stiffness: '14.25062309787429'
+        damping: '0.907222843292423'
+        armature: '0.003609725'
+        friction: '0.03'
+        effort_limit: '25'
+        velocity_limit: '37'
       right_shoulder_yaw_joint:
-        stiffness: 14.25062309787429
-        damping: 0.907222843292423
-        armature: 0.003609725
-        friction: 0.03
-        effort_limit: 25
-        velocity_limit: 37
+        stiffness: '14.25062309787429'
+        damping: '0.907222843292423'
+        armature: '0.003609725'
+        friction: '0.03'
+        effort_limit: '25'
+        velocity_limit: '37'
       right_elbow_joint:
-        stiffness: 14.25062309787429
-        damping: 0.907222843292423
-        armature: 0.003609725
-        friction: 0.03
-        effort_limit: 25
-        velocity_limit: 37
+        stiffness: '14.25062309787429'
+        damping: '0.907222843292423'
+        armature: '0.003609725'
+        friction: '0.03'
+        effort_limit: '25'
+        velocity_limit: '37'
       right_wrist_roll_joint:
-        stiffness: 14.25062309787429
-        damping: 0.907222843292423
-        armature: 0.003609725
-        friction: 0.03
-        effort_limit: 25
-        velocity_limit: 37
+        stiffness: '14.25062309787429'
+        damping: '0.907222843292423'
+        armature: '0.003609725'
+        friction: '0.03'
+        effort_limit: '25'
+        velocity_limit: '37'
       right_wrist_pitch_joint:
-        stiffness: 16.77832748089279
-        damping: 1.06814150219
-        armature: 0.00425
-        friction: 0.03
-        effort_limit: 5
-        velocity_limit: 22
+        stiffness: '16.77832748089279'
+        damping: '1.06814150219'
+        armature: '0.00425'
+        friction: '0.03'
+        effort_limit: '5'
+        velocity_limit: '22'
       right_wrist_yaw_joint:
-        stiffness: 16.77832748089279
-        damping: 1.06814150219
-        armature: 0.00425
-        friction: 0.03
-        effort_limit: 5
-        velocity_limit: 22
+        stiffness: '16.77832748089279'
+        damping: '1.06814150219'
+        armature: '0.00425'
+        friction: '0.03'
+        effort_limit: '5'
+        velocity_limit: '22'
   kinematic_info:
     body_names:
     - pelvis
@@ -966,10 +967,10 @@ robot:
       - - 0.0
         - 0.0
         - 1.0
-    nq: 36
-    nv: 35
-    num_bodies: 33
-    num_dofs: 29
+    nq: '36'
+    nv: '35'
+    num_bodies: '33'
+    num_dofs: '29'
     dof_limits_lower:
     - -2.5306999683380127
     - -0.5235999822616577
@@ -1030,110 +1031,130 @@ robot:
     - 1.9722199440002441
     - 1.6144299507141113
     - 1.6144299507141113
-  number_of_actions: 29
+  number_of_actions: '29'
+  anchor_body_index: '16'
   simulation_params:
     isaacgym:
-      fps: 100
-      decimation: 2
-      substeps: 2
+      fps: '100'
+      decimation: '2'
+      substeps: '2'
       physx:
-        num_threads: 4
-        solver_type: 1
-        num_position_iterations: 8
-        num_velocity_iterations: 4
-        contact_offset: 0.02
-        rest_offset: 0.0
-        bounce_threshold_velocity: 0.2
-        max_depenetration_velocity: 1
-        default_buffer_size_multiplier: 10.0
+        num_threads: '4'
+        solver_type: '1'
+        num_position_iterations: '8'
+        num_velocity_iterations: '4'
+        contact_offset: '0.02'
+        rest_offset: '0.0'
+        bounce_threshold_velocity: '0.2'
+        max_depenetration_velocity: '1'
+        default_buffer_size_multiplier: '10.0'
       flex:
-        num_inner_iterations: 10
-        warm_start: 0.25
+        num_inner_iterations: '10'
+        warm_start: '0.25'
     isaaclab:
-      fps: 200
-      decimation: 4
+      fps: '200'
+      decimation: '4'
       physx:
-        num_threads: 4
-        solver_type: 1
-        num_position_iterations: 8
-        num_velocity_iterations: 4
-        contact_offset: 0.02
-        rest_offset: 0.0
-        bounce_threshold_velocity: 0.2
-        max_depenetration_velocity: 1
-        default_buffer_size_multiplier: 10.0
-        gpu_found_lost_pairs_capacity: 2097152
-        gpu_max_rigid_contact_count: 8388608
-        gpu_found_lost_aggregate_pairs_capacity: 33554432
+        num_threads: '4'
+        solver_type: '1'
+        num_position_iterations: '8'
+        num_velocity_iterations: '4'
+        contact_offset: '0.02'
+        rest_offset: '0.0'
+        bounce_threshold_velocity: '0.2'
+        max_depenetration_velocity: '1'
+        default_buffer_size_multiplier: '10.0'
+        gpu_found_lost_pairs_capacity: '2097152'
+        gpu_max_rigid_contact_count: '8388608'
+        gpu_found_lost_aggregate_pairs_capacity: '33554432'
+        gpu_max_rigid_patch_count: '163840'
     genesis:
-      fps: 100
-      decimation: 2
-      substeps: 2
+      fps: '100'
+      decimation: '2'
+      substeps: '2'
     newton:
-      fps: 200
-      decimation: 4
+      fps: '200'
+      decimation: '4'
+      solver: newton
+      integrator: implicitfast
+      iterations: '100'
+      ls_iterations: '50'
+      ls_parallel: 'True'
+      impratio: '10.0'
+      njmax: '450'
+      nconmax: '300'
+      cone: pyramidal
 simulator:
-  _target_: protomotions.simulator.isaacgym.simulator.IsaacGymSimulator
-  w_last: true
-  headless: true
-  num_envs: 8192
+  _target_: protomotions.simulator.isaaclab.simulator.IsaacLabSimulator
+  w_last: 'False'
+  headless: 'True'
+  num_envs: '8192'
   sim:
-    fps: 100
-    decimation: 2
-    substeps: 2
+    fps: '200'
+    decimation: '4'
     physx:
-      num_threads: 4
-      solver_type: 1
-      num_position_iterations: 8
-      num_velocity_iterations: 4
-      contact_offset: 0.02
-      rest_offset: 0.0
-      bounce_threshold_velocity: 0.2
-      max_depenetration_velocity: 1
-      default_buffer_size_multiplier: 10.0
-    flex:
-      num_inner_iterations: 10
-      warm_start: 0.25
-  experiment_name: '165344'
-  camera: null
-  record_viewer: false
+      num_threads: '4'
+      solver_type: '1'
+      num_position_iterations: '8'
+      num_velocity_iterations: '4'
+      contact_offset: '0.02'
+      rest_offset: '0.0'
+      bounce_threshold_velocity: '0.2'
+      max_depenetration_velocity: '1'
+      default_buffer_size_multiplier: '10.0'
+      gpu_found_lost_pairs_capacity: '2097152'
+      gpu_max_rigid_contact_count: '8388608'
+      gpu_found_lost_aggregate_pairs_capacity: '33554432'
+      gpu_max_rigid_patch_count: '163840'
+  experiment_name: g1_tracker_bm
+  camera: None
+  record_viewer: 'False'
   viewer_record_dir: output/recordings/viewer
   domain_randomization:
     action_noise:
-      action_noise_range: !!python/tuple
-      - -0.02
-      - 0.02
+      action_noise_range: (-0.02, 0.02)
       dof_names:
       - .*
-      dof_indices: null
+      dof_indices: None
     friction:
-      num_buckets: 64
-      static_friction_range: &id001 !!python/tuple
-      - 0.6
-      - 3.0
-      dynamic_friction_range: *id001
-      restitution_range: !!python/tuple
-      - 0.0
-      - 1.0
+      num_buckets: '64'
+      static_friction_range: (0.6, 3.0)
+      dynamic_friction_range: (0.6, 3.0)
+      restitution_range: (0.0, 1.0)
       body_names:
       - .*
-      body_indices: null
+      body_indices: None
     center_of_mass:
       com_range:
-        x: &id002 !!python/tuple
-        - -0.05
-        - 0.05
-        y: *id002
-        z: *id002
-      body_names: *id003
-      body_indices: null
+        x: (-0.05, 0.05)
+        y: (-0.05, 0.05)
+        z: (-0.05, 0.05)
+      body_names:
+      - torso_link
+      body_indices: None
+    observation_noise:
+      dof_pos_noise: '0.01'
+      dof_vel_noise: '0.5'
+      root_rot_noise: '0.0'
+      root_ang_vel_noise: '0.0'
+      anchor_rot_noise: '0.05'
+      anchor_ang_vel_noise: '0.2'
+      body_pos_noise: '0.0'
+      body_rot_noise: '0.0'
+      body_vel_noise: '0.0'
+      body_ang_vel_noise: '0.0'
+      ground_height_noise: '0.0'
+    push:
+      push_interval_range: (1.0, 3.0)
+      max_linear_velocity: (0.5, 0.5, 0.2)
+      max_angular_velocity: (0.52, 0.52, 0.78)
 terrain:
   _target_: protomotions.components.terrains.terrain.Terrain
-  map_length: 20.0
-  map_width: 20.0
-  border_size: 40.0
-  num_levels: 10
-  num_terrains: 10
+  map_length: '20.0'
+  map_width: '20.0'
+  border_size: '40.0'
+  num_levels: '10'
+  num_terrains: '10'
   terrain_proportions:
   - 0.0
   - 0.0
@@ -1143,228 +1164,300 @@ terrain:
   - 0.0
   - 0.0
   - 1.0
-  slope_threshold: 0.9
-  num_samples_per_axis: 16
-  sample_width: 1.0
-  terrain_obs_num_samples: 256
-  horizontal_scale: 0.1
-  vertical_scale: 0.005
-  spacing_between_scenes: 10.0
-  minimal_humanoid_spacing: 1.0
-  terrain_path: null
-  load_terrain: false
-  save_terrain: false
+  slope_threshold: '0.9'
+  num_samples_per_axis: '16'
+  sample_width: '1.0'
+  terrain_obs_num_samples: '256'
+  horizontal_scale: '0.1'
+  vertical_scale: '0.005'
+  spacing_between_scenes: '10.0'
+  minimal_humanoid_spacing: '1.0'
+  terrain_path: None
+  load_terrain: 'False'
+  save_terrain: 'False'
   sim_config:
-    static_friction: 0.01
-    dynamic_friction: 0.01
-    restitution: 0.0
-    height_offset: 0.0
-    combine_mode: average
+    static_friction: '0.01'
+    dynamic_friction: '0.01'
+    restitution: '0.0'
+    height_offset: '0.0'
+    combine_mode: CombineMode.AVERAGE
 scene_lib:
   _target_: protomotions.components.scene_lib.SceneLib
-  scene_file: null
-  subset_method: first
-  replicate_method: weighted
-  pointcloud_samples_per_object: null
-  num_objects_per_env: null
+  scene_file: None
+  subset_method: SubsetMethod.FIRST
+  replicate_method: ReplicationMethod.WEIGHTED
+  pointcloud_samples_per_object: None
+  num_objects_per_env: None
 motion_lib:
   _target_: protomotions.components.motion_lib.MotionLib
-  motion_file: path/to/packaged-motion-lib.pt
-  world_size: 1
-  get_motion_state_use_blend: true
+  motion_file: None
+  world_size: '1'
+  get_motion_state_use_blend: 'True'
 env:
-  max_episode_length: 1000
-  _target_: protomotions.envs.mimic.env.Mimic
-  humanoid_obs:
-    max_coords_obs:
-      enabled: true
-      num_historical_steps: 3
-      local_obs: true
-      root_height_obs: true
-      observe_contacts: false
-    reduced_coords_obs:
-      enabled: true
-      num_historical_steps: 3
-    action_history:
-      enabled: false
-      num_historical_steps: 1
+  max_episode_length: '1000'
+  reset_grace_period: '5'
+  num_state_history_steps: '3'
+  _target_: protomotions.envs.base_env.env.BaseEnv
   scene_obs:
-    enabled: false
-    obs_object_index: null
-  termination_height: 0.15
-  enable_height_termination: false
+    enabled: 'False'
+    obs_object_index: None
   motion_manager:
     _target_: protomotions.envs.motion_manager.mimic_motion_manager.MimicMotionManager
-    init_start_prob: 0.1
-    subset_method: null
-    exclude_motion_ids: null
-    realign_motion_with_humanoid_on_each_step: true
-    resample_on_reset: true
-  ref_respawn_offset: 0.01
-  ref_object_respawn_offset: 0.0
-  ref_contact_smooth_window: 7
-  skip_correct_terrain_height_on_flat: true
-  show_terrain_markers: false
+    init_start_prob: '0.2'
+    subset_method: None
+    exclude_motion_ids: None
+    exclude_motions_file: None
+    realign_motion_with_humanoid_on_each_step: 'False'
+    resample_on_reset: 'True'
+  ref_respawn_offset: '0.01'
+  ref_object_respawn_offset: '0.0'
+  ref_contact_smooth_window: '7'
+  skip_correct_terrain_height_on_flat: 'True'
+  show_terrain_markers: 'False'
   save_dir: ''
-  reward_config:
-    action_smoothness:
-      function: !!python/name:protomotions.envs.utils.rewards.norm ''
+  reward_components:
+    global_anchor_pos:
+      function: global_position_error_exp
       variables:
-        x: current_actions - previous_actions
-      indices_subset: null
-      weight: -0.1
-      multiplicative: false
-      min_value: null
-      max_value: null
-      zero_during_grace_period: false
-    gt_rew:
-      function: &id004 !!python/name:protomotions.envs.utils.rewards.mean_squared_error_exp ''
+        x: current_state_anchor_pos
+        ref_x: ref_state_anchor_pos
+        sigma: '0.3'
+      indices_subset: None
+      weight: '0.5'
+      multiplicative: 'False'
+      min_value: None
+      max_value: None
+      zero_during_grace_period: 'False'
+      use_density_weights: 'False'
+    global_anchor_ori:
+      function: global_orientation_error_exp
       variables:
-        x: current_state.rigid_body_pos
-        ref_x: ref_state.rigid_body_pos
-        coefficient: '-100.0'
-      indices_subset: null
-      weight: 0.5
-      multiplicative: false
-      min_value: null
-      max_value: null
-      zero_during_grace_period: false
-    gr_rew:
-      function: !!python/name:protomotions.envs.utils.rewards.rotation_error_exp ''
+        q: current_state_anchor_rot
+        ref_q: ref_state_anchor_rot
+        sigma: '0.4'
+      indices_subset: None
+      weight: '0.5'
+      multiplicative: 'False'
+      min_value: None
+      max_value: None
+      zero_during_grace_period: 'False'
+      use_density_weights: 'False'
+    relative_body_pos:
+      function: relative_body_position_error_exp
       variables:
-        q: current_state.rigid_body_rot
-        ref_q: ref_state.rigid_body_rot
-        coefficient: '-10.0'
-      indices_subset: null
-      weight: 0.8
-      multiplicative: false
-      min_value: null
-      max_value: null
-      zero_during_grace_period: false
-    gv_rew:
-      function: *id004
+        body_pos: current_state_rigid_body_pos
+        ref_body_pos: ref_state_rigid_body_pos
+        anchor_pos: current_state_anchor_pos
+        ref_anchor_pos: ref_state_anchor_pos
+        anchor_rot: current_state_anchor_rot
+        ref_anchor_rot: ref_state_anchor_rot
+        sigma: '0.3'
+      indices_subset: None
+      weight: '1.0'
+      multiplicative: 'False'
+      min_value: None
+      max_value: None
+      zero_during_grace_period: 'False'
+      use_density_weights: 'True'
+    relative_body_ori:
+      function: relative_body_orientation_error_exp
       variables:
-        x: current_state.rigid_body_vel
-        ref_x: ref_state.rigid_body_vel
-        coefficient: '-0.5'
-      indices_subset: null
-      weight: 0.1
-      multiplicative: false
-      min_value: null
-      max_value: null
-      zero_during_grace_period: false
-    gav_rew:
-      function: *id004
+        body_rot: current_state_rigid_body_rot
+        ref_body_rot: ref_state_rigid_body_rot
+        anchor_rot: current_state_anchor_rot
+        ref_anchor_rot: ref_state_anchor_rot
+        sigma: '0.4'
+      indices_subset: None
+      weight: '1.0'
+      multiplicative: 'False'
+      min_value: None
+      max_value: None
+      zero_during_grace_period: 'False'
+      use_density_weights: 'True'
+    body_lin_vel:
+      function: global_velocity_error_exp
       variables:
-        x: current_state.rigid_body_ang_vel
-        ref_x: ref_state.rigid_body_ang_vel
-        coefficient: '-0.1'
-      indices_subset: null
-      weight: 0.1
-      multiplicative: false
-      min_value: null
-      max_value: null
-      zero_during_grace_period: false
-    rh_rew:
-      function: *id004
+        x: current_state_rigid_body_vel
+        ref_x: ref_state_rigid_body_vel
+        sigma: '1.0'
+      indices_subset: None
+      weight: '1.0'
+      multiplicative: 'False'
+      min_value: None
+      max_value: None
+      zero_during_grace_period: 'False'
+      use_density_weights: 'True'
+    body_ang_vel:
+      function: global_velocity_error_exp
       variables:
-        x: current_state.rigid_body_pos[:, 0, 2]
-        ref_x: ref_state.rigid_body_pos[:, 0, 2]
-        coefficient: '-100.0'
-      indices_subset: null
-      weight: 0.2
-      multiplicative: false
-      min_value: null
-      max_value: null
-      zero_during_grace_period: false
-    pow_rew:
-      function: !!python/name:protomotions.envs.utils.rewards.power_consumption_sum ''
+        x: current_state_rigid_body_ang_vel
+        ref_x: ref_state_rigid_body_ang_vel
+        sigma: '3.14'
+      indices_subset: None
+      weight: '1.0'
+      multiplicative: 'False'
+      min_value: None
+      max_value: None
+      zero_during_grace_period: 'False'
+      use_density_weights: 'True'
+    action_rate:
+      function: physical_action_rate
       variables:
-        dof_forces: current_state.dof_forces
-        dof_vel: current_state.dof_vel
-        use_torque_squared: 'False'
-      indices_subset: null
-      weight: -2.0e-05
-      multiplicative: false
-      min_value: -0.5
-      max_value: null
-      zero_during_grace_period: true
-    contact_match_rew:
-      function: !!python/name:protomotions.envs.utils.rewards.contact_mismatch_sum ''
+        action_delta: current_actions - previous_actions
+        pd_action_scale: pd_action_scale
+      indices_subset: None
+      weight: '-0.1'
+      multiplicative: 'False'
+      min_value: None
+      max_value: None
+      zero_during_grace_period: 'False'
+      use_density_weights: 'False'
+    limits_dof_pos:
+      function: soft_pos_limit_reward
       variables:
-        sim_contacts: current_state.rigid_body_contacts
-        ref_contacts: ref_state.rigid_body_contacts
-      indices_subset:
-      - all_left_foot_bodies
-      - all_right_foot_bodies
-      weight: -0.1
-      multiplicative: false
-      min_value: null
-      max_value: null
-      zero_during_grace_period: true
-    contact_force_change_rew:
-      function: !!python/name:protomotions.envs.utils.rewards.impact_force_penalty ''
+        dof_pos: current_state_dof_pos
+        dof_limits_lower: soft_dof_limits_lower
+        dof_limits_upper: soft_dof_limits_upper
+      indices_subset: None
+      weight: '-100.0'
+      multiplicative: 'False'
+      min_value: None
+      max_value: None
+      zero_during_grace_period: 'False'
+      use_density_weights: 'False'
+  control_components:
+    mimic:
+      _target_: protomotions.envs.control.mimic_control.MimicControl
+      bootstrap_on_episode_end: 'True'
+      num_future_steps: '1'
+  termination_components:
+    bad_ref_pos:
+      function: anchor_pos_error
       variables:
-        current_forces: current_contact_force_magnitudes
-        previous_forces: prev_contact_force_magnitudes
-      indices_subset:
-      - all_left_foot_bodies
-      - all_right_foot_bodies
-      weight: -0.0002
-      multiplicative: false
-      min_value: -0.5
-      max_value: null
-      zero_during_grace_period: true
-  mimic_obs:
-    enabled: true
-    mimic_phase_obs:
-      enabled: false
-    mimic_time_left_obs:
-      enabled: false
-    mimic_target_pose:
-      enabled: true
-      type: max-coords-simple
-      with_time: true
-      with_contacts: false
-      with_velocities: true
-      future_steps: 1
-      num_future_steps: 1
-  mimic_early_termination:
-  - mimic_early_termination_key: max_joint_err
-    mimic_early_termination_thresh: 0.5
-    less_than: false
-  mimic_bootstrap_on_episode_end: true
-  reset_grace_period: 5
-  masked_mimic_obs:
-    enabled: false
-    masked_mimic_masking:
-      joint_masking:
-        masked_mimic_fixed_conditioning: null
-        force_max_conditioned_bodies_prob: 0.1
-        force_small_num_conditioned_bodies_prob: 0.1
-        visible_target_pose_prob: 0.8
-        masked_mimic_repeat_mask_probability: 0.8
-      time_sampling:
-        alpha: 2.0
-        beta: 5.0
-    masked_mimic_target_pose:
-      num_future_steps: 5
-    historical_obs:
-      num_historical_conditioned_steps: 15
-      use_reduced_coords_obs: false
-  sync_motion: false
+        anchor_pos: current_state_anchor_pos
+        ref_anchor_pos: ref_state_anchor_pos
+        threshold: '0.5'
+      indices_subset: None
+      terminate_on_true: 'True'
+    bad_ref_ori:
+      function: anchor_ori_error
+      variables:
+        anchor_rot: current_state_anchor_rot
+        ref_anchor_rot: ref_state_anchor_rot
+        threshold: '0.8'
+      indices_subset: None
+      terminate_on_true: 'True'
+    bad_motion_body_pos:
+      function: relative_body_pos_error
+      variables:
+        body_pos: current_state_rigid_body_pos
+        ref_body_pos: ref_state_rigid_body_pos
+        anchor_pos: current_state_anchor_pos
+        ref_anchor_pos: ref_state_anchor_pos
+        anchor_rot: current_state_anchor_rot
+        ref_anchor_rot: ref_state_anchor_rot
+        threshold: '0.25'
+      indices_subset: None
+      terminate_on_true: 'True'
+  observation_components:
+    noisy_reduced_coords_obs:
+      function: compute_humanoid_reduced_coords_observations
+      variables:
+        dof_pos: noisy_current_state_dof_pos
+        dof_vel: noisy_current_state_dof_vel
+        root_local_ang_vel: noisy_current_state_root_local_ang_vel
+        anchor_rot: noisy_current_state_anchor_rot
+        w_last: 'True'
+        root_height_obs: 'False'
+        root_vel_obs: 'False'
+      indices_subset: None
+    noisy_historical_reduced_coords_obs:
+      function: compute_historical_reduced_coords_from_state
+      variables:
+        historical_dof_pos: noisy_historical_dof_pos
+        historical_dof_vel: noisy_historical_dof_vel
+        historical_root_rot: noisy_historical_root_rot
+        historical_root_local_ang_vel: noisy_historical_root_local_ang_vel
+        historical_anchor_rot: noisy_historical_anchor_rot
+        num_steps: None
+        w_last: 'True'
+      indices_subset: None
+    noisy_mimic_reduced_coords_target_poses:
+      function: build_reduced_coords_target_poses
+      variables:
+        current_state_anchor_rot: noisy_current_state_anchor_rot
+        mimic_ref_anchor_rot: mimic_ref_anchor_rot
+        mimic_ref_dof_vel: mimic_ref_dof_vel
+        mimic_ref_dof_pos: mimic_ref_dof_pos
+        num_future_steps: None
+        w_last: 'True'
+        include_xy_offset: 'False'
+      indices_subset: None
+    max_coords_obs:
+      function: compute_humanoid_max_coords_observations
+      variables:
+        body_pos: current_state_rigid_body_pos
+        body_rot: current_state_rigid_body_rot
+        body_vel: current_state_rigid_body_vel
+        body_ang_vel: current_state_rigid_body_ang_vel
+        ground_height: ground_heights_beneath_root
+        body_contacts: body_contacts
+        local_obs: 'True'
+        root_height_obs: 'True'
+        observe_contacts: 'False'
+        w_last: 'True'
+      indices_subset: None
+    historical_max_coords_obs:
+      function: compute_historical_max_coords_from_state
+      variables:
+        historical_rigid_body_pos: historical_rigid_body_pos
+        historical_rigid_body_rot: historical_rigid_body_rot
+        historical_rigid_body_vel: historical_rigid_body_vel
+        historical_rigid_body_ang_vel: historical_rigid_body_ang_vel
+        historical_ground_heights: historical_ground_heights
+        historical_body_contacts: historical_body_contacts
+        num_steps: None
+        local_obs: 'True'
+        root_height_obs: 'True'
+        observe_contacts: 'False'
+        w_last: 'True'
+      indices_subset: None
+    mimic_max_coords_target_poses:
+      function: build_max_coords_target_poses
+      variables:
+        current_state_body_pos: current_state_rigid_body_pos
+        current_state_body_rot: current_state_rigid_body_rot
+        current_state_body_vel: current_state_rigid_body_vel
+        current_state_body_ang_vel: current_state_rigid_body_ang_vel
+        mimic_ref_pos: mimic_ref_pos
+        mimic_ref_rot: mimic_ref_rot
+        mimic_ref_vel: mimic_ref_vel
+        mimic_ref_ang_vel: mimic_ref_ang_vel
+        num_future_steps: None
+        with_velocities: 'True'
+        with_relative: 'True'
+        w_last: 'True'
+      indices_subset: None
+    historical_previous_actions:
+      function: compute_historical_actions_from_state
+      variables:
+        historical_actions: historical_actions
+        num_steps: None
+      indices_subset: None
 agent:
-  batch_size: 8192
-  training_max_steps: 10000000000000
+  batch_size: '16384'
+  training_max_steps: '10000000000000'
   _target_: protomotions.agents.ppo.agent.PPO
   model:
     _target_: protomotions.agents.ppo.model.PPOModel
     in_keys:
+    - noisy_reduced_coords_obs
+    - noisy_historical_reduced_coords_obs
+    - noisy_mimic_reduced_coords_target_poses
     - max_coords_obs
     - historical_max_coords_obs
-    - reduced_coords_obs
-    - historical_reduced_coords_obs
-    - mimic_target_poses
+    - mimic_max_coords_target_poses
+    - historical_previous_actions
     out_keys:
     - action
     - mean_action
@@ -1373,128 +1466,128 @@ agent:
     actor:
       mu_key: actor_trunk_out
       in_keys:
-      - reduced_coords_obs
-      - mimic_target_poses
-      - historical_reduced_coords_obs
+      - noisy_reduced_coords_obs
+      - noisy_mimic_reduced_coords_target_poses
+      - noisy_historical_reduced_coords_obs
+      - historical_previous_actions
       out_keys:
       - action
       - mean_action
       - neglogp
       _target_: protomotions.agents.ppo.model.PPOActor
       mu_model:
-        normalize_obs: true
-        norm_clamp_value: 5
-        num_out: 29
+        normalize_obs: 'True'
+        norm_clamp_value: '5'
+        num_out: '29'
         layers:
-        - units: 1024
+        - units: '1024'
           activation: relu
-          use_layer_norm: false
-        - units: 1024
+          use_layer_norm: 'False'
+        - units: '1024'
           activation: relu
-          use_layer_norm: false
-        - units: 1024
+          use_layer_norm: 'False'
+        - units: '1024'
           activation: relu
-          use_layer_norm: false
-        - units: 1024
+          use_layer_norm: 'False'
+        - units: '1024'
           activation: relu
-          use_layer_norm: false
-        - units: 1024
+          use_layer_norm: 'False'
+        - units: '1024'
           activation: relu
-          use_layer_norm: false
-        - units: 1024
+          use_layer_norm: 'False'
+        - units: '1024'
           activation: relu
-          use_layer_norm: false
+          use_layer_norm: 'False'
         _target_: protomotions.agents.common.mlp.MLPWithConcat
         in_keys:
-        - reduced_coords_obs
-        - mimic_target_poses
-        - historical_reduced_coords_obs
+        - noisy_reduced_coords_obs
+        - noisy_mimic_reduced_coords_target_poses
+        - noisy_historical_reduced_coords_obs
+        - historical_previous_actions
         out_keys:
         - actor_trunk_out
         output_activation: tanh
         module_operations:
         - {}
-      num_out: 29
-      actor_logstd: -2.9
+      num_out: '29'
+      actor_logstd: '-2.9'
     critic:
-      normalize_obs: true
-      norm_clamp_value: 5.0
-      num_out: 1
+      normalize_obs: 'True'
+      norm_clamp_value: '5.0'
+      num_out: '1'
       layers:
-      - units: 1024
+      - units: '1024'
         activation: relu
-        use_layer_norm: false
-      - units: 1024
+        use_layer_norm: 'False'
+      - units: '1024'
         activation: relu
-        use_layer_norm: false
-      - units: 1024
+        use_layer_norm: 'False'
+      - units: '1024'
         activation: relu
-        use_layer_norm: false
-      - units: 1024
+        use_layer_norm: 'False'
+      - units: '1024'
         activation: relu
-        use_layer_norm: false
+        use_layer_norm: 'False'
       _target_: protomotions.agents.common.mlp.MLPWithConcat
       in_keys:
       - max_coords_obs
-      - mimic_target_poses
+      - mimic_max_coords_target_poses
       - historical_max_coords_obs
+      - historical_previous_actions
       out_keys:
       - value
-      output_activation: null
+      output_activation: None
       module_operations:
       - {}
     actor_optimizer:
       _target_: torch.optim.Adam
-      lr: 2.0e-05
-      weight_decay: 0.0
-      eps: 1.0e-08
-      betas: &id005 !!python/tuple
-      - 0.95
-      - 0.99
+      lr: 2e-05
+      weight_decay: '0.0'
+      eps: 1e-08
+      betas: (0.95, 0.99)
     critic_optimizer:
       _target_: torch.optim.Adam
-      lr: 0.0001
-      weight_decay: 0.0
-      eps: 1.0e-08
-      betas: *id005
-  num_steps: 32
-  gradient_clip_val: 50.0
-  fail_on_bad_grads: false
-  check_grad_mag: true
-  gamma: 0.99
-  bounds_loss_coef: 0.0
-  task_reward_w: 1.0
-  num_mini_epochs: 2
-  training_early_termination: null
-  save_epoch_checkpoint_every: 1000
-  save_last_checkpoint_every: 10
-  max_episode_length_manager: null
+      lr: '0.0001'
+      weight_decay: '0.0'
+      eps: 1e-08
+      betas: (0.95, 0.99)
+  num_steps: '32'
+  gradient_clip_val: '50.0'
+  fail_on_bad_grads: 'False'
+  check_grad_mag: 'True'
+  gamma: '0.99'
+  bounds_loss_coef: '0.0'
+  task_reward_w: '1.0'
+  num_mini_epochs: '2'
+  training_early_termination: None
+  save_epoch_checkpoint_every: '1000'
+  save_last_checkpoint_every: '10'
+  max_episode_length_manager: None
   evaluator:
     _target_: protomotions.agents.evaluators.mimic_evaluator.MimicEvaluator
-    eval_metrics_every: 200
+    eval_metrics_every: '200'
     eval_metric_keys:
     - gt_err
     - gr_err
     - gr_err_degrees
-    - lr_err_degrees
-    - gt_rew
-    - gr_rew
-    - pow_rew
-    - contact_force_change_rew
-    - contact_match_rew
-    - contact_match_accuracy
-    max_eval_steps: 600
-    save_predicted_motion_lib_every: 3
-  normalize_rewards: true
-  normalized_reward_clamp_value: 5.0
-  tau: 0.95
-  e_clip: 0.2
-  clip_critic_loss: true
-  actor_clip_frac_threshold: 0.6
+    - max_joint_err
+    - action_rate
+    max_eval_steps: '600'
+    save_predicted_motion_lib_every: '3'
+    motion_weights_rules:
+      motion_weights_update_success_discount: '0.999'
+      motion_weights_update_failure_discount: '0'
+      min_motion_weight: 1/num_motions
+  normalize_rewards: 'True'
+  normalized_reward_clamp_value: '5.0'
+  tau: '0.95'
+  e_clip: '0.2'
+  clip_critic_loss: 'True'
+  actor_clip_frac_threshold: '0.6'
   advantage_normalization:
-    enabled: true
-    shift_mean: true
-    use_ema: true
-    ema_alpha: 0.05
-    min_std: 0.02
-    clamp_range: 4.0
+    enabled: 'True'
+    shift_mean: 'True'
+    use_ema: 'True'
+    ema_alpha: '0.05'
+    min_std: '0.02'
+    clamp_range: '4.0'

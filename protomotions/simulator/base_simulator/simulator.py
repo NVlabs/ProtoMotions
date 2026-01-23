@@ -44,7 +44,10 @@ from protomotions.utils import rotations
 
 from protomotions.components.scene_lib import SceneLib
 from protomotions.components.terrains.terrain import Terrain
-from protomotions.simulator.base_simulator.utils import build_pd_action_offset_scale
+from protomotions.simulator.base_simulator.utils import (
+    build_motion_data,
+    build_pd_action_offset_scale,
+)
 from protomotions.simulator.base_simulator.simulator_state import (
     RobotState,
     DataConversionMapping,
@@ -279,6 +282,101 @@ class Simulator(ABC):
                 self.device,
             )
         )
+        
+        # Initialize push randomization state
+        self._init_push_randomization()
+
+    def _init_push_randomization(self) -> None:
+        """Initialize push randomization state buffers."""
+        push_cfg = None
+        if (
+            self.config.domain_randomization is not None
+            and self.config.domain_randomization.push is not None
+            and self.config.domain_randomization.push.has_push()
+        ):
+            push_cfg = self.config.domain_randomization.push
+        
+        self._push_enabled = push_cfg is not None
+        
+        if self._push_enabled:
+            self._simulation_time = torch.zeros(self.num_envs, device=self.device)
+            self._push_next_time = torch.zeros(self.num_envs, device=self.device)
+            self._push_interval_range = push_cfg.push_interval_range
+            self._push_max_lin_vel = torch.tensor(
+                push_cfg.max_linear_velocity, device=self.device, dtype=torch.float
+            )
+            self._push_max_ang_vel = torch.tensor(
+                push_cfg.max_angular_velocity, device=self.device, dtype=torch.float
+            )
+            self._schedule_push(torch.arange(self.num_envs, device=self.device))
+
+    def _schedule_push(self, env_ids: torch.Tensor) -> None:
+        """Schedule next push time for specified environments."""
+        if not self._push_enabled or len(env_ids) == 0:
+            return
+        
+        interval_min, interval_max = self._push_interval_range
+        random_intervals = (
+            torch.rand(len(env_ids), device=self.device)
+            * (interval_max - interval_min)
+            + interval_min
+        )
+        self._push_next_time[env_ids] = self._simulation_time[env_ids] + random_intervals
+
+    def _apply_push_if_due(self) -> None:
+        """Check if any environments are due for a push and apply it."""
+        if not self._push_enabled:
+            return
+        
+        due_mask = self._simulation_time >= self._push_next_time
+        if not due_mask.any():
+            return
+        
+        due_env_ids = torch.where(due_mask)[0]
+        num_due = len(due_env_ids)
+        
+        lin_vel = (
+            (torch.rand(num_due, 3, device=self.device) * 2 - 1)
+            * self._push_max_lin_vel
+        )
+        ang_vel = (
+            (torch.rand(num_due, 3, device=self.device) * 2 - 1)
+            * self._push_max_ang_vel
+        )
+        
+        self._apply_root_velocity_impulse(lin_vel, ang_vel, due_env_ids)
+        self._schedule_push(due_env_ids)
+
+    @abstractmethod
+    def _apply_root_velocity_impulse(
+        self,
+        linear_velocity: torch.Tensor,
+        angular_velocity: torch.Tensor,
+        env_ids: torch.Tensor,
+    ) -> None:
+        """Apply velocity impulse to robot root.
+        
+        Adds the given velocities to the robot's current root velocities.
+        
+        Args:
+            linear_velocity: Linear velocity impulse [num_envs, 3] in m/s.
+            angular_velocity: Angular velocity impulse [num_envs, 3] in rad/s.
+            env_ids: Environment indices to apply impulse to.
+        """
+        raise NotImplementedError
+
+    def _push_robot(self) -> None:
+        """Apply a random push to all robots (triggered by user button press)."""
+        push_magnitude = 1.0
+        all_env_ids = torch.arange(self.num_envs, device=self.device)
+        
+        random_dir = torch.randn(self.num_envs, 3, device=self.device)
+        random_dir = random_dir / (torch.norm(random_dir, dim=-1, keepdim=True) + 1e-8)
+        lin_vel = random_dir * push_magnitude
+        ang_vel = torch.zeros(self.num_envs, 3, device=self.device)
+        
+        self._apply_root_velocity_impulse(lin_vel, ang_vel, all_env_ids)
+        print("Push applied to all robots")
 
     def _verify_joint_limits(self) -> None:
         """
@@ -386,16 +484,13 @@ class Simulator(ABC):
         # Store the previous actions
         self._previous_actions = self._common_actions.clone()
         self.user_requested_reset = False
-        if (
-            self._domain_randomization is not None
-            and "action_noise" in self._domain_randomization
-        ):
-            common_actions[
-                ..., self._domain_randomization["action_noise"]["dof_indices"]
-            ] += self._domain_randomization["action_noise"]["action_noise"]
-
         self._common_actions = common_actions.to(self.device)
         self._physics_step()
+        
+        # Update simulation time and apply push randomization
+        if self._push_enabled:
+            self._simulation_time += self.dt
+            self._apply_push_if_due()
 
         # Get fresh markers state after physics step
         markers_state = markers_callback() if markers_callback is not None else None
@@ -418,10 +513,19 @@ class Simulator(ABC):
             new_object_states: Optional object states.
             env_ids: Tensor of environment ids to reset.
         """
+        if env_ids is None:
+            env_ids = torch.arange(self.num_envs, device=self.device)
         new_states = new_states.convert_to_sim(self.data_conversion)
+        
+        self._previous_actions[env_ids] = 0.0
         if new_object_states is not None:
             new_object_states = new_object_states.convert_to_sim(self.data_conversion)
         self._set_simulator_env_state(new_states, new_object_states, env_ids)
+        
+        # Reset push randomization state for reset environments
+        if self._push_enabled:
+            self._simulation_time[env_ids] = 0.0
+            self._schedule_push(env_ids)
 
     @abstractmethod
     def _set_simulator_env_state(
@@ -864,10 +968,22 @@ class Simulator(ABC):
         """
         if self.control_type == ControlType.BUILT_IN_PD:
             pd_targets = self._action_to_pd_targets(self._common_actions)
+            
+            if self._domain_randomization is not None and "action_noise" in self._domain_randomization:
+                pd_targets[
+                    ..., self._domain_randomization["action_noise"]["dof_indices"]
+                ] += self._domain_randomization["action_noise"]["action_noise"]
+            
             sim_targets = pd_targets[:, self.data_conversion.dof_convert_to_sim]
             self._apply_simulator_pd_targets(sim_targets)
         elif self.control_type == ControlType.PROPORTIONAL:
             pd_tar = self._action_to_pd_targets(self._common_actions)
+            
+            if self._domain_randomization is not None and "action_noise" in self._domain_randomization:
+                pd_tar[
+                    ..., self._domain_randomization["action_noise"]["dof_indices"]
+                ] += self._domain_randomization["action_noise"]["action_noise"]
+
             common_dof_state = self._get_simulator_dof_state().convert_to_common(
                 self.data_conversion
             )
@@ -882,6 +998,11 @@ class Simulator(ABC):
             self._apply_simulator_torques(sim_torques)
         elif self.control_type == ControlType.TORQUE:
             torques = self._action_to_torque_targets(self._common_actions)
+            if self._domain_randomization is not None and "action_noise" in self._domain_randomization:
+                torques[
+                    ..., self._domain_randomization["action_noise"]["dof_indices"]
+                ] += self._domain_randomization["action_noise"]["action_noise"]
+
             torques = torch.clip(
                 torques, -self._torque_limits_common, self._torque_limits_common
             )
@@ -1124,8 +1245,13 @@ class Simulator(ABC):
                     self._user_recording_frame = 0
 
                     self._recorded_motion = {
-                        "global_translation": [],
-                        "global_rotation": [],
+                        "gts": [],  # rigid_body_pos (global translations)
+                        "grs": [],  # rigid_body_rot (global rotations)
+                        "gvs": [],  # rigid_body_vel (global velocities)
+                        "gavs": [],  # rigid_body_ang_vel (global angular velocities)
+                        "dps": [],  # dof_pos
+                        "dvs": [],  # dof_vel
+                        "contacts": [],  # rigid_body_contacts
                     }
 
                     if not os.path.exists(self._curr_user_recording_name):
@@ -1171,21 +1297,15 @@ class Simulator(ABC):
                     self._delete_user_viewer_recordings = True
                     print(f"Video saved to {self._curr_user_recording_name}.mp4")
 
-                    # Save the recorded motion to a file
-                    global_translation = torch.cat(
-                        self._recorded_motion["global_translation"], dim=0
+                    # Save the recorded motion as a .motion file
+                    motion_data = build_motion_data(
+                        self._recorded_motion,
+                        fps=30,  # Video recording FPS
+                        num_dof=self._num_dof,
                     )
-                    global_rotation = torch.cat(
-                        self._recorded_motion["global_rotation"], dim=0
-                    )
-                    with open(f"{self._curr_user_recording_name}.pt", "wb") as f:
-                        torch.save(
-                            {
-                                "global_translation": global_translation,
-                                "global_rotation": global_rotation,
-                            },
-                            f,
-                        )
+                    motion_file_path = f"{self._curr_user_recording_name}.motion"
+                    torch.save(motion_data, motion_file_path)
+                    print(f"Motion saved to {motion_file_path}")
                     self._recorded_motion = None
 
                 self._user_recording_state_change = False
@@ -1199,13 +1319,19 @@ class Simulator(ABC):
                 self._write_viewport_to_file(file_name)
                 self._user_recording_frame += 1
 
-                bodies_state = self.get_bodies_state()
-                self._recorded_motion["global_translation"].append(
-                    bodies_state.rigid_body_pos
-                )
-                self._recorded_motion["global_rotation"].append(
-                    bodies_state.rigid_body_rot
-                )
+                robot_state = self.get_robot_state()
+                self._recorded_motion["gts"].append(robot_state.rigid_body_pos)
+                self._recorded_motion["grs"].append(robot_state.rigid_body_rot)
+                if robot_state.rigid_body_vel is not None:
+                    self._recorded_motion["gvs"].append(robot_state.rigid_body_vel)
+                if robot_state.rigid_body_ang_vel is not None:
+                    self._recorded_motion["gavs"].append(robot_state.rigid_body_ang_vel)
+                if robot_state.dof_pos is not None:
+                    self._recorded_motion["dps"].append(robot_state.dof_pos)
+                if robot_state.dof_vel is not None:
+                    self._recorded_motion["dvs"].append(robot_state.dof_vel)
+                if robot_state.rigid_body_contacts is not None:
+                    self._recorded_motion["contacts"].append(robot_state.rigid_body_contacts)
 
             # Clean up temporary files if needed
             if self._delete_user_viewer_recordings:

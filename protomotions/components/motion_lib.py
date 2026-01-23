@@ -32,7 +32,6 @@ Key Features:
 
 import os
 from typing import Optional, Tuple
-from dataclasses import dataclass
 from easydict import EasyDict
 from pathlib import Path
 
@@ -45,7 +44,7 @@ from protomotions.simulator.base_simulator.simulator_state import (
     StateConversion,
 )
 from protomotions.utils.rotations import quat_to_exp_map
-from protomotions.utils.config_builder import ConfigBuilder
+from dataclasses import dataclass, field
 
 from protomotions.utils.motion_interpolation_utils import (
     interpolate_pos,
@@ -66,13 +65,22 @@ _motion_field_mapping = {
 
 
 @dataclass
-class MotionLibConfig(ConfigBuilder):
+class MotionLibConfig:
     """Configuration for motion library."""
 
     _target_: str = "protomotions.components.motion_lib.MotionLib"
-    motion_file: str = None
-    world_size: int = 1
-    get_motion_state_use_blend: bool = True
+    motion_file: Optional[str] = field(
+        default=None,
+        metadata={"help": "Path to motion file (.pt, .yaml, or .motion). None for empty library."}
+    )
+    world_size: int = field(
+        default=1,
+        metadata={"help": "World size for distributed training (sharded loading).", "min": 1}
+    )
+    get_motion_state_use_blend: bool = field(
+        default=True,
+        metadata={"help": "Use interpolation for smooth motion queries between frames."}
+    )
 
 
 class MotionLib:
@@ -704,7 +712,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Motion Library utilities")
     parser.add_argument(
-        "--motion-path", type=str, default="", help="Path to motion files or directory"
+        "--motion-path", type=str, default="", help="Path to motion file (.yaml, .motion, .pt) or directory"
     )
     parser.add_argument(
         "--output-file",
@@ -721,8 +729,27 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    motion_file = args.motion_path
+
+    # If the file is a YAML, verify motion files are accessible relative to YAML location
+    if motion_file.endswith(".yaml"):
+        yaml_dir = Path(motion_file).parent.resolve()
+        with open(motion_file, "r") as f:
+            motion_config = yaml.load(f, Loader=yaml.SafeLoader)
+        
+        motions = motion_config.get("motions", [])
+        if motions and "file" in motions[0]:
+            first_motion_path = yaml_dir / motions[0]["file"]
+            if not first_motion_path.exists():
+                raise FileNotFoundError(
+                    f"Motion file not found: {first_motion_path}\n"
+                    f"The YAML references '{motions[0]['file']}' but it doesn't exist "
+                    f"relative to the YAML directory ({yaml_dir}).\n"
+                    f"Did you forget to copy the YAML file to the motion directory?"
+                )
+
     # Create and save motion library
     motion_lib = MotionLib(
-        config=MotionLibConfig(motion_file=args.motion_path), device=args.device
+        config=MotionLibConfig(motion_file=motion_file), device=args.device
     )
     motion_lib.save_to_file(args.output_file)

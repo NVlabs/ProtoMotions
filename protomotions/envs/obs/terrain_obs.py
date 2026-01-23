@@ -21,6 +21,12 @@ Computes height map observations around the agent.
 import torch
 
 from protomotions.components.terrains.config import TerrainConfig
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from protomotions.envs.base_env.env import BaseEnv
+else:
+    BaseEnv = object
 
 
 class TerrainObs:
@@ -33,7 +39,7 @@ class TerrainObs:
         env: Parent environment instance.
     """
 
-    def __init__(self, config: TerrainConfig, env):
+    def __init__(self, config: TerrainConfig, env: BaseEnv):
         self.config = config
         self.env = env
 

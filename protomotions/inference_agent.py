@@ -138,6 +138,8 @@ import torch  # noqa: E402
 from protomotions.utils.hydra_replacement import get_class  # noqa: E402
 from protomotions.utils.fabric_config import FabricConfig  # noqa: E402
 from lightning.fabric import Fabric  # noqa: E402
+from dataclasses import asdict  # noqa: E402
+from protomotions.utils.config_utils import clean_dict_for_storage  # noqa: E402
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s: %(message)s")
@@ -275,7 +277,7 @@ def main():
         loggers=[],  # No loggers needed for inference
         callbacks=[],  # No callbacks needed for inference
     )
-    fabric: Fabric = Fabric(**fabric_config.to_dict())
+    fabric: Fabric = Fabric(**asdict(fabric_config))
     fabric.launch()
 
     # Setup IsaacLab simulation_app if using IsaacLab simulator
@@ -285,7 +287,14 @@ def main():
         app_launcher = AppLauncher(app_launcher_flags)
         simulator_extra_params["simulation_app"] = app_launcher.app
 
-    # Create components (terrain, scene_lib, motion_lib, simulator)
+    # Convert friction for simulator compatibility
+    from protomotions.simulator.base_simulator.utils import convert_friction_for_simulator
+
+    terrain_config, simulator_config = convert_friction_for_simulator(
+        terrain_config, simulator_config
+    )
+
+    # Create components
     from protomotions.utils.component_builder import build_all_components
 
     save_dir_for_weights = (
@@ -350,7 +359,18 @@ def main():
 
     if args.full_eval:
         agent.evaluator.eval_count = 0
-        agent.evaluator.evaluate()
+        evaluation_log, evaluated_score = agent.evaluator.evaluate()
+        
+        # Print evaluation metrics
+        print("\n" + "=" * 60)
+        print("EVALUATION RESULTS")
+        print("=" * 60)
+        for key, value in sorted(evaluation_log.items()):
+            print(f"  {key}: {value:.6f}")
+        print("=" * 60)
+        if evaluated_score is not None:
+            print(f"  Overall Score: {evaluated_score:.6f}")
+        print("=" * 60 + "\n")
     else:
         agent.evaluator.simple_test_policy(collect_metrics=True)
 

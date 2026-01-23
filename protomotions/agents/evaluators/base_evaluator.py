@@ -85,6 +85,82 @@ class SmoothnessMetricPlugin:
         return result
 
 
+class ActionSmoothnessMetricPlugin:
+    """Plugin for computing action smoothness metrics.
+    
+    Measures how much actions change between consecutive timesteps.
+    High action deltas indicate jerky/unstable control.
+    """
+
+    def __init__(self, evaluator, dt: float = None):
+        """
+        Initialize the action smoothness metric plugin.
+
+        Args:
+            evaluator: The parent evaluator instance
+            dt: Simulation timestep (defaults to env.dt)
+        """
+        self.dt = dt if dt is not None else evaluator.env.dt
+        self.device = evaluator.device
+
+    def compute(self, metrics: Dict[str, MotionMetrics]) -> Dict[str, float]:
+        """
+        Compute action smoothness metrics from collected action data.
+
+        Metrics computed:
+        - action_delta_mean: Mean absolute action change per step (rad)
+        - action_delta_max: Max absolute action change per step across all joints (rad)
+        - action_rate_mean: Mean action rate of change (rad/s)
+
+        Args:
+            metrics: Dictionary of MotionMetrics (must contain "actions")
+
+        Returns:
+            Dictionary of action smoothness metrics with "eval/" prefix
+        """
+        if "actions" not in metrics:
+            return {}
+
+        actions_data = metrics["actions"].data  # [num_motions, max_frames, num_dofs]
+        motion_lens = metrics["actions"].motion_lens  # [num_motions]
+        
+        result = {}
+        all_deltas = []
+        all_max_deltas = []
+        
+        num_motions = actions_data.shape[0]
+        for m in range(num_motions):
+            n_frames = int(motion_lens[m].item())
+            if n_frames < 2:
+                continue
+            
+            actions_m = actions_data[m, :n_frames]  # [n_frames, num_dofs]
+            # Compute action deltas between consecutive frames
+            deltas = (actions_m[1:] - actions_m[:-1]).abs()  # [n_frames-1, num_dofs]
+            
+            # Mean delta across all joints and frames
+            all_deltas.append(deltas.mean().item())
+            # Max delta per frame, then mean across frames
+            all_max_deltas.append(deltas.max(dim=-1)[0].mean().item())
+        
+        if all_deltas:
+            mean_delta = sum(all_deltas) / len(all_deltas)
+            mean_max_delta = sum(all_max_deltas) / len(all_max_deltas)
+            
+            result["eval/action_delta_mean_rad"] = mean_delta
+            result["eval/action_delta_max_rad"] = mean_max_delta
+            result["eval/action_rate_mean_rad_s"] = mean_delta / self.dt
+            
+            # Convert to degrees for readability
+            result["eval/action_delta_mean_deg"] = mean_delta * 180 / 3.14159
+            result["eval/action_delta_max_deg"] = mean_max_delta * 180 / 3.14159
+            
+            print(f"Action smoothness: mean_delta={mean_delta:.4f} rad ({mean_delta * 180 / 3.14159:.2f}°), "
+                  f"max_delta={mean_max_delta:.4f} rad ({mean_max_delta * 180 / 3.14159:.2f}°)")
+        
+        return result
+
+
 class BaseEvaluator:
     """Base class for agent evaluation and metrics computation.
 
@@ -296,6 +372,22 @@ class BaseEvaluator:
             return True
         except ValueError as e:
             print(f"Skipping smoothness plugin: {e}")
+            return False
+
+    def _register_action_smoothness_plugin(self) -> bool:
+        """
+        Convenience method to register action smoothness metric plugin.
+
+        Measures how much actions change between consecutive timesteps.
+
+        Returns:
+            True if plugin was registered successfully, False otherwise
+        """
+        try:
+            self.metric_plugins.append(ActionSmoothnessMetricPlugin(self))
+            return True
+        except Exception as e:
+            print(f"Skipping action smoothness plugin: {e}")
             return False
 
     def _compute_additional_metrics(

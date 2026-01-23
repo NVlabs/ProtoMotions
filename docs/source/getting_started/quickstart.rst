@@ -29,25 +29,21 @@ All trained with 4 A100 GPUs for around 24h.
    * - G1 AMASS
      - General motion tracker: Unitree G1 on retargeted AMASS
      - ``data/pretrained_models/motion_tracker/g1-amass/last.ckpt``
-   * - H1_2 AMASS
-     - General motion tracker: Unitree H1 (v2) on retargeted AMASS
-     - ``data/pretrained_models/motion_tracker/h1_2-amass/last.ckpt``
    * - Vaulting
      - DeepMimic policy for a vaulting motion
-     - ``[PLACEHOLDER: download link]``
+     - *Coming soon*
    * - MaskedMimic SMPL
      - MaskedMimic policy for SMPL
-     - ``[PLACEHOLDER: download link]``
+     - ``data/pretrained_models/masked_mimic/smpl/last.ckpt``
    * - MaskedMimic G1
      - MaskedMimic policy for G1
-     - ``[PLACEHOLDER: download link]``
+     - *Coming soon*
 
 **Example Motion Data:**
 
 We provide small example motion files for testing with robot models:
 
 * ``data/motions/g1_random_subset_tiny.pt`` - Small subset of retargeted AMASS for G1
-* ``data/motions/h1_2_random_subset_tiny.pt`` - Small subset of retargeted AMASS for H1_2
 
 For SMPL motion data, see :doc:`amass_preparation` to generate your own MotionLib from AMASS.
 There is a simple script subset_motion_lib.py to subset the motion lib into a smaller size,
@@ -63,12 +59,6 @@ if your local GPU memory is not enough to load the entire motion lib of AMASS.
        --motion-file data/motions/g1_random_subset_tiny.pt \
        --simulator isaacgym
 
-   # Run H1_2 on retargeted AMASS subset
-   python protomotions/inference_agent.py \
-       --checkpoint data/pretrained_models/motion_tracker/h1_2-amass/last.ckpt \
-       --motion-file data/motions/h1_2_random_subset_tiny.pt \
-       --simulator isaacgym
-
    # Run SMPL (requires AMASS MotionLib, see amass_preparation)
    python protomotions/inference_agent.py \
        --checkpoint data/pretrained_models/motion_tracker/smpl/last.ckpt \
@@ -76,7 +66,6 @@ if your local GPU memory is not enough to load the entire motion lib of AMASS.
        --simulator isaacgym
 
    # Test sim2sim transfer - run IsaacGym-trained policy in Newton
-   # We have not yet tuned Newton's parameters, so some artifects are there.
    python protomotions/inference_agent.py \
        --checkpoint data/pretrained_models/motion_tracker/g1-amass/last.ckpt \
        --motion-file data/motions/g1_random_subset_tiny.pt \

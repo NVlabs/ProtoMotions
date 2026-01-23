@@ -32,6 +32,9 @@ Quick Reference
    * - :doc:`abstractions`
      - Core component classes
      - ``protomotions/components/``, ``envs/``, ``simulator/``
+   * - :doc:`environment_context`
+     - Context dictionary connecting components
+     - ``protomotions/envs/base_env/env.py``
    * - :doc:`pose_lib`
      - MJCF parsing, FK/IK utilities
      - ``protomotions/components/pose_lib.py``

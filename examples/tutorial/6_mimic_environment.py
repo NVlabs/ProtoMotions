@@ -56,14 +56,17 @@ AppLauncher = import_simulator_before_torch(args.simulator)
 
 # Now safe to import everything else including torch
 from protomotions.simulator.base_simulator.config import SimulatorConfig  # noqa: E402
-from protomotions.envs.mimic.env import Mimic  # noqa: E402
-from protomotions.envs.mimic.config import MimicEnvConfig  # noqa: E402
+from protomotions.envs.base_env.env import BaseEnv  # noqa: E402
+from protomotions.envs.base_env.config import EnvConfig, RewardComponentConfig  # noqa: E402
 from protomotions.envs.motion_manager.config import MimicMotionManagerConfig  # noqa: E402
-from protomotions.envs.obs.config import (  # noqa: E402
-    MimicObsConfig,
-    HumanoidObsConfig,
-    MaxCoordsSelfObsConfig,
+from protomotions.envs.obs.observation_component import ObservationComponentConfig  # noqa: E402
+from protomotions.envs.control.mimic_control import MimicControlConfig  # noqa: E402
+from protomotions.envs.obs import (  # noqa: E402
+    max_coords_obs_factory,
+    previous_actions_factory,
+    mimic_target_poses_max_coords_factory,
 )
+from protomotions.envs.rewards import mean_squared_error_exp, rotation_error_exp, norm  # noqa: E402
 from protomotions.components.motion_lib import MotionLibConfig  # noqa: E402
 from protomotions.components.scene_lib import SceneLibConfig  # noqa: E402
 from protomotions.components.terrains.config import TerrainConfig  # noqa: E402
@@ -117,42 +120,95 @@ print("\n=== Mimic Environment Configuration ===")
 print(f"Motion file: {motion_file}")
 print("This contains reference motion data for imitation learning")
 
-# Configure mimic observations - this is key for imitation learning
-from protomotions.envs.obs.config import (  # noqa: E402
-    MimicPhaseObsConfig,
-    MimicTimeLeftObsConfig,
-    MimicTargetPoseConfig,
-)
+# Configure modular components - this is key for imitation learning
+# The new modular system uses control_components, observation_components,
+# reward_components, and termination_components
 
-mimic_obs_config = MimicObsConfig(
-    enabled=True,  # Enable mimic observations
-    mimic_phase_obs=MimicPhaseObsConfig(
-        enabled=True  # Enable phase observations (sin/cos of motion progress)
-    ),
-    mimic_time_left_obs=MimicTimeLeftObsConfig(
-        enabled=True  # Enable time left observations
-    ),
-    mimic_target_pose=MimicTargetPoseConfig(
-        enabled=True,  # Enable target pose observations
-        future_steps=1,  # Look 1 step ahead
-        with_time=True,  # Include time information
-        with_contacts=False,  # Don't include contact information
-        with_velocities=False,  # Don't include velocity information
-    ),
-)
+print("\n=== Modular Component Configuration ===")
+print("Using new modular component system:")
+print("  - control_components: MimicControl manages reference motion tracking")
+print("  - observation_components: Stateless functions for computing observations")
+print("  - reward_components: Reward functions for imitation learning")
+print("  - termination_components: Termination conditions")
 
-print("\n=== Mimic Observations Configuration ===")
-print(f"Mimic observations enabled: {mimic_obs_config.enabled}")
-print(f"Phase observations: {mimic_obs_config.mimic_phase_obs.enabled}")
-print("  → Provides sin/cos of motion progress (cyclical)")
-print(f"Time left observations: {mimic_obs_config.mimic_time_left_obs.enabled}")
-print("  → Provides remaining time in current motion")
-print(f"Target pose observations: {mimic_obs_config.mimic_target_pose.enabled}")
-print("  → Provides future reference poses for policy")
-print(f"  → Future steps: {mimic_obs_config.mimic_target_pose.future_steps}")
-print(f"  → With time: {mimic_obs_config.mimic_target_pose.with_time}")
-print(f"  → With contacts: {mimic_obs_config.mimic_target_pose.with_contacts}")
-print(f"  → With velocities: {mimic_obs_config.mimic_target_pose.with_velocities}")
+# Control component - MimicControl manages reference motion and tracking
+control_components = {
+    "mimic": MimicControlConfig(
+        bootstrap_on_episode_end=True,  # Continue at end of motion instead of terminating
+    )
+}
+print("\nControl Components:")
+print("  - 'mimic': MimicControl for reference motion management")
+print("    → Provides ref_state context for observations and rewards")
+
+# Observation components - using factory functions
+observation_components = {
+    # Current robot state observation
+    "max_coords_obs": max_coords_obs_factory(),
+    # Previous actions for temporal awareness
+    "previous_actions": previous_actions_factory(),
+    # Mimic target poses - reference motion for policy to track
+    "mimic_target_poses": mimic_target_poses_max_coords_factory(
+        with_velocities=True,
+        num_future_steps=1,
+    ),
+}
+print("\nObservation Components:")
+print("  - 'max_coords_obs': Current robot state (positions, rotations, velocities)")
+print("  - 'previous_actions': Action history for temporal awareness")
+print("  - 'mimic_target_poses': Reference poses from motion library")
+
+# Reward configuration - tracking rewards for imitation learning
+reward_components = {
+    "action_smoothness": RewardComponentConfig(
+        function=norm,
+        variables={"x": "current_actions - previous_actions"},
+        weight=-0.02,
+    ),
+    "position_tracking": RewardComponentConfig(
+        function=mean_squared_error_exp,
+        variables={
+            "x": "current_state_rigid_body_pos",
+            "ref_x": "ref_state_rigid_body_pos",
+            "coefficient": -100.0,
+        },
+        weight=0.5,
+    ),
+    "rotation_tracking": RewardComponentConfig(
+        function=rotation_error_exp,
+        variables={
+            "q": "current_state_rigid_body_rot",
+            "ref_q": "ref_state_rigid_body_rot",
+            "coefficient": -5.0,
+        },
+        weight=0.3,
+    ),
+    "velocity_tracking": RewardComponentConfig(
+        function=mean_squared_error_exp,
+        variables={
+            "x": "current_state_rigid_body_vel",
+            "ref_x": "ref_state_rigid_body_vel",
+            "coefficient": -0.5,
+        },
+        weight=0.1,
+    ),
+    "angular_velocity_tracking": RewardComponentConfig(
+        function=mean_squared_error_exp,
+        variables={
+            "x": "current_state_rigid_body_ang_vel",
+            "ref_x": "ref_state_rigid_body_ang_vel",
+            "coefficient": -0.1,
+        },
+        weight=0.1,
+    ),
+}
+print("\nReward Components:")
+print("  - 'action_smoothness': Penalize jerky actions")
+print("  - 'position_tracking': Match reference body positions")
+print("  - 'rotation_tracking': Match reference body rotations")
+print("  - 'velocity_tracking': Match reference velocities")
+print("  - 'angular_velocity_tracking': Match reference angular velocities")
+
 
 # Motion sampling configuration - for kinematic playback, use demo mode
 init_start_prob = (
@@ -203,34 +259,23 @@ chair = MeshSceneObject(
 
 scene = Scene(objects=[chair], humanoid_motion_id=0)
 
-# Create Mimic environment configuration
-env_config = MimicEnvConfig(
+# Create environment configuration with modular components
+env_config = EnvConfig(
     max_episode_length=300,  # Shorter episodes for training
-    # Uses reference motion resets automatically (motion_lib is set)
-    sync_motion=False,  # IMPORTANT: True for kinematic playback, False for policy training
-    humanoid_obs=HumanoidObsConfig(
-        max_coords_obs=MaxCoordsSelfObsConfig(
-            enabled=True,
-            local_obs=True,
-            root_height_obs=True,
-            observe_contacts=False,
-            num_historical_steps=2,  # Include some history for better policies
-        )
-    ),
-    mimic_obs=mimic_obs_config,  # Add mimic-specific observations
+    # Modular components replace old-style config classes
+    control_components=control_components,
+    observation_components=observation_components,
+    reward_components=reward_components,
+    # Motion manager configuration
     motion_manager=MimicMotionManagerConfig(init_start_prob=init_start_prob),
 )
 
-print("\n=== Mimic Environment Summary ===")
-print("Environment type: Mimic (extends BaseEnv for imitation learning)")
-print(
-    f"Sync motion: {env_config.sync_motion} (False = policy training, True = kinematic)"
-)
+print("\n=== Environment Configuration Summary ===")
+print("Environment type: BaseEnv with modular MimicControl")
 print(f"Episode length: {env_config.max_episode_length} (shorter for training)")
-print(
-    f"Historical steps: {env_config.humanoid_obs.max_coords_obs.num_historical_steps}"
-)
-print(f"Mimic observations: {env_config.mimic_obs.enabled}")
+print(f"Control components: {list(control_components.keys())}")
+print(f"Observation components: {list(observation_components.keys())}")
+print(f"Reward components: {list(reward_components.keys())}")
 
 # Create terrain with simple flat configuration
 from protomotions.components.terrains.terrain import Terrain  # noqa: E402
@@ -264,8 +309,8 @@ simulator = SimulatorClass(
     **extra_simulator_params,
 )
 
-# Create the Mimic environment
-env = Mimic(
+# Create the environment with modular components
+env = BaseEnv(
     config=env_config,
     robot_config=robot_cfg,
     device=device,
@@ -273,17 +318,16 @@ env = Mimic(
     motion_lib=motion_lib,
     terrain=terrain,
     scene_lib=scene_lib,
-    **extra_simulator_params,
 )
 
 print("\n=== Environment Initialization ===")
-print("Mimic environment created successfully")
+print("BaseEnv with MimicControl created successfully")
 print(f"Motion library loaded: {env.motion_lib is not None}")
 
-# Analyze the motion library that the environment created
+# Analyze the motion library
 if env.motion_lib is not None:
     print("\n=== Motion Library Analysis ===")
-    print(f"Number of motions: {env.motion_lib.num_motions}")
+    print(f"Number of motions: {env.motion_lib.num_motions()}")
     print(f"Motion file: {env.motion_lib.motion_file}")
 
     for motion_id in range(env.motion_lib.num_motions()):
@@ -291,7 +335,7 @@ if env.motion_lib is not None:
         print(f"  Motion {motion_id}: {motion_length.item():.2f}s duration")
 
 print(f"Motion manager type: {type(env.motion_manager).__name__}")
-print(f"Mimic observations callback: {hasattr(env, 'mimic_obs_cb')}")
+print(f"Control components: {list(env.control_manager.components.keys())}")
 
 # Reset environment - this also returns observations!
 print("\n=== Resetting Environment ===")
@@ -332,29 +376,28 @@ for key, value in obs.items():
     else:
         print(f"  → {key} observations")
 
-# Demonstrate the difference between sync_motion modes
-print("\n=== Sync Motion Modes Demonstration ===")
-print(f"Current mode: sync_motion={env.config.sync_motion}")
-
-if env.config.sync_motion:
-    print("KINEMATIC MODE (sync_motion=True):")
-    print("  - Actions are ignored (zeroed internally)")
-    print("  - Robot follows motion data exactly")
-    print("  - Good for visualization and debugging")
-    print("  - Motion time advances automatically")
-else:
-    print("POLICY TRAINING MODE (sync_motion=False):")
-    print("  - Actions control the robot")
-    print("  - Robot learns to follow motion data")
-    print("  - Good for imitation learning training")
-    print("  - Rewards based on tracking reference motion")
+# Explain the modular control approach
+print("\n=== Modular Control System ===")
+print("The new modular system uses control components instead of sync_motion flag:")
+print("")
+print("POLICY TRAINING MODE (MimicControl):")
+print("  - Actions control the robot via physics simulation")
+print("  - MimicControl provides ref_state context for rewards/observations")
+print("  - Robot learns to follow motion data through reward signals")
+print("  - Good for imitation learning training")
+print("")
+print("KINEMATIC PLAYBACK MODE (KinematicReplayControl):")
+print("  - Would use KinematicReplayControl instead of MimicControl")
+print("  - Actions are ignored, robot follows motion exactly")
+print("  - Good for visualization and debugging")
+print("  - See Tutorial 5 for KinematicReplayControl example")
 
 # Run simulation
-print("\n=== Starting Mimic Environment Simulation ===")
-print("This demonstrates imitation learning concepts:")
-print("  - Reference motion tracking")
-print("  - Mimic observations for policy training")
-print("  - Motion-based rewards and termination")
+print("\n=== Starting Modular Mimic Environment Simulation ===")
+print("This demonstrates modular imitation learning:")
+print("  - MimicControl provides reference motion context")
+print("  - Observation components compute policy inputs")
+print("  - Reward components drive learning towards motion tracking")
 print("Camera controls:")
 print("  L - start/stop recording")
 print("  ; - cancel recording")
@@ -415,22 +458,28 @@ finally:
     env.close()
 
 print("\n=== Tutorial Summary ===")
-print("This tutorial demonstrated:")
-print("1. How to use Mimic environment (extends BaseEnv for imitation learning)")
-print("2. How to configure mimic observations for policy training:")
-print("   - Reference body tracking")
-print("   - Local vs global observations")
-print("   - Historical observations for temporal awareness")
-print("3. How sync_motion modes work:")
-print("   - sync_motion=True: Kinematic playback (demo/visualization)")
-print("   - sync_motion=False: Policy training (imitation learning)")
-print("4. How motion sampling creates diverse training scenarios")
-print("5. How mimic observations provide reference data to policies")
-print("6. How rewards and termination work for imitation learning")
-print("\nKey Mimic Environment Concepts:")
-print("- Reference Motion Tracking: Compare robot pose to motion data")
-print("- Mimic Observations: Provide reference poses/velocities to policy")
-print("- Imitation Learning: Train policies to reproduce motion data")
-print("- Motion Diversity: Random sampling creates robust training")
-print("\nBuilds on Tutorial 5: Adds imitation learning to motion management")
+print("This tutorial demonstrated the modular component system for imitation learning:")
+print("")
+print("1. Control Components (MimicControl):")
+print("   - Manages reference motion tracking")
+print("   - Provides ref_state context to observations and rewards")
+print("   - bootstrap_on_episode_end controls motion looping")
+print("")
+print("2. Observation Components:")
+print("   - max_coords_obs: Current robot state")
+print("   - previous_actions: Action history for temporal awareness")
+print("   - mimic_target_poses: Reference poses for policy to track")
+print("")
+print("3. Reward Components:")
+print("   - Position, rotation, velocity tracking rewards")
+print("   - Action smoothness penalty")
+print("   - All configured via eval strings referencing context")
+print("")
+print("Key Modular Concepts:")
+print("- Control components provide task-specific context (ref_state)")
+print("- Observation functions are stateless, configured via variables dict")
+print("- Rewards use eval strings to access current_state, ref_state, etc.")
+print("- Everything is configurable without subclassing environments")
+print("")
+print("Builds on Tutorial 5: Adds reward-based imitation learning")
 print("Next: Advanced topics like AMP, ASE, and multi-task learning!")

@@ -19,50 +19,53 @@ This module contains all configuration dataclasses for motion manager functional
 co-located with the motion manager implementations in the same directory.
 """
 
-from dataclasses import dataclass
 from typing import Optional, List, Union
-from protomotions.utils.config_builder import ConfigBuilder
+from dataclasses import dataclass, field
 
 
 @dataclass
-class MotionManagerConfig(ConfigBuilder):
+class MotionManagerConfig:
     """Configuration for motion management."""
-
-    # Example: Use specific motion IDs during evaluation
-    # subset_method: [0, 1, 2, 3, 4]  # Use specific motions (length must equal num_envs)
-    # subset_method: "first"  # Use first N motions where N = num_envs
-
-    # Example: Exclude specific motion IDs from probabilistic sampling
-    # exclude_motion_ids: [2, 5, 8, 12]  # Exclude these motions from sampling
 
     _target_: str = "protomotions.envs.motion_manager.motion_manager.MotionManager"
 
-    # By default, without dynamic sampling the motion manager picks a random motion
-    # By default, this sets 20% chance to sample an initial pose.
-    # Especially for AMP this helps prevent the agent from immediately getting stuck in a local-minima.
-    init_start_prob: float = 0.2
+    init_start_prob: float = field(
+        default=0.2,
+        metadata={
+            "help": "Probability to sample an initial pose instead of random time. Helps prevent local-minima in AMP.",
+            "min": 0.0,
+            "max": 1.0,
+        }
+    )
 
-    # Motion subset configuration for evaluation/testing
-    # Can be:
-    # - "first": use first N motions (based on num_envs)
-    # - "last": use last N motions
-    # - "random": randomly sample N motions
-    # - List of motion indices: [0, 1, 5, 10] to use specific motions (length must equal num_envs)
-    # - null: use all motions (default)
-    subset_method: Optional[Union[str, List[int]]] = None
+    subset_method: Optional[Union[str, List[int]]] = field(
+        default=None,
+        metadata={
+            "help": "Motion subset for evaluation: 'first', 'last', 'random', or list of motion IDs. None uses all motions.",
+            "options": ["first", "last", "random"],
+        }
+    )
 
-    # Motion exclusion configuration for training/evaluation
-    # Excludes specific motion IDs from probabilistic sampling by setting their weights to 0 before each sampling
-    # Persistent exclusion even if motion weights are updated by other classes during training
-    # Can be:
-    # - List of motion indices: [2, 5, 8] to exclude these specific motions from sampling
-    # - null: don't exclude any motions (default)
-    exclude_motion_ids: Optional[List[int]] = None
+    exclude_motion_ids: Optional[List[int]] = field(
+        default=None,
+        metadata={
+            "help": "Motion IDs to exclude from sampling. Useful for removing problematic motions.",
+        }
+    )
 
-    # Realign the motion with the humanoid on each step
-    # This is useful when the motion is not perfectly retargeted to the humanoid
-    # preventing tracking errors from accumulating over time
-    realign_motion_with_humanoid_on_each_step: bool = False
+    exclude_motions_file: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Path to file with motion IDs to exclude (one per line). Can also be an expert training directory.",
+        }
+    )
+
+    realign_motion_with_humanoid_on_each_step: bool = field(
+        default=False,
+        metadata={
+            "help": "Realign motion with humanoid each step. Prevents tracking error accumulation for imperfect retargeting.",
+        }
+    )
 
 
 @dataclass
@@ -73,4 +76,7 @@ class MimicMotionManagerConfig(MotionManagerConfig):
         "protomotions.envs.motion_manager.mimic_motion_manager.MimicMotionManager"
     )
 
-    resample_on_reset: bool = True
+    resample_on_reset: bool = field(
+        default=True,
+        metadata={"help": "Whether to resample motion on environment reset."}
+    )

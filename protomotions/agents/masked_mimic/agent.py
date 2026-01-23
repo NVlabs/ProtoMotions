@@ -41,8 +41,6 @@ from protomotions.utils.hydra_replacement import get_class, instantiate
 from typing import Tuple, Dict, Optional
 from pathlib import Path
 
-from protomotions.envs.mimic.env import Mimic as MimicEnv
-from protomotions.envs.mimic.config import MimicEnvConfig
 from protomotions.agents.ppo.config import PPOAgentConfig
 from protomotions.agents.masked_mimic.model import MaskedMimicModel
 from protomotions.agents.masked_mimic.config import MaskedMimicAgentConfig, VaeNoiseType
@@ -96,22 +94,7 @@ class MaskedMimic(BaseAgent):
         Requires pre-trained expert tracker model specified in config.expert_model_path.
     """
 
-    env: MimicEnv
     model: MaskedMimicModel
-    config: MaskedMimicAgentConfig
-
-    def __init__(
-        self,
-        fabric: Fabric,
-        env: MimicEnv,
-        config: MaskedMimicAgentConfig,
-        root_dir: Optional[Path] = None,
-    ):
-        super().__init__(fabric, env, config, root_dir=root_dir)
-
-    # -----------------------------
-    # Initialization and Setup
-    # -----------------------------
     config: MaskedMimicAgentConfig
 
     def setup(self):
@@ -132,45 +115,28 @@ class MaskedMimic(BaseAgent):
         model.apply(weight_init)
 
         # Optionally load a pre-trained expert model if provided.
+        # Note: Expert observation components are loaded in the experiment file
+        # and prefixed with "expert_" for use during distillation training.
         if self.config.expert_model_path is not None:
-            print(
-                "Loading pre-trained full-body tracker from:",
-                self.config.expert_model_path,
-            )
-            # "score_based.ckpt" is the name of the file that is saved when a new high score is achieved
+            log.info(f"Loading pre-trained full-body tracker from: {self.config.expert_model_path}")
+            
             checkpoint_path = Path(self.config.expert_model_path)
-            assert Path(
-                checkpoint_path
-            ).exists(), f"Could not find expert model at {checkpoint_path}"
+            assert checkpoint_path.exists(), f"Could not find expert model at {checkpoint_path}"
 
             # Load frozen configs from resolved_configs.pt
             expert_model_dir = checkpoint_path.parent
             resolved_configs_path = expert_model_dir / "resolved_configs.pt"
-            assert (
-                resolved_configs_path.exists()
-            ), f"Could not find resolved configs at {resolved_configs_path}"
+            assert resolved_configs_path.exists(), (
+                f"Could not find resolved configs at {resolved_configs_path}"
+            )
 
             log.info(f"Loading expert configs from {resolved_configs_path}")
             resolved_configs = torch.load(
                 resolved_configs_path, map_location="cpu", weights_only=False
             )
 
-            self.expert_env_config: MimicEnvConfig = resolved_configs["env"]
+            self.expert_env_config = resolved_configs["env"]
             expert_agent_config: PPOAgentConfig = resolved_configs["agent"]
-
-            # Verify the expert was trained with a compatible environment
-            assert (
-                self.env.mimic_obs_cb.config.mimic_target_pose.num_future_steps
-                == self.expert_env_config.mimic_obs.mimic_target_pose.num_future_steps
-            )
-            assert (
-                self.env.mimic_obs_cb.config.mimic_target_pose.type
-                == self.expert_env_config.mimic_obs.mimic_target_pose.type
-            )
-            assert (
-                self.env.mimic_obs_cb.config.mimic_target_pose.with_time
-                == self.expert_env_config.mimic_obs.mimic_target_pose.with_time
-            )
 
             # Create the expert model
             ExpertModelConfig = get_class(expert_agent_config.model._target_)
@@ -193,8 +159,10 @@ class MaskedMimic(BaseAgent):
             with torch.no_grad():
                 dummy_obs = self.env.get_obs()
                 dummy_obs = self.add_agent_info_to_obs(dummy_obs)
+                # Build expert obs tensordict (strips "expert_" prefix from keys)
                 dummy_obs_td = self.obs_dict_to_tensordict(dummy_obs)
-                _ = expert_model(dummy_obs_td)
+                dummy_expert_obs_td = self._build_expert_obs_td(dummy_obs_td, expert_model.in_keys)
+                _ = expert_model(dummy_expert_obs_td)
 
             self.expert_model = self.fabric.setup(expert_model)
 
@@ -207,11 +175,41 @@ class MaskedMimic(BaseAgent):
             self.expert_model.load_state_dict(pre_trained_expert["model"])
             for param in self.expert_model.parameters():
                 param.requires_grad = False
-            self.expert_model.eval()  # Just incase
+            self.expert_model.eval()
         else:
             self.expert_model = None
 
         return model
+    
+    def _build_expert_obs_td(self, obs_td: TensorDict, expert_in_keys: list) -> TensorDict:
+        """Build expert observation TensorDict by stripping 'expert_' prefix from keys.
+        
+        The experiment file adds expert observation components with "expert_" prefix
+        (e.g., "expert_max_coords_obs"). This method maps those back to the keys
+        the expert model expects (e.g., "max_coords_obs").
+        
+        Args:
+            obs_td: Full observation TensorDict with both student and expert_* keys
+            expert_in_keys: List of keys the expert model expects
+            
+        Returns:
+            TensorDict with keys matching expert model's in_keys
+        """
+        expert_obs = {}
+        for key in expert_in_keys:
+            expert_key = f"expert_{key}"
+            if expert_key in obs_td.keys():
+                # Prefer prefixed expert observation
+                expert_obs[key] = obs_td[expert_key]
+            elif key in obs_td.keys():
+                # Fallback to shared observation (same for both student and expert)
+                expert_obs[key] = obs_td[key]
+            else:
+                raise KeyError(
+                    f"Expert model requires observation '{key}' but neither '{expert_key}' "
+                    f"nor '{key}' found in observations. Available keys: {list(obs_td.keys())}"
+                )
+        return TensorDict(expert_obs, batch_size=obs_td.batch_size, device=self.device)
 
     def create_optimizers(self, model: MaskedMimicModel):
         optimizer = instantiate(
@@ -300,7 +298,9 @@ class MaskedMimic(BaseAgent):
             action = output_td["action"]  # During evaluation, we use the action
 
         # Run expert model to get target action
-        expert_output_td = self.expert_model(obs_td)
+        # Build expert obs tensordict by stripping "expert_" prefix from keys
+        expert_obs_td = self._build_expert_obs_td(obs_td, self.expert_model.in_keys)
+        expert_output_td = self.expert_model(expert_obs_td)
         if "mean_action" in expert_output_td:
             expert_action = expert_output_td[
                 "mean_action"

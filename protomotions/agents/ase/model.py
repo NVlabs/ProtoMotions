@@ -18,8 +18,9 @@ from torch import nn
 from typing import List
 from tensordict import TensorDict
 from protomotions.agents.amp.model import Discriminator, AMPModel
-from protomotions.agents.ase.config import ASEDiscriminatorEncoderConfig
-from protomotions.agents.common.common import MultiOutputModule
+from protomotions.agents.ase.config import ASEDiscriminatorEncoderConfig, ASEModelConfig
+from protomotions.agents.common.common import ModuleContainer
+
 
 DISC_LOGIT_INIT_SCALE = 1.0
 ENC_LOGIT_INIT_SCALE = 0.1
@@ -41,10 +42,7 @@ class ASEDiscriminatorEncoder(Discriminator):
     def _initialize_encoder_weights(self):
         """Initialize encoder weights after materialization."""
         encoder = None
-        final_module = self.sequential_models[-1]
-        assert isinstance(
-            final_module, MultiOutputModule
-        ), "Final module must be a MultiOutputModule"
+        final_module = self.models[-1]
         for model in final_module.output_models:
             if model.out_keys[0] == "mi_enc_output":  # Found the encoder module
                 encoder = model
@@ -127,24 +125,12 @@ class ASEDiscriminatorEncoder(Discriminator):
         """
         weights = []
 
-        # If it's a SequentialModule, recursively process its sequential_models
-        if hasattr(module, "sequential_models"):
-            for sub_model in module.sequential_models:
+        # If it's a ModuleContainer, recursively process its models
+        if hasattr(module, "models"):
+            for sub_model in module.models:
                 weights.extend(self._get_weights_from_module(sub_model))
 
-        # If it's a MultiInputModule, recursively process its input_models
-        elif hasattr(module, "input_models") and isinstance(
-            module.input_models, nn.ModuleList
-        ):
-            for sub_model in module.input_models:
-                weights.extend(self._get_weights_from_module(sub_model))
-
-        # If it's a MultiOutputModule, recursively process its output_models
-        elif hasattr(module, "output_models"):
-            for sub_model in module.output_models:
-                weights.extend(self._get_weights_from_module(sub_model))
-
-        # If it has an mlp Sequential, process that
+        # If it has an mlp ModuleContainer, process that
         elif hasattr(module, "mlp") and isinstance(module.mlp, nn.Sequential):
             for layer in module.mlp:
                 if hasattr(layer, "weight") and isinstance(layer.weight, nn.Parameter):
@@ -164,16 +150,16 @@ class ASEDiscriminatorEncoder(Discriminator):
         Returns:
             List[nn.Parameter]: List of all weight parameters.
         """
-        weights: list[nn.Parameter] = []
+        weights: List[nn.Parameter] = []
 
         # Walk through all sequential models
-        for seq_model in self.sequential_models:
-            if isinstance(seq_model, MultiOutputModule):
+        for model in self.models:
+            if isinstance(model, ModuleContainer):
                 # Include all output models (both discriminator and encoder)
-                for output_model in seq_model.output_models:
+                for output_model in model.models:
                     weights.extend(self._get_weights_from_module(output_model))
             else:
-                weights.extend(self._get_weights_from_module(seq_model))
+                weights.extend(self._get_weights_from_module(model))
 
         return weights
 
@@ -185,13 +171,13 @@ class ASEDiscriminatorEncoder(Discriminator):
         Returns:
             List[nn.Parameter]: List of discriminator weight parameters.
         """
-        weights: list[nn.Parameter] = []
+        weights: List[nn.Parameter] = []
 
         # Walk through sequential models
-        for seq_model in self.sequential_models:
-            if isinstance(seq_model, MultiOutputModule):
+        for model in self.models:
+            if isinstance(model, ModuleContainer):
                 # Only include discriminator head, not encoder
-                for output_model in seq_model.output_models:
+                for output_model in model.models:
                     if (
                         hasattr(output_model, "out_keys")
                         and "mi_enc_output" in output_model.out_keys
@@ -201,7 +187,7 @@ class ASEDiscriminatorEncoder(Discriminator):
                     weights.extend(self._get_weights_from_module(output_model))
             else:
                 # Include all weights from this module
-                weights.extend(self._get_weights_from_module(seq_model))
+                weights.extend(self._get_weights_from_module(model))
 
         return weights
 
@@ -213,10 +199,10 @@ class ASEDiscriminatorEncoder(Discriminator):
         """
         weights = []
 
-        # Find discriminator head in MultiOutputModule
-        for seq_model in self.sequential_models:
-            if isinstance(seq_model, MultiOutputModule):
-                for output_model in seq_model.output_models:
+        # Find discriminator head in ModuleContainer
+        for model in self.models:
+            if isinstance(model, ModuleContainer):
+                for output_model in model.models:
                     # Find the discriminator head (outputs disc_logits)
                     if (
                         hasattr(output_model, "out_keys")
@@ -238,13 +224,13 @@ class ASEDiscriminatorEncoder(Discriminator):
         Returns:
             List[nn.Parameter]: List of encoder weight parameters.
         """
-        weights: list[nn.Parameter] = []
+        weights: List[nn.Parameter] = []
 
         # Get trunk weights (all Sequential modules before MultiOutput)
-        for seq_model in self.sequential_models:
-            if isinstance(seq_model, MultiOutputModule):
+        for model in self.models:
+            if isinstance(model, ModuleContainer):
                 # Found MultiOutput, only get encoder head weights
-                for output_model in seq_model.output_models:
+                for output_model in model.models:
                     if (
                         hasattr(output_model, "out_keys")
                         and "mi_enc_output" in output_model.out_keys
@@ -254,7 +240,7 @@ class ASEDiscriminatorEncoder(Discriminator):
                 break  # Don't continue past MultiOutput
             else:
                 # Include trunk weights
-                weights.extend(self._get_weights_from_module(seq_model))
+                weights.extend(self._get_weights_from_module(model))
 
         return weights
 
@@ -266,9 +252,9 @@ class ASEDiscriminatorEncoder(Discriminator):
         """
         weights = []
         # Find the encoder head in MultiOutputModule
-        for seq_model in self.sequential_models:
-            if isinstance(seq_model, MultiOutputModule):
-                for output_model in seq_model.output_models:
+        for model in self.models:
+            if isinstance(model, ModuleContainer):
+                for output_model in model.models:
                     if (
                         hasattr(output_model, "out_keys")
                         and "mi_enc_output" in output_model.out_keys
@@ -283,5 +269,48 @@ class ASEDiscriminatorEncoder(Discriminator):
         return weights
 
 
-# ASE just uses AMPModel - the discriminator is ASEDiscriminatorEncoder instead
-ASEModel = AMPModel
+class ASEModel(AMPModel):
+    """ASE model with actor, task critic, disc critic, MI critic, and discriminator.
+
+    Extends AMPModel by adding an MI critic for estimating MI reward values.
+
+    Args:
+        config: ASEModelConfig specifying all networks.
+
+    Attributes:
+        _actor: Policy network.
+        _critic: Task value network.
+        _disc_critic: Discriminator reward value network.
+        _mi_critic: MI reward value network.
+        _discriminator: Style discriminator with MI encoder.
+    """
+
+    config: ASEModelConfig
+
+    def __init__(self, config: ASEModelConfig):
+        super().__init__(config)
+        self._mi_critic = ModuleContainer(config=self.config.mi_critic)
+
+        mi_in_keys = list(set(self._mi_critic.in_keys))
+        mi_out_keys = list(set(self._mi_critic.out_keys))
+        for key in mi_out_keys:
+            assert (
+                key in self.config.out_keys
+            ), f"MI critic output key {key} not in out_keys {self.config.out_keys}"
+        for key in mi_in_keys:
+            assert (
+                key in self.config.in_keys
+            ), f"MI critic input key {key} not in in_keys {self.config.in_keys}"
+
+    def forward(self, tensordict: TensorDict) -> TensorDict:
+        """Forward pass through AMP model and MI critic.
+
+        Args:
+            tensordict: TensorDict containing observations.
+
+        Returns:
+            TensorDict with all model outputs added.
+        """
+        tensordict = super().forward(tensordict)
+        tensordict = self._mi_critic(tensordict)
+        return tensordict

@@ -17,7 +17,7 @@ import argparse
 from protomotions.components.terrains.config import TerrainConfig
 from protomotions.robot_configs.base import RobotConfig
 from protomotions.simulator.base_simulator.config import SimulatorConfig
-from protomotions.envs.mimic.config import MimicEnvConfig
+from protomotions.envs.base_env.config import EnvConfig
 from protomotions.agents.amp.config import AMPAgentConfig, AMPParametersConfig
 
 
@@ -41,42 +41,40 @@ def motion_lib_config(args: argparse.Namespace):
     return MotionLibConfig(motion_file=args.motion_file)
 
 
-def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> MimicEnvConfig:
+def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
     """Build environment configuration (training defaults)."""
-    from protomotions.envs.obs.config import (
-        MimicObsConfig,
-        MimicTargetPoseConfig,
-        FuturePoseType,
-        HumanoidObsConfig,
-        MaxCoordsSelfObsConfig,
-    )
+    from protomotions.envs.obs import max_coords_obs_factory, mimic_target_poses_simple_factory
+    from protomotions.envs.control.mimic_control import MimicControlConfig
     from protomotions.envs.motion_manager.config import MimicMotionManagerConfig
 
-    env_config: MimicEnvConfig = MimicEnvConfig(
+    # Control components - MimicControl provides ref_state for mimic target poses
+    control_components = {
+        "mimic": MimicControlConfig(
+            bootstrap_on_episode_end=True,
+        )
+    }
+
+    # Observation components configuration
+    observation_components = {
+        # Humanoid self-observations
+        "max_coords_obs": max_coords_obs_factory(),
+        # Mimic target poses - reference motion for policy
+        "mimic_target_poses": mimic_target_poses_simple_factory(),
+    }
+
+    return EnvConfig(
         max_episode_length=1000,
-        humanoid_obs=HumanoidObsConfig(
-            max_coords_obs=MaxCoordsSelfObsConfig(enabled=True),
-        ),
-        mimic_bootstrap_on_episode_end=True,
-        mimic_obs=MimicObsConfig(
-            enabled=True,
-            mimic_target_pose=MimicTargetPoseConfig(
-                enabled=True,
-                type=FuturePoseType.MAX_COORDS_SIMPLE,
-                with_velocities=True,
-            ),
-        ),
+        control_components=control_components,
+        observation_components=observation_components,
         motion_manager=MimicMotionManagerConfig(
             init_start_prob=0.9,
             resample_on_reset=False,  # We resample on reset to ensure the discriminator and policy observe the same data distribution (random).
         ),
     )
 
-    return env_config
-
 
 def agent_config(
-    robot_config: RobotConfig, env_config: MimicEnvConfig, args: argparse.Namespace
+    robot_config: RobotConfig, env_config: EnvConfig, args: argparse.Namespace
 ) -> AMPAgentConfig:
     from protomotions.agents.common.config import MLPWithConcatConfig, MLPLayerConfig
     from protomotions.agents.ppo.config import PPOActorConfig
@@ -112,7 +110,7 @@ def agent_config(
     discriminator_config = DiscriminatorConfig(
         in_keys=["mimic_target_poses_diff"],
         out_keys=["disc_logits"],
-        input_models=[
+        models=[
             MLPWithConcatConfig(
                 in_keys=["mimic_target_poses_diff"],
                 out_keys=["disc_logits"],
@@ -161,6 +159,9 @@ def apply_inference_overrides(
     simulator_cfg: SimulatorConfig,
     env_cfg,
     agent_cfg,
+    terrain_cfg,
+    motion_lib_cfg,
+    scene_lib_cfg,
     args: argparse.Namespace,
 ):
     """Apply evaluation-specific overrides."""
@@ -172,7 +173,7 @@ def apply_inference_overrides(
     apply_inference_overrides_fn = import_experiment_relative_eval_overrides(
         "../mimic/mlp.py"
     )
-    apply_inference_overrides_fn(robot_cfg, simulator_cfg, env_cfg, agent_cfg, args)
+    apply_inference_overrides_fn(robot_cfg, simulator_cfg, env_cfg, agent_cfg, terrain_cfg, motion_lib_cfg, scene_lib_cfg, args)
 
     # Reuse the amp apply_inference_overrides function
     from protomotions.utils.config_utils import (
@@ -182,4 +183,4 @@ def apply_inference_overrides(
     apply_inference_overrides_fn = import_experiment_relative_eval_overrides(
         "../amp/mlp.py"
     )
-    apply_inference_overrides_fn(robot_cfg, simulator_cfg, env_cfg, agent_cfg, args)
+    apply_inference_overrides_fn(robot_cfg, simulator_cfg, env_cfg, agent_cfg, terrain_cfg, motion_lib_cfg, scene_lib_cfg, args)

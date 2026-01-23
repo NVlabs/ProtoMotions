@@ -20,7 +20,7 @@ including observation normalization, weight initialization, and specialized laye
 
 Key Classes:
     - NormObsBase: Base class for modules with observation normalization
-    - Flatten: Flattening layer with flexible dimensions
+    - ObsProcessor: General observation processor for reshaping and normalizing
     - Embedding: Embedding layer for discrete inputs
 
 Key Functions:
@@ -32,16 +32,15 @@ import torch
 from torch import nn, Tensor
 from protomotions.utils.hydra_replacement import get_class
 from copy import copy
-from typing import List, Dict
+from typing import List, Dict, Optional
 from tensordict import TensorDict
 from tensordict.nn import TensorDictModuleBase
 
 from protomotions.agents.utils.normalization import RunningMeanStd
 from protomotions.agents.common.config import (
     NormObsBaseConfig,
-    FlattenConfig,
-    SequentialModuleConfig,
-    MultiInputModuleConfig,
+    ObsProcessorConfig,
+    ModuleContainerConfig,
     ModuleOperationConfig,
     ModuleOperationForwardConfig,
     ModuleOperationPermuteConfig,
@@ -50,7 +49,6 @@ from protomotions.agents.common.config import (
     ModuleOperationUnsqueezeConfig,
     ModuleOperationExpandConfig,
     ModuleOperationSphereProjectionConfig,
-    MultiOutputModuleConfig,
 )
 
 
@@ -150,8 +148,8 @@ class NormObsBase(nn.Module):
 def apply_module_operations(
     obs: Tensor,
     module_operations: List[ModuleOperationConfig],
-    forward_model: nn.Module,
     normalizer: NormObsBase,
+    forward_model: Optional[nn.Module] = None,
 ) -> Dict[str, Tensor]:
     batch_size = obs.shape[0]
     norm_obs = None
@@ -160,8 +158,17 @@ def apply_module_operations(
             obs = obs.permute(*operation.new_order)
         elif isinstance(operation, ModuleOperationReshapeConfig):
             new_shape = copy(operation.new_shape)
-            if isinstance(new_shape[0], str) and "batch_size" in new_shape[0]:
-                new_shape[0] = eval(new_shape[0].replace("batch_size", str(batch_size)))
+            if isinstance(new_shape[0], str) and new_shape[0] == "batch_size":
+                # Use actual tensor dimension for ONNX tracing compatibility
+                new_shape[0] = batch_size
+            elif isinstance(new_shape[0], str) and "batch_size" in new_shape[0]:
+                # Handle expressions like "batch_size * 2" - only works for concrete values
+                try:
+                    new_shape[0] = eval(new_shape[0].replace("batch_size", str(int(batch_size))))
+                except (TypeError, ValueError):
+                    # During tracing, batch_size may not be convertible to int
+                    # Fall back to using -1 which PyTorch will infer
+                    new_shape[0] = -1
             obs = obs.reshape(*new_shape)
         elif isinstance(operation, ModuleOperationSqueezeConfig):
             obs = obs.squeeze(dim=operation.squeeze_dim)
@@ -174,7 +181,6 @@ def apply_module_operations(
         elif isinstance(operation, ModuleOperationForwardConfig):
             obs_shape = obs.shape
             if len(obs_shape) > 2:
-                # Normalizer and MLP forward modules expect 2D inputs
                 obs = obs.reshape(-1, obs_shape[-1])
             if normalizer is not None:
                 obs = norm_obs = normalizer(obs)
@@ -182,7 +188,8 @@ def apply_module_operations(
                 obs = obs.reshape(*obs_shape[:-1], -1)
                 if norm_obs is not None:
                     norm_obs = norm_obs.reshape(*obs_shape[:-1], -1)
-            obs = forward_model(obs)
+            if forward_model is not None:
+                obs = forward_model(obs)
         else:
             raise NotImplementedError(f"Operation {operation} not implemented")
     return_dict = {"output": obs}
@@ -191,157 +198,84 @@ def apply_module_operations(
     return return_dict
 
 
-class Flatten(TensorDictModuleBase):
-    """Flatten layer with observation normalization for TensorDict inputs.
-
-    Flattens input tensor and optionally normalizes it.
-
-    Args:
-        config: Configuration specifying obs_key, normalization parameters, etc.
-
-    Attributes:
-        norm: NormObsBase module for normalization.
-        flatten: Flatten layer.
-        in_keys: List containing obs_key.
-        out_keys: List containing out_key.
+class ObsProcessor(TensorDictModuleBase):
+    """General observation processor - applies operations and normalization.
+    
+    ForwardConfig applies normalization but skips the forward model (no MLP).
     """
 
-    config: FlattenConfig
+    config: ObsProcessorConfig
 
-    def __init__(self, config: FlattenConfig):
+    def __init__(self, config: ObsProcessorConfig):
         TensorDictModuleBase.__init__(self)
         self.config = config
 
-        # Validate TensorDict keys
-        assert len(config.out_keys) == 1, "Flatten requires exactly one output key"
+        assert len(config.out_keys) == 1, "ObsProcessor requires exactly one output key"
 
-        # Create the normalization base module (plain nn.Module)
-        self.norm = NormObsBase(config)
-        self.flatten = nn.Flatten()
-
-        # Set up TensorDict keys
+        self.norm = NormObsBase(config) if config.normalize_obs else None
         self.in_keys = config.in_keys
         self.out_keys = config.out_keys
 
     def forward(self, tensordict: TensorDict, *args, **kwargs) -> TensorDict:
-        """Forward pass that flattens and normalizes observations.
-
-        Args:
-            tensordict: TensorDict containing observations.
-
-        Returns:
-            TensorDict with flattened and normalized observations.
-        """
-        # Extract, flatten, normalize, and store back
         obs = torch.cat([tensordict[key] for key in self.in_keys], dim=-1)
 
         result = apply_module_operations(
-            obs, self.config.module_operations, self.flatten, self.norm
+            obs, self.config.module_operations, forward_model=None, normalizer=self.norm
         )
         tensordict[self.out_keys[0]] = result["output"]
-        if result["norm_obs"] is not None:
-            tensordict[f"norm_{self.in_keys[0]}"] = result["norm_obs"]
 
         return tensordict
 
 
-class SequentialModule(TensorDictModuleBase):
-    """Sequential model with multiple input models and a trunk."""
-
-    config: SequentialModuleConfig
-
-    def __init__(self, config: SequentialModuleConfig):
-        TensorDictModuleBase.__init__(self)
-        self.config = config
-
-        sequential_models = []
-        for input_model in config.input_models:
-            model = get_class(input_model._target_)(config=input_model)
-            sequential_models.append(model)
-        self.sequential_models = nn.Sequential(*sequential_models)
-
-        self.in_keys = self.config.in_keys
-        self.out_keys = self.config.out_keys
-
-        for in_key in self.sequential_models[0].in_keys:
-            assert (
-                in_key in self.in_keys
-            ), f"SequentialModule input key {in_key} not in in_keys {self.in_keys}"
-        for out_key in self.sequential_models[-1].out_keys:
-            assert (
-                out_key in self.out_keys
-            ), f"SequentialModule output key {out_key} not in out_keys {self.out_keys}"
-
-    def forward(self, tensordict: TensorDict, *args, **kwargs) -> TensorDict:
-        for model in self.sequential_models:
-            tensordict = model(tensordict)
-        return tensordict
-
-
-class MultiInputModule(TensorDictModuleBase):
-    config: MultiInputModuleConfig
-
-    def __init__(self, config: MultiInputModuleConfig):
-        TensorDictModuleBase.__init__(self)
-        self.config = config
-
-        self.input_models = nn.ModuleList()
-        for input_model in config.input_models:
-            model = get_class(input_model._target_)(config=input_model)
-            self.input_models.append(model)
-
-            for in_key in model.in_keys:
-                assert (
-                    in_key in self.config.in_keys
-                ), f"MultiInputModule input key {in_key} not in in_keys {self.config.in_keys}"
-            for out_key in model.out_keys:
-                assert (
-                    out_key in self.config.out_keys
-                ), f"MultiInputModule output key {out_key} not in out_keys {self.config.out_keys}"
-
-        self.in_keys = self.config.in_keys
-        self.out_keys = self.config.out_keys
-
-    def forward(self, tensordict: TensorDict, *args, **kwargs) -> TensorDict:
-        for model in self.input_models:
-            tensordict = model(tensordict)
-        return tensordict
-
-
-class MultiOutputModule(TensorDictModuleBase):
-    """Takes single input key, passes to multiple output heads in parallel.
-
-    Opposite of MultiInputModule - one input, multiple outputs.
-    Useful for multi-head architectures like ASE (discriminator + encoder heads).
+class ModuleContainer(TensorDictModuleBase):
+    """Generic container that runs a list of modules sequentially on a TensorDict.
+    
+    With TensorDict, the distinction between "sequential", "parallel input",
+    and "parallel output" is implicit in how keys flow between modules.
     """
 
-    config: MultiOutputModuleConfig
+    config: ModuleContainerConfig
 
-    def __init__(self, config: MultiOutputModuleConfig):
+    def __init__(self, config: ModuleContainerConfig):
         TensorDictModuleBase.__init__(self)
         self.config = config
 
-        self.output_models = nn.ModuleList()
-        for output_model in self.config.output_models:
-            model = get_class(output_model._target_)(config=output_model)
-            for key in model.in_keys:
-                assert (
-                    key in self.config.in_keys
-                ), f"MultiOutputModule input key {key} not in in_keys {self.config.in_keys}"
-            for key in model.out_keys:
-                assert (
-                    key in self.config.out_keys
-                ), f"MultiOutputModule output key {key} not in out_keys {self.config.out_keys}"
-            self.output_models.append(model)
+        self.models = nn.ModuleList()
+        
+        # Build models and validate data flow
+        # Container in_keys are "available" at the start (like sources)
+        available_keys = set(self.config.in_keys)
+        
+        for i, model_cfg in enumerate(config.models):
+            model = get_class(model_cfg._target_)(config=model_cfg)
+            self.models.append(model)
+            
+            # Validate: each model's in_keys must be available
+            # (either from container in_keys or a previous model's out_keys)
+            for in_key in model.in_keys:
+                assert in_key in available_keys, (
+                    f"ModuleContainer: model {i} ({type(model).__name__}) requires "
+                    f"input key '{in_key}' but it's not available.\n"
+                    f"  Available keys: {sorted(available_keys)}\n"
+                    f"  Model in_keys: {model.in_keys}"
+                )
+            
+            # Add this model's outputs to available keys for subsequent models
+            available_keys.update(model.out_keys)
+
+        # Validate: every container out_key must have been produced
+        for out_key in self.config.out_keys:
+            assert out_key in available_keys, (
+                f"ModuleContainer: container promises out_key '{out_key}' "
+                f"but no model produces it.\n"
+                f"  Available keys after all models: {sorted(available_keys)}"
+            )
 
         self.in_keys = self.config.in_keys
         self.out_keys = self.config.out_keys
 
     def forward(self, tensordict: TensorDict, *args, **kwargs) -> TensorDict:
-        """Forward through all output heads in parallel.
-
-        Each head reads from in_keys and writes to its own out_key.
-        """
-        for model in self.output_models:
+        """Forward through all models sequentially."""
+        for model in self.models:
             tensordict = model(tensordict)
         return tensordict

@@ -170,13 +170,196 @@ Environment
 
 **Location:** ``protomotions/envs/``
 
-Environments compute observations, rewards, and manage episodes.
+Environments orchestrate the training loop through modular components. The base 
+environment delegates to specialized managers for observations, rewards, 
+terminations, and control.
 
 **Structure:**
 
-* ``BaseEnv``: Common functionality (reset, step interface)
-* ``MimicEnv``: Motion imitation with tracking rewards
-* ``SteeringEnv``: Pure RL locomotion control
+* ``BaseEnv``: Core environment with component managers
+* ``MimicEnv``: Extends BaseEnv for motion imitation
+* ``SteeringEnv``: Extends BaseEnv for locomotion control
+
+Component System
+----------------
+
+**Location:** ``protomotions/envs/managers/``
+
+ProtoMotions uses a component-based architecture where observations, rewards, 
+terminations, and control are defined as modular, reusable components.
+
+**Why components?**
+
+Instead of hardcoding observations and rewards in environment classes, components 
+allow you to:
+
+* Mix and match different observation/reward combinations via config
+* Add new rewards without modifying environment code
+* Share components across different environment types
+* Configure everything in experiment files
+
+Control Components
+~~~~~~~~~~~~~~~~~~
+
+**Location:** ``protomotions/envs/control/``
+
+Control components are **stateful** task managers that define environment behavior.
+
+.. code-block:: python
+
+   class ControlComponent(ABC):
+       def reset(self, env_ids: Tensor): ...
+       def step(self): ...
+       def get_context(self) -> Dict[str, Any]: ...
+       def should_terminate(self) -> Tuple[Tensor, Tensor]: ...
+
+**Key characteristics:**
+
+* Maintain state across timesteps (e.g., current target motion, path waypoints)
+* Provide context variables for observations and rewards
+* Can define custom termination conditions
+* Have access to the full environment
+
+**Built-in components:**
+
+* ``MimicControlComponent``: Motion tracking (samples motions, tracks progress)
+* ``SteeringControlComponent``: Heading and speed targets
+* ``PathFollowerControlComponent``: Path generation and following
+
+**Configuration:**
+
+.. code-block:: python
+
+   control_components = {
+       "mimic": MimicControlConfig(
+           bootstrap_on_episode_end=True,
+       )
+   }
+
+Observation Components
+~~~~~~~~~~~~~~~~~~~~~~
+
+**Location:** ``protomotions/envs/obs/``
+
+Observation components are **stateless** functions that compute observations 
+from context variables.
+
+.. code-block:: python
+
+   @dataclass
+   class ObservationComponentConfig:
+       function: Callable[..., Tensor]  # Pure function
+       variables: Dict[str, str]  # Maps args to context keys
+
+**Key characteristics:**
+
+* Pure functions with no side effects
+* Receive context from control components
+* Can specify body subsets via ``indices_subset``
+* Support observation noise injection
+
+**Configuration:**
+
+.. code-block:: python
+
+   from protomotions.envs.obs import (
+       max_coords_obs_factory,
+       mimic_target_poses_max_coords_factory,
+   )
+   
+   observation_components = {
+       "max_coords_obs": max_coords_obs_factory(),
+       "target_poses": mimic_target_poses_max_coords_factory(),
+   }
+
+Factory functions create pre-configured ``ObservationComponentConfig`` instances.
+
+Reward Components
+~~~~~~~~~~~~~~~~~
+
+**Location:** ``protomotions/envs/utils/rewards.py``
+
+Reward components are **stateless** functions that compute reward terms.
+
+.. code-block:: python
+
+   @dataclass
+   class RewardComponentConfig:
+       function: Callable[..., Tensor]
+       variables: Dict[str, str]
+       weight: float = 1.0
+       grace_period: float = 0.0  # Seconds before reward activates
+       reward_type: str = "multiplicative"  # or "additive"
+
+**Configuration:**
+
+.. code-block:: python
+
+   from protomotions.envs.rewards import (
+       gt_rew_factory,
+       action_smoothness_factory,
+   )
+   
+   reward_components = {
+       "gt_rew": gt_rew_factory(weight=0.5, coefficient=-100.0),
+       "action_smoothness": action_smoothness_factory(weight=-0.02),
+   }
+
+**Reward types:**
+
+* ``multiplicative``: Combined as product (default for tracking rewards)
+* ``additive``: Summed directly (for penalties like action smoothness)
+
+Termination Components
+~~~~~~~~~~~~~~~~~~~~~~
+
+**Location:** ``protomotions/envs/utils/terminations.py``
+
+Termination components check for episode termination conditions.
+
+.. code-block:: python
+
+   @dataclass
+   class TerminationComponentConfig:
+       function: Callable[..., Tensor]
+       variables: Dict[str, str]
+
+**Configuration:**
+
+.. code-block:: python
+
+   from protomotions.envs.terminations import tracking_error_factory
+   
+   termination_components = {
+       "tracking_error": tracking_error_factory(threshold=0.5),
+   }
+
+**Built-in terminations:**
+
+* ``tracking_error``: Terminates when tracking error exceeds threshold
+* Height termination and max episode length are handled by ``BaseEnv`` directly
+
+Managers
+~~~~~~~~
+
+**Location:** ``protomotions/envs/managers/``
+
+Managers orchestrate component evaluation:
+
+* ``ControlManager``: Initializes and steps control components
+* ``ObservationManager``: Evaluates observation functions, caches body indices
+* ``RewardManager``: Evaluates rewards, applies grace periods, combines terms
+* ``TerminationManager``: Evaluates termination conditions
+
+**Data flow:**
+
+.. code-block:: text
+
+   Control Components → Context Dict → Observation/Reward/Termination Functions
+          │                                         │
+          └─────────────────────────────────────────┘
+                          ↓
+                   Environment Step
 
 Agent
 -----
@@ -196,6 +379,7 @@ Agents implement RL algorithms.
 Next Steps
 ----------
 
+* :doc:`environment_context` - Context dictionary connecting components
 * :doc:`pose_lib` - MJCF parsing and FK/IK utilities
 * :doc:`simulator_state` - State representation details
 

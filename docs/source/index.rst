@@ -76,6 +76,7 @@ Quick Links
 
    user_guide/configuration
    user_guide/experiments
+   user_guide/slurm_training
    user_guide/developer_tips
 
 .. toctree::
@@ -86,6 +87,7 @@ Quick Links
    concepts/index
    concepts/architecture
    concepts/abstractions
+   concepts/environment_context
    concepts/pose_lib
    concepts/simulator_state
 
@@ -95,12 +97,6 @@ Quick Links
    :hidden:
 
    api_reference/index
-   api_reference/protomotions.agents
-   api_reference/protomotions.envs
-   api_reference/protomotions.simulator
-   api_reference/protomotions.robot_configs
-   api_reference/protomotions.utils
-   api_reference/scripts
 
 .. toctree::
    :maxdepth: 1

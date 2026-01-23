@@ -124,6 +124,7 @@ def convert_phuma_to_motion(
         qpos=qpos,
         fps=fps,
         compute_velocities=True,
+        velocity_max_horizon=3,  # Use multi-horizon minimum for noise-filtered velocities
     )
     
     # Store dof_pos (already have it)

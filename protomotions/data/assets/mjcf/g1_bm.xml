@@ -178,7 +178,7 @@
                           <inertial pos="0.0708244 0.000191745 0.00161742" quat="0.510571 0.526295 0.468078 0.493188" mass="0.254576" diaginertia="0.000646113 0.000559993 0.000147566"/>
                           <joint name="left_wrist_yaw_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-1.61443 1.61443" actuatorfrcrange="-5 5" stiffness="4.0" damping="0.4" armature="0.03" frictionloss="0.03"/>
                           <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="left_wrist_yaw_link"/>
-                          <geom pos="0.0415 0.003 0" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="left_rubber_hand"/>
+                          <geom name="left_rubber_hand_visual" pos="0.0415 0.003 0" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="left_rubber_hand"/>
 
                           <geom name="left_hand_collision" type="capsule" size="0.05" fromto="0.05 0 0 0.1 0 0"/>
                           <body name="left_rubber_hand" pos="0.12 0 0.0">
@@ -223,7 +223,7 @@
                           <inertial pos="0.0708244 -0.000191745 0.00161742" quat="0.493188 0.468078 0.526295 0.510571" mass="0.254576" diaginertia="0.000646113 0.000559993 0.000147566"/>
                           <joint name="right_wrist_yaw_joint" pos="0 0 0" axis="0 0 1" limited="true" range="-1.61443 1.61443" actuatorfrcrange="-5 5" stiffness="4.0" damping="0.4" armature="0.03" frictionloss="0.03"/>
                           <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_wrist_yaw_link"/>
-                          <geom pos="0.0415 -0.003 0" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_rubber_hand"/>
+                          <geom name="right_rubber_hand_visual" pos="0.0415 -0.003 0" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_rubber_hand"/>
                           <geom name="right_hand_collision" type="capsule" size="0.05" fromto="0.05 0 0 0.1 0 0"/>
                           <body name="right_rubber_hand" pos="0.12 0 0.0">
                             <geom name="right_rubber_hand" group="1" type="sphere" size=".0001" density="0"/>

@@ -16,9 +16,9 @@
 """
 Environment Kinematic Playback Script
 
-This script allows you to visualize environments in kinematic playback mode without training.
-It loads the environment configuration from an experiment file and runs sync_motion=True
-to show the reference motion being played back by the humanoid.
+This script allows you to visualize reference motions in kinematic playback mode without training.
+It uses the KinematicReplayControl component to directly set robot state to reference motion poses,
+bypassing physics simulation entirely.
 
 Usage:
     python examples/env_kinematic_playback.py \
@@ -114,7 +114,6 @@ AppLauncher = import_simulator_before_torch(args.simulator)
 # Now safe to import everything else including torch
 from pathlib import Path  # noqa: E402
 import logging  # noqa: E402
-from protomotions.utils.hydra_replacement import get_class  # noqa: E402
 import importlib.util  # noqa: E402
 import torch  # noqa: E402
 
@@ -209,13 +208,36 @@ def main():
     if args.scenes_file is not None:
         print(f"Scene library configured from: {args.scenes_file}")
 
-    # Enable kinematic playback mode
-    print("Enabling kinematic playback: sync_motion = True")
-    env_config.sync_motion = True
+    # Enable kinematic playback mode using KinematicReplayControl
+    from protomotions.envs.control.kinematic_replay_control import (
+        KinematicReplayControlConfig,
+    )
+    
+    print("Enabling kinematic playback via KinematicReplayControl component")
     env_config.show_terrain_markers = False
-    # env_config.mimic_early_termination = None
+    
+    # Add kinematic replay control component (replaces any existing control components)
+    env_config.control_components = {
+        "kinematic_replay": KinematicReplayControlConfig(),
+    }
+    
+    # Disable terminations - kinematic replay should run indefinitely
+    env_config.termination_components = {}
+    
+    # Disable observations - not needed for kinematic playback
+    env_config.observation_components = {}
+    
+    # Disable rewards - not needed for kinematic playback
+    env_config.reward_components = {}
 
     print("\n=== Creating Environment ===")
+
+    # Convert friction settings for simulator compatibility
+    from protomotions.simulator.base_simulator.utils import convert_friction_for_simulator
+
+    terrain_config, simulator_config = convert_friction_for_simulator(
+        terrain_config, simulator_config
+    )
 
     # Create components using configs from build_standard_configs
     from protomotions.utils.component_builder import build_all_components
@@ -241,11 +263,10 @@ def main():
     motion_lib = components["motion_lib"]
     simulator = components["simulator"]
 
-    # Create environment
+    # Create environment - use BaseEnv directly for kinematic playback
     from protomotions.envs.base_env.env import BaseEnv
 
-    EnvClass = get_class(env_config._target_)
-    env: BaseEnv = EnvClass(
+    env: BaseEnv = BaseEnv(
         config=env_config,
         robot_config=robot_config,
         device=device,

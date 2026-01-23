@@ -391,33 +391,17 @@ motions:
       end: 55.666666666666664
       start: 0.0
   weight: 1.0
-- file: HDM05/bk/HDM_bk_05_03_01_120_stageii.motion
-  fps: 120.0
-  idx: 49
-  sub_motions:
-  - timings:
-      end: 34.4
-      start: 0.0
-  weight: 1.0
 - file: HDM05/bk/HDM_bk_02_02_02_120_stageii.motion
   fps: 120.0
-  idx: 50
+  idx: 49
   sub_motions:
   - timings:
       end: 59.125
       start: 0.0
   weight: 1.0
-- file: HDM05/bk/HDM_bk_01_02_03_120_stageii.motion
-  fps: 120.0
-  idx: 51
-  sub_motions:
-  - timings:
-      end: 28.383333333333333
-      start: 0.0
-  weight: 1.0
 - file: HDM05/bk/HDM_bk_01_04_01_120_stageii.motion
   fps: 120.0
-  idx: 52
+  idx: 50
   sub_motions:
   - timings:
       end: 63.975
@@ -425,7 +409,7 @@ motions:
   weight: 1.0
 - file: HDM05/bk/HDM_bk_05_02_01_120_stageii.motion
   fps: 120.0
-  idx: 53
+  idx: 51
   sub_motions:
   - timings:
       end: 34.93333333333333
@@ -433,7 +417,7 @@ motions:
   weight: 1.0
 - file: HDM05/bk/HDM_bk_01_03_02_120_stageii.motion
   fps: 120.0
-  idx: 54
+  idx: 52
   sub_motions:
   - timings:
       end: 51.75833333333333
@@ -441,7 +425,7 @@ motions:
   weight: 1.0
 - file: HDM05/bk/HDM_bk_01_03_01_120_stageii.motion
   fps: 120.0
-  idx: 55
+  idx: 53
   sub_motions:
   - timings:
       end: 55.891666666666666
@@ -449,7 +433,7 @@ motions:
   weight: 1.0
 - file: HDM05/bk/HDM_bk_03_05_01_120_stageii.motion
   fps: 120.0
-  idx: 56
+  idx: 54
   sub_motions:
   - timings:
       end: 50.34166666666667
@@ -457,7 +441,7 @@ motions:
   weight: 1.0
 - file: HDM05/bk/HDM_bk_01_03_03_120_stageii.motion
   fps: 120.0
-  idx: 57
+  idx: 55
   sub_motions:
   - timings:
       end: 42.625
@@ -465,7 +449,7 @@ motions:
   weight: 1.0
 - file: HDM05/bk/HDM_bk_03_11_01_120_stageii.motion
   fps: 120.0
-  idx: 58
+  idx: 56
   sub_motions:
   - timings:
       end: 25.941666666666666
@@ -473,7 +457,7 @@ motions:
   weight: 1.0
 - file: HDM05/bk/HDM_bk_05_02_03_120_stageii.motion
   fps: 120.0
-  idx: 59
+  idx: 57
   sub_motions:
   - timings:
       end: 34.69166666666667
@@ -481,7 +465,7 @@ motions:
   weight: 1.0
 - file: HDM05/bk/HDM_bk_01_04_03_120_stageii.motion
   fps: 120.0
-  idx: 60
+  idx: 58
   sub_motions:
   - timings:
       end: 56.016666666666666
@@ -489,7 +473,7 @@ motions:
   weight: 1.0
 - file: HDM05/bk/HDM_bk_04_01_02_120_stageii.motion
   fps: 120.0
-  idx: 61
+  idx: 59
   sub_motions:
   - timings:
       end: 8.133333333333333
@@ -497,7 +481,7 @@ motions:
   weight: 1.0
 - file: HDM05/bk/HDM_bk_02_01_02_120_stageii.motion
   fps: 120.0
-  idx: 62
+  idx: 60
   sub_motions:
   - timings:
       end: 30.95
@@ -505,7 +489,7 @@ motions:
   weight: 1.0
 - file: HDM05/bk/HDM_bk_01_04_02_120_stageii.motion
   fps: 120.0
-  idx: 63
+  idx: 61
   sub_motions:
   - timings:
       end: 64.6
@@ -513,7 +497,7 @@ motions:
   weight: 1.0
 - file: HDM05/bk/HDM_bk_03_04_01_120_stageii.motion
   fps: 120.0
-  idx: 64
+  idx: 62
   sub_motions:
   - timings:
       end: 94.99166666666666
@@ -521,7 +505,7 @@ motions:
   weight: 1.0
 - file: HDM05/bk/HDM_bk_03_02_01_120_stageii.motion
   fps: 120.0
-  idx: 65
+  idx: 63
   sub_motions:
   - timings:
       end: 41.50833333333333
@@ -529,23 +513,15 @@ motions:
   weight: 1.0
 - file: HDM05/bk/HDM_bk_03_04_04_120_stageii.motion
   fps: 120.0
-  idx: 66
+  idx: 64
   sub_motions:
   - timings:
       end: 61.083333333333336
       start: 0.0
   weight: 1.0
-- file: HDM05/bk/HDM_bk_05_03_02_120_stageii.motion
-  fps: 120.0
-  idx: 67
-  sub_motions:
-  - timings:
-      end: 38.28333333333333
-      start: 0.0
-  weight: 1.0
 - file: HDM05/bk/HDM_bk_05_02_02_120_stageii.motion
   fps: 120.0
-  idx: 68
+  idx: 65
   sub_motions:
   - timings:
       end: 36.55
@@ -553,7 +529,7 @@ motions:
   weight: 1.0
 - file: HDM05/bk/HDM_bk_02_02_03_120_stageii.motion
   fps: 120.0
-  idx: 69
+  idx: 66
   sub_motions:
   - timings:
       end: 53.74166666666667
@@ -561,23 +537,15 @@ motions:
   weight: 1.0
 - file: HDM05/bk/HDM_bk_01_03_04_120_stageii.motion
   fps: 120.0
-  idx: 70
+  idx: 67
   sub_motions:
   - timings:
       end: 38.016666666666666
       start: 0.0
   weight: 1.0
-- file: HDM05/bk/HDM_bk_01_02_01_120_stageii.motion
-  fps: 120.0
-  idx: 71
-  sub_motions:
-  - timings:
-      end: 28.508333333333333
-      start: 0.0
-  weight: 1.0
 - file: HDM05/bk/HDM_bk_03_11_03_120_stageii.motion
   fps: 120.0
-  idx: 72
+  idx: 68
   sub_motions:
   - timings:
       end: 25.066666666666666
@@ -585,7 +553,7 @@ motions:
   weight: 1.0
 - file: HDM05/bk/HDM_bk_05_03_03_120_stageii.motion
   fps: 120.0
-  idx: 73
+  idx: 69
   sub_motions:
   - timings:
       end: 32.575
@@ -593,7 +561,7 @@ motions:
   weight: 1.0
 - file: HDM05/bk/HDM_bk_01_01_02_120_stageii.motion
   fps: 120.0
-  idx: 74
+  idx: 70
   sub_motions:
   - timings:
       end: 72.89166666666667
@@ -601,15 +569,15 @@ motions:
   weight: 1.0
 - file: HDM05/bk/HDM_bk_02_01_01_120_stageii.motion
   fps: 120.0
-  idx: 75
+  idx: 71
   sub_motions:
   - timings:
-      end: 30.375
+      end: 16.8
       start: 0.0
   weight: 1.0
 - file: HDM05/bk/HDM_bk_02_03_01_120_stageii.motion
   fps: 120.0
-  idx: 76
+  idx: 72
   sub_motions:
   - timings:
       end: 21.083333333333332
@@ -617,7 +585,7 @@ motions:
   weight: 1.0
 - file: HDM05/bk/HDM_bk_02_03_04_120_stageii.motion
   fps: 120.0
-  idx: 77
+  idx: 73
   sub_motions:
   - timings:
       end: 15.958333333333334
@@ -625,7 +593,7 @@ motions:
   weight: 1.0
 - file: HDM05/bk/HDM_bk_01_01_03_120_stageii.motion
   fps: 120.0
-  idx: 78
+  idx: 74
   sub_motions:
   - timings:
       end: 74.74166666666666
@@ -633,7 +601,7 @@ motions:
   weight: 1.0
 - file: HDM05/bk/HDM_bk_03_04_02_120_stageii.motion
   fps: 120.0
-  idx: 79
+  idx: 75
   sub_motions:
   - timings:
       end: 61.85
@@ -641,7 +609,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_01_02_03_120_stageii.motion
   fps: 120.0
-  idx: 80
+  idx: 76
   sub_motions:
   - timings:
       end: 24.766666666666666
@@ -649,7 +617,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_02_03_03_120_stageii.motion
   fps: 120.0
-  idx: 81
+  idx: 77
   sub_motions:
   - timings:
       end: 14.333333333333334
@@ -657,7 +625,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_03_10_02_120_stageii.motion
   fps: 120.0
-  idx: 82
+  idx: 78
   sub_motions:
   - timings:
       end: 20.658333333333335
@@ -665,7 +633,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_05_03_04_120_stageii.motion
   fps: 120.0
-  idx: 83
+  idx: 79
   sub_motions:
   - timings:
       end: 53.775
@@ -673,7 +641,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_05_02_01_120_stageii.motion
   fps: 120.0
-  idx: 84
+  idx: 80
   sub_motions:
   - timings:
       end: 14.091666666666667
@@ -681,7 +649,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_05_03_02_120_stageii.motion
   fps: 120.0
-  idx: 85
+  idx: 81
   sub_motions:
   - timings:
       end: 30.283333333333335
@@ -689,7 +657,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_03_02_03_120_stageii.motion
   fps: 120.0
-  idx: 86
+  idx: 82
   sub_motions:
   - timings:
       end: 37.1
@@ -697,7 +665,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_02_02_02_120_stageii.motion
   fps: 120.0
-  idx: 87
+  idx: 83
   sub_motions:
   - timings:
       end: 49.025
@@ -705,7 +673,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_03_04_01_120_stageii.motion
   fps: 120.0
-  idx: 88
+  idx: 84
   sub_motions:
   - timings:
       end: 51.99166666666667
@@ -713,7 +681,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_03_01_03_120_stageii.motion
   fps: 120.0
-  idx: 89
+  idx: 85
   sub_motions:
   - timings:
       end: 62.63333333333333
@@ -721,15 +689,15 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_03_03_01_120_stageii.motion
   fps: 120.0
-  idx: 90
+  idx: 86
   sub_motions:
   - timings:
-      end: 31.008333333333333
+      end: 9.0
       start: 0.0
   weight: 1.0
 - file: HDM05/tr/HDM_tr_03_02_01_120_stageii.motion
   fps: 120.0
-  idx: 91
+  idx: 87
   sub_motions:
   - timings:
       end: 39.675
@@ -737,7 +705,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_05_01_02_120_stageii.motion
   fps: 120.0
-  idx: 92
+  idx: 88
   sub_motions:
   - timings:
       end: 41.18333333333333
@@ -745,7 +713,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_01_02_01_120_stageii.motion
   fps: 120.0
-  idx: 93
+  idx: 89
   sub_motions:
   - timings:
       end: 24.6
@@ -753,7 +721,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_02_02_04_120_stageii.motion
   fps: 120.0
-  idx: 94
+  idx: 90
   sub_motions:
   - timings:
       end: 46.44166666666667
@@ -761,7 +729,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_03_11_02_120_stageii.motion
   fps: 120.0
-  idx: 95
+  idx: 91
   sub_motions:
   - timings:
       end: 21.508333333333333
@@ -769,7 +737,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_01_02_02_120_stageii.motion
   fps: 120.0
-  idx: 96
+  idx: 92
   sub_motions:
   - timings:
       end: 24.35
@@ -777,7 +745,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_03_11_03_120_stageii.motion
   fps: 120.0
-  idx: 97
+  idx: 93
   sub_motions:
   - timings:
       end: 18.408333333333335
@@ -785,7 +753,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_02_01_01_120_stageii.motion
   fps: 120.0
-  idx: 98
+  idx: 94
   sub_motions:
   - timings:
       end: 28.35
@@ -793,7 +761,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_03_02_02_120_stageii.motion
   fps: 120.0
-  idx: 99
+  idx: 95
   sub_motions:
   - timings:
       end: 38.1
@@ -801,7 +769,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_02_01_02_120_stageii.motion
   fps: 120.0
-  idx: 100
+  idx: 96
   sub_motions:
   - timings:
       end: 27.675
@@ -809,7 +777,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_05_03_03_120_stageii.motion
   fps: 120.0
-  idx: 101
+  idx: 97
   sub_motions:
   - timings:
       end: 27.816666666666666
@@ -817,15 +785,15 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_03_03_02_120_stageii.motion
   fps: 120.0
-  idx: 102
+  idx: 98
   sub_motions:
   - timings:
-      end: 31.025
+      end: 9.533333333333333
       start: 0.0
   weight: 1.0
 - file: HDM05/tr/HDM_tr_01_03_01_120_stageii.motion
   fps: 120.0
-  idx: 103
+  idx: 99
   sub_motions:
   - timings:
       end: 30.091666666666665
@@ -833,7 +801,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_03_04_02_120_stageii.motion
   fps: 120.0
-  idx: 104
+  idx: 100
   sub_motions:
   - timings:
       end: 58.233333333333334
@@ -841,7 +809,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_05_02_02_120_stageii.motion
   fps: 120.0
-  idx: 105
+  idx: 101
   sub_motions:
   - timings:
       end: 14.383333333333333
@@ -849,7 +817,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_03_02_04_120_stageii.motion
   fps: 120.0
-  idx: 106
+  idx: 102
   sub_motions:
   - timings:
       end: 35.458333333333336
@@ -857,7 +825,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_03_05_01_120_stageii.motion
   fps: 120.0
-  idx: 107
+  idx: 103
   sub_motions:
   - timings:
       end: 41.65833333333333
@@ -865,7 +833,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_03_11_01_120_stageii.motion
   fps: 120.0
-  idx: 108
+  idx: 104
   sub_motions:
   - timings:
       end: 30.291666666666668
@@ -873,7 +841,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_05_02_03_120_stageii.motion
   fps: 120.0
-  idx: 109
+  idx: 105
   sub_motions:
   - timings:
       end: 14.208333333333334
@@ -881,7 +849,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_01_04_01_120_stageii.motion
   fps: 120.0
-  idx: 110
+  idx: 106
   sub_motions:
   - timings:
       end: 55.24166666666667
@@ -889,7 +857,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_03_01_01_120_stageii.motion
   fps: 120.0
-  idx: 111
+  idx: 107
   sub_motions:
   - timings:
       end: 78.825
@@ -897,7 +865,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_03_04_03_120_stageii.motion
   fps: 120.0
-  idx: 112
+  idx: 108
   sub_motions:
   - timings:
       end: 62.94166666666667
@@ -905,7 +873,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_02_03_02_120_stageii.motion
   fps: 120.0
-  idx: 113
+  idx: 109
   sub_motions:
   - timings:
       end: 22.883333333333333
@@ -913,7 +881,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_06_01_02_120_stageii.motion
   fps: 120.0
-  idx: 114
+  idx: 110
   sub_motions:
   - timings:
       end: 134.475
@@ -921,7 +889,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_02_02_03_120_stageii.motion
   fps: 120.0
-  idx: 115
+  idx: 111
   sub_motions:
   - timings:
       end: 42.4
@@ -929,7 +897,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_03_01_02_120_stageii.motion
   fps: 120.0
-  idx: 116
+  idx: 112
   sub_motions:
   - timings:
       end: 68.75
@@ -937,7 +905,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_01_03_03_120_stageii.motion
   fps: 120.0
-  idx: 117
+  idx: 113
   sub_motions:
   - timings:
       end: 30.75
@@ -945,7 +913,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_01_01_02_120_stageii.motion
   fps: 120.0
-  idx: 118
+  idx: 114
   sub_motions:
   - timings:
       end: 66.39166666666667
@@ -953,7 +921,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_04_01_01_120_stageii.motion
   fps: 120.0
-  idx: 119
+  idx: 115
   sub_motions:
   - timings:
       end: 7.266666666666667
@@ -961,7 +929,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_02_01_03_120_stageii.motion
   fps: 120.0
-  idx: 120
+  idx: 116
   sub_motions:
   - timings:
       end: 27.558333333333334
@@ -969,7 +937,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_01_03_04_120_stageii.motion
   fps: 120.0
-  idx: 121
+  idx: 117
   sub_motions:
   - timings:
       end: 31.125
@@ -977,7 +945,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_05_01_03_120_stageii.motion
   fps: 120.0
-  idx: 122
+  idx: 118
   sub_motions:
   - timings:
       end: 35.96666666666667
@@ -985,7 +953,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_03_05_02_120_stageii.motion
   fps: 120.0
-  idx: 123
+  idx: 119
   sub_motions:
   - timings:
       end: 37.5
@@ -993,7 +961,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_03_01_04_120_stageii.motion
   fps: 120.0
-  idx: 124
+  idx: 120
   sub_motions:
   - timings:
       end: 71.58333333333333
@@ -1001,15 +969,15 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_03_03_03_120_stageii.motion
   fps: 120.0
-  idx: 125
+  idx: 121
   sub_motions:
   - timings:
-      end: 27.691666666666666
+      end: 8.733333333333333
       start: 0.0
   weight: 1.0
 - file: HDM05/tr/HDM_tr_01_03_02_120_stageii.motion
   fps: 120.0
-  idx: 126
+  idx: 122
   sub_motions:
   - timings:
       end: 32.99166666666667
@@ -1017,7 +985,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_01_01_01_120_stageii.motion
   fps: 120.0
-  idx: 127
+  idx: 123
   sub_motions:
   - timings:
       end: 74.10833333333333
@@ -1025,7 +993,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_06_01_01_120_stageii.motion
   fps: 120.0
-  idx: 128
+  idx: 124
   sub_motions:
   - timings:
       end: 89.73333333333333
@@ -1033,7 +1001,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_03_10_03_120_stageii.motion
   fps: 120.0
-  idx: 129
+  idx: 125
   sub_motions:
   - timings:
       end: 13.15
@@ -1041,7 +1009,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_01_01_03_120_stageii.motion
   fps: 120.0
-  idx: 130
+  idx: 126
   sub_motions:
   - timings:
       end: 65.74166666666666
@@ -1049,7 +1017,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_03_05_03_120_stageii.motion
   fps: 120.0
-  idx: 131
+  idx: 127
   sub_motions:
   - timings:
       end: 36.30833333333333
@@ -1057,7 +1025,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_05_03_01_120_stageii.motion
   fps: 120.0
-  idx: 132
+  idx: 128
   sub_motions:
   - timings:
       end: 26.866666666666667
@@ -1065,7 +1033,7 @@ motions:
   weight: 1.0
 - file: HDM05/tr/HDM_tr_02_02_01_120_stageii.motion
   fps: 120.0
-  idx: 133
+  idx: 129
   sub_motions:
   - timings:
       end: 49.35
@@ -1073,7 +1041,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_03_01_01_120_stageii.motion
   fps: 120.0
-  idx: 134
+  idx: 130
   sub_motions:
   - timings:
       end: 64.725
@@ -1081,7 +1049,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_02_01_02_120_stageii.motion
   fps: 120.0
-  idx: 135
+  idx: 131
   sub_motions:
   - timings:
       end: 20.408333333333335
@@ -1089,7 +1057,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_03_02_01_120_stageii.motion
   fps: 120.0
-  idx: 136
+  idx: 132
   sub_motions:
   - timings:
       end: 63.925
@@ -1097,7 +1065,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_03_10_07_120_stageii.motion
   fps: 120.0
-  idx: 137
+  idx: 133
   sub_motions:
   - timings:
       end: 13.991666666666667
@@ -1105,7 +1073,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_03_02_02_120_stageii.motion
   fps: 120.0
-  idx: 138
+  idx: 134
   sub_motions:
   - timings:
       end: 40.416666666666664
@@ -1113,7 +1081,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_05_02_02_120_stageii.motion
   fps: 120.0
-  idx: 139
+  idx: 135
   sub_motions:
   - timings:
       end: 17.525
@@ -1121,7 +1089,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_03_01_02_120_stageii.motion
   fps: 120.0
-  idx: 140
+  idx: 136
   sub_motions:
   - timings:
       end: 58.291666666666664
@@ -1129,7 +1097,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_02_02_01_120_stageii.motion
   fps: 120.0
-  idx: 141
+  idx: 137
   sub_motions:
   - timings:
       end: 48.416666666666664
@@ -1137,7 +1105,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_03_05_01_120_stageii.motion
   fps: 120.0
-  idx: 142
+  idx: 138
   sub_motions:
   - timings:
       end: 16.616666666666667
@@ -1145,7 +1113,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_03_05_02_120_stageii.motion
   fps: 120.0
-  idx: 143
+  idx: 139
   sub_motions:
   - timings:
       end: 35.75
@@ -1153,7 +1121,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_05_02_03_120_stageii.motion
   fps: 120.0
-  idx: 144
+  idx: 140
   sub_motions:
   - timings:
       end: 21.3
@@ -1161,7 +1129,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_08_01_01_120_stageii.motion
   fps: 120.0
-  idx: 145
+  idx: 141
   sub_motions:
   - timings:
       end: 20.416666666666668
@@ -1169,7 +1137,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_04_01_01_120_stageii.motion
   fps: 120.0
-  idx: 146
+  idx: 142
   sub_motions:
   - timings:
       end: 9.233333333333333
@@ -1177,7 +1145,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_06_04_01_120_stageii.motion
   fps: 120.0
-  idx: 147
+  idx: 143
   sub_motions:
   - timings:
       end: 48.291666666666664
@@ -1185,7 +1153,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_01_04_01_120_stageii.motion
   fps: 120.0
-  idx: 148
+  idx: 144
   sub_motions:
   - timings:
       end: 57.65
@@ -1193,7 +1161,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_02_03_01_120_stageii.motion
   fps: 120.0
-  idx: 149
+  idx: 145
   sub_motions:
   - timings:
       end: 28.866666666666667
@@ -1201,7 +1169,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_01_03_03_120_stageii.motion
   fps: 120.0
-  idx: 150
+  idx: 146
   sub_motions:
   - timings:
       end: 30.616666666666667
@@ -1209,23 +1177,15 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_03_01_03_120_stageii.motion
   fps: 120.0
-  idx: 151
+  idx: 147
   sub_motions:
   - timings:
       end: 67.0
       start: 0.0
   weight: 1.0
-- file: HDM05/mm/HDM_mm_03_03_02_120_stageii.motion
-  fps: 120.0
-  idx: 152
-  sub_motions:
-  - timings:
-      end: 35.825
-      start: 0.0
-  weight: 1.0
 - file: HDM05/mm/HDM_mm_03_10_06_120_stageii.motion
   fps: 120.0
-  idx: 153
+  idx: 148
   sub_motions:
   - timings:
       end: 8.158333333333333
@@ -1233,7 +1193,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_02_01_01_120_stageii.motion
   fps: 120.0
-  idx: 154
+  idx: 149
   sub_motions:
   - timings:
       end: 30.608333333333334
@@ -1241,23 +1201,15 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_01_01_03_120_stageii.motion
   fps: 120.0
-  idx: 155
+  idx: 150
   sub_motions:
   - timings:
       end: 62.391666666666666
       start: 0.0
   weight: 1.0
-- file: HDM05/mm/HDM_mm_03_03_01_120_stageii.motion
-  fps: 120.0
-  idx: 156
-  sub_motions:
-  - timings:
-      end: 32.5
-      start: 0.0
-  weight: 1.0
 - file: HDM05/mm/HDM_mm_02_01_04_120_stageii.motion
   fps: 120.0
-  idx: 157
+  idx: 151
   sub_motions:
   - timings:
       end: 15.375
@@ -1265,7 +1217,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_02_02_03_120_stageii.motion
   fps: 120.0
-  idx: 158
+  idx: 152
   sub_motions:
   - timings:
       end: 35.30833333333333
@@ -1273,7 +1225,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_05_03_02_120_stageii.motion
   fps: 120.0
-  idx: 159
+  idx: 153
   sub_motions:
   - timings:
       end: 34.725
@@ -1281,7 +1233,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_01_03_01_120_stageii.motion
   fps: 120.0
-  idx: 160
+  idx: 154
   sub_motions:
   - timings:
       end: 32.733333333333334
@@ -1289,7 +1241,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_02_03_02_120_stageii.motion
   fps: 120.0
-  idx: 161
+  idx: 155
   sub_motions:
   - timings:
       end: 18.375
@@ -1297,7 +1249,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_01_02_03_120_stageii.motion
   fps: 120.0
-  idx: 162
+  idx: 156
   sub_motions:
   - timings:
       end: 33.25
@@ -1305,7 +1257,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_02_01_03_120_stageii.motion
   fps: 120.0
-  idx: 163
+  idx: 157
   sub_motions:
   - timings:
       end: 29.8
@@ -1313,7 +1265,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_01_01_02_120_stageii.motion
   fps: 120.0
-  idx: 164
+  idx: 158
   sub_motions:
   - timings:
       end: 68.80833333333334
@@ -1321,7 +1273,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_02_02_02_120_stageii.motion
   fps: 120.0
-  idx: 165
+  idx: 159
   sub_motions:
   - timings:
       end: 70.83333333333333
@@ -1329,7 +1281,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_01_04_03_120_stageii.motion
   fps: 120.0
-  idx: 166
+  idx: 160
   sub_motions:
   - timings:
       end: 56.71666666666667
@@ -1337,7 +1289,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_01_01_01_120_stageii.motion
   fps: 120.0
-  idx: 167
+  idx: 161
   sub_motions:
   - timings:
       end: 69.675
@@ -1345,7 +1297,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_01_02_02_120_stageii.motion
   fps: 120.0
-  idx: 168
+  idx: 162
   sub_motions:
   - timings:
       end: 22.6
@@ -1353,7 +1305,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_01_03_02_120_stageii.motion
   fps: 120.0
-  idx: 169
+  idx: 163
   sub_motions:
   - timings:
       end: 33.5
@@ -1361,7 +1313,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_05_03_01_120_stageii.motion
   fps: 120.0
-  idx: 170
+  idx: 164
   sub_motions:
   - timings:
       end: 34.75
@@ -1369,7 +1321,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_02_03_03_120_stageii.motion
   fps: 120.0
-  idx: 171
+  idx: 165
   sub_motions:
   - timings:
       end: 18.666666666666668
@@ -1377,7 +1329,7 @@ motions:
   weight: 1.0
 - file: HDM05/mm/HDM_mm_05_02_01_120_stageii.motion
   fps: 120.0
-  idx: 172
+  idx: 166
   sub_motions:
   - timings:
       end: 20.233333333333334
@@ -1385,7 +1337,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_03_04_01_120_stageii.motion
   fps: 120.0
-  idx: 173
+  idx: 167
   sub_motions:
   - timings:
       end: 59.175
@@ -1393,7 +1345,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_06_01_01_120_stageii.motion
   fps: 120.0
-  idx: 174
+  idx: 168
   sub_motions:
   - timings:
       end: 76.08333333333333
@@ -1401,15 +1353,15 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_03_03_03_120_stageii.motion
   fps: 120.0
-  idx: 175
+  idx: 169
   sub_motions:
   - timings:
-      end: 29.425
+      end: 3.9
       start: 0.0
   weight: 1.0
 - file: HDM05/dg/HDM_dg_05_02_02_120_stageii.motion
   fps: 120.0
-  idx: 176
+  idx: 170
   sub_motions:
   - timings:
       end: 17.191666666666666
@@ -1417,7 +1369,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_06_03_03_120_stageii.motion
   fps: 120.0
-  idx: 177
+  idx: 171
   sub_motions:
   - timings:
       end: 1.6833333333333333
@@ -1425,7 +1377,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_03_05_03_120_stageii.motion
   fps: 120.0
-  idx: 178
+  idx: 172
   sub_motions:
   - timings:
       end: 29.591666666666665
@@ -1433,7 +1385,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_02_02_01_120_stageii.motion
   fps: 120.0
-  idx: 179
+  idx: 173
   sub_motions:
   - timings:
       end: 50.725
@@ -1441,7 +1393,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_08_01_01_120_stageii.motion
   fps: 120.0
-  idx: 180
+  idx: 174
   sub_motions:
   - timings:
       end: 17.758333333333333
@@ -1449,7 +1401,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_01_04_02_120_stageii.motion
   fps: 120.0
-  idx: 181
+  idx: 175
   sub_motions:
   - timings:
       end: 53.28333333333333
@@ -1457,7 +1409,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_02_03_02_120_stageii.motion
   fps: 120.0
-  idx: 182
+  idx: 176
   sub_motions:
   - timings:
       end: 24.166666666666668
@@ -1465,7 +1417,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_01_01_02_120_stageii.motion
   fps: 120.0
-  idx: 183
+  idx: 177
   sub_motions:
   - timings:
       end: 63.833333333333336
@@ -1473,7 +1425,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_01_03_02_120_stageii.motion
   fps: 120.0
-  idx: 184
+  idx: 178
   sub_motions:
   - timings:
       end: 31.616666666666667
@@ -1481,7 +1433,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_05_03_01_120_stageii.motion
   fps: 120.0
-  idx: 185
+  idx: 179
   sub_motions:
   - timings:
       end: 27.3
@@ -1489,7 +1441,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_02_01_02_120_stageii.motion
   fps: 120.0
-  idx: 186
+  idx: 180
   sub_motions:
   - timings:
       end: 29.383333333333333
@@ -1497,7 +1449,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_05_01_03_120_stageii.motion
   fps: 120.0
-  idx: 187
+  idx: 181
   sub_motions:
   - timings:
       end: 55.141666666666666
@@ -1505,7 +1457,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_01_02_02_120_stageii.motion
   fps: 120.0
-  idx: 188
+  idx: 182
   sub_motions:
   - timings:
       end: 23.016666666666666
@@ -1513,7 +1465,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_03_09_03_120_stageii.motion
   fps: 120.0
-  idx: 189
+  idx: 183
   sub_motions:
   - timings:
       end: 1.4666666666666666
@@ -1521,7 +1473,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_02_03_01_120_stageii.motion
   fps: 120.0
-  idx: 190
+  idx: 184
   sub_motions:
   - timings:
       end: 20.3
@@ -1529,7 +1481,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_03_09_02_120_stageii.motion
   fps: 120.0
-  idx: 191
+  idx: 185
   sub_motions:
   - timings:
       end: 3.933333333333333
@@ -1537,7 +1489,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_03_04_03_120_stageii.motion
   fps: 120.0
-  idx: 192
+  idx: 186
   sub_motions:
   - timings:
       end: 53.7
@@ -1545,7 +1497,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_02_02_03_120_stageii.motion
   fps: 120.0
-  idx: 193
+  idx: 187
   sub_motions:
   - timings:
       end: 39.583333333333336
@@ -1553,7 +1505,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_06_03_02_120_stageii.motion
   fps: 120.0
-  idx: 194
+  idx: 188
   sub_motions:
   - timings:
       end: 2.375
@@ -1561,7 +1513,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_04_01_02_120_stageii.motion
   fps: 120.0
-  idx: 195
+  idx: 189
   sub_motions:
   - timings:
       end: 4.766666666666667
@@ -1569,7 +1521,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_06_03_01_120_stageii.motion
   fps: 120.0
-  idx: 196
+  idx: 190
   sub_motions:
   - timings:
       end: 2.7583333333333333
@@ -1577,7 +1529,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_05_01_02_120_stageii.motion
   fps: 120.0
-  idx: 197
+  idx: 191
   sub_motions:
   - timings:
       end: 57.208333333333336
@@ -1585,7 +1537,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_01_03_03_120_stageii.motion
   fps: 120.0
-  idx: 198
+  idx: 192
   sub_motions:
   - timings:
       end: 29.866666666666667
@@ -1593,7 +1545,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_03_02_03_120_stageii.motion
   fps: 120.0
-  idx: 199
+  idx: 193
   sub_motions:
   - timings:
       end: 28.783333333333335
@@ -1601,7 +1553,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_03_01_01_120_stageii.motion
   fps: 120.0
-  idx: 200
+  idx: 194
   sub_motions:
   - timings:
       end: 69.46666666666667
@@ -1609,7 +1561,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_06_04_01_120_stageii.motion
   fps: 120.0
-  idx: 201
+  idx: 195
   sub_motions:
   - timings:
       end: 33.225
@@ -1617,7 +1569,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_01_04_01_120_stageii.motion
   fps: 120.0
-  idx: 202
+  idx: 196
   sub_motions:
   - timings:
       end: 45.90833333333333
@@ -1625,7 +1577,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_01_01_04_120_stageii.motion
   fps: 120.0
-  idx: 203
+  idx: 197
   sub_motions:
   - timings:
       end: 63.725
@@ -1633,7 +1585,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_04_01_01_120_stageii.motion
   fps: 120.0
-  idx: 204
+  idx: 198
   sub_motions:
   - timings:
       end: 4.466666666666667
@@ -1641,7 +1593,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_01_02_01_120_stageii.motion
   fps: 120.0
-  idx: 205
+  idx: 199
   sub_motions:
   - timings:
       end: 23.891666666666666
@@ -1649,7 +1601,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_03_05_01_120_stageii.motion
   fps: 120.0
-  idx: 206
+  idx: 200
   sub_motions:
   - timings:
       end: 31.991666666666667
@@ -1657,7 +1609,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_03_11_02_120_stageii.motion
   fps: 120.0
-  idx: 207
+  idx: 201
   sub_motions:
   - timings:
       end: 26.15
@@ -1665,7 +1617,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_03_01_03_120_stageii.motion
   fps: 120.0
-  idx: 208
+  idx: 202
   sub_motions:
   - timings:
       end: 66.25833333333334
@@ -1673,7 +1625,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_01_01_01_120_stageii.motion
   fps: 120.0
-  idx: 209
+  idx: 203
   sub_motions:
   - timings:
       end: 62.85
@@ -1681,15 +1633,15 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_03_03_01_120_stageii.motion
   fps: 120.0
-  idx: 210
+  idx: 204
   sub_motions:
   - timings:
-      end: 26.825
+      end: 4.2
       start: 0.0
   weight: 1.0
 - file: HDM05/dg/HDM_dg_01_04_03_120_stageii.motion
   fps: 120.0
-  idx: 211
+  idx: 205
   sub_motions:
   - timings:
       end: 50.391666666666666
@@ -1697,7 +1649,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_03_02_02_120_stageii.motion
   fps: 120.0
-  idx: 212
+  idx: 206
   sub_motions:
   - timings:
       end: 48.84166666666667
@@ -1705,7 +1657,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_01_03_01_120_stageii.motion
   fps: 120.0
-  idx: 213
+  idx: 207
   sub_motions:
   - timings:
       end: 29.15
@@ -1713,7 +1665,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_02_02_02_120_stageii.motion
   fps: 120.0
-  idx: 214
+  idx: 208
   sub_motions:
   - timings:
       end: 34.983333333333334
@@ -1721,7 +1673,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_06_03_04_120_stageii.motion
   fps: 120.0
-  idx: 215
+  idx: 209
   sub_motions:
   - timings:
       end: 0.825
@@ -1729,7 +1681,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_02_01_03_120_stageii.motion
   fps: 120.0
-  idx: 216
+  idx: 210
   sub_motions:
   - timings:
       end: 25.9
@@ -1737,7 +1689,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_01_02_03_120_stageii.motion
   fps: 120.0
-  idx: 217
+  idx: 211
   sub_motions:
   - timings:
       end: 23.216666666666665
@@ -1745,7 +1697,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_03_01_02_120_stageii.motion
   fps: 120.0
-  idx: 218
+  idx: 212
   sub_motions:
   - timings:
       end: 61.916666666666664
@@ -1753,7 +1705,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_03_04_02_120_stageii.motion
   fps: 120.0
-  idx: 219
+  idx: 213
   sub_motions:
   - timings:
       end: 52.55833333333333
@@ -1761,7 +1713,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_01_01_03_120_stageii.motion
   fps: 120.0
-  idx: 220
+  idx: 214
   sub_motions:
   - timings:
       end: 64.05833333333334
@@ -1769,7 +1721,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_05_02_03_120_stageii.motion
   fps: 120.0
-  idx: 221
+  idx: 215
   sub_motions:
   - timings:
       end: 16.625
@@ -1777,7 +1729,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_02_02_04_120_stageii.motion
   fps: 120.0
-  idx: 222
+  idx: 216
   sub_motions:
   - timings:
       end: 45.50833333333333
@@ -1785,23 +1737,15 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_03_05_02_120_stageii.motion
   fps: 120.0
-  idx: 223
+  idx: 217
   sub_motions:
   - timings:
       end: 32.21666666666667
       start: 0.0
   weight: 1.0
-- file: HDM05/dg/HDM_dg_03_03_02_120_stageii.motion
-  fps: 120.0
-  idx: 224
-  sub_motions:
-  - timings:
-      end: 27.6
-      start: 0.0
-  weight: 1.0
 - file: HDM05/dg/HDM_dg_05_02_01_120_stageii.motion
   fps: 120.0
-  idx: 225
+  idx: 218
   sub_motions:
   - timings:
       end: 20.566666666666666
@@ -1809,7 +1753,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_06_02_01_120_stageii.motion
   fps: 120.0
-  idx: 226
+  idx: 219
   sub_motions:
   - timings:
       end: 67.8
@@ -1817,7 +1761,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_05_03_02_120_stageii.motion
   fps: 120.0
-  idx: 227
+  idx: 220
   sub_motions:
   - timings:
       end: 28.541666666666668
@@ -1825,15 +1769,15 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_03_09_01_120_stageii.motion
   fps: 120.0
-  idx: 228
+  idx: 221
   sub_motions:
   - timings:
-      end: 44.28333333333333
+      end: 3.3666666666666667
       start: 0.0
   weight: 1.0
 - file: HDM05/dg/HDM_dg_03_11_03_120_stageii.motion
   fps: 120.0
-  idx: 229
+  idx: 222
   sub_motions:
   - timings:
       end: 22.591666666666665
@@ -1841,7 +1785,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_05_01_01_120_stageii.motion
   fps: 120.0
-  idx: 230
+  idx: 223
   sub_motions:
   - timings:
       end: 46.725
@@ -1849,7 +1793,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_03_11_04_120_stageii.motion
   fps: 120.0
-  idx: 231
+  idx: 224
   sub_motions:
   - timings:
       end: 51.56666666666667
@@ -1857,7 +1801,7 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_02_03_03_120_stageii.motion
   fps: 120.0
-  idx: 232
+  idx: 225
   sub_motions:
   - timings:
       end: 18.541666666666668
@@ -1865,23 +1809,15 @@ motions:
   weight: 1.0
 - file: HDM05/dg/HDM_dg_03_11_01_120_stageii.motion
   fps: 120.0
-  idx: 233
+  idx: 226
   sub_motions:
   - timings:
       end: 23.825
       start: 0.0
   weight: 1.0
-- file: SFU/0008/0008_Yoga001_stageii.motion
-  fps: 120.0
-  idx: 234
-  sub_motions:
-  - timings:
-      end: 32.19166666666667
-      start: 0.0
-  weight: 1.0
 - file: SFU/0008/0008_Walking002_stageii.motion
   fps: 120.0
-  idx: 235
+  idx: 227
   sub_motions:
   - timings:
       end: 24.566666666666666
@@ -1889,7 +1825,7 @@ motions:
   weight: 1.0
 - file: SFU/0008/0008_ChaCha001_stageii.motion
   fps: 120.0
-  idx: 236
+  idx: 228
   sub_motions:
   - timings:
       end: 54.19166666666667
@@ -1897,7 +1833,7 @@ motions:
   weight: 1.0
 - file: SFU/0008/0008_Skipping001_stageii.motion
   fps: 120.0
-  idx: 237
+  idx: 229
   sub_motions:
   - timings:
       end: 24.25
@@ -1905,7 +1841,7 @@ motions:
   weight: 1.0
 - file: SFU/0008/0008_Walking001_stageii.motion
   fps: 120.0
-  idx: 238
+  idx: 230
   sub_motions:
   - timings:
       end: 26.875
@@ -1913,7 +1849,7 @@ motions:
   weight: 1.0
 - file: SFU/0005/0005_Walking001_stageii.motion
   fps: 120.0
-  idx: 239
+  idx: 231
   sub_motions:
   - timings:
       end: 39.1
@@ -1921,7 +1857,7 @@ motions:
   weight: 1.0
 - file: SFU/0005/0005_SideSkip001_stageii.motion
   fps: 120.0
-  idx: 240
+  idx: 232
   sub_motions:
   - timings:
       end: 9.041666666666666
@@ -1929,7 +1865,7 @@ motions:
   weight: 1.0
 - file: SFU/0005/0005_SlowTrot001_stageii.motion
   fps: 120.0
-  idx: 241
+  idx: 233
   sub_motions:
   - timings:
       end: 9.908333333333333
@@ -1937,7 +1873,7 @@ motions:
   weight: 1.0
 - file: SFU/0005/0005_Jogging001_stageii.motion
   fps: 120.0
-  idx: 242
+  idx: 234
   sub_motions:
   - timings:
       end: 11.475
@@ -1945,7 +1881,7 @@ motions:
   weight: 1.0
 - file: SFU/0005/0005_Stomping001_stageii.motion
   fps: 120.0
-  idx: 243
+  idx: 235
   sub_motions:
   - timings:
       end: 22.825
@@ -1953,7 +1889,7 @@ motions:
   weight: 1.0
 - file: SFU/0005/0005_BackwardsWalk001_stageii.motion
   fps: 120.0
-  idx: 244
+  idx: 236
   sub_motions:
   - timings:
       end: 10.325
@@ -1961,7 +1897,7 @@ motions:
   weight: 1.0
 - file: SFU/0005/0005_JumpRope001_stageii.motion
   fps: 120.0
-  idx: 245
+  idx: 237
   sub_motions:
   - timings:
       end: 7.941666666666666
@@ -1969,7 +1905,7 @@ motions:
   weight: 1.0
 - file: SFU/0005/0005_2FeetJump001_stageii.motion
   fps: 120.0
-  idx: 246
+  idx: 238
   sub_motions:
   - timings:
       end: 21.458333333333332
@@ -1977,7 +1913,7 @@ motions:
   weight: 1.0
 - file: SFU/0017/0017_WushuKicks001_stageii.motion
   fps: 120.0
-  idx: 247
+  idx: 239
   sub_motions:
   - timings:
       end: 19.816666666666666
@@ -1985,7 +1921,7 @@ motions:
   weight: 1.0
 - file: SFU/0017/0017_ParkourRoll001_stageii.motion
   fps: 120.0
-  idx: 248
+  idx: 240
   sub_motions:
   - timings:
       end: 9.933333333333334
@@ -1993,23 +1929,15 @@ motions:
   weight: 1.0
 - file: SFU/0007/0007_Walking001_stageii.motion
   fps: 120.0
-  idx: 249
+  idx: 241
   sub_motions:
   - timings:
       end: 32.8
       start: 0.0
   weight: 1.0
-- file: SFU/0007/0007_Crawling001_stageii.motion
-  fps: 120.0
-  idx: 250
-  sub_motions:
-  - timings:
-      end: 13.125
-      start: 0.0
-  weight: 1.0
 - file: SFU/0007/0007_Cartwheel001_stageii.motion
   fps: 120.0
-  idx: 251
+  idx: 242
   sub_motions:
   - timings:
       end: 17.591666666666665
@@ -2017,7 +1945,7 @@ motions:
   weight: 1.0
 - file: SFU/0007/0007_Balance001_stageii.motion
   fps: 120.0
-  idx: 252
+  idx: 243
   sub_motions:
   - timings:
       end: 32.88333333333333
@@ -2025,7 +1953,7 @@ motions:
   weight: 1.0
 - file: SFU/0018/0018_Catwalk001_stageii.motion
   fps: 120.0
-  idx: 253
+  idx: 244
   sub_motions:
   - timings:
       end: 11.758333333333333
@@ -2033,7 +1961,7 @@ motions:
   weight: 1.0
 - file: SFU/0018/0018_XinJiang003_stageii.motion
   fps: 120.0
-  idx: 254
+  idx: 245
   sub_motions:
   - timings:
       end: 13.166666666666666
@@ -2041,7 +1969,7 @@ motions:
   weight: 1.0
 - file: SFU/0018/0018_DanceTurns002_stageii.motion
   fps: 120.0
-  idx: 255
+  idx: 246
   sub_motions:
   - timings:
       end: 15.558333333333334
@@ -2049,7 +1977,7 @@ motions:
   weight: 1.0
 - file: SFU/0018/0018_TraditionalChineseDance001_stageii.motion
   fps: 120.0
-  idx: 256
+  idx: 247
   sub_motions:
   - timings:
       end: 11.4
@@ -2057,7 +1985,7 @@ motions:
   weight: 1.0
 - file: SFU/0018/0018_TipToe001_stageii.motion
   fps: 120.0
-  idx: 257
+  idx: 248
   sub_motions:
   - timings:
       end: 6.691666666666666
@@ -2065,7 +1993,7 @@ motions:
   weight: 1.0
 - file: SFU/0018/0018_XinJiang002_stageii.motion
   fps: 120.0
-  idx: 258
+  idx: 249
   sub_motions:
   - timings:
       end: 13.466666666666667
@@ -2073,7 +2001,7 @@ motions:
   weight: 1.0
 - file: SFU/0018/0018_Moonwalk001_stageii.motion
   fps: 120.0
-  idx: 259
+  idx: 250
   sub_motions:
   - timings:
       end: 15.483333333333333
@@ -2081,7 +2009,7 @@ motions:
   weight: 1.0
 - file: SFU/0018/0018_Walking001_stageii.motion
   fps: 120.0
-  idx: 260
+  idx: 251
   sub_motions:
   - timings:
       end: 17.75
@@ -2089,7 +2017,7 @@ motions:
   weight: 1.0
 - file: SFU/0018/0018_DanceTurns001_stageii.motion
   fps: 120.0
-  idx: 261
+  idx: 252
   sub_motions:
   - timings:
       end: 6.05
@@ -2097,7 +2025,7 @@ motions:
   weight: 1.0
 - file: SFU/0018/0018_Bridge001_stageii.motion
   fps: 120.0
-  idx: 262
+  idx: 253
   sub_motions:
   - timings:
       end: 9.383333333333333
@@ -2105,7 +2033,7 @@ motions:
   weight: 1.0
 - file: SFU/0015/0015_JumpOverObstacle001_stageii.motion
   fps: 120.0
-  idx: 263
+  idx: 254
   sub_motions:
   - timings:
       end: 15.166666666666666
@@ -2113,7 +2041,7 @@ motions:
   weight: 1.0
 - file: SFU/0015/0015_KendoKata001_stageii.motion
   fps: 120.0
-  idx: 264
+  idx: 255
   sub_motions:
   - timings:
       end: 155.90833333333333
@@ -2121,7 +2049,7 @@ motions:
   weight: 1.0
 - file: SFU/0015/0015_Kirikaeshi001_stageii.motion
   fps: 120.0
-  idx: 265
+  idx: 256
   sub_motions:
   - timings:
       end: 32.25
@@ -2129,7 +2057,7 @@ motions:
   weight: 1.0
 - file: SFU/0015/0015_BasicKendo001_stageii.motion
   fps: 120.0
-  idx: 266
+  idx: 257
   sub_motions:
   - timings:
       end: 56.86666666666667
@@ -2137,7 +2065,7 @@ motions:
   weight: 1.0
 - file: SFU/0015/0015_HopOverObstacle001_stageii.motion
   fps: 120.0
-  idx: 267
+  idx: 258
   sub_motions:
   - timings:
       end: 8.675
@@ -2145,7 +2073,7 @@ motions:
   weight: 1.0
 - file: MoSh/50021/squat_simple_stageii.motion
   fps: 100.0
-  idx: 268
+  idx: 259
   sub_motions:
   - timings:
       end: 7.92
@@ -2153,7 +2081,7 @@ motions:
   weight: 1.0
 - file: MoSh/50021/hips_stageii.motion
   fps: 100.0
-  idx: 269
+  idx: 260
   sub_motions:
   - timings:
       end: 10.71
@@ -2161,7 +2089,7 @@ motions:
   weight: 1.0
 - file: MoSh/50021/misc_7_stageii.motion
   fps: 100.0
-  idx: 270
+  idx: 261
   sub_motions:
   - timings:
       end: 9.25
@@ -2169,7 +2097,7 @@ motions:
   weight: 1.0
 - file: MoSh/50021/misc_9_stageii.motion
   fps: 100.0
-  idx: 271
+  idx: 262
   sub_motions:
   - timings:
       end: 3.68
@@ -2177,7 +2105,7 @@ motions:
   weight: 1.0
 - file: MoSh/50021/army_poses_stageii.motion
   fps: 100.0
-  idx: 272
+  idx: 263
   sub_motions:
   - timings:
       end: 13.36
@@ -2185,7 +2113,7 @@ motions:
   weight: 1.0
 - file: MoSh/00043/stretches_stageii.motion
   fps: 100.0
-  idx: 273
+  idx: 264
   sub_motions:
   - timings:
       end: 21.23
@@ -2193,7 +2121,7 @@ motions:
   weight: 1.0
 - file: MoSh/00043/simple_crouch_stageii.motion
   fps: 100.0
-  idx: 274
+  idx: 265
   sub_motions:
   - timings:
       end: 7.14
@@ -2201,7 +2129,7 @@ motions:
   weight: 1.0
 - file: MoSh/50027/light_hopping_loose_stageii.motion
   fps: 120.0
-  idx: 275
+  idx: 266
   sub_motions:
   - timings:
       end: 6.116666666666666
@@ -2209,7 +2137,7 @@ motions:
   weight: 1.0
 - file: MoSh/50027/stretches_stageii.motion
   fps: 120.0
-  idx: 276
+  idx: 267
   sub_motions:
   - timings:
       end: 18.183333333333334
@@ -2217,7 +2145,7 @@ motions:
   weight: 1.0
 - file: MoSh/50027/light_hopping_stiff_stageii.motion
   fps: 120.0
-  idx: 277
+  idx: 268
   sub_motions:
   - timings:
       end: 4.85
@@ -2225,7 +2153,7 @@ motions:
   weight: 1.0
 - file: MoSh/50027/misc_dancing_hiphop_stageii.motion
   fps: 120.0
-  idx: 278
+  idx: 269
   sub_motions:
   - timings:
       end: 19.883333333333333
@@ -2233,7 +2161,7 @@ motions:
   weight: 1.0
 - file: MoSh/50027/jumping_jacks_stageii.motion
   fps: 120.0
-  idx: 279
+  idx: 270
   sub_motions:
   - timings:
       end: 9.45
@@ -2241,7 +2169,7 @@ motions:
   weight: 1.0
 - file: MoSh/50022/side_to_side_hop_stageii.motion
   fps: 100.0
-  idx: 280
+  idx: 271
   sub_motions:
   - timings:
       end: 5.22
@@ -2249,15 +2177,15 @@ motions:
   weight: 1.0
 - file: MoSh/50022/stretch_poses_stageii.motion
   fps: 100.0
-  idx: 281
+  idx: 272
   sub_motions:
   - timings:
-      end: 28.37
+      end: 13.56
       start: 0.0
   weight: 1.0
 - file: MoSh/50022/misc_1_stageii.motion
   fps: 100.0
-  idx: 282
+  idx: 273
   sub_motions:
   - timings:
       end: 5.05
@@ -2265,7 +2193,7 @@ motions:
   weight: 1.0
 - file: MoSh/50022/hips_stageii.motion
   fps: 100.0
-  idx: 283
+  idx: 274
   sub_motions:
   - timings:
       end: 11.16
@@ -2273,7 +2201,7 @@ motions:
   weight: 1.0
 - file: MoSh/50022/simple_crouch_stageii.motion
   fps: 100.0
-  idx: 284
+  idx: 275
   sub_motions:
   - timings:
       end: 9.42
@@ -2281,7 +2209,7 @@ motions:
   weight: 1.0
 - file: MoSh/50026/stretches_1_stageii.motion
   fps: 120.0
-  idx: 285
+  idx: 276
   sub_motions:
   - timings:
       end: 16.25
@@ -2289,7 +2217,7 @@ motions:
   weight: 1.0
 - file: MoSh/50026/light_hopping_loose_stageii.motion
   fps: 120.0
-  idx: 286
+  idx: 277
   sub_motions:
   - timings:
       end: 8.233333333333333
@@ -2297,7 +2225,7 @@ motions:
   weight: 1.0
 - file: MoSh/50026/jumping_jacks_1_stageii.motion
   fps: 120.0
-  idx: 287
+  idx: 278
   sub_motions:
   - timings:
       end: 13.016666666666667
@@ -2305,7 +2233,7 @@ motions:
   weight: 1.0
 - file: MoSh/50026/misc_1_stageii.motion
   fps: 120.0
-  idx: 288
+  idx: 279
   sub_motions:
   - timings:
       end: 9.0
@@ -2313,7 +2241,7 @@ motions:
   weight: 1.0
 - file: MoSh/50026/light_hopping_stiff_stageii.motion
   fps: 120.0
-  idx: 289
+  idx: 280
   sub_motions:
   - timings:
       end: 9.05
@@ -2321,7 +2249,7 @@ motions:
   weight: 1.0
 - file: MoSh/50025/one_leg_loose_stageii.motion
   fps: 120.0
-  idx: 290
+  idx: 281
   sub_motions:
   - timings:
       end: 8.916666666666666
@@ -2329,7 +2257,7 @@ motions:
   weight: 1.0
 - file: MoSh/50025/light_hopping_loose_stageii.motion
   fps: 120.0
-  idx: 291
+  idx: 282
   sub_motions:
   - timings:
       end: 7.133333333333334
@@ -2337,7 +2265,7 @@ motions:
   weight: 1.0
 - file: MoSh/50025/side_to_side_hopping_1_stageii.motion
   fps: 120.0
-  idx: 292
+  idx: 283
   sub_motions:
   - timings:
       end: 7.591666666666667
@@ -2345,7 +2273,7 @@ motions:
   weight: 1.0
 - file: MoSh/50025/hips_stageii.motion
   fps: 120.0
-  idx: 293
+  idx: 284
   sub_motions:
   - timings:
       end: 20.8
@@ -2353,7 +2281,7 @@ motions:
   weight: 1.0
 - file: MoSh/50025/light_hopping_stiff_stageii.motion
   fps: 120.0
-  idx: 294
+  idx: 285
   sub_motions:
   - timings:
       end: 5.3
@@ -2361,7 +2289,7 @@ motions:
   weight: 1.0
 - file: MoSh/50025/simple_crouch_stageii.motion
   fps: 120.0
-  idx: 295
+  idx: 286
   sub_motions:
   - timings:
       end: 8.55
@@ -2369,7 +2297,7 @@ motions:
   weight: 1.0
 - file: MoSh/00111/stretches_stageii.motion
   fps: 100.0
-  idx: 296
+  idx: 287
   sub_motions:
   - timings:
       end: 32.87
@@ -2377,7 +2305,7 @@ motions:
   weight: 1.0
 - file: MoSh/00111/misc_stageii.motion
   fps: 100.0
-  idx: 297
+  idx: 288
   sub_motions:
   - timings:
       end: 12.32
@@ -2385,7 +2313,7 @@ motions:
   weight: 1.0
 - file: MoSh/00111/simple_crouch_stageii.motion
   fps: 100.0
-  idx: 298
+  idx: 289
   sub_motions:
   - timings:
       end: 7.32
@@ -2393,7 +2321,7 @@ motions:
   weight: 1.0
 - file: MoSh/00059/stretches_stageii.motion
   fps: 120.0
-  idx: 299
+  idx: 290
   sub_motions:
   - timings:
       end: 18.633333333333333
@@ -2401,7 +2329,7 @@ motions:
   weight: 1.0
 - file: MoSh/00059/misc_stageii.motion
   fps: 120.0
-  idx: 300
+  idx: 291
   sub_motions:
   - timings:
       end: 9.141666666666667
@@ -2409,7 +2337,7 @@ motions:
   weight: 1.0
 - file: MoSh/00093/irish_dance_stageii.motion
   fps: 120.0
-  idx: 301
+  idx: 292
   sub_motions:
   - timings:
       end: 12.566666666666666
@@ -2417,7 +2345,7 @@ motions:
   weight: 1.0
 - file: MoSh/00093/stretches_stageii.motion
   fps: 120.0
-  idx: 302
+  idx: 293
   sub_motions:
   - timings:
       end: 20.583333333333332
@@ -2425,7 +2353,7 @@ motions:
   weight: 1.0
 - file: MoSh/00093/misc_stageii.motion
   fps: 120.0
-  idx: 303
+  idx: 294
   sub_motions:
   - timings:
       end: 17.716666666666665
@@ -2433,15 +2361,15 @@ motions:
   weight: 1.0
 - file: MoSh/50004/stretches_stageii.motion
   fps: 100.0
-  idx: 304
+  idx: 295
   sub_motions:
   - timings:
-      end: 19.22
+      end: 8.5
       start: 0.0
   weight: 1.0
 - file: MoSh/50004/misc_1_stageii.motion
   fps: 100.0
-  idx: 305
+  idx: 296
   sub_motions:
   - timings:
       end: 12.76
@@ -2449,7 +2377,7 @@ motions:
   weight: 1.0
 - file: MoSh/50004/misc_stageii.motion
   fps: 100.0
-  idx: 306
+  idx: 297
   sub_motions:
   - timings:
       end: 13.64
@@ -2457,7 +2385,7 @@ motions:
   weight: 1.0
 - file: MoSh/50004/hips_stageii.motion
   fps: 100.0
-  idx: 307
+  idx: 298
   sub_motions:
   - timings:
       end: 11.28
@@ -2465,7 +2393,7 @@ motions:
   weight: 1.0
 - file: MoSh/50004/light_hopping_stiff_stageii.motion
   fps: 100.0
-  idx: 308
+  idx: 299
   sub_motions:
   - timings:
       end: 6.36
@@ -2473,7 +2401,7 @@ motions:
   weight: 1.0
 - file: MoSh/50004/simple_crouch_stageii.motion
   fps: 100.0
-  idx: 309
+  idx: 300
   sub_motions:
   - timings:
       end: 6.95
@@ -2481,7 +2409,7 @@ motions:
   weight: 1.0
 - file: MoSh/00096/misc_2_stageii.motion
   fps: 120.0
-  idx: 310
+  idx: 301
   sub_motions:
   - timings:
       end: 7.933333333333334
@@ -2489,7 +2417,7 @@ motions:
   weight: 1.0
 - file: MoSh/00096/stretches_stageii.motion
   fps: 120.0
-  idx: 311
+  idx: 302
   sub_motions:
   - timings:
       end: 25.716666666666665
@@ -2497,7 +2425,7 @@ motions:
   weight: 1.0
 - file: MoSh/00096/simple_crouch_stageii.motion
   fps: 120.0
-  idx: 312
+  idx: 303
   sub_motions:
   - timings:
       end: 12.2
@@ -2505,7 +2433,7 @@ motions:
   weight: 1.0
 - file: MoSh/00031/stretches_stageii.motion
   fps: 120.0
-  idx: 313
+  idx: 304
   sub_motions:
   - timings:
       end: 21.116666666666667
@@ -2513,7 +2441,7 @@ motions:
   weight: 1.0
 - file: MoSh/00031/misc_stageii.motion
   fps: 120.0
-  idx: 314
+  idx: 305
   sub_motions:
   - timings:
       end: 4.325
@@ -2521,7 +2449,7 @@ motions:
   weight: 1.0
 - file: MoSh/00058/army_poses_stageii.motion
   fps: 100.0
-  idx: 315
+  idx: 306
   sub_motions:
   - timings:
       end: 30.42
@@ -2529,7 +2457,7 @@ motions:
   weight: 1.0
 - file: MoSh/00058/jiggles_2_stageii.motion
   fps: 100.0
-  idx: 316
+  idx: 307
   sub_motions:
   - timings:
       end: 6.72
@@ -2537,7 +2465,7 @@ motions:
   weight: 1.0
 - file: MoSh/00046/misc_dancing_in_the_rain_kick_stageii.motion
   fps: 100.0
-  idx: 317
+  idx: 308
   sub_motions:
   - timings:
       end: 12.94
@@ -2545,7 +2473,7 @@ motions:
   weight: 1.0
 - file: MoSh/00046/misc_2_stageii.motion
   fps: 100.0
-  idx: 318
+  idx: 309
   sub_motions:
   - timings:
       end: 22.34
@@ -2553,7 +2481,7 @@ motions:
   weight: 1.0
 - file: MoSh/00046/stretches_stageii.motion
   fps: 100.0
-  idx: 319
+  idx: 310
   sub_motions:
   - timings:
       end: 27.78
@@ -2561,7 +2489,7 @@ motions:
   weight: 1.0
 - file: MoSh/50020/shoulders_stageii.motion
   fps: 100.0
-  idx: 320
+  idx: 311
   sub_motions:
   - timings:
       end: 5.04
@@ -2569,7 +2497,7 @@ motions:
   weight: 1.0
 - file: MoSh/50020/salsa_stageii.motion
   fps: 100.0
-  idx: 321
+  idx: 312
   sub_motions:
   - timings:
       end: 19.22
@@ -2577,7 +2505,7 @@ motions:
   weight: 1.0
 - file: MoSh/50020/shake_shoulders_stageii.motion
   fps: 100.0
-  idx: 322
+  idx: 313
   sub_motions:
   - timings:
       end: 3.62
@@ -2585,7 +2513,7 @@ motions:
   weight: 1.0
 - file: MoSh/50020/simple_crouch_3_stageii.motion
   fps: 100.0
-  idx: 323
+  idx: 314
   sub_motions:
   - timings:
       end: 7.94
@@ -2593,7 +2521,7 @@ motions:
   weight: 1.0
 - file: MoSh/50020/neck_stageii.motion
   fps: 100.0
-  idx: 324
+  idx: 315
   sub_motions:
   - timings:
       end: 14.38
@@ -2601,7 +2529,7 @@ motions:
   weight: 1.0
 - file: MoSh/50020/hips_stageii.motion
   fps: 100.0
-  idx: 325
+  idx: 316
   sub_motions:
   - timings:
       end: 11.5
@@ -2609,7 +2537,7 @@ motions:
   weight: 1.0
 - file: MoSh/50020/salsa_1_stageii.motion
   fps: 100.0
-  idx: 326
+  idx: 317
   sub_motions:
   - timings:
       end: 19.85
@@ -2617,7 +2545,7 @@ motions:
   weight: 1.0
 - file: MoSh/50020/ankles_stageii.motion
   fps: 100.0
-  idx: 327
+  idx: 318
   sub_motions:
   - timings:
       end: 9.08
@@ -2625,7 +2553,7 @@ motions:
   weight: 1.0
 - file: MoSh/50020/shake_hips_stageii.motion
   fps: 100.0
-  idx: 328
+  idx: 319
   sub_motions:
   - timings:
       end: 6.85
@@ -2633,7 +2561,7 @@ motions:
   weight: 1.0
 - file: MoSh/50002/simple_crouch2_stageii.motion
   fps: 120.0
-  idx: 329
+  idx: 320
   sub_motions:
   - timings:
       end: 14.116666666666667
@@ -2641,7 +2569,7 @@ motions:
   weight: 1.0
 - file: MoSh/50002/stretches_stageii.motion
   fps: 120.0
-  idx: 330
+  idx: 321
   sub_motions:
   - timings:
       end: 26.383333333333333
@@ -2649,7 +2577,7 @@ motions:
   weight: 1.0
 - file: MoSh/50002/misc_stageii.motion
   fps: 120.0
-  idx: 331
+  idx: 322
   sub_motions:
   - timings:
       end: 3.925
@@ -2657,7 +2585,7 @@ motions:
   weight: 1.0
 - file: MoSh/50002/hips_stageii.motion
   fps: 120.0
-  idx: 332
+  idx: 323
   sub_motions:
   - timings:
       end: 11.383333333333333
@@ -2665,7 +2593,7 @@ motions:
   weight: 1.0
 - file: MoSh/50002/jumping_jacks_stageii.motion
   fps: 120.0
-  idx: 333
+  idx: 324
   sub_motions:
   - timings:
       end: 9.9
@@ -2673,7 +2601,7 @@ motions:
   weight: 1.0
 - file: MoSh/00008/stretches_stageii.motion
   fps: 120.0
-  idx: 334
+  idx: 325
   sub_motions:
   - timings:
       end: 19.666666666666668
@@ -2681,7 +2609,7 @@ motions:
   weight: 1.0
 - file: MoSh/00008/misc_stageii.motion
   fps: 120.0
-  idx: 335
+  idx: 326
   sub_motions:
   - timings:
       end: 8.466666666666667
@@ -2689,7 +2617,7 @@ motions:
   weight: 1.0
 - file: MoSh/50007/light_hopping_loose_stageii.motion
   fps: 120.0
-  idx: 336
+  idx: 327
   sub_motions:
   - timings:
       end: 8.9
@@ -2697,7 +2625,7 @@ motions:
   weight: 1.0
 - file: MoSh/50007/stretches_stageii.motion
   fps: 120.0
-  idx: 337
+  idx: 328
   sub_motions:
   - timings:
       end: 21.416666666666668
@@ -2705,7 +2633,7 @@ motions:
   weight: 1.0
 - file: MoSh/50007/misc_1_stageii.motion
   fps: 120.0
-  idx: 338
+  idx: 329
   sub_motions:
   - timings:
       end: 16.816666666666666
@@ -2713,7 +2641,7 @@ motions:
   weight: 1.0
 - file: MoSh/50007/light_hopping_stiff_stageii.motion
   fps: 120.0
-  idx: 339
+  idx: 330
   sub_motions:
   - timings:
       end: 6.966666666666667
@@ -2721,7 +2649,7 @@ motions:
   weight: 1.0
 - file: MoSh/50007/jumping_jacks_stageii.motion
   fps: 120.0
-  idx: 340
+  idx: 331
   sub_motions:
   - timings:
       end: 11.116666666666667
@@ -2729,7 +2657,7 @@ motions:
   weight: 1.0
 - file: MoSh/50009/stretches_stageii.motion
   fps: 100.0
-  idx: 341
+  idx: 332
   sub_motions:
   - timings:
       end: 16.81
@@ -2737,7 +2665,7 @@ motions:
   weight: 1.0
 - file: MoSh/50009/misc_stageii.motion
   fps: 100.0
-  idx: 342
+  idx: 333
   sub_motions:
   - timings:
       end: 20.11
@@ -2745,7 +2673,7 @@ motions:
   weight: 1.0
 - file: MoSh/50009/jumping_jacks_stageii.motion
   fps: 100.0
-  idx: 343
+  idx: 334
   sub_motions:
   - timings:
       end: 9.16
@@ -2753,7 +2681,7 @@ motions:
   weight: 1.0
 - file: MoSh/50009/simple_crouch_stageii.motion
   fps: 100.0
-  idx: 344
+  idx: 335
   sub_motions:
   - timings:
       end: 11.33

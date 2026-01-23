@@ -15,7 +15,7 @@
 #
 from protomotions.robot_configs.base import RobotConfig
 from protomotions.simulator.base_simulator.config import SimulatorConfig
-from protomotions.envs.path_follower.config import PathFollowerEnvConfig
+from protomotions.envs.base_env.config import EnvConfig
 from protomotions.agents.amp.config import AMPAgentConfig
 import argparse
 
@@ -54,49 +54,48 @@ def motion_lib_config(args: argparse.Namespace):
 
 def env_config(
     robot_cfg: RobotConfig, args: argparse.Namespace
-) -> PathFollowerEnvConfig:
+) -> EnvConfig:
     """Build environment configuration (training defaults)."""
-    from protomotions.envs.obs.config import (
-        HumanoidObsConfig,
-        MaxCoordsSelfObsConfig,
-        PathObsConfig,
-        PathGeneratorConfig,
-    )
-    from protomotions.envs.base_env.config import RewardComponentConfig
-    from protomotions.envs.utils.rewards import path_following_reward
+    from protomotions.envs.utils.path_generator import PathGeneratorConfig
+    from protomotions.envs.obs import max_coords_obs_factory, historical_max_coords_obs_factory, path_obs_factory
+    from protomotions.envs.control.path_follower_control import PathFollowerControlConfig
+    from protomotions.envs.rewards import path_following_reward_factory
 
-    # 2D path following (no height conditioning)
-    path_obs = PathObsConfig(
-        enabled=True,
-        path_generator=PathGeneratorConfig(
-            height_conditioned=False,
-        ),
-    )
-
-    # Reward configuration using the reward component system
-    reward_config = {
-        # Primary path following reward - distance to target
-        "path_rew": RewardComponentConfig(
-            function=path_following_reward,
-            variables={
-                "head_pos": "head_pos",
-                "tar_pos": "tar_pos",
-                "height_conditioned": "height_conditioned",
-            },
-            weight=1.0,
+    # Control components - path follower manages path generation
+    control_components = {
+        "path": PathFollowerControlConfig(
+            num_traj_samples=10,
+            traj_sample_timestep=0.3,
+            path_generator=PathGeneratorConfig(
+                height_conditioned=False,  # 2D path following
+            ),
+            enable_path_termination=True,
+            fail_dist=1.0,
         ),
     }
 
-    env_cfg = PathFollowerEnvConfig(
+    # Observation components configuration
+    observation_components = {
+        # Humanoid self-observations (current state)
+        "max_coords_obs": max_coords_obs_factory(),
+        # Historical observations for AMP discriminator (from StateHistoryBuffer)
+        "historical_max_coords_obs": historical_max_coords_obs_factory(),
+        # Path observation (from control component context)
+        "path": path_obs_factory(),
+    }
+
+    # Reward configuration using the reward component system
+    reward_components = {
+        # Primary path following reward - distance to target
+        "path_rew": path_following_reward_factory(weight=1.0),
+    }
+
+    env_cfg = EnvConfig(
         max_episode_length=300,
-        path_obs=path_obs,
-        humanoid_obs=HumanoidObsConfig(
-            max_coords_obs=MaxCoordsSelfObsConfig(
-                enabled=True,
-                num_historical_steps=8,  # Historical obs for AMP discriminator
-            ),
-        ),
-        reward_config=reward_config,
+        num_state_history_steps=8,  # Historical obs for AMP discriminator
+        control_components=control_components,
+        observation_components=observation_components,
+        reward_components=reward_components,
     )
 
     return env_cfg
@@ -104,10 +103,10 @@ def env_config(
 
 def agent_config(
     robot_config: RobotConfig,
-    env_config: PathFollowerEnvConfig,
+    env_config: EnvConfig,
     args: argparse.Namespace,
 ) -> AMPAgentConfig:
-    from protomotions.agents.common.config import MLPWithConcatConfig, MLPLayerConfig
+    from protomotions.agents.common.config import MLPWithConcatConfig, MLPLayerConfig, ModuleContainerConfig
     from protomotions.agents.ppo.config import PPOActorConfig
     from protomotions.agents.base_agent.config import OptimizerConfig
     from protomotions.agents.amp.config import (
@@ -115,6 +114,7 @@ def agent_config(
         DiscriminatorConfig,
         AMPParametersConfig,
     )
+    from protomotions.envs.obs import historical_max_coords_ref_obs_factory
 
     # For path following with AMP: actor/critic get path obs, discriminator uses historical body state
     actor_config = PPOActorConfig(
@@ -152,7 +152,7 @@ def agent_config(
     discriminator_config = DiscriminatorConfig(
         in_keys=["historical_max_coords_obs"],
         out_keys=["disc_logits"],
-        input_models=[
+        models=[
             MLPWithConcatConfig(
                 in_keys=["historical_max_coords_obs"],
                 out_keys=["disc_logits"],
@@ -167,19 +167,45 @@ def agent_config(
         ],
     )
 
+    # Disc critic: value network for discriminator rewards
+    disc_critic_config = ModuleContainerConfig(
+        in_keys=["max_coords_obs", "historical_max_coords_obs"],
+        out_keys=["disc_value"],
+        models=[
+            MLPWithConcatConfig(
+                in_keys=["max_coords_obs", "historical_max_coords_obs"],
+                out_keys=["disc_value"],
+                normalize_obs=True,
+                norm_clamp_value=5,
+                num_out=1,
+                layers=[
+                    MLPLayerConfig(units=1024, activation="relu"),
+                    MLPLayerConfig(units=512, activation="relu"),
+                ],
+            )
+        ],
+    )
+
+    # Reference observation components for discriminator expert data
+    reference_obs_components = {
+        "historical_max_coords_obs": historical_max_coords_ref_obs_factory(),
+    }
+
     agent_cfg = AMPAgentConfig(
         model=AMPModelConfig(
             in_keys=["max_coords_obs", "path", "historical_max_coords_obs"],
-            out_keys=["action", "mean_action", "neglogp", "value", "disc_logits"],
+            out_keys=["action", "mean_action", "neglogp", "value", "disc_logits", "disc_value"],
             actor=actor_config,
             critic=critic_config,
             discriminator=discriminator_config,
+            disc_critic=disc_critic_config,
             actor_optimizer=OptimizerConfig(_target_="torch.optim.Adam", lr=2e-5),
             critic_optimizer=OptimizerConfig(_target_="torch.optim.Adam", lr=1e-4),
             discriminator_optimizer=OptimizerConfig(
                 _target_="torch.optim.Adam", lr=1e-4
             ),
         ),
+        reference_obs_components=reference_obs_components,
         batch_size=args.batch_size,
         task_reward_w=0.5,  # Balance between task reward (path following) and style reward (AMP)
         training_max_steps=args.training_max_steps,
@@ -198,6 +224,9 @@ def apply_inference_overrides(
     simulator_cfg: SimulatorConfig,
     env_cfg,
     agent_cfg,
+    terrain_cfg,
+    motion_lib_cfg,
+    scene_lib_cfg,
     args: argparse.Namespace,
 ):
     """Apply evaluation-specific overrides."""
@@ -208,5 +237,5 @@ def apply_inference_overrides(
     if env_cfg is not None:
         env_cfg.max_episode_length = 1000000
         # Disable path termination for longer evaluation runs
-        if hasattr(env_cfg, "path_obs"):
-            env_cfg.path_obs.enable_path_termination = False
+        if hasattr(env_cfg, "control_components") and "path" in env_cfg.control_components:
+            env_cfg.control_components["path"].enable_path_termination = False

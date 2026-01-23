@@ -13,89 +13,163 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-from dataclasses import dataclass, field
+"""Configuration classes for the base environment.
+
+This module defines the configuration dataclasses for environment settings,
+rewards, terminations, and observation components.
+"""
+
 from typing import Optional, List, Union, Dict, Callable, Any
-from protomotions.utils.config_builder import ConfigBuilder
+from dataclasses import dataclass, field
 
-# Import obs configs from their proper location
-from protomotions.envs.obs.config import (
-    HumanoidObsConfig,
-    SceneObsConfig,
-)
-
-# Import motion manager config from its proper location
+from protomotions.envs.obs.scene_obs import SceneObsConfig
+from protomotions.envs.obs.observation_component import ObservationComponentConfig
 from protomotions.envs.motion_manager.config import MotionManagerConfig
+from protomotions.envs.control.base import ControlComponentConfig
 
 
 @dataclass
-class RewardComponentConfig(ConfigBuilder):
+class RewardComponentConfig:
     """Configuration for a single dynamic reward component.
 
-    Attributes:
-        function: Callable reward function to invoke. Receives resolved variables and indices.
-        variables: Dict mapping function argument names to eval strings.
-                   Strings are evaluated against a context dict containing current_state, ref_state, etc.
-                   Example: {"x": "current_state.rigid_body_pos", "ref_x": "ref_state.rigid_body_pos"}
-                   For exp functions, include coefficient: {"coefficient": "-100.0"}
-        indices_subset: Optional body names (List[str]) or indices (List[int]) to subset tensors.
-                        When provided, passed to function under the "indices" key.
-        weight: Scaling weight for the reward (applied after function call).
-        multiplicative: If True, reward is multiplied into combined reward instead of added.
-        min_value: Optional lower bound cap for the reward (applied after weight scaling).
-        max_value: Optional upper bound cap for the reward (applied after weight scaling).
-        zero_during_grace_period: If True, reward is zeroed during the grace period after reset.
-                                  Used for rewards that are unreliable immediately after reset (e.g., power, contact changes).
+    Defines a reward function with variable bindings, optional subsetting,
+    and scaling parameters.
     """
 
-    function: Callable[..., Any]  # Reward function to call
+    function: Callable[..., Any] = field(
+        default=None,
+        metadata={"help": "Callable reward function. Receives resolved variables and indices."}
+    )
     variables: Dict[str, str] = field(
-        default_factory=dict
-    )  # {"arg_name": "eval_string"}
-    indices_subset: Optional[Union[List[int], List[str]]] = (
-        None  # Body names or indices
+        default_factory=dict,
+        metadata={"help": "Maps function argument names to context keys or constants."}
     )
-    weight: float = 0.0
-    multiplicative: bool = False
-    min_value: Optional[float] = (
-        None  # Lower bound cap for the reward (applied after weight scaling)
+    indices_subset: Optional[Union[List[int], List[str]]] = field(
+        default=None,
+        metadata={"help": "Body names or indices to subset tensors. Passed as 'indices' argument."}
     )
-    max_value: Optional[float] = (
-        None  # Upper bound cap for the reward (applied after weight scaling)
+    weight: float = field(
+        default=0.0,
+        metadata={"help": "Scaling weight for the reward (applied after function call)."}
     )
-    zero_during_grace_period: bool = (
-        False  # Zero this reward during grace period after reset
+    multiplicative: bool = field(
+        default=False,
+        metadata={"help": "If True, reward is multiplied into combined reward instead of added."}
+    )
+    min_value: Optional[float] = field(
+        default=None,
+        metadata={"help": "Lower bound cap for the reward (applied after weight scaling)."}
+    )
+    max_value: Optional[float] = field(
+        default=None,
+        metadata={"help": "Upper bound cap for the reward (applied after weight scaling)."}
+    )
+    zero_during_grace_period: bool = field(
+        default=False,
+        metadata={"help": "Zero reward during grace period after reset. For unreliable early rewards."}
+    )
+    use_density_weights: bool = field(
+        default=False,
+        metadata={"help": "Use automatic per-body density weights based on kinematic chain distances."}
     )
 
 
 @dataclass
-class EnvConfig(ConfigBuilder):
+class TerminationComponentConfig:
+    """Configuration for a single dynamic termination component.
+
+    Similar to RewardComponentConfig but for termination conditions.
+    """
+
+    function: Optional[Callable[..., Any]] = field(
+        default=None,
+        metadata={"help": "Termination function returning boolean tensor [num_envs]."}
+    )
+    variables: Dict[str, str] = field(
+        default_factory=dict,
+        metadata={"help": "Maps function argument names to eval strings."}
+    )
+    indices_subset: Optional[Union[List[int], List[str]]] = field(
+        default=None,
+        metadata={"help": "Body names or indices to subset tensors."}
+    )
+    terminate_on_true: bool = field(
+        default=True,
+        metadata={"help": "Terminate when function returns True. If False, terminate on False."}
+    )
+
+
+@dataclass
+class EnvConfig:
     """Main environment configuration."""
 
-    max_episode_length: int = 300
+    max_episode_length: int = field(
+        default=300,
+        metadata={"help": "Maximum steps per episode before automatic reset.", "min": 1}
+    )
+    reset_grace_period: int = field(
+        default=5,
+        metadata={"help": "Steps after reset where grace period applies (for zeroing unreliable rewards).", "min": 0}
+    )
+    num_state_history_steps: int = field(
+        default=0,
+        metadata={"help": "Number of historical state steps to store. 0 = no history.", "min": 0}
+    )
 
-    # Target for the environment class
     _target_: str = "protomotions.envs.base_env.env.BaseEnv"
 
-    # Observations
-    humanoid_obs: HumanoidObsConfig = field(default_factory=HumanoidObsConfig)
-    scene_obs: SceneObsConfig = field(default_factory=SceneObsConfig)
-
-    # Termination
-    termination_height: float = 0.15
-    enable_height_termination: bool = False
-    motion_manager: MotionManagerConfig = field(default_factory=MotionManagerConfig)
-
-    # Respawn related params
-    ref_respawn_offset: float = 0.05
-    ref_object_respawn_offset: float = 0.0
-    ref_contact_smooth_window: int = (
-        0  # Window length for smoothing contact labels. 0 means no smoothing.
+    scene_obs: SceneObsConfig = field(
+        default_factory=SceneObsConfig,
+        metadata={"help": "Scene observation configuration."}
     )
-    skip_correct_terrain_height_on_flat: bool = True  # Skip terrain height correction when terrain is completely flat (optimization)
 
-    # Evaluation params
-    show_terrain_markers: bool = False # took a tons of memory in IsaacGym
-    save_dir: str = ""
+    motion_manager: MotionManagerConfig = field(
+        default_factory=MotionManagerConfig,
+        metadata={"help": "Motion manager for reference motion handling."}
+    )
 
-    # Reward configuration - single unified dict for all reward components
-    reward_config: Dict[str, RewardComponentConfig] = field(default_factory=dict)
+    ref_respawn_offset: float = field(
+        default=0.05,
+        metadata={"help": "Height offset for respawning relative to reference.", "min": 0.0}
+    )
+    ref_object_respawn_offset: float = field(
+        default=0.0,
+        metadata={"help": "Height offset for object respawning."}
+    )
+    ref_contact_smooth_window: int = field(
+        default=0,
+        metadata={"help": "Window length for smoothing contact labels. 0 = no smoothing.", "min": 0}
+    )
+    skip_correct_terrain_height_on_flat: bool = field(
+        default=True,
+        metadata={"help": "Skip terrain height correction when terrain is flat (optimization)."}
+    )
+
+    show_terrain_markers: bool = field(
+        default=False,
+        metadata={"help": "Show terrain markers during evaluation. Uses significant memory in IsaacGym."}
+    )
+    save_dir: str = field(
+        default="",
+        metadata={"help": "Directory for saving evaluation outputs."}
+    )
+
+    reward_components: Dict[str, RewardComponentConfig] = field(
+        default_factory=dict,
+        metadata={"help": "Dictionary of named reward components."}
+    )
+    
+    control_components: Dict[str, ControlComponentConfig] = field(
+        default_factory=dict,
+        metadata={"help": "Dictionary of stateful task/control managers."}
+    )
+    
+    termination_components: Dict[str, TerminationComponentConfig] = field(
+        default_factory=dict,
+        metadata={"help": "Dictionary of stateless termination functions."}
+    )
+    
+    observation_components: Dict[str, ObservationComponentConfig] = field(
+        default_factory=dict,
+        metadata={"help": "Dictionary of stateless observation functions."}
+    )

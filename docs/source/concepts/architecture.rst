@@ -49,8 +49,12 @@ Newton, Genesis) implement the same interface. This is "how to simulate"
 **Motion Library**: Stores reference motions in packed tensors for efficient 
 parallel access.
 
-**RL Environment**: Computes observations and rewards. Manages episode lifecycle 
-and motion tracking.
+**RL Environment**: Orchestrates the training loop via modular components:
+
+* **Control Components**: Stateful task managers (mimic, steering, path following)
+* **Observation Components**: Stateless functions that compute observations
+* **Reward Components**: Stateless functions that compute rewards
+* **Termination Components**: Stateless functions that check termination conditions
 
 **Agent**: RL algorithm (PPO, AMP, etc.). Collects experience, updates policy.
 

@@ -19,6 +19,9 @@
 
 import logging
 from typing import Dict, Any, Callable
+import torch
+import numpy as np
+
 
 log = logging.getLogger(__name__)
 
@@ -63,38 +66,19 @@ def import_experiment_relative_eval_overrides(
     # Construct the path to the experiment module in the same directory as the caller
     _experiment_path = os.path.join(caller_dir, relative_experiment_path)
 
-    # Check if the file exists before attempting to load it
     if not os.path.exists(_experiment_path):
-        raise FileNotFoundError(
-            f"Experiment module not found: {_experiment_path}\n"
-            f"Caller: {caller_file_path}\n"
-            f"Relative path: {relative_experiment_path}\n"
-            f"Make sure the experiment file exists and the relative path is correct."
-        )
+        raise FileNotFoundError(f"Experiment module not found: {_experiment_path}")
 
-    # Load the experiment module
     spec = importlib.util.spec_from_file_location("experiment_module", _experiment_path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Failed to load module spec from: {_experiment_path}")
 
     experiment_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(experiment_module)
 
-    # Execute the module and catch any errors during execution
-    try:
-        spec.loader.exec_module(experiment_module)
-    except Exception as e:
-        raise ImportError(
-            f"Failed to execute experiment module: {_experiment_path}\n"
-            f"Error: {type(e).__name__}: {e}\n"
-            f"Make sure the module has no syntax errors and all imports are available."
-        ) from e
-
-    # Check if the module has the apply_inference_overrides function
     if not hasattr(experiment_module, "apply_inference_overrides"):
         raise AttributeError(
-            f"Module does not have 'apply_inference_overrides' function: {_experiment_path}\n"
-            f"Available attributes: {[attr for attr in dir(experiment_module) if not attr.startswith('_')]}\n"
-            f"Make sure the experiment module defines an apply_inference_overrides function."
+            f"Module does not have 'apply_inference_overrides' function: {_experiment_path}"
         )
 
     return experiment_module.apply_inference_overrides
@@ -147,7 +131,7 @@ def apply_config_overrides(
             {
                 "env.max_episode_length": 1000,
                 "simulator.num_envs": 4096,
-                "env.reward_config.pow_rew.weight": 2e-6,  # dict key access
+                "env.reward_components.pow_rew.weight": 2e-6,  # dict key access
                 "terrain.horizontal_scale": 0.1,
             },
             env_config, simulator_config, robot_config,
@@ -180,89 +164,55 @@ def apply_config_overrides(
             config_obj = robot_config
         elif config_type == "agent":
             if agent_config is None:
-                raise ValueError(
-                    f"Cannot override '{key}': agent_config not provided to apply_config_overrides()\n"
-                    f"Agent config overrides are only supported in training, not evaluation."
-                )
+                raise ValueError(f"Cannot override '{key}': agent_config not provided")
             config_obj = agent_config
         elif config_type == "terrain":
             if terrain_config is None:
-                raise ValueError(
-                    f"Cannot override '{key}': terrain_config not provided to apply_config_overrides()"
-                )
+                raise ValueError(f"Cannot override '{key}': terrain_config not provided")
             config_obj = terrain_config
         elif config_type == "motion_lib":
             if motion_lib_config is None:
-                raise ValueError(
-                    f"Cannot override '{key}': motion_lib_config not provided to apply_config_overrides()"
-                )
+                raise ValueError(f"Cannot override '{key}': motion_lib_config not provided")
             config_obj = motion_lib_config
         elif config_type == "scene_lib":
             if scene_lib_config is None:
-                raise ValueError(
-                    f"Cannot override '{key}': scene_lib_config not provided to apply_config_overrides()"
-                )
+                raise ValueError(f"Cannot override '{key}': scene_lib_config not provided")
             config_obj = scene_lib_config
         else:
-            raise ValueError(
-                f"Unknown config type '{config_type}' in override key: '{key}'\n"
-                f"Valid types: 'env', 'simulator', 'robot', 'agent', 'terrain', 'motion_lib', 'scene_lib'"
-            )
+            raise ValueError(f"Unknown config type '{config_type}' in override key: '{key}'")
 
-        # Navigate to the target field (supports both object attributes and dict keys)
         target = config_obj
-        for i, field in enumerate(field_path[:-1]):
+        for field in field_path[:-1]:
             if isinstance(target, dict):
                 if field not in target:
-                    path_so_far = ".".join(parts[: i + 2])
-                    raise ValueError(
-                        f"Key '{field}' not found in dict at config path: '{key}'\n"
-                        f"Failed at: '{path_so_far}'\n"
-                        f"Available keys: {list(target.keys())}"
-                    )
+                    raise ValueError(f"Key '{field}' not found in config path: '{key}'")
                 target = target[field]
             else:
                 if not hasattr(target, field):
-                    path_so_far = ".".join(parts[: i + 2])
-                    raise ValueError(
-                        f"Field '{field}' not found in config path: '{key}'\n"
-                        f"Failed at: '{path_so_far}'\n"
-                        f"Check the config dataclass structure for valid field names."
-                    )
+                    raise ValueError(f"Field '{field}' not found in config path: '{key}'")
                 target = getattr(target, field)
 
-        # Set the final field (supports both object attributes and dict keys)
         final_field = field_path[-1]
         allowed_field_types = [int, float, bool, str, type(None)]
 
         if isinstance(target, dict):
             if final_field not in target:
-                raise ValueError(
-                    f"Key '{final_field}' not found in dict at config path: '{key}'\n"
-                    f"Available keys: {list(target.keys())}\n"
-                    f"Check for typos in the override key."
-                )
+                raise ValueError(f"Key '{final_field}' not found in config path: '{key}'")
             old_value = target[final_field]
             field_type = type(old_value)
             if field_type not in allowed_field_types:
                 raise ValueError(
-                    f"Dict value '{final_field}' is of type '{field_type}' which is not allowed. "
-                    f"Allowed types are: {allowed_field_types}"
+                    f"Field '{final_field}' has unsupported type '{field_type}'"
                 )
             target[final_field] = value
         else:
             if not hasattr(target, final_field):
-                raise ValueError(
-                    f"Field '{final_field}' not found in config path: '{key}'\n"
-                    f"Available fields: {list(target.__dataclass_fields__.keys()) if hasattr(target, '__dataclass_fields__') else dir(target)}\n"
-                    f"Check for typos in the override key."
-                )
+                raise ValueError(f"Field '{final_field}' not found in config path: '{key}'")
             old_value = getattr(target, final_field)
             field_type = type(old_value)
             if field_type not in allowed_field_types:
                 raise ValueError(
-                    f"Field '{final_field}' is of type '{field_type}' which is not allowed. "
-                    f"Allowed types are: {allowed_field_types}"
+                    f"Field '{final_field}' has unsupported type '{field_type}'"
                 )
             setattr(target, final_field, value)
 
@@ -301,16 +251,74 @@ def parse_cli_overrides(override_strings: list) -> Dict[str, Any]:
         key = key.strip()
         value_str = value_str.strip()
 
-        # Parse the value
         try:
-            # Try to evaluate as Python literal (handles int, float, bool, None, lists, etc.)
             import ast
 
             value = ast.literal_eval(value_str)
         except (ValueError, SyntaxError):
-            # If it fails, treat as string
             value = value_str
 
         overrides[key] = value
 
     return overrides
+
+
+def clean_dict_for_storage(d):
+    """Recursively cleans a dictionary from asdict() to make all values primitives."""
+    for key, value in d.items():
+        if isinstance(value, dict):
+            clean_dict_for_storage(value)
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    clean_dict_for_storage(item)
+        elif isinstance(value, torch.Tensor):
+            d[key] = value.tolist()
+        elif isinstance(value, np.ndarray):
+            d[key] = value.tolist()
+        elif callable(value):
+            d[key] = value.__name__
+        else:
+            d[key] = str(value)
+    return d
+
+
+def make_json_serializable(obj, max_depth=10, current_depth=0):
+    """Recursively convert objects to JSON-serializable format."""
+    if current_depth > max_depth:
+        return "<max_depth_reached>"
+
+    if obj is None or isinstance(obj, (bool, int, float, str)):
+        return obj
+
+    try:
+        import json
+        json.dumps(obj)
+        return obj
+    except (TypeError, ValueError):
+        pass
+
+    if isinstance(obj, dict):
+        result = {}
+        for key, value in obj.items():
+            try:
+                result[str(key)] = make_json_serializable(value, max_depth, current_depth + 1)
+            except Exception:
+                result[str(key)] = f"<non-serializable: {type(value).__name__}>"
+        return result
+
+    elif isinstance(obj, (list, tuple)):
+        try:
+            result = [make_json_serializable(item, max_depth, current_depth + 1) for item in obj]
+            return result if isinstance(obj, list) else tuple(result)
+        except Exception:
+            return f"<non-serializable list/tuple of {type(obj).__name__}>"
+
+    else:
+        try:
+            if hasattr(obj, "__name__"):
+                return f"<{obj.__name__}>"
+            else:
+                return f"<{type(obj).__name__}>"
+        except Exception:
+            return "<non-serializable>"

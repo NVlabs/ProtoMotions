@@ -444,7 +444,6 @@ class BaseAgent:
         self.experience_buffer.register_key("rewards")
         if self.config.normalize_rewards:
             self.experience_buffer.register_key("unnormalized_rewards")
-        self.experience_buffer.register_key("total_rewards")
         self.experience_buffer.register_key("dones", dtype=torch.long)
         self.register_algorithm_experience_buffer_keys()
 
@@ -508,12 +507,7 @@ class BaseAgent:
 
                     self.step_count += self.get_step_count_increment()
 
-                # After data collection, compute rewards, advantages, and returns.
-                total_rewards = self.get_combined_experience_buffer_rewards()
-                assert torch.all(
-                    torch.isfinite(total_rewards)
-                ), f"NaN or Inf in total_rewards: {total_rewards}"
-                self.experience_buffer.batch_update_data("total_rewards", total_rewards)
+                self.normalize_rewards_in_buffer()
 
             # Skip policy update right after eval to avoid training spikes (hacky fix)
             if self._skip_next_policy_update:
@@ -698,13 +692,20 @@ class BaseAgent:
         self.experience_buffer.update_data("dones", step, dones)
 
         if self.config.normalize_rewards:
-            self.experience_buffer.update_data("unnormalized_rewards", step, rewards)
             self.running_reward_norm.record_reward(rewards, terminated)
-            rewards = self.running_reward_norm.normalize(rewards)
         self.experience_buffer.update_data("rewards", step, rewards)
 
-    def get_combined_experience_buffer_rewards(self):
-        return self.experience_buffer.rewards * self.config.task_reward_w
+    @torch.no_grad()
+    def normalize_rewards_in_buffer(self):
+        """Normalize rewards after data collection."""
+        if not self.config.normalize_rewards:
+            return
+
+        rewards = self.experience_buffer.rewards
+        self.experience_buffer.batch_update_data("unnormalized_rewards", rewards.clone())
+        self.experience_buffer.batch_update_data(
+            "rewards", self.running_reward_norm.normalize(rewards)
+        )
 
     # -----------------------------
     # Optimization
@@ -783,7 +784,6 @@ class BaseAgent:
             "times/training_minutes": (end_time - self.fit_start_time) / 60,
             "times/last_epoch_seconds": (end_time - self.epoch_start_time),
             "rewards/task_rewards": self.experience_buffer.rewards.mean().item(),
-            "rewards/total_rewards": self.experience_buffer.total_rewards.mean().item(),
         }
         if self.config.normalize_rewards:
             log_dict["rewards/unnormalized_task_rewards"] = (

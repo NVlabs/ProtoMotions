@@ -43,6 +43,8 @@ Scale training to even larger datasets with each GPU handling a subset of motion
 
 Transfer (retarget) the entire [AMASS](https://amass.is.tue.mpg.de/) dataset to your favorite robot with the built-in [**PyRoki**](https://github.com/chungmin99/pyroki)-based optimizer—in one command.
 
+> **Note:** As of v3, we use [PyRoki](https://github.com/chungmin99/pyroki) for retargeting. Earlier versions used [Mink](https://github.com/kevinzakka/mink).
+
 <p align="center">
   <img src="data/static/retargeting-g1.gif" alt="G1 retargeting" height="280">
 </p>
@@ -58,7 +60,7 @@ Train your robot to perform AMASS motor skills in **12 hours**, by just changing
 
 ### 🔬 Sim2Sim Testing
 
-One-click test (`--simulator=isaacgym` → `--simulator=newton`) of robot control policies on **H1_2** or **G1** in different physics engines (newly released [**NVIDIA Newton**](https://github.com/newton-physics/newton), built upon MuJoCo Warp). Policies shown below only use observations you could actually get from real hardwares.
+One-click test (`--simulator=isaacgym` → `--simulator=newton`) of robot control policies on **H1_2** or **G1** in different physics engines (newly released [**NVIDIA Newton**](https://github.com/newton-physics/newton), built upon MuJoCo Warp).
 
 <p align="center">
   <img src="data/static/h12-g1-newton-sim2sim.gif" alt="H1_2/G1 sim2sim" height="280">

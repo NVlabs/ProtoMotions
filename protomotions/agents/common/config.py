@@ -13,9 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-from dataclasses import dataclass, field
 from typing import Any, List, Dict, Optional, Union
-from protomotions.utils.config_builder import ConfigBuilder
+from dataclasses import dataclass, field
 
 # =============================================================================
 # Base Configuration for Normalized Observations
@@ -23,7 +22,7 @@ from protomotions.utils.config_builder import ConfigBuilder
 
 
 @dataclass
-class NormObsBaseConfig(ConfigBuilder):
+class NormObsBaseConfig:
     """Base configuration for modules that support optional observation normalization.
 
     With LazyLinear, only num_out is needed - input sizes are inferred automatically.
@@ -31,8 +30,17 @@ class NormObsBaseConfig(ConfigBuilder):
     Individual TensorDictModules add their own obs_key/out_key fields as needed.
     """
 
-    normalize_obs: bool = False
-    norm_clamp_value: float = 5.0
+    normalize_obs: bool = field(
+        default=False,
+        metadata={"help": "Whether to normalize observations using running statistics."}
+    )
+    norm_clamp_value: float = field(
+        default=5.0,
+        metadata={
+            "help": "Clamp normalized values to [-value, value] to prevent extreme outliers.",
+            "min": 0.0,
+        }
+    )
 
 
 # =============================================================================
@@ -41,7 +49,7 @@ class NormObsBaseConfig(ConfigBuilder):
 
 
 @dataclass
-class ModuleOperationConfig(ConfigBuilder):
+class ModuleOperationConfig:
     """Configuration for module operations."""
 
 
@@ -54,35 +62,35 @@ class ModuleOperationForwardConfig(ModuleOperationConfig):
 class ModuleOperationPermuteConfig(ModuleOperationConfig):
     """Configuration for module operation permute."""
 
-    new_order: List[int]
+    new_order: List[int] = field(metadata={"help": "New dimension order, e.g. [0, 2, 1] swaps dims 1 and 2."})
 
 
 @dataclass
 class ModuleOperationReshapeConfig(ModuleOperationConfig):
     """Configuration for module operation reshape."""
 
-    new_shape: List[Union[int, str]]
+    new_shape: List[Union[int, str]] = field(metadata={"help": "New shape. Use 'batch_size' for dynamic batch dim."})
 
 
 @dataclass
 class ModuleOperationSqueezeConfig(ModuleOperationConfig):
     """Configuration for module operation squeeze."""
 
-    squeeze_dim: int
+    squeeze_dim: int = field(metadata={"help": "Dimension to squeeze (remove if size is 1)."})
 
 
 @dataclass
 class ModuleOperationUnsqueezeConfig(ModuleOperationConfig):
     """Configuration for module operation unsqueeze."""
 
-    unsqueeze_dim: int
+    unsqueeze_dim: int = field(metadata={"help": "Position where to insert new dimension of size 1."})
 
 
 @dataclass
 class ModuleOperationExpandConfig(ModuleOperationConfig):
     """Configuration for module operation expand."""
 
-    expand_shape: List[int]
+    expand_shape: List[int] = field(metadata={"help": "Target shape to expand to. Use -1 to keep original size."})
 
 
 @dataclass
@@ -91,14 +99,25 @@ class ModuleOperationSphereProjectionConfig(ModuleOperationConfig):
 
 
 @dataclass
-class FlattenConfig(NormObsBaseConfig):
-    """Configuration for Flatten module."""
+class ObsProcessorConfig(NormObsBaseConfig):
+    """General observation processor - applies operations and normalization.
+    
+    Supports all module_operations. ForwardConfig applies normalization but skips the forward
+    model (no MLP). Useful for reshaping, normalizing, and other tensor manipulations.
+    """
 
-    _target_: str = "protomotions.agents.common.common.Flatten"
-    in_keys: List[str] = field(default_factory=list)
-    out_keys: List[str] = field(default_factory=list)
+    _target_: str = "protomotions.agents.common.common.ObsProcessor"
+    in_keys: List[str] = field(
+        default_factory=list,
+        metadata={"help": "Input tensor keys to read from TensorDict."}
+    )
+    out_keys: List[str] = field(
+        default_factory=list,
+        metadata={"help": "Output tensor keys to write to TensorDict."}
+    )
     module_operations: List[ModuleOperationConfig] = field(
-        default_factory=lambda: [ModuleOperationForwardConfig()]
+        default_factory=list,
+        metadata={"help": "Sequence of operations to apply (reshape, permute, etc)."}
     )
 
 
@@ -108,12 +127,24 @@ class FlattenConfig(NormObsBaseConfig):
 
 
 @dataclass
-class MLPLayerConfig(ConfigBuilder):
+class MLPLayerConfig:
     """Configuration for a single MLP layer."""
 
-    units: int = 512
-    activation: str = "relu"
-    use_layer_norm: bool = False
+    units: int = field(
+        default=512,
+        metadata={"help": "Number of neurons in this layer.", "min": 1}
+    )
+    activation: str = field(
+        default="relu",
+        metadata={
+            "help": "Activation function for this layer.",
+            "options": ["relu", "tanh", "elu", "selu", "gelu", "silu", "sigmoid", None],
+        }
+    )
+    use_layer_norm: bool = field(
+        default=False,
+        metadata={"help": "Whether to apply layer normalization after activation."}
+    )
 
 
 @dataclass
@@ -122,23 +153,35 @@ class MLPWithConcatConfig(NormObsBaseConfig):
 
     Unified MLP configuration that supports optional input normalization.
     Set normalize_obs=False if you don't want normalization (default is False).
-    obs_key and out_key are optional in config but validated in MLP module.
     """
 
-    num_out: int = None
-    layers: List[MLPLayerConfig] = None
-    # For example:
-    # field(default_factory=lambda: [
-    #     MLPLayerConfig(units=1024, activation="relu", use_layer_norm=False),
-    #     MLPLayerConfig(units=1024, activation="relu", use_layer_norm=False),
-    #     MLPLayerConfig(units=512, activation="relu", use_layer_norm=False)
-    # ])
+    num_out: int = field(
+        default=None,
+        metadata={"help": "Output dimension of the MLP. Required.", "min": 1}
+    )
+    layers: List[MLPLayerConfig] = field(
+        default_factory=list,
+        metadata={"help": "List of layer configurations defining the MLP architecture."}
+    )
     _target_: str = "protomotions.agents.common.mlp.MLPWithConcat"
-    in_keys: List[str] = field(default_factory=list)
-    out_keys: List[str] = field(default_factory=list)
-    output_activation: Optional[str] = None
+    in_keys: List[str] = field(
+        default_factory=list,
+        metadata={"help": "Input tensor keys to read and concatenate from TensorDict."}
+    )
+    out_keys: List[str] = field(
+        default_factory=list,
+        metadata={"help": "Output tensor keys to write to TensorDict."}
+    )
+    output_activation: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Activation function for the output layer (None for linear output).",
+            "options": ["relu", "tanh", "elu", "selu", "gelu", "silu", "sigmoid", None],
+        }
+    )
     module_operations: List[ModuleOperationConfig] = field(
-        default_factory=lambda: [ModuleOperationForwardConfig()]
+        default_factory=lambda: [ModuleOperationForwardConfig()],
+        metadata={"help": "Sequence of operations including forward pass and reshapes."}
     )
 
     def __post_init__(self):
@@ -147,33 +190,26 @@ class MLPWithConcatConfig(NormObsBaseConfig):
 
 
 @dataclass
-class MultiInputModuleConfig(ConfigBuilder):
-    """Configuration for Multi-Headed MLP."""
+class ModuleContainerConfig:
+    """Configuration for a container of modules that are executed sequentially.
+    
+    Modules are processed in order, with each module's outputs available to subsequent modules.
+    Input keys are passed through, and all specified output keys must be produced by internal modules.
+    """
 
-    input_models: List[Any]
-    _target_: str = "protomotions.agents.common.common.MultiInputModule"
-    in_keys: List[str] = field(default_factory=list)
-    out_keys: List[str] = field(default_factory=list)
-
-
-@dataclass
-class SequentialModuleConfig(ConfigBuilder):
-    """Configuration for a sequential model."""
-
-    input_models: List[Any]
-    _target_: str = "protomotions.agents.common.common.SequentialModule"
-    in_keys: List[str] = field(default_factory=list)
-    out_keys: List[str] = field(default_factory=list)
-
-
-@dataclass
-class MultiOutputModuleConfig(ConfigBuilder):
-    """Configuration for a multi-output model (one input, many outputs)."""
-
-    output_models: List[Any]
-    _target_: str = "protomotions.agents.common.common.MultiOutputModule"
-    in_keys: List[str] = field(default_factory=list)
-    out_keys: List[str] = field(default_factory=list)
+    models: List[Any] = field(
+        default_factory=list,
+        metadata={"help": "List of module configurations to execute sequentially."}
+    )
+    _target_: str = "protomotions.agents.common.common.ModuleContainer"
+    in_keys: List[str] = field(
+        default_factory=list,
+        metadata={"help": "Input tensor keys required by this container."}
+    )
+    out_keys: List[str] = field(
+        default_factory=list,
+        metadata={"help": "Output tensor keys produced by this container."}
+    )
 
 
 # =============================================================================
@@ -182,23 +218,69 @@ class MultiOutputModuleConfig(ConfigBuilder):
 
 
 @dataclass
-class TransformerConfig(ConfigBuilder):
-    """Configuration for Transformer encoder."""
+class TransformerConfig:
+    """Configuration for Transformer encoder.
+    
+    Multi-head self-attention transformer that processes tokenized inputs.
+    Supports optional masking for variable-length sequences.
+    """
 
     _target_: str = "protomotions.agents.common.transformer.Transformer"
-    in_keys: List[str] = field(default_factory=list)
-    out_keys: List[str] = field(default_factory=list)
-    input_and_mask_mapping: Optional[Dict[str, str]] = None
+    in_keys: List[str] = field(
+        default_factory=list,
+        metadata={"help": "Input tensor keys (tokens and optional masks)."}
+    )
+    out_keys: List[str] = field(
+        default_factory=list,
+        metadata={"help": "Output tensor key for transformer output (exactly one)."}
+    )
+    input_and_mask_mapping: Optional[Dict[str, str]] = field(
+        default=None,
+        metadata={"help": "Maps input token keys to their mask keys for attention masking."}
+    )
 
-    transformer_token_size: int = 512
-    latent_dim: int = 512
-    num_heads: int = 4
-    ff_size: int = 1024
-    num_layers: int = 4
-    dropout: float = 0  # By default turned off, as RL has enough noise already
-    activation: str = "relu"
-
-    output_activation: Optional[str] = None
+    transformer_token_size: int = field(
+        default=512,
+        metadata={"help": "Expected input token dimension size.", "min": 1}
+    )
+    latent_dim: int = field(
+        default=512,
+        metadata={"help": "Internal/output dimension of transformer.", "min": 1}
+    )
+    num_heads: int = field(
+        default=4,
+        metadata={"help": "Number of attention heads. Must divide latent_dim evenly.", "min": 1}
+    )
+    ff_size: int = field(
+        default=1024,
+        metadata={"help": "Feed-forward network hidden dimension.", "min": 1}
+    )
+    num_layers: int = field(
+        default=4,
+        metadata={"help": "Number of transformer encoder layers.", "min": 1}
+    )
+    dropout: float = field(
+        default=0.0,
+        metadata={
+            "help": "Dropout probability. Default 0 since RL has enough noise.",
+            "min": 0.0,
+            "max": 1.0,
+        }
+    )
+    activation: str = field(
+        default="relu",
+        metadata={
+            "help": "Activation function for feed-forward layers.",
+            "options": ["relu", "gelu", "silu"],
+        }
+    )
+    output_activation: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Optional activation for transformer output.",
+            "options": ["relu", "tanh", "gelu", "silu", None],
+        }
+    )
 
     def __post_init__(self):
         if self.input_and_mask_mapping is not None:

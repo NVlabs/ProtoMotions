@@ -43,28 +43,24 @@ def motion_lib_config(args: argparse.Namespace):
 
 
 def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
-    from protomotions.envs.obs.config import HumanoidObsConfig, MaxCoordsSelfObsConfig
+    from protomotions.envs.obs import max_coords_obs_factory, historical_max_coords_obs_factory
     from protomotions.envs.motion_manager.config import MotionManagerConfig
-    from protomotions.components.terrains.config import TerrainConfig
-    from protomotions.components.motion_lib import MotionLibConfig
-    from protomotions.components.scene_lib import SceneLibConfig
 
-    # Conditionally add scene_lib if scenes_file is provided
-    scene_lib_config = None
-    if hasattr(args, "scenes_file") and args.scenes_file is not None:
-        scene_lib_config = SceneLibConfig(scene_file=args.scenes_file)
+    # Observation components configuration
+    observation_components = {
+        # Humanoid self-observations (current state)
+        "max_coords_obs": max_coords_obs_factory(),
+        # Historical observations for AMP/ASE discriminator (from StateHistoryBuffer)
+        "historical_max_coords_obs": historical_max_coords_obs_factory(),
+    }
 
     env_config: EnvConfig = EnvConfig(
         max_episode_length=300,  # Training default (eval override applied automatically)
-        motion_lib=MotionLibConfig(motion_file=args.motion_file),
-        humanoid_obs=HumanoidObsConfig(
-            max_coords_obs=MaxCoordsSelfObsConfig(enabled=True, num_historical_steps=8),
-        ),
-        terrain=TerrainConfig(),
+        num_state_history_steps=8,  # Historical obs for AMP/ASE discriminator
+        observation_components=observation_components,
         motion_manager=MotionManagerConfig(
             init_start_prob=0.5  # Bias agent to start at the beginning of the motion to prevent getting stuck in a local-minima (standing still).
         ),
-        scene_lib=scene_lib_config,
     )
 
     return env_config
@@ -74,9 +70,8 @@ def agent_config(
     robot_config: RobotConfig, env_config: EnvConfig, args: argparse.Namespace
 ) -> ASEAgentConfig:
     from protomotions.agents.common.config import (
-        SequentialModuleConfig,
-        MultiInputModuleConfig,
-        FlattenConfig,
+        ModuleContainerConfig,
+        ObsProcessorConfig,
         MLPWithConcatConfig,
         MLPLayerConfig,
         ModuleOperationForwardConfig,
@@ -88,7 +83,9 @@ def agent_config(
         ASEParametersConfig,
         ASEDiscriminatorEncoderConfig,
     )
-    from protomotions.agents.amp.config import AMPParametersConfig, AMPModelConfig
+    from protomotions.agents.amp.config import AMPParametersConfig
+    from protomotions.agents.ase.config import ASEModelConfig
+    from protomotions.envs.obs import historical_max_coords_ref_obs_factory
 
     conditional_discriminator = False
 
@@ -105,19 +102,20 @@ def agent_config(
         actor_logstd=-2.9,
         in_keys=["max_coords_obs", "latents"],
         mu_key="actor_trunk_out",
-        mu_model=SequentialModuleConfig(
+        mu_model=ModuleContainerConfig(
             in_keys=["max_coords_obs", "latents"],
             out_keys=["actor_trunk_out"],
-            input_models=[
-                MultiInputModuleConfig(  # We use multi-input + Flatten so we only apply running normalization on the max_coords_obs
+            models=[
+                ModuleContainerConfig(
                     in_keys=["max_coords_obs", "latents"],
                     out_keys=["max_coords_obs_flattened", "latents_processed"],
-                    input_models=[
-                        FlattenConfig(
+                    models=[
+                        ObsProcessorConfig(
                             in_keys=["max_coords_obs"],
                             out_keys=["max_coords_obs_flattened"],
                             normalize_obs=True,
                             norm_clamp_value=5,
+                            module_operations=[ModuleOperationForwardConfig()],
                         ),
                         MLPWithConcatConfig(
                             in_keys=["latents"],
@@ -146,29 +144,19 @@ def agent_config(
         ),
     )
 
-    critic_config = SequentialModuleConfig(
+    critic_config = ModuleContainerConfig(
         in_keys=["max_coords_obs", "latents"],
         out_keys=["value"],
-        input_models=[
-            MultiInputModuleConfig(  # We use multi-input + Flatten so we only apply running normalization on the max_coords_obs
-                in_keys=["max_coords_obs", "latents"],
-                out_keys=["max_coords_obs_flattened", "latents_flattened"],
-                input_models=[
-                    FlattenConfig(
-                        in_keys=["max_coords_obs"],
-                        out_keys=["max_coords_obs_flattened"],
-                        normalize_obs=True,
-                        norm_clamp_value=5,
-                    ),
-                    FlattenConfig(
-                        in_keys=["latents"],
-                        out_keys=["latents_flattened"],
-                        normalize_obs=False,
-                    ),
-                ],
+        models=[
+            ObsProcessorConfig(
+                in_keys=["max_coords_obs"],
+                out_keys=["max_coords_obs_flattened"],
+                normalize_obs=True,
+                norm_clamp_value=5,
+                module_operations=[ModuleOperationForwardConfig()],
             ),
             MLPWithConcatConfig(
-                in_keys=["max_coords_obs_flattened", "latents_flattened"],
+                in_keys=["max_coords_obs_flattened", "latents"],
                 out_keys=["value"],
                 num_out=1,
                 layers=[
@@ -185,7 +173,7 @@ def agent_config(
     if conditional_discriminator:
         disc_head_in_keys.append("latents")
 
-    from protomotions.agents.common.config import MultiOutputModuleConfig
+    from protomotions.agents.common.config import ModuleContainerConfig
 
     discriminator_encoder_config = (
         ASEDiscriminatorEncoderConfig(  # This is a sequential module config
@@ -193,7 +181,7 @@ def agent_config(
             in_keys=["historical_max_coords_obs"]
             + (["latents"] if not conditional_discriminator else []),
             out_keys=["disc_logits", "mi_enc_output"],
-            input_models=[  # Models in the sequential module
+            models=[  # Models in the sequential module
                 # Trunk: process historical_max_coords_obs to features
                 MLPWithConcatConfig(
                     in_keys=["historical_max_coords_obs"],
@@ -207,10 +195,10 @@ def agent_config(
                     ],
                 ),
                 # Multi-output: discriminator + MI encoder from trunk features
-                MultiOutputModuleConfig(
+                ModuleContainerConfig(
                     in_keys=disc_head_in_keys,
                     out_keys=["disc_logits", "mi_enc_output"],
-                    output_models=[
+                    models=[
                         # Discriminator head
                         MLPWithConcatConfig(
                             in_keys=disc_head_in_keys,
@@ -238,8 +226,48 @@ def agent_config(
         )
     )
 
+    disc_critic_config = ModuleContainerConfig(
+        in_keys=["historical_max_coords_obs"],
+        out_keys=["disc_value"],
+        models=[
+            MLPWithConcatConfig(
+                in_keys=["historical_max_coords_obs"],
+                out_keys=["disc_value"],
+                normalize_obs=True,
+                norm_clamp_value=5,
+                num_out=1,
+                layers=[
+                    MLPLayerConfig(units=512, activation="relu"),
+                    MLPLayerConfig(units=256, activation="relu"),
+                ],
+            )
+        ],
+    )
+
+    mi_critic_config = ModuleContainerConfig(
+        in_keys=["historical_max_coords_obs"],
+        out_keys=["mi_value"],
+        models=[
+            MLPWithConcatConfig(
+                in_keys=["historical_max_coords_obs"],
+                out_keys=["mi_value"],
+                normalize_obs=True,
+                norm_clamp_value=5,
+                num_out=1,
+                layers=[
+                    MLPLayerConfig(units=512, activation="relu"),
+                    MLPLayerConfig(units=256, activation="relu"),
+                ],
+            )
+        ],
+    )
+
+    reference_obs_components = {
+        "historical_max_coords_obs": historical_max_coords_ref_obs_factory(),
+    }
+
     agent_config: ASEAgentConfig = ASEAgentConfig(
-        model=AMPModelConfig(
+        model=ASEModelConfig(
             in_keys=["max_coords_obs", "historical_max_coords_obs", "latents"],
             out_keys=[
                 "action",
@@ -248,16 +276,27 @@ def agent_config(
                 "value",
                 "disc_logits",
                 "mi_enc_output",
+                "disc_value",
+                "mi_value",
             ],
             actor=actor_config,
             critic=critic_config,
-            discriminator=discriminator_encoder_config,  # ASEDiscriminatorEncoder (extends Discriminator)
+            discriminator=discriminator_encoder_config,
+            disc_critic=disc_critic_config,
+            mi_critic=mi_critic_config,
             actor_optimizer=OptimizerConfig(_target_="torch.optim.Adam", lr=2e-5),
             critic_optimizer=OptimizerConfig(_target_="torch.optim.Adam", lr=1e-4),
             discriminator_optimizer=OptimizerConfig(
                 _target_="torch.optim.Adam", lr=1e-4
             ),
+            disc_critic_optimizer=OptimizerConfig(
+                _target_="torch.optim.Adam", lr=1e-4
+            ),
+            mi_critic_optimizer=OptimizerConfig(
+                _target_="torch.optim.Adam", lr=1e-4
+            ),
         ),
+        reference_obs_components=reference_obs_components,
         batch_size=args.batch_size,
         training_max_steps=args.training_max_steps,
         task_reward_w=0.0,
@@ -278,6 +317,9 @@ def apply_inference_overrides(
     simulator_cfg: SimulatorConfig,
     env_cfg,
     agent_cfg,
+    terrain_cfg,
+    motion_lib_cfg,
+    scene_lib_cfg,
     args: argparse.Namespace,
 ):
     """Apply evaluation-specific overrides."""
@@ -289,4 +331,4 @@ def apply_inference_overrides(
     apply_inference_overrides_fn = import_experiment_relative_eval_overrides(
         "../amp/mlp.py"
     )
-    apply_inference_overrides_fn(robot_cfg, simulator_cfg, env_cfg, agent_cfg, args)
+    apply_inference_overrides_fn(robot_cfg, simulator_cfg, env_cfg, agent_cfg, terrain_cfg, motion_lib_cfg, scene_lib_cfg, args)

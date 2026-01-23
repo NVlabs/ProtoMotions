@@ -227,6 +227,16 @@ class PPO(BaseAgent):
             "advantages"
         )  # Computed in pre_process_dataset
 
+        if self.config.normalize_rewards:
+            self.experience_buffer.register_key(
+                "unnormalized_value",
+                shape=(getattr(self.experience_buffer, "value").shape[2:]),
+            )
+            self.experience_buffer.register_key(
+                "unnormalized_next_value",
+                shape=(getattr(self.experience_buffer, "value").shape[2:]),
+            )
+
     # -----------------------------
     # Environment Interaction Helpers
     # -----------------------------
@@ -250,6 +260,21 @@ class PPO(BaseAgent):
         next_output_td = self.model._critic(next_obs_td)
         next_value = next_output_td["value"] * (1 - terminated.float()).unsqueeze(-1)
         self.experience_buffer.update_data("next_value", step, next_value)
+
+    @torch.no_grad()
+    def normalize_rewards_in_buffer(self):
+        """Normalize rewards and denormalize critic values after data collection."""
+        super().normalize_rewards_in_buffer()
+        if not self.config.normalize_rewards:
+            return
+
+        value = self.experience_buffer.value
+        unnorm_value = self.running_reward_norm.normalize(value, un_norm=True)
+        self.experience_buffer.batch_update_data("unnormalized_value", unnorm_value)
+
+        next_value = self.experience_buffer.next_value
+        unnorm_next_value = self.running_reward_norm.normalize(next_value, un_norm=True)
+        self.experience_buffer.batch_update_data("unnormalized_next_value", unnorm_next_value)
 
     # -----------------------------
     # Optimization
@@ -465,22 +490,42 @@ class PPO(BaseAgent):
     # Helper Functions
     # -----------------------------
     @torch.no_grad()
-    def pre_process_dataset(self):
-        """
-        Pre-process the dataset to compute advantages and returns.
-        This is called before process_dataset.
-        """
+    def compute_advantages(self):
+        """Compute GAE advantages and returns, storing them in experience buffer."""
+        dones = self.experience_buffer.dones
+
+        if self.config.normalize_rewards:
+            rewards = self.experience_buffer.unnormalized_rewards
+            values = self.experience_buffer.unnormalized_value.squeeze(-1)
+            next_values = self.experience_buffer.unnormalized_next_value.squeeze(-1)
+        else:
+            rewards = self.experience_buffer.rewards
+            values = self.experience_buffer.value.squeeze(-1)
+            next_values = self.experience_buffer.next_value.squeeze(-1)
+
         advantages = discount_values(
-            self.experience_buffer.dones,
-            self.experience_buffer.value.squeeze(-1),
-            self.experience_buffer.total_rewards,
-            self.experience_buffer.next_value.squeeze(-1),
-            self.gamma,
-            self.tau,
+            dones, values, rewards, next_values, self.gamma, self.tau
         )
-        returns = advantages + self.experience_buffer.value.squeeze(-1)
+        returns = advantages + values
+
+        if self.config.normalize_rewards:
+            returns = self.running_reward_norm.normalize(returns)
+
         assert torch.all(torch.isfinite(returns)), f"Returns are not finite: {returns}"
-        self.experience_buffer.batch_update_data("returns", returns)
+        
+        return {
+            "returns": returns,
+            "advantages": advantages * self.config.task_reward_w,
+        }
+
+    @torch.no_grad()
+    def pre_process_dataset(self):
+        """Pre-process the dataset to compute advantages and returns."""
+        advantages_dict = self.compute_advantages()
+        for key, value in advantages_dict.items():
+            self.experience_buffer.batch_update_data(key, value)
+        
+        advantages = self.experience_buffer.advantages
 
         adv_norm_log = {}
         # Log raw advantage stats
