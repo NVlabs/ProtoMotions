@@ -168,10 +168,12 @@ To visualize the result:
 
 .. code-block:: bash
 
-   python examples/motion_libs_visualizer.py \
-       --motion_files /path/to/output/retargeted_g1_proto/walk.motion \
-       --robot g1 \
-       --simulator isaacgym
+   python examples/env_kinematic_playback.py \
+       --experiment-path=examples/experiments/mimic/mlp.py \
+       --motion-file /path/to/output/retargeted_g1_proto/walk.motion \
+       --robot-name g1 \
+       --simulator isaacgym \
+       --num-envs 1
 
 Step-by-Step Guide
 ------------------
