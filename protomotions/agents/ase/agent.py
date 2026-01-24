@@ -223,7 +223,6 @@ class ASE(AMP):
         self.experience_buffer.register_key("mi_rewards")
 
         value_shape = getattr(self.experience_buffer, "value").shape[2:]
-        self.experience_buffer.register_key("mi_value", shape=value_shape)
         self.experience_buffer.register_key("next_mi_value", shape=value_shape)
         self.experience_buffer.register_key("mi_returns")
         if self.config.normalize_rewards:
@@ -239,14 +238,6 @@ class ASE(AMP):
         self.update_latents()
         obs["latents"] = self.latents.clone()
         return obs
-
-    def collect_rollout_step(self, obs_td: TensorDict, step):
-        action = super().collect_rollout_step(obs_td, step)
-
-        mi_value = self.mi_critic(obs_td)[self.mi_critic.config.out_keys[0]]
-        self.experience_buffer.update_data("mi_value", step, mi_value)
-
-        return action
 
     # -----------------------------
     # Reward Calculation
@@ -395,12 +386,16 @@ class ASE(AMP):
 
     def produce_negative_expert_obs(self, batch_dict):
         negative_expert_obs = {}
-        for key in self.config.amp_parameters.discriminator_keys:
+        # Use discriminator's in_keys dynamically
+        discriminator_keys = self.model._discriminator.in_keys
+        for key in discriminator_keys:
+            if key == "latents":
+                continue  # Handle latents separately below
             negative_expert_obs[key] = batch_dict[f"expert_{key}"][
                 : self.config.amp_parameters.discriminator_batch_size
             ]
         random_conditioned_latent = torch.rand_like(
-            batch_dict["latents"][: self.config.amp_parameters.discriminator_batch_size]
+            batch_dict["agent_latents"][: self.config.amp_parameters.discriminator_batch_size]
         )
         projected_latent = torch.nn.functional.normalize(
             random_conditioned_latent, dim=-1
@@ -421,25 +416,40 @@ class ASE(AMP):
             batch_dict
         )
 
-        agent_obs = batch_dict["historical_self_obs"][
-            : self.config.amp_parameters.discriminator_batch_size
-        ]
-        latents = batch_dict["latents"][
-            : self.config.amp_parameters.discriminator_batch_size
-        ]
+        # Extract agent and expert observations dynamically (like AMP parent class)
+        agent_obs = {}
+        for key in batch_dict.keys():
+            if key.startswith("agent_"):
+                agent_obs[key.replace("agent_", "")] = batch_dict[key][
+                    : self.config.amp_parameters.discriminator_batch_size
+                ]
 
-        expert_obs = batch_dict["expert_historical_self_obs"][
-            : self.config.amp_parameters.discriminator_batch_size
-        ]
+        expert_obs = {}
+        for key in batch_dict.keys():
+            if key.startswith("expert_"):
+                expert_obs[key.replace("expert_", "")] = batch_dict[key][
+                    : self.config.amp_parameters.discriminator_batch_size
+                ]
+
+        latents = agent_obs.get("latents", batch_dict.get("latents", None))
+        if latents is None:
+            raise KeyError("Could not find 'latents' in agent_obs or batch_dict")
+
+        # Get the observation key (first non-latents key from discriminator)
+        disc_in_keys = self.model._discriminator.in_keys
+        obs_key = [k for k in disc_in_keys if k != "latents"][0]
+
+        agent_obs_tensor = agent_obs[obs_key]
+        expert_obs_tensor = expert_obs[obs_key]
 
         if self.config.ase_parameters.mi_enc_grad_penalty > 0:
-            agent_obs.requires_grad_(True)
+            agent_obs_tensor.requires_grad_(True)
 
         # Compute MI encoder predictions for both agent and expert observations
-        agent_disc_obs = {"historical_self_obs": agent_obs, "latents": latents}
+        agent_disc_obs = {obs_key: agent_obs_tensor, "latents": latents}
         mi_enc_pred_agent = self.mi_enc_forward(agent_disc_obs)
 
-        expert_disc_obs = {"historical_self_obs": expert_obs, "latents": latents}
+        expert_disc_obs = {obs_key: expert_obs_tensor, "latents": latents}
         mi_enc_pred_expert = self.mi_enc_forward(expert_disc_obs)
 
         # Original MI encoder loss for agent observations
