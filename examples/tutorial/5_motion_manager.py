@@ -61,11 +61,12 @@ AppLauncher = import_simulator_before_torch(args.simulator)
 
 # Now safe to import everything else including torch
 from protomotions.simulator.base_simulator.config import SimulatorConfig  # noqa: E402
-from protomotions.envs.mimic.env import Mimic  # noqa: E402
-from protomotions.envs.obs.config import HumanoidObsConfig, MaxCoordsSelfObsConfig  # noqa: E402
+from protomotions.envs.base_env.env import BaseEnv  # noqa: E402
+from protomotions.envs.base_env.config import EnvConfig  # noqa: E402
+from protomotions.envs.obs import max_coords_obs_factory  # noqa: E402
+from protomotions.envs.control.kinematic_replay_control import KinematicReplayControlConfig  # noqa: E402
 from protomotions.components.motion_lib import MotionLibConfig  # noqa: E402
 from protomotions.components.terrains.config import TerrainConfig  # noqa: E402
-from protomotions.envs.mimic.config import MimicEnvConfig  # noqa: E402
 from protomotions.envs.motion_manager.config import MimicMotionManagerConfig  # noqa: E402
 from protomotions.utils.hydra_replacement import get_class  # noqa: E402
 import torch  # noqa: E402
@@ -173,7 +174,7 @@ print(f"  Frames: {teapot_translation.shape[0]}, FPS: {teapot_data['fps']}")
 print(f"  Mesh path: {teapot_data['object_path']}")
 
 # Use URDF for isaacgym, USDA for isaaclab
-teapot_mesh_path = teapot_data['object_path']
+teapot_mesh_path = f"{data_dir}/teapot.usda"
 if args.simulator == "isaaclab":
     pass
 elif args.simulator == "newton":
@@ -253,25 +254,30 @@ print("   - Helps policy generalize to different motion phases")
 
 # For this tutorial, we'll use the demo configuration
 # Building on Tutorial 4, we use BaseEnv with motion library and motion manager
-env_config = MimicEnvConfig(
+env_config = EnvConfig(
     max_episode_length=1000,
     # Uses reference motion resets automatically (motion_lib is set)
-    sync_motion=True,  # Enable kinematic playback for this demo
-    humanoid_obs=HumanoidObsConfig(
-        max_coords_obs=MaxCoordsSelfObsConfig(
-            enabled=True,
-            local_obs=True,
-            root_height_obs=True,
-            num_historical_steps=1,
-        ),
-    ),
+    # Modular control components - KinematicReplayControl enables kinematic playback
+    control_components={
+        "kinematic_replay": KinematicReplayControlConfig(),
+    },
+    # Modular observation components
+    observation_components={
+        "max_coords_obs": max_coords_obs_factory(),
+    },
+    # No terminations needed for kinematic playback
+    termination_components={},
+    # No rewards needed for kinematic playback
+    reward_components={},
+    # Motion manager configuration
     motion_manager=MimicMotionManagerConfig(
         init_start_prob=init_start_prob  # Use demo config for clear visualization
     ),
 )
 
 print("\n=== Environment Configuration Summary ===")
-print("Environment type: BaseEnv (same as Tutorial 4, but with motion)")
+print("Environment type: BaseEnv with modular components")
+print("Control: KinematicReplayControl (kinematic motion playback)")
 print("Motion sampling: Always start from beginning (demo mode)")
 print(f"Max episode length: {env_config.max_episode_length}")
 
@@ -312,7 +318,8 @@ simulator = SimulatorClass(
 
 # Create the environment using BaseEnv (same as Tutorial 4)
 # BaseEnv will automatically create motion library and motion manager from config
-env = Mimic(
+# KinematicReplayControl handles the kinematic playback
+env = BaseEnv(
     config=env_config,
     robot_config=robot_cfg,
     device=device,
@@ -320,7 +327,6 @@ env = Mimic(
     motion_lib=motion_lib,
     terrain=terrain,
     scene_lib=scene_lib,
-    **extra_simulator_params,
 )
 
 print("\n=== Environment Initialization ===")
@@ -416,11 +422,12 @@ print("2. How to load object data from separate .npy files (numpy format)")
 print("3. How to create Scene objects programmatically")
 print("4. How motion manager parameters control motion sampling")
 print("5. How to track motion progress during simulation")
+print("6. How to use KinematicReplayControl for motion visualization")
 print("\nData files used:")
 print("  - s1_teapot_pour_1.motion  : Robot motion (torch format for MotionLib)")
 print("  - s1_teapot_pour_1_teapot.npy  : Teapot motion (numpy format)")
 print("  - s1_teapot_pour_1_table.npy   : Table data (numpy format)")
 print("\nRobot: SMPLX humanoid (52 bodies with hand articulation)")
 print("Scene: Dynamic teapot + static table")
-print("\nBuilds on Tutorial 4: Uses Mimic env with motion management added")
+print("\nBuilds on Tutorial 4: Uses BaseEnv with modular control/observation components")
 print("Next: Tutorial 6 will show how to train policies to mimic motions!")

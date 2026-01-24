@@ -40,9 +40,10 @@ from protomotions.agents.amp.model import AMPModel
 from protomotions.envs.base_env.env import BaseEnv
 from protomotions.agents.utils.normalization import RewardRunningMeanStd
 from protomotions.agents.ppo.agent import PPO
+from protomotions.agents.ppo.utils import discount_values
 from protomotions.agents.amp.config import AMPAgentConfig
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional, Dict, Tuple
 
 from protomotions.agents.utils.training import handle_model_grad_clipping
 
@@ -118,11 +119,21 @@ class AMP(PPO):
         self.discriminator, self.discriminator_optimizer = self.fabric.setup(
             model._discriminator, discriminator_optimizer
         )
+        disc_critic_optimizer = instantiate(
+            self.config.model.disc_critic_optimizer,
+            params=list(model._disc_critic.parameters()),
+        )
+        self.disc_critic, self.disc_critic_optimizer = self.fabric.setup(
+            model._disc_critic, disc_critic_optimizer
+        )
 
     def load_parameters(self, state_dict):
         super().load_parameters(state_dict)
         self.discriminator_optimizer.load_state_dict(
             state_dict["discriminator_optimizer"]
+        )
+        self.disc_critic_optimizer.load_state_dict(
+            state_dict["disc_critic_optimizer"]
         )
         if self.config.normalize_rewards:
             self.running_amp_reward_norm.load_state_dict(
@@ -134,6 +145,7 @@ class AMP(PPO):
         state_dict["discriminator_optimizer"] = (
             self.discriminator_optimizer.state_dict()
         )
+        state_dict["disc_critic_optimizer"] = self.disc_critic_optimizer.state_dict()
         if self.config.normalize_rewards:
             state_dict["running_amp_reward_norm"] = (
                 self.running_amp_reward_norm.state_dict()
@@ -148,6 +160,13 @@ class AMP(PPO):
         self.experience_buffer.register_key("amp_rewards")
         if self.config.normalize_rewards:
             self.experience_buffer.register_key("unnormalized_amp_rewards")
+
+        value_shape = getattr(self.experience_buffer, "value").shape[2:]
+        self.experience_buffer.register_key("next_disc_value", shape=value_shape)
+        self.experience_buffer.register_key("disc_returns")
+        if self.config.normalize_rewards:
+            self.experience_buffer.register_key("unnormalized_disc_value", shape=value_shape)
+            self.experience_buffer.register_key("unnormalized_next_disc_value", shape=value_shape)
 
     def update_disc_replay_buffer(self, data_dict):
         buf_size = self.amp_replay_buffer.get_buffer_size()
@@ -208,20 +227,66 @@ class AMP(PPO):
         return super().process_dataset(dataset)
 
     def get_expert_disc_obs(self, num_samples: int):
+        """Build expert observations from motion library for discriminator training.
+        
+        Iterates over reference_obs_components defined in AMPAgentConfig
+        and uses them to compute demo observations from sampled motions.
+        """
         motion_ids = self.motion_manager.sample_n_motion_ids(num_samples)
-        motion_times0 = self.motion_manager.sample_time(motion_ids)
+        motion_times = self.motion_manager.sample_time(motion_ids)
 
-        all_historical_self_obs = self.env.self_obs_cb.build_self_obs_demo(
-            motion_ids, motion_times0
-        )
-        historical_self_obs = {}
-        for key in all_historical_self_obs.keys():
+        ref_obs_components = self.config.reference_obs_components or {}
+        
+        if not ref_obs_components:
+            raise ValueError(
+                "AMP requires reference_obs_components to be defined in AMPAgentConfig. "
+                "Use factories like historical_max_coords_ref_obs_factory() to define them."
+            )
+        
+        # Build context for evaluating variables
+        # Provide motion library and sampled motion info
+        context = {
+            "motion_lib": self.motion_lib,
+            "motion_ids": motion_ids,
+            "motion_times": motion_times,
+            "dt": self.env.simulator.dt,
+            "num_historical_steps": self.env.config.num_state_history_steps,
+        }
+        
+        all_demo_obs = {}
+        
+        # Iterate over reference observation components
+        for obs_name, component in ref_obs_components.items():
+            if component.function is None:
+                continue
+            
+            # Build kwargs for the observation function
+            func_kwargs = {}
+            for arg_name, var_value in component.variables.items():
+                if isinstance(var_value, str):
+                    # Look up string values in context
+                    if var_value in context:
+                        func_kwargs[arg_name] = context[var_value]
+                    else:
+                        raise ValueError(
+                            f"Variable '{var_value}' not found in context for "
+                            f"reference obs component '{obs_name}'"
+                        )
+                else:
+                    # Non-string values are passed directly as constants
+                    func_kwargs[arg_name] = var_value
+            
+            # Call the observation function
+            obs = component.function(**func_kwargs)
+            all_demo_obs[obs_name] = obs.view(num_samples, -1)
+        
+        # Filter to only keys the discriminator uses
+        expert_obs = {}
+        for key, value in all_demo_obs.items():
             if key in self.discriminator.in_keys:
-                historical_self_obs[key] = all_historical_self_obs[key].view(
-                    num_samples, -1
-                )
+                expert_obs[key] = value
 
-        return historical_self_obs
+        return expert_obs
 
     # -----------------------------
     # Reward Calculation
@@ -268,31 +333,94 @@ class AMP(PPO):
         self.num_cumulative_bad_transitions[bad_transition] += 1
         self.num_cumulative_bad_transitions[~bad_transition] = 0
 
-        # Reset cumulative bad transitions for environments that were reset
         if len(done_indices) > 0:
             self.num_cumulative_bad_transitions[done_indices] = 0
 
+        next_disc_value = self.disc_critic(next_obs_td)[self.disc_critic.config.out_keys[0]]
+        next_disc_value = next_disc_value * (1 - terminated.float()).unsqueeze(-1)
+        self.experience_buffer.update_data("next_disc_value", step, next_disc_value)
+
         if self.config.normalize_rewards:
-            self.experience_buffer.update_data(
-                "unnormalized_amp_rewards", step, amp_rewards
-            )
             self.running_amp_reward_norm.record_reward(amp_rewards, terminated)
-            amp_rewards = self.running_amp_reward_norm.normalize(amp_rewards)
         self.experience_buffer.update_data("amp_rewards", step, amp_rewards)
 
-    def get_combined_experience_buffer_rewards(self):
-        rewards = super().get_combined_experience_buffer_rewards()
-        return (
-            rewards
-            + self.experience_buffer.amp_rewards
-            * self.config.amp_parameters.discriminator_reward_w
+    @torch.no_grad()
+    def normalize_rewards_in_buffer(self):
+        super().normalize_rewards_in_buffer()
+        if not self.config.normalize_rewards:
+            return
+
+        amp_rewards = self.experience_buffer.amp_rewards
+        self.experience_buffer.batch_update_data(
+            "unnormalized_amp_rewards", amp_rewards.clone()
         )
+        self.experience_buffer.batch_update_data(
+            "amp_rewards", self.running_amp_reward_norm.normalize(amp_rewards)
+        )
+
+        disc_value = self.experience_buffer.disc_value
+        unnorm_disc_value = self.running_amp_reward_norm.normalize(
+            disc_value, un_norm=True
+        )
+        self.experience_buffer.batch_update_data("unnormalized_disc_value", unnorm_disc_value)
+
+        next_disc_value = self.experience_buffer.next_disc_value
+        unnorm_next_disc_value = self.running_amp_reward_norm.normalize(
+            next_disc_value, un_norm=True
+        )
+        self.experience_buffer.batch_update_data(
+            "unnormalized_next_disc_value", unnorm_next_disc_value
+        )
+
+    @torch.no_grad()
+    def compute_advantages(self):
+        advantages_dict = super().compute_advantages()
+        dones = self.experience_buffer.dones
+
+        if self.config.normalize_rewards:
+            disc_rewards = self.experience_buffer.unnormalized_amp_rewards
+            disc_values = self.experience_buffer.unnormalized_disc_value.squeeze(-1)
+            disc_next_values = self.experience_buffer.unnormalized_next_disc_value.squeeze(-1)
+        else:
+            disc_rewards = self.experience_buffer.amp_rewards
+            disc_values = self.experience_buffer.disc_value.squeeze(-1)
+            disc_next_values = self.experience_buffer.next_disc_value.squeeze(-1)
+
+        disc_advantages = discount_values(
+            dones, disc_values, disc_rewards, disc_next_values, self.gamma, self.tau
+        )
+        disc_returns = disc_advantages + disc_values
+
+        if self.config.normalize_rewards:
+            disc_returns = self.running_amp_reward_norm.normalize(disc_returns)
+
+        self.experience_buffer.batch_update_data("disc_returns", disc_returns)
+
+        advantages_dict["advantages"] = (
+            advantages_dict["advantages"]
+            + disc_advantages * self.config.amp_parameters.discriminator_reward_w
+        )
+        return advantages_dict
 
     # -----------------------------
     # Optimization
     # -----------------------------
     def perform_optimization_step(self, batch_dict, batch_idx: int) -> Dict:
         iter_log_dict = super().perform_optimization_step(batch_dict, batch_idx)
+
+        disc_critic_loss, disc_critic_loss_dict = self.disc_critic_step(batch_dict)
+        iter_log_dict.update(disc_critic_loss_dict)
+        self.disc_critic_optimizer.zero_grad(set_to_none=True)
+        self.fabric.backward(disc_critic_loss)
+        disc_critic_grad_clip_dict = handle_model_grad_clipping(
+            config=self.config,
+            fabric=self.fabric,
+            model=self.disc_critic,
+            optimizer=self.disc_critic_optimizer,
+            model_name="disc_critic",
+        )
+        iter_log_dict.update(disc_critic_grad_clip_dict)
+        self.disc_critic_optimizer.step()
 
         if batch_idx % self.config.amp_parameters.discriminator_optimization_ratio == 0:
             discriminator_loss, discriminator_loss_dict = self.discriminator_step(
@@ -312,6 +440,35 @@ class AMP(PPO):
             self.discriminator_optimizer.step()
 
         return iter_log_dict
+
+    def disc_critic_step(self, batch_dict) -> Tuple[Tensor, Dict]:
+        batch_td = TensorDict(batch_dict, batch_size=batch_dict["action"].shape[0])
+        batch_td = self.disc_critic(batch_td)
+        values = batch_td[self.disc_critic.config.out_keys[0]]
+
+        if self.config.clip_critic_loss:
+            disc_critic_loss_unclipped = (
+                values - batch_dict["disc_returns"].unsqueeze(-1)
+            ).pow(2)
+            v_clipped = batch_dict["disc_value"] + torch.clamp(
+                values - batch_dict["disc_value"],
+                -self.config.e_clip,
+                self.config.e_clip,
+            )
+            disc_critic_loss_clipped = (
+                v_clipped - batch_dict["disc_returns"].unsqueeze(-1)
+            ).pow(2)
+            disc_critic_loss_max = torch.max(
+                disc_critic_loss_unclipped, disc_critic_loss_clipped
+            )
+            disc_critic_loss = disc_critic_loss_max.mean()
+        else:
+            disc_critic_loss = (
+                (batch_dict["disc_returns"].unsqueeze(-1) - values).pow(2).mean()
+            )
+
+        log_dict = {"losses/disc_critic_loss": disc_critic_loss.detach()}
+        return disc_critic_loss, log_dict
 
     def discriminator_step(self, batch_dict):
         agent_obs = {}

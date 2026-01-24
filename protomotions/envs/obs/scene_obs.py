@@ -20,16 +20,26 @@ masks, and human-object relative observations.
 """
 
 import torch
-from typing import TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
+from dataclasses import dataclass
 from protomotions.envs.utils.scene import (
     get_object_pointcloud,
     get_contact_bodies_to_object_pointcloud,
     get_local_object_coordinates,
 )
-from protomotions.envs.obs.config import SceneObsConfig
 
 if TYPE_CHECKING:
     from protomotions.envs.base_env.env import BaseEnv
+else:
+    BaseEnv = object
+
+
+@dataclass
+class SceneObsConfig:
+    """Configuration for scene observations."""
+
+    enabled: bool = False
+    obs_object_index: Optional[int] = None
 
 
 class SceneObs:
@@ -42,7 +52,7 @@ class SceneObs:
         env: Parent environment instance.
     """
 
-    def __init__(self, config: SceneObsConfig, env: "BaseEnv"):
+    def __init__(self, config: SceneObsConfig, env: BaseEnv):
         self.config = config
         self.env = env
 

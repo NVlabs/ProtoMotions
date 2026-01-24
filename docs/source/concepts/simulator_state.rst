@@ -78,9 +78,7 @@ Used when training with interactive objects (vaulting, manipulation).
 StateConversion
 ---------------
 
-Utility for converting between common (base-simulator) and simulator-specific state representations,
-
-since different simulators may have different quaternion conventions and/or body/dof ordering.
+Utility for converting between common (base-simulator) and simulator-specific state representations, since different simulators may have different quaternion conventions and/or body/dof ordering.
 
 Common Operations
 -----------------

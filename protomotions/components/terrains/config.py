@@ -13,13 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+"""Configuration classes for terrain generation and simulation properties."""
+
 from typing import Optional, List
 from dataclasses import dataclass, field
-from protomotions.utils.config_builder import ConfigBuilder
 from enum import Enum
 
 
 class CombineMode(Enum):
+    """Physics material combine mode for friction/restitution."""
     AVERAGE = "average"
     MIN = "min"
     MAX = "max"
@@ -41,84 +43,144 @@ class CombineMode(Enum):
 
 
 @dataclass
-class TerrainSimConfig(ConfigBuilder):
+class TerrainSimConfig:
     """Configuration for terrain simulation properties (friction, restitution, height offset).
 
     These properties affect the physical behavior of the terrain in simulation.
     Separate from TerrainConfig which defines terrain geometry.
     """
 
-    static_friction: float = 1.0
-    dynamic_friction: float = 1.0
-    restitution: float = 0.0
-    height_offset: float = (
-        0.0  # Height offset for the terrain (negative values move terrain down)
+    static_friction: float = field(
+        default=1.0,
+        metadata={"help": "Static friction coefficient.", "min": 0.0}
     )
-    combine_mode: CombineMode = CombineMode.AVERAGE
+    dynamic_friction: float = field(
+        default=1.0,
+        metadata={"help": "Dynamic friction coefficient.", "min": 0.0}
+    )
+    restitution: float = field(
+        default=0.0,
+        metadata={"help": "Restitution (bounciness) coefficient.", "min": 0.0, "max": 1.0}
+    )
+    height_offset: float = field(
+        default=0.0,
+        metadata={"help": "Height offset for terrain (negative = lower)."}
+    )
+    combine_mode: CombineMode = field(
+        default=CombineMode.AVERAGE,
+        metadata={"help": "How to combine friction values between objects."}
+    )
 
 
 @dataclass
-class TerrainConfig(ConfigBuilder):
-    """Configuration for terrain generation."""
-
-    # Flat terrain is a class that inherits from Terrain. It creates a simple and minimal ground mesh.
-    # We require some terrain class to manage spawning, observations and logic. The default terrain should act similarly
-    #   to the default ground mesh.
-    # The opt/terrain config overrides this config to use irregular terrains.
+class TerrainConfig:
+    """Configuration for terrain generation.
+    
+    Defines terrain geometry, procedural generation parameters, and simulation properties.
+    """
 
     _target_: str = "protomotions.components.terrains.terrain.Terrain"
-    map_length: float = 20.0
-    map_width: float = 20.0
-    border_size: float = 40.0  # ensure sufficient space from the edges
-    num_levels: int = 10
-    num_terrains: int = 10
+    map_length: float = field(
+        default=20.0,
+        metadata={"help": "Length of terrain map in meters.", "min": 1.0}
+    )
+    map_width: float = field(
+        default=20.0,
+        metadata={"help": "Width of terrain map in meters.", "min": 1.0}
+    )
+    border_size: float = field(
+        default=40.0,
+        metadata={"help": "Border size to ensure space from edges.", "min": 0.0}
+    )
+    num_levels: int = field(
+        default=10,
+        metadata={"help": "Number of difficulty levels for curriculum.", "min": 1}
+    )
+    num_terrains: int = field(
+        default=10,
+        metadata={"help": "Number of terrain variations to generate.", "min": 1}
+    )
 
-    # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete, stepping, poles, flat]
     terrain_proportions: List[float] = field(
-        default_factory=lambda: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+        default_factory=lambda: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+        metadata={"help": "Proportions: [smooth slope, rough slope, stairs up, stairs down, discrete, stepping, poles, flat]"}
     )
-    slope_threshold: float = 0.9
-    num_samples_per_axis: int = 16
-    sample_width: float = 1.0
-    terrain_obs_num_samples: Optional[int] = None
-
-    horizontal_scale: float = 0.1
-    vertical_scale: float = 0.005
-
-    spacing_between_scenes: float = (
-        10.0  # Scenes are created in a grid. This is the distance between scenes.
+    slope_threshold: float = field(
+        default=0.9,
+        metadata={"help": "Maximum slope angle threshold.", "min": 0.0, "max": 1.0}
+    )
+    num_samples_per_axis: int = field(
+        default=16,
+        metadata={"help": "Samples per axis for height observation.", "min": 1}
+    )
+    sample_width: float = field(
+        default=1.0,
+        metadata={"help": "Width between sample points in meters.", "min": 0.01}
+    )
+    terrain_obs_num_samples: Optional[int] = field(
+        default=None,
+        metadata={"help": "Total terrain observation samples. Auto-computed if None."}
     )
 
-    # For non-scene regions in the terrain, this is the minimal distance between humanoids if spaced out evenly in a grid fashion.
-    # This replaces the "env-spacing" that is usually used in Isaac.
-    minimal_humanoid_spacing: float = 1.0
+    horizontal_scale: float = field(
+        default=0.1,
+        metadata={"help": "Horizontal resolution scale.", "min": 0.001}
+    )
+    vertical_scale: float = field(
+        default=0.005,
+        metadata={"help": "Vertical resolution scale.", "min": 0.001}
+    )
 
-    # We can save the terrain to a file. This is useful for debugging and for loading the terrain from a file.
-    terrain_path: Optional[str] = None
-    load_terrain: bool = False
-    save_terrain: bool = False
+    spacing_between_scenes: float = field(
+        default=10.0,
+        metadata={"help": "Distance between scenes in grid layout.", "min": 0.0}
+    )
 
-    # Simulation properties (friction, restitution, height offset)
-    sim_config: TerrainSimConfig = field(default_factory=TerrainSimConfig)
+    minimal_humanoid_spacing: float = field(
+        default=1.0,
+        metadata={"help": "Minimum spacing between humanoids in non-scene regions.", "min": 0.0}
+    )
+
+    terrain_path: Optional[str] = field(
+        default=None,
+        metadata={"help": "Path to save/load terrain file."}
+    )
+    load_terrain: bool = field(
+        default=False,
+        metadata={"help": "Load terrain from file instead of generating."}
+    )
+    save_terrain: bool = field(
+        default=False,
+        metadata={"help": "Save generated terrain to file."}
+    )
+
+    sim_config: TerrainSimConfig = field(
+        default_factory=TerrainSimConfig,
+        metadata={"help": "Simulation properties (friction, restitution)."}
+    )
 
     def __post_init__(self):
         if self.terrain_obs_num_samples is None:
-            # The observation model for the terrain will observe the terrain as a 2D grid of height values.
-            # The samples are spaced out on a grid with spacing sample_width*horizontal_scale.
-            # On each axis we have num_samples_per_axis samples.
             self.terrain_obs_num_samples = self.num_samples_per_axis**2
 
 
 @dataclass
 class ComplexTerrainConfig(TerrainConfig):
-    num_terrains: int = 7
-    num_levels: int = 7
-    terrain_proportions: List[float] = field(
-        default_factory=lambda: [0.2, 0.1, 0.1, 0.1, 0.05, 0.0, 0.0, 0.45]
+    """Configuration for complex procedural terrain."""
+    
+    num_terrains: int = field(
+        default=7,
+        metadata={"help": "Number of terrain variations.", "min": 1}
     )
-    minimal_humanoid_spacing: float = 0
-
-    # minimal_humanoid_spacing: float = 1.0
-
-    # terrain_proportions: List[float] = field(default_factory=lambda: [0.3, 0.3, 0.0, 0.0, 0.0, 0.0, 0.0, 0.4])
-    # slope_threshold: float = 0.4
+    num_levels: int = field(
+        default=7,
+        metadata={"help": "Number of difficulty levels.", "min": 1}
+    )
+    terrain_proportions: List[float] = field(
+        default_factory=lambda: [0.2, 0.1, 0.1, 0.1, 0.05, 0.0, 0.0, 0.45],
+        metadata={"help": "Proportions for different terrain types."}
+    )
+    minimal_humanoid_spacing: float = field(
+        default=0.0,
+        metadata={"help": "Minimum spacing between humanoids.", "min": 0.0}
+    )

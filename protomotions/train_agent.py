@@ -292,6 +292,9 @@ import wandb  # noqa: E402
 from lightning.pytorch.loggers import WandbLogger  # noqa: E402
 import torch  # noqa: E402
 from utils.torch_utils import seeding  # noqa: E402
+from dataclasses import asdict  # noqa: E402
+from protomotions.utils.config_utils import clean_dict_for_storage, make_json_serializable  # noqa: E402
+
 
 log = logging.getLogger(__name__)
 
@@ -429,13 +432,13 @@ def save_configs(
     try:
         resolved_configs_yaml_path = (save_dir / file_name).with_suffix(".yaml")
         resolved_configs_dict = {
-            "robot": robot_config.to_dict(),
-            "simulator": simulator_config.to_dict(),
-            "terrain": terrain_config.to_dict(),
-            "scene_lib": scene_lib_config.to_dict(),
-            "motion_lib": motion_lib_config.to_dict(),
-            "env": env_config.to_dict(),
-            "agent": agent_config.to_dict(),
+            "robot": clean_dict_for_storage(asdict(robot_config)),
+            "simulator": clean_dict_for_storage(asdict(simulator_config)),
+            "terrain": clean_dict_for_storage(asdict(terrain_config)),
+            "scene_lib": clean_dict_for_storage(asdict(scene_lib_config)),
+            "motion_lib": clean_dict_for_storage(asdict(motion_lib_config)),
+            "env": clean_dict_for_storage(asdict(env_config)),
+            "agent": clean_dict_for_storage(asdict(agent_config)),
         }
         import yaml
 
@@ -469,14 +472,14 @@ def try_log_hyperparams_to_wandb(
         if isinstance(logger, WandbLogger):
             try:
                 hyper_params = {
-                    "robot": robot_config.to_dict(),
-                    "simulator": simulator_config.to_dict(),
-                    "terrain": terrain_config.to_dict(),
-                    "scene_lib": scene_lib_config.to_dict(),
-                    "motion_lib": motion_lib_config.to_dict(),
-                    "env": env_config.to_dict(),
-                    "agent": agent_config.to_dict(),
-                    "fabric": fabric_config.to_dict(),
+                    "robot": clean_dict_for_storage(asdict(robot_config)),
+                    "simulator": clean_dict_for_storage(asdict(simulator_config)),
+                    "terrain": clean_dict_for_storage(asdict(terrain_config)),
+                    "scene_lib": clean_dict_for_storage(asdict(scene_lib_config)),
+                    "motion_lib": clean_dict_for_storage(asdict(motion_lib_config)),
+                    "env": clean_dict_for_storage(asdict(env_config)),
+                    "agent": clean_dict_for_storage(asdict(agent_config)),
+                    "fabric": clean_dict_for_storage(asdict(fabric_config)),
                 }
 
                 log.info("Preparing configs for wandb logging...")
@@ -485,61 +488,6 @@ def try_log_hyperparams_to_wandb(
                 log.info("Successfully logged hyperparams to wandb")
             except Exception as e:
                 log.warning(f"Could not log hyperparams to wandb (non-critical): {e}")
-
-
-def make_json_serializable(obj, max_depth=10, current_depth=0):
-    """
-    Recursively convert objects to JSON-serializable format.
-    Handles non-serializable types by converting to strings or omitting them.
-    """
-    if current_depth > max_depth:
-        return "<max_depth_reached>"
-
-    # Primitives
-    if obj is None or isinstance(obj, (bool, int, float, str)):
-        return obj
-
-    # Test if already serializable
-    try:
-        import json
-
-        json.dumps(obj)
-        return obj
-    except (TypeError, ValueError):
-        pass
-
-    # Handle collections
-    if isinstance(obj, dict):
-        result = {}
-        for key, value in obj.items():
-            try:
-                result[str(key)] = make_json_serializable(
-                    value, max_depth, current_depth + 1
-                )
-            except Exception:
-                result[str(key)] = f"<non-serializable: {type(value).__name__}>"
-        return result
-
-    elif isinstance(obj, (list, tuple)):
-        try:
-            result = [
-                make_json_serializable(item, max_depth, current_depth + 1)
-                for item in obj
-            ]
-            return result if isinstance(obj, list) else tuple(result)
-        except Exception:
-            return f"<non-serializable list/tuple of {type(obj).__name__}>"
-
-    # For everything else, convert to string representation
-    else:
-        try:
-            # Try to get a meaningful string
-            if hasattr(obj, "__name__"):
-                return f"<{obj.__name__}>"
-            else:
-                return f"<{type(obj).__name__}>"
-        except Exception:
-            return "<non-serializable>"
 
 
 def main():
@@ -617,6 +565,12 @@ def main():
         args.checkpoint = checkpoint_path if mode == "warm_start" else None
 
         experiment_module = load_experiment_module(experiment_path)
+        
+        # Allow experiment files to add custom CLI arguments
+        additional_args_fn = getattr(experiment_module, "additional_experiment_arguments", None)
+        if additional_args_fn:
+            additional_args_fn(parser)
+        
         args = parser.parse_args()
 
         # Get required config functions
@@ -626,9 +580,7 @@ def main():
         env_config_fn = getattr(experiment_module, "env_config")
 
         # Get optional config functions
-        configure_robot_and_simulator_fn = getattr(
-            experiment_module, "configure_robot_and_simulator", None
-        )
+        configure_robot_and_simulator_fn = getattr(experiment_module, "configure_robot_and_simulator", None)
         agent_config_fn = getattr(experiment_module, "agent_config", None)
 
         from protomotions.utils.config_builder import build_standard_configs
@@ -734,7 +686,8 @@ def main():
         loggers=loggers,
         callbacks=callbacks,
     )
-    fabric: Fabric = Fabric(**fabric_config.to_dict())
+    print(asdict(fabric_config))
+    fabric: Fabric = Fabric(**asdict(fabric_config))
     fabric.launch()
 
     # ===================================================================
@@ -776,7 +729,16 @@ def main():
     fabric.call("on_env_init_start")
 
     # ===================================================================
-    # 5a. Create Components (terrain, scene_lib, motion_lib, simulator)
+    # 5a. Convert Friction for Simulator Compatibility
+    # ===================================================================
+    from protomotions.simulator.base_simulator.utils import convert_friction_for_simulator
+
+    terrain_config, simulator_config = convert_friction_for_simulator(
+        terrain_config, simulator_config
+    )
+
+    # ===================================================================
+    # 5b. Create Components
     # ===================================================================
 
     from protomotions.utils.component_builder import build_all_components
@@ -880,6 +842,9 @@ def main():
             simulator_config_inference,
             env_config_inference,
             agent_config_inference,
+            terrain_config_inference,
+            motion_lib_config_inference,
+            scene_lib_config_inference,
             experiment_module=experiment_module,
             args=args,
         )
@@ -974,6 +939,9 @@ def _handle_create_config_only(
         simulator_config_inference,
         env_config_inference,
         agent_config_inference,
+        terrain_config_inference,
+        motion_lib_config_inference,
+        scene_lib_config_inference,
         experiment_module=experiment_module,
         args=args,
     )

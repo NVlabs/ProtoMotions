@@ -33,7 +33,7 @@ Key Features:
     - Kinematic structure extraction
 """
 
-from protomotions.utils.config_builder import ConfigBuilder
+from dataclasses import dataclass, field
 from protomotions.components.pose_lib import ControlInfo, KinematicInfo
 from protomotions.simulator.isaacgym.config import IsaacGymSimParams
 from protomotions.simulator.isaaclab.config import IsaacLabSimParams
@@ -42,13 +42,12 @@ from protomotions.simulator.newton.config import NewtonSimParams
 
 from typing import List, Optional, Dict, Union
 from enum import Enum
-from dataclasses import field, dataclass
 import os
 import torch
 
 
 @dataclass
-class SimulatorParams(ConfigBuilder):
+class SimulatorParams:
     isaacgym: IsaacGymSimParams = field(default_factory=IsaacGymSimParams)
     isaaclab: IsaacLabSimParams = field(default_factory=IsaacLabSimParams)
     genesis: GenesisSimParams = field(default_factory=GenesisSimParams)
@@ -56,7 +55,7 @@ class SimulatorParams(ConfigBuilder):
 
 
 @dataclass
-class InitState(ConfigBuilder):
+class InitState:
     """Configuration for robot initial state."""
 
     pos: Optional[List[float]]  # [x, y, z] in meters
@@ -90,7 +89,7 @@ class ControlType(Enum):
 
 
 @dataclass
-class RobotAssetConfig(ConfigBuilder):
+class RobotAssetConfig:
     """Configuration for robot asset properties."""
 
     # Optional fields with defaults
@@ -123,7 +122,7 @@ class RobotAssetConfig(ConfigBuilder):
 
 
 @dataclass
-class ControlConfig(ConfigBuilder):
+class ControlConfig:
     """Configuration for robot control parameters."""
 
     # Control info overrides for specific joints instead of the values from the MJCF asset
@@ -144,6 +143,7 @@ class ControlConfig(ConfigBuilder):
     soft_pos_limit: float = 0.9
 
     # The following field is loaded post-init and populated from the MJCF asset
+    # Note: Using Field(init=False) to exclude from __init__ signature
     control_info: Dict[str, ControlInfo] = field(init=False)
 
     def __post_init__(self):
@@ -167,9 +167,8 @@ class ControlConfig(ConfigBuilder):
                 override_control_info=self.override_control_info,
             )
 
-
 @dataclass
-class RobotConfig(ConfigBuilder):
+class RobotConfig:
     """Configuration for robot morphology and control parameters.
 
     Defines all robot-specific parameters including asset files, body names,
@@ -192,7 +191,7 @@ class RobotConfig(ConfigBuilder):
         )
     """
 
-    # Required nested config
+    # Required nested config (subclasses must override with their own default_factory)
     asset: RobotAssetConfig
 
     common_naming_to_robot_body_names: Dict[str, List[str]] = field(
@@ -213,13 +212,18 @@ class RobotConfig(ConfigBuilder):
     init_state: Optional[InitState] = None
     mimic_small_marker_bodies: Optional[List[str]] = None
 
+    # Anchor body for observations/rewards (None defaults to root body at index 0)
+    anchor_body_name: Optional[str] = None
+
     # Optional with default
     contact_pairs_multiplier: int = 16
     control: ControlConfig = field(default_factory=ControlConfig)
 
     # The following fields are loaded post-init and populated from the MJCF asset
+    # Note: Using Field(init=False) to exclude from __init__ signature
     kinematic_info: KinematicInfo = field(init=False)
     number_of_actions: int = field(init=False)
+    anchor_body_index: int = field(init=False)
 
     # Dictionary of simulator-specific simulation parameters
     simulation_params: SimulatorParams = field(default_factory=SimulatorParams)
@@ -232,6 +236,19 @@ class RobotConfig(ConfigBuilder):
         self.kinematic_info = extract_kinematic_info(
             os.path.join(self.asset.asset_root, self.asset.asset_file_name)
         )
+
+        # Resolve anchor_body_index from anchor_body_name
+        if self.anchor_body_name is None:
+            self.anchor_body_index = 0  # Default to root body
+        else:
+            if self.anchor_body_name not in self.kinematic_info.body_names:
+                raise ValueError(
+                    f"anchor_body_name '{self.anchor_body_name}' not found in body_names: "
+                    f"{self.kinematic_info.body_names}"
+                )
+            self.anchor_body_index = self.kinematic_info.body_names.index(
+                self.anchor_body_name
+            )
 
         # Initialize control info in the control config
         self.control.initialize_control_info(self.asset)

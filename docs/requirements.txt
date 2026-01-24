@@ -3,7 +3,7 @@
 # Used for building documentation without requiring full project installation
 
 sphinx>=7.0
-furo
+nvidia-sphinx-theme
 sphinx-autodoc-typehints
 sphinx-copybutton
 myst-parser

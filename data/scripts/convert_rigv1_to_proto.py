@@ -161,6 +161,7 @@ def create_motion_from_rigv1_data(
         joint_rot_mats=local_rot_mats,
         fps=fps,
         compute_velocities=True,
+        velocity_max_horizon=3,  # Use multi-horizon minimum for noise-filtered velocities
     )
     # caching local rotation to disk file, in case anyone needs it later
     motion.local_rigid_body_rot = matrix_to_quaternion(local_rot_mats, w_last=True)
@@ -262,6 +263,17 @@ def apply_height_augmentation(
         global_translation_diff[:, 2] = global_translation_diff_z
 
         motion_clone.translate(global_translation_diff)
+        
+        # Manually update velocities for time-series translation
+        if motion_clone.rigid_body_vel is not None and motion_clone.fps is not None:
+            vel_delta = torch.zeros(
+                global_translation_diff.shape[0], 1, 3,
+                device=motion_clone.rigid_body_vel.device,
+                dtype=motion_clone.rigid_body_vel.dtype,
+            )
+            vel_delta[:-1] = (global_translation_diff[1:] - global_translation_diff[:-1]).unsqueeze(1) / motion_clone.motion_dt
+            motion_clone.rigid_body_vel = motion_clone.rigid_body_vel + vel_delta
+        
         motion_clone.fix_height()
 
         # Create output filename with augmentation index suffix

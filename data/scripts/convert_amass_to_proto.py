@@ -158,7 +158,7 @@ def convert_amass_to_motion(
         downsample_factor = mocap_fr // largest_divisor
         amass_trans = amass_trans[::downsample_factor]  # (T, 3)
         pose_aa = pose_aa[::downsample_factor]  # (T, N)
-        current_output_fps = output_fps
+        current_output_fps = largest_divisor  # actual achievable FPS
     else:
         current_output_fps = mocap_fr
 
@@ -224,6 +224,7 @@ def convert_amass_to_motion(
         joint_rot_mats=local_rot_mats_rotated,
         fps=current_output_fps,
         compute_velocities=True,
+        velocity_max_horizon=3,  # Use multi-horizon minimum for noise-filtered velocities
     )
 
     pose_quat_rotated = matrix_to_quaternion(local_rot_mats_rotated, w_last=True)
@@ -487,6 +488,12 @@ def main(
 
             mocap_fr = np.round(mocap_fr).astype(int)
 
+            # Skip motions with too few frames (need at least 2 for velocity computation)
+            num_frames = pose_aa.shape[0]
+            if num_frames < 2:
+                print(f"Skipping {filename}: only {num_frames} frame(s), need at least 2")
+                continue
+
             # Check if this motion should be sliced based on YAML configs
             if motion_timings:
                 # Create motion key to match with YAML config
@@ -509,32 +516,13 @@ def main(
                     end_time = timing_config["end"]
 
                     # Slice the motion data
-                    sliced_pose_aa, sliced_amass_trans = slice_motion_data(
+                    pose_aa, amass_trans = slice_motion_data(
                         pose_aa, amass_trans, start_time, end_time, mocap_fr
                     )
-
-                    # Process this segment with original filename
-                    process_motion_segment(
-                        sliced_pose_aa,
-                        sliced_amass_trans,
-                        mocap_fr,
-                        output_fps,
-                        humanoid_type,
-                        joint_names,
-                        mujoco_joint_names,
-                        kinematic_info,
-                        device,
-                        dtype,
-                        outpath,
-                    )
-
-                    # Skip the normal processing since we handled the segment
-                    continue
                 else:
                     print(f"No timing config found for {motion_key}")
-                    continue
 
-            # Process the full motion using the same function
+            # Process the motion (sliced or full)
             process_motion_segment(
                 pose_aa,
                 amass_trans,

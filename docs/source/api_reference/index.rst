@@ -3,6 +3,17 @@ API Reference
 
 This section contains the complete API documentation for ProtoMotions.
 
+.. toctree::
+   :maxdepth: 2
+   :hidden:
+
+   protomotions.agents
+   protomotions.envs
+   protomotions.simulator
+   protomotions.robot_configs
+   protomotions.utils
+   scripts
+
 Agents
 ------
 

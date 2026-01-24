@@ -16,7 +16,7 @@
 import torch
 from tensordict import TensorDict
 from protomotions.utils.hydra_replacement import get_class
-from protomotions.agents.common.common import SequentialModule, MultiOutputModule
+from protomotions.agents.common.common import ModuleContainer
 from protomotions.agents.base_agent.model import BaseModel
 
 # Import for type annotations - using TYPE_CHECKING to avoid circular imports
@@ -33,7 +33,7 @@ class FeedForwardModel(BaseModel):
         super().__init__(config)
         self.config = config
 
-        TrunkClass: SequentialModule = get_class(self.config.trunk._target_)
+        TrunkClass: ModuleContainer = get_class(self.config.trunk._target_)
         self._trunk = TrunkClass(config=self.config.trunk)
 
         # Set TensorDict keys
@@ -79,11 +79,11 @@ class MaskedMimicModel(BaseModel):
 
         # create networks
         EncoderClass = get_class(self.config.encoder._target_)
-        self._encoder: MultiOutputModule = EncoderClass(config=self.config.encoder)
+        self._encoder: ModuleContainer = EncoderClass(config=self.config.encoder)
         PriorClass = get_class(self.config.prior._target_)
-        self._prior: SequentialModule = PriorClass(config=self.config.prior)
+        self._prior: ModuleContainer = PriorClass(config=self.config.prior)
         TrunkClass = get_class(self.config.trunk._target_)
-        self._trunk: SequentialModule = TrunkClass(config=self.config.trunk)
+        self._trunk: ModuleContainer = TrunkClass(config=self.config.trunk)
 
         # Set TensorDict keys (collect from all components)
         # Include vae_noise as an input requirement
@@ -156,6 +156,44 @@ class MaskedMimicModel(BaseModel):
         tensordict["action"] = action
         tensordict["privileged_action"] = privileged_action
         return tensordict
+
+    def forward_inference(self, tensordict: TensorDict) -> TensorDict:
+        """Inference-only forward pass (prior path only, no encoder).
+
+        Use this for ONNX export and deployment. Only computes the action
+        from the prior network, excluding the encoder which is only needed
+        during training.
+
+        Args:
+            tensordict: TensorDict containing prior observations and vae_noise.
+
+        Returns:
+            TensorDict with action only.
+        """
+        # Compute prior outputs
+        tensordict = self._prior(tensordict)
+        prior_mu = tensordict[self._prior.out_keys[0]]
+        prior_logvar = tensordict[self._prior.out_keys[1]]
+
+        # Reparameterization using external noise
+        std = torch.exp(0.5 * prior_logvar)
+        vae_noise = tensordict["vae_noise"]
+        z = self.reparameterization(prior_mu, std, vae_noise)
+        tensordict["vae_latent"] = z
+
+        # Compute action from trunk
+        tensordict = self._trunk(tensordict)
+        action = tensordict[self._trunk.out_keys[0]]
+
+        tensordict["action"] = action
+        return tensordict
+
+    def get_inference_in_keys(self) -> list:
+        """Get input keys needed for inference (prior + trunk only, no encoder)."""
+        trunk_in_keys_without_latents = [
+            key for key in self._trunk.in_keys if key not in ["vae_latent"]
+        ]
+        return list(set(self._prior.in_keys + ["vae_noise"] + trunk_in_keys_without_latents))
 
     def kl_loss(self, tensordict: TensorDict):
         """Compute KL divergence between encoder and prior.

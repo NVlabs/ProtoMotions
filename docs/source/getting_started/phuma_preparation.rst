@@ -149,7 +149,7 @@ What the Script Does:
    - Saves the motion data to the output directory as ``.motion`` files
 
 Step 2: Package the .motion Files into a .pt MotionLib File
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Package the ``.motion`` files into a ``.pt`` MotionLib file:
 

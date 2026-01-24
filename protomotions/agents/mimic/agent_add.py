@@ -17,20 +17,18 @@ import logging
 import torch
 
 from protomotions.agents.amp.agent import AMP
-from protomotions.envs.mimic.env import Mimic
-from protomotions.envs.utils.humanoid import compute_humanoid_max_coords_observations
+from protomotions.envs.obs.humanoid import compute_humanoid_max_coords_observations
 from lightning.fabric import Fabric
 from typing import Optional
 from pathlib import Path
+from protomotions.envs.base_env.env import BaseEnv
 
 log = logging.getLogger(__name__)
 
 
 class MimicADD(AMP):
-    env: Mimic
-
     def __init__(
-        self, fabric: Fabric, env: Mimic, config, root_dir: Optional[Path] = None
+        self, fabric: Fabric, env: BaseEnv, config, root_dir: Optional[Path] = None
     ):
         super().__init__(fabric, env, config, root_dir)
 
@@ -59,12 +57,10 @@ class MimicADD(AMP):
             current_state.rigid_body_pos[:, 0]
         ).clone()
 
+        # ADD uses local_obs=False for tracking diff observations
         local_obs = False
-        root_height_obs = self.env.self_obs_cb.config.max_coords_obs.root_height_obs
-        observe_contacts = self.env.self_obs_cb.config.max_coords_obs.observe_contacts
-        assert (
-            observe_contacts is False
-        ), "ADD does not yet support contact based conditioning"
+        root_height_obs = True
+        observe_contacts = False  # ADD does not yet support contact based conditioning
 
         # Empty contact flags since observe_contacts is False
         empty_contacts = torch.zeros(
@@ -103,8 +99,12 @@ class MimicADD(AMP):
 
     def get_expert_disc_obs(self, num_samples: int):
         expert_disc_obs = super().get_expert_disc_obs(num_samples)
+        if "max_coords_obs" in self.env.observation_manager.observation_history_buffers:
+            obs_dim = self.env.observation_manager.observation_history_buffers["max_coords_obs"].data.shape[-1]
+        else:
+            obs_dim = expert_disc_obs.get("max_coords_obs", expert_disc_obs.get("historical_max_coords_obs", torch.empty(0))).shape[-1] // 8
         tracking_diff_obs = torch.zeros(
-            [num_samples, self.env.self_obs_cb.humanoid_max_coords_obs.shape[-1]],
+            [num_samples, obs_dim],
             device=self.device,
         )
         expert_disc_obs["mimic_target_poses_diff"] = tracking_diff_obs

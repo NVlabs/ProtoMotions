@@ -13,26 +13,48 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-from dataclasses import dataclass
+"""Configuration classes for Lightning Fabric distributed training."""
+
 from typing import Dict, Any, Union, Optional, List
 from omegaconf import DictConfig
-from protomotions.utils.config_builder import ConfigBuilder
+from dataclasses import dataclass, field
 from lightning import fabric
 
 from protomotions.utils.hydra_replacement import instantiate
 
 
 @dataclass
-class FabricConfig(ConfigBuilder):
-    """Configuration for Lightning Fabric"""
+class FabricConfig:
+    """Configuration for Lightning Fabric distributed training."""
 
-    accelerator: str = "gpu"
-    devices: Union[int, str] = 1
-    num_nodes: Union[int, str] = 1
-    strategy: Union[Dict, fabric.strategies.Strategy] = fabric.strategies.DDPStrategy()
-    precision: Union[str, int] = "32-true"
-    loggers: Optional[List[Union[Dict, fabric.loggers.Logger]]] = None
-    callbacks: Optional[List[Union[Dict, Any]]] = None
+    accelerator: str = field(
+        default="gpu",
+        metadata={"help": "Hardware accelerator: 'gpu', 'cpu', 'tpu', 'auto'."}
+    )
+    devices: Union[int, str] = field(
+        default=1,
+        metadata={"help": "Number of devices or 'auto' for all available."}
+    )
+    num_nodes: Union[int, str] = field(
+        default=1,
+        metadata={"help": "Number of nodes for distributed training.", "min": 1}
+    )
+    strategy: Union[Dict, fabric.strategies.Strategy] = field(
+        default_factory=fabric.strategies.DDPStrategy,
+        metadata={"help": "Distributed training strategy (DDP, FSDP, etc)."}
+    )
+    precision: Union[str, int] = field(
+        default="32-true",
+        metadata={"help": "Training precision: '32-true', '16-mixed', 'bf16-mixed'."}
+    )
+    loggers: Optional[List[Union[Dict, fabric.loggers.Logger]]] = field(
+        default=None,
+        metadata={"help": "List of logging backends (WandB, TensorBoard, etc)."}
+    )
+    callbacks: Optional[List[Union[Dict, Any]]] = field(
+        default=None,
+        metadata={"help": "List of training callbacks."}
+    )
 
     def __post_init__(self):
         if self.strategy is not None and (

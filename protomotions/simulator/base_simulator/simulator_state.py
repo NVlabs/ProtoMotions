@@ -495,27 +495,23 @@ class RobotState(BaseBatchedState):
         """
         Translate the robot state by the given translation vector.
         NOTE: this function is in-place, use clone() to make a copy first if needed.
+        
+        Args:
+            translation: Translation vector with shape (3,), (B, 3), or (B, 1, 3)
+                where B is batch_size and must match self.rigid_body_pos.shape[0]
         """
-        need_to_update_body_vel = False
-
         if translation.dim() == 1:
-            translation = translation.unsqueeze(0).unsqueeze(0)  # (1, 1, 3)
+            translation = translation.unsqueeze(0).unsqueeze(0)  # (3,) -> (1, 1, 3)
         elif translation.dim() == 2:
             assert translation.shape[0] == self.rigid_body_pos.shape[0]  # (B, 3)
-            translation = translation.unsqueeze(1)  # (B, 1, 3)
-            if (
-                self.rigid_body_vel is not None and self.fps is not None
-            ):  # meaning first dim B is time
-                need_to_update_body_vel = True
+            translation = translation.unsqueeze(1)  # (B, 3) -> (B, 1, 3)
+        elif translation.dim() == 3:
+            assert translation.shape[0] == self.rigid_body_pos.shape[0]  # (B, 1, 3)
+            assert translation.shape[1] == 1
         else:
             raise ValueError(f"Invalid translation shape: {translation.shape}")
 
         self.rigid_body_pos = self.rigid_body_pos + translation
-
-        if need_to_update_body_vel:
-            vel_delta = torch.zeros_like(translation)  # (B, 1, 3)
-            vel_delta[:-1] = (translation[1:] - translation[:-1]) / self.motion_dt
-            self.rigid_body_vel = self.rigid_body_vel + vel_delta
 
     def fix_height(self, z_up: bool = True, height_offset: float = 0.0):
         """
@@ -536,10 +532,14 @@ class RobotState(BaseBatchedState):
         Fix the height of the robot state per frame so that each frame is above the ground.
         Only translates frames that are below the ground, leaving frames already above ground untouched.
         NOTE: this function is in-place, use clone() to make a copy first if needed.
+        NOTE: For time-series data with velocities, caller should manually update velocities after this call.
 
         Args:
             z_up (bool): Whether Z axis is up (True) or Y axis is up (False). Default is True.
             height_offset (float): Minimum height above ground. Default is 0.0.
+            
+        Returns:
+            translation_vecs: The translation vectors applied to each frame (B, 3)
         """
         axis = 2 if z_up else 1
         body_heights = self.rigid_body_pos[..., axis]  # [batch_size, num_bodies]
@@ -557,6 +557,8 @@ class RobotState(BaseBatchedState):
         translation_vecs[:, axis] = lift_amounts
 
         self.translate(translation_vecs)
+        
+        return translation_vecs
 
     def __post_init__(self):
         if self.rigid_body_pos is not None:
@@ -625,6 +627,24 @@ class RootOnlyState(BaseBatchedState):
                 self._convert_helper_rot(rotations.xyzw_to_wxyz, "root_rot")
         self.state_conversion = StateConversion.SIMULATOR
         return self
+
+    def translate(self, translation: torch.Tensor):
+        """
+        Translate the root state by the given translation vector.
+        NOTE: this function is in-place, use clone() to make a copy first if needed.
+        
+        Args:
+            translation: Translation vector with shape (3,) or (B, 3)
+                where B is batch_size and must match self.root_pos.shape[0]
+        """
+        if translation.dim() == 1:
+            translation = translation.unsqueeze(0)  # (3,) -> (1, 3)
+        elif translation.dim() == 2:
+            assert translation.shape[0] == self.root_pos.shape[0]  # (B, 3)
+        else:
+            raise ValueError(f"Invalid translation shape: {translation.shape}")
+
+        self.root_pos = self.root_pos + translation
 
     def __post_init__(self):
         if self.root_pos is not None:
@@ -711,6 +731,24 @@ class ResetState(BaseBatchedState):
             fps=robot_state.fps,
         )
 
+    def translate(self, translation: torch.Tensor):
+        """
+        Translate the root state by the given translation vector.
+        NOTE: this function is in-place, use clone() to make a copy first if needed.
+        
+        Args:
+            translation: Translation vector with shape (3,) or (B, 3)
+                where B is batch_size and must match self.root_pos.shape[0]
+        """
+        if translation.dim() == 1:
+            translation = translation.unsqueeze(0)  # (3,) -> (1, 3)
+        elif translation.dim() == 2:
+            assert translation.shape[0] == self.root_pos.shape[0]  # (B, 3)
+        else:
+            raise ValueError(f"Invalid translation shape: {translation.shape}")
+
+        self.root_pos = self.root_pos + translation
+
     def __post_init__(self):
         if self.root_pos is not None:
             assert torch.all(
@@ -780,6 +818,28 @@ class ObjectState(BaseBatchedState):
                 self._convert_helper_rot(rotations.xyzw_to_wxyz, "root_rot")
         self.state_conversion = StateConversion.SIMULATOR
         return self
+
+    def translate(self, translation: torch.Tensor):
+        """
+        Translate the object state by the given translation vector.
+        NOTE: this function is in-place, use clone() to make a copy first if needed.
+        
+        Args:
+            translation: Translation vector with shape (3,), (B, 3), or (B, num_objects, 3)
+                where B is batch_size and must match self.root_pos.shape[0]
+        """
+        if translation.dim() == 1:
+            translation = translation.unsqueeze(0).unsqueeze(0)  # (3,) -> (1, 1, 3)
+        elif translation.dim() == 2:
+            assert translation.shape[0] == self.root_pos.shape[0]  # (B, 3)
+            translation = translation.unsqueeze(1)  # (B, 3) -> (B, 1, 3)
+        elif translation.dim() == 3:
+            assert translation.shape[0] == self.root_pos.shape[0]  # (B, num_objects, 3)
+            assert translation.shape[1] == self.root_pos.shape[1]
+        else:
+            raise ValueError(f"Invalid translation shape: {translation.shape}")
+
+        self.root_pos = self.root_pos + translation
 
     def __post_init__(self):
         if self.root_pos is not None:

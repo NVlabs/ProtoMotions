@@ -100,7 +100,7 @@ class MLPWithConcat(TensorDictModuleBase):
         self.mlp = build_mlp(self.config)
 
         self.output_activation = None
-        if self.config.get("output_activation", None) is not None:
+        if self.config.output_activation is not None:
             self.output_activation = get_activation_func(self.config.output_activation)
 
         # Set up TensorDict keys
@@ -123,7 +123,7 @@ class MLPWithConcat(TensorDictModuleBase):
         )
 
         result = apply_module_operations(
-            combined_obs, self.config.module_operations, self.mlp, self.norm
+            combined_obs, self.config.module_operations, normalizer=self.norm, forward_model=self.mlp
         )
 
         outs = result["output"]
@@ -132,7 +132,10 @@ class MLPWithConcat(TensorDictModuleBase):
             outs = self.output_activation(outs)
 
         tensordict[self.config.out_keys[0]] = outs
-        if result["norm_obs"] is not None:
-            tensordict[f"norm_{self.config.in_keys[0]}"] = result["norm_obs"]
+        if self.config.normalize_obs and result["norm_obs"] is not None:
+            norm_obs = result["norm_obs"]
+            # Only store if batch dimension matches (reshape operations may change it)
+            if norm_obs.shape[0] == tensordict.batch_size[0]:
+                tensordict[f"norm_{self.config.in_keys[0]}"] = norm_obs
 
         return tensordict

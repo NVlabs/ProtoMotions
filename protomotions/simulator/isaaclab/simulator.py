@@ -104,6 +104,7 @@ class IsaacLabSimulator(Simulator):
                 gpu_max_rigid_contact_count=self.config.sim.physx.gpu_max_rigid_contact_count,
                 gpu_found_lost_pairs_capacity=self.config.sim.physx.gpu_found_lost_pairs_capacity,
                 gpu_found_lost_aggregate_pairs_capacity=self.config.sim.physx.gpu_found_lost_aggregate_pairs_capacity,
+                gpu_max_rigid_patch_count=self.config.sim.physx.gpu_max_rigid_patch_count,
             ),
         )
         self._simulation_app = simulation_app
@@ -776,12 +777,18 @@ class IsaacLabSimulator(Simulator):
     # Group 5: Control & Computation Methods
     # =====================================================
 
-    def _push_robot(self):
-        vel_w = self._robot.data.root_vel_w
-        self._robot.write_root_velocity_to_sim(
-            vel_w + torch.ones_like(vel_w),
-            env_ids=torch.arange(self.num_envs, device=self.device),
-        )
+    def _apply_root_velocity_impulse(
+        self,
+        linear_velocity: torch.Tensor,
+        angular_velocity: torch.Tensor,
+        env_ids: torch.Tensor,
+    ) -> None:
+        """Apply velocity impulse to robot root by adding to current velocities."""
+        current_vel = self._robot.data.root_vel_w[env_ids]
+        new_vel = current_vel.clone()
+        new_vel[:, :3] += linear_velocity
+        new_vel[:, 3:6] += angular_velocity
+        self._robot.write_root_velocity_to_sim(new_vel, env_ids=env_ids)
 
     # =====================================================
     # Group 6: Rendering & Visualization

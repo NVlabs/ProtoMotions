@@ -10,9 +10,11 @@ Why Domain Randomization?
 Policies trained in simulation often fail when deployed to different physics engines 
 or real hardware due to the "reality gap". Domain randomization addresses this by:
 
-1. **Randomizing physics parameters** during training (friction, mass, etc.)
-2. **Adding noise** to actions and observations
-3. **Forcing the policy** to be robust to parameter variations
+1. **Randomizing physics parameters** (friction, center of mass)
+2. **Adding action noise** (motor imprecision)
+3. **Adding observation noise** (sensor noise)
+4. **Applying external perturbations** (pushes, bumps)
+5. **Forcing the policy** to be robust to parameter variations
 
 Training with Domain Randomization
 ----------------------------------
@@ -34,7 +36,15 @@ Use the ``mlp_domain_rand.py`` experiment config:
 Domain Randomization Parameters
 -------------------------------
 
-The ``mlp_domain_rand.py`` config enables several randomization types:
+ProtoMotions supports several randomization types via ``DomainRandomizationConfig``:
+
+* **Action Noise** — Motor imprecision
+* **Friction** — Ground and body friction coefficients
+* **Center of Mass** — Body mass distribution shifts
+* **Observation Noise** — Sensor noise simulation
+* **Push Perturbations** — External disturbances
+
+The ``mlp_domain_rand.py`` example config demonstrates common settings:
 
 **Action Noise:**
 
@@ -50,12 +60,18 @@ The ``mlp_domain_rand.py`` config enables several randomization types:
 .. code-block:: python
 
    FrictionDomainRandomizationConfig(
-       num_buckets=64,  # Number of friction groups
-       static_friction_range=(0.6, 3.0),
-       dynamic_friction_range=(0.6, 3.0),
-       restitution_range=(0.0, 1.0),
-       body_names=[".*"],  # Apply to all bodies
+      num_buckets=64,  # Number of friction groups
+      static_friction_range=(0.6, 3.0),
+      dynamic_friction_range=(0.6, 3.0),
+      restitution_range=(0.0, 1.0),
+      body_names=[".*"],  # Apply to all bodies
    )
+
+.. note::
+
+   **Default Values:** ProtoMotions assumes a default friction of **1.0** and restitution of 
+   **0.0** for all entities (robot bodies and terrain) when values are not explicitly set. 
+   This ensures consistent behavior across simulators.
 
 .. note::
 
@@ -71,6 +87,38 @@ The ``mlp_domain_rand.py`` config enables several randomization types:
    This approach lets you control the full friction range through robot body randomization 
    while keeping the floor constant.
 
+Automatic Friction Combine Mode Conversion
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Different physics engines use different friction combine modes:
+
+* **IsaacGym (PhysX)**: Only supports ``AVERAGE`` — effective friction is the average 
+  of robot and terrain friction: ``(robot + terrain) / 2``
+* **Newton (MuJoCo)**: Only supports ``MAX`` — effective friction is the maximum of 
+  the two: ``max(robot, terrain)``
+
+ProtoMotions **automatically converts** friction settings when switching simulators. 
+You can configure friction using any combine mode, and the system ensures equivalent 
+effective friction behavior across simulators.
+
+**How it works:**
+
+When running on Newton with an ``AVERAGE`` mode config:
+
+1. Robot shape friction is set to a minimum value (0.01)
+2. Terrain friction is set to the computed effective value
+3. Result: ``max(0.01, effective) = effective`` — matching the intended behavior
+
+When domain randomization is configured:
+
+1. Terrain friction is set to minimum (0.01)
+2. Robot friction randomization range is converted to effective values
+3. Result: ``max(robot_dr_value, 0.01) = robot_dr_value`` — matching intended range
+
+This conversion is transparent — you don't need to change your config for different 
+simulators. The same ``mlp_domain_rand.py`` config works on both IsaacGym and Newton 
+with equivalent friction behavior.
+
 **Center of Mass Randomization:**
 
 .. code-block:: python
@@ -79,6 +127,63 @@ The ``mlp_domain_rand.py`` config enables several randomization types:
        com_range={"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.05, 0.05)},
        body_names=["torso_link"],  # Apply to torso
    )
+
+**Observation Noise:**
+
+Adds Gaussian noise to observations to simulate sensor noise for sim-to-real transfer.
+Noise is applied hierarchically to different state components:
+
+.. code-block:: python
+
+   ObservationNoiseDomainRandomizationConfig(
+       # DOF noise (joint encoders)
+       dof_pos_noise=0.01,       # Joint position noise (radians)
+       dof_vel_noise=0.05,       # Joint velocity noise (rad/s)
+       
+       # Root body noise (IMU)
+       root_rot_noise=0.02,      # Root orientation noise (radians)
+       root_ang_vel_noise=0.1,   # Root angular velocity noise (rad/s)
+       
+       # Anchor body noise (pelvis IMU if different from root)
+       anchor_rot_noise=0.02,
+       anchor_ang_vel_noise=0.1,
+       
+       # Whole-body noise (motion capture noise)
+       rigid_body_pos_noise=0.01,    # Position noise (meters)
+       rigid_body_rot_noise=0.02,    # Rotation noise (radians)
+       rigid_body_vel_noise=0.05,    # Linear velocity noise (m/s)
+       rigid_body_ang_vel_noise=0.1, # Angular velocity noise (rad/s)
+       
+       # Environment noise
+       ground_height_noise=0.02,     # Terrain height estimation noise
+   )
+
+When observation noise is configured, the environment provides both clean and noisy 
+versions of state variables in the context. Observation components can request noisy 
+inputs (for actor) or clean inputs (for critic) via the ``observation_noise`` parameter:
+
+.. code-block:: python
+
+   # Noisy observations for actor (helps sim-to-real transfer)
+   "noisy_obs": reduced_coords_obs_factory(observation_noise=True),
+   
+   # Clean observations for critic (asymmetric actor-critic)
+   "clean_obs": reduced_coords_obs_factory(observation_noise=False),
+
+**Push/Perturbation Randomization:**
+
+Applies random velocity impulses to simulate external disturbances (bumps, pushes):
+
+.. code-block:: python
+
+   PushDomainRandomizationConfig(
+       push_interval_range=(1.0, 3.0),         # Seconds between pushes
+       max_linear_velocity=(0.5, 0.5, 0.0),    # Max push velocity (x, y, z) m/s
+       max_angular_velocity=(0.0, 0.0, 0.3),   # Max angular impulse (rad/s)
+   )
+
+This helps policies learn to recover from unexpected perturbations, improving 
+robustness on real hardware where the robot may be bumped or jostled.
 
 Sim2Sim Testing
 ---------------

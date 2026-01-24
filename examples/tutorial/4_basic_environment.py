@@ -60,7 +60,7 @@ AppLauncher = import_simulator_before_torch(args.simulator)
 from protomotions.simulator.base_simulator.config import SimulatorConfig  # noqa: E402
 from protomotions.envs.base_env.env import BaseEnv  # noqa: E402
 from protomotions.envs.base_env.config import EnvConfig  # noqa: E402
-from protomotions.envs.obs.config import HumanoidObsConfig, MaxCoordsSelfObsConfig  # noqa: E402
+from protomotions.envs.obs import max_coords_obs_factory  # noqa: E402
 from protomotions.components.terrains.config import TerrainConfig  # noqa: E402
 from protomotions.utils.hydra_replacement import get_class  # noqa: E402
 import torch  # noqa: E402
@@ -142,16 +142,10 @@ scene = Scene(objects=[chair], humanoid_motion_id=0)
 
 env_config = EnvConfig(
     max_episode_length=1000,
-    # Uses default initialization automatically (no motion_lib provided)
-    humanoid_obs=HumanoidObsConfig(
-        max_coords_obs=MaxCoordsSelfObsConfig(
-            enabled=True,
-            num_historical_steps=1,
-            local_obs=True,
-            root_height_obs=True,
-            observe_contacts=False,
-        ),
-    ),
+    # Modular observation components (new pattern)
+    observation_components={
+        "max_coords_obs": max_coords_obs_factory(),
+    },
 )
 
 # Create terrain with complex configuration
@@ -277,7 +271,7 @@ finally:
 print("\n=== Tutorial Summary ===")
 print("This tutorial demonstrated:")
 print(
-    "1. How to configure BaseEnv with EnvConfig, HumanoidObsConfig, and terrain config"
+    "1. How to configure BaseEnv with EnvConfig and modular observation_components"
 )
 print("2. How BaseEnv automatically creates terrain and scene based on configuration")
 print("3. How to access robot state through env.simulator")

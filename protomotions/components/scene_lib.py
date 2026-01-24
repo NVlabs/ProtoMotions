@@ -25,7 +25,6 @@ motion-controlled objects, and complex multi-object scenes.
 import logging
 import random
 import copy
-from dataclasses import dataclass, field, MISSING
 from typing import List, Optional, Tuple, Dict, Union
 from protomotions.utils import rotations
 import torch
@@ -33,7 +32,7 @@ import numpy as np
 import trimesh
 import os
 from enum import Enum
-from protomotions.utils.config_builder import ConfigBuilder
+from dataclasses import dataclass, field
 from protomotions.utils.motion_interpolation_utils import calc_frame_blend
 from protomotions.utils.mesh_utils import (
     as_mesh,
@@ -58,7 +57,7 @@ class ObjectOptions:
     Contains options for configuring object properties in the simulator.
     """
 
-    fix_base_link: bool = field(default=MISSING)
+    fix_base_link: bool = field(default=None)
     vhacd_enabled: bool = None
     vhacd_params: Dict = field(
         default_factory=lambda: {
@@ -119,13 +118,13 @@ class SceneObject:
         List[Tuple[float, float, float]],
         np.ndarray,
         torch.Tensor,
-    ] = field(default=MISSING)
+    ] = field(default=None)
     rotation: Union[
         Tuple[float, float, float, float],
         List[Tuple[float, float, float, float]],
         np.ndarray,
         torch.Tensor,
-    ] = field(default=MISSING)
+    ] = field(default=None)
     options: ObjectOptions = field(default_factory=ObjectOptions)
     fps: Optional[float] = None
 
@@ -928,7 +927,7 @@ class SubsetMethod(Enum):
 
 
 @dataclass
-class SceneLibConfig(ConfigBuilder):
+class SceneLibConfig:
     """Configuration for scene library - static parameters only.
 
     Runtime parameters (num_envs, terrain, scene_weights) are passed to SceneLib constructor.
@@ -938,11 +937,26 @@ class SceneLibConfig(ConfigBuilder):
     """
 
     _target_: str = "protomotions.components.scene_lib.SceneLib"
-    scene_file: str = None  # Renamed from 'file'
-    subset_method: Union[SubsetMethod, List[int]] = SubsetMethod.FIRST
-    replicate_method: ReplicationMethod = ReplicationMethod.WEIGHTED
-    pointcloud_samples_per_object: Optional[int] = None
-    num_objects_per_env: int = None
+    scene_file: str = field(
+        default=None,
+        metadata={"help": "Path to scene file (.pt) to load. None for programmatic scenes."}
+    )
+    subset_method: Union[SubsetMethod, List[int]] = field(
+        default=SubsetMethod.FIRST,
+        metadata={"help": "Method for subsetting scenes: 'first', 'random', 'sequential', or list of indices."}
+    )
+    replicate_method: ReplicationMethod = field(
+        default=ReplicationMethod.WEIGHTED,
+        metadata={"help": "Method for replicating scenes: 'first', 'weighted', 'random', 'sequential'."}
+    )
+    pointcloud_samples_per_object: Optional[int] = field(
+        default=None,
+        metadata={"help": "Number of pointcloud samples per object for observations. None to disable."}
+    )
+    num_objects_per_env: int = field(
+        default=None,
+        metadata={"help": "Number of objects per environment. Must match scene data."}
+    )
 
 
 class SceneLib:

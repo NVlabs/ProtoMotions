@@ -208,6 +208,7 @@ class SMPLXRobotConfig(RobotConfig):
                     num_position_iterations=4,
                     num_velocity_iterations=4,
                     max_depenetration_velocity=1,
+                    gpu_max_rigid_patch_count=5 * 2**17
                 ),
             ),
             genesis=GenesisSimParams(

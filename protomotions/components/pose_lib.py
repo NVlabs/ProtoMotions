@@ -62,7 +62,7 @@ from dm_control import mjcf
 import logging
 import sys
 from typing import Dict, Tuple, Optional, List
-from protomotions.utils.config_builder import ConfigBuilder
+from dataclasses import dataclass, field
 import re
 
 import mujoco
@@ -80,8 +80,6 @@ from protomotions.utils.rotations import (
     angle_from_matrix_axis,
 )
 
-from dataclasses import dataclass
-
 from protomotions.simulator.base_simulator.simulator_state import (
     RobotState,
     StateConversion,
@@ -89,7 +87,7 @@ from protomotions.simulator.base_simulator.simulator_state import (
 
 
 @dataclass
-class KinematicInfo(ConfigBuilder):
+class KinematicInfo:
     """Stores kinematic information extracted from an MJCF model.
 
     Contains structural data about the robot including body hierarchy, joint limits,
@@ -112,21 +110,183 @@ class KinematicInfo(ConfigBuilder):
     dof_limits_lower: torch.Tensor  # Lower joint limits for all DOFs
     dof_limits_upper: torch.Tensor  # Upper joint limits for all DOFs
 
+    def to(self, device: torch.device, dtype: torch.dtype = None):
+        """Move all tensors to the specified device."""
+        kwargs = {"device": device}
+        if dtype is not None:
+            kwargs["dtype"] = dtype
+        self.local_pos = self.local_pos.to(**kwargs)
+        self.local_rot_ref_mat = self.local_rot_ref_mat.to(**kwargs)
+        self.dof_limits_lower = self.dof_limits_lower.to(**kwargs)
+        self.dof_limits_upper = self.dof_limits_upper.to(**kwargs)
+        self.hinge_axes_map = {k: v.to(**kwargs) for k, v in self.hinge_axes_map.items()}
+        return self
+
 
 @dataclass
-class ControlInfo(ConfigBuilder):
+class ControlInfo:
     """Stores control information extracted from an MJCF model.
 
     Contains PD control parameters and joint limits for a single degree of freedom.
     All values are extracted from the MJCF file's actuator and joint definitions.
     """
 
-    stiffness: Optional[float] = None
-    damping: Optional[float] = None
-    armature: Optional[float] = None
-    friction: Optional[float] = None
-    effort_limit: Optional[float] = None
-    velocity_limit: Optional[float] = None
+    stiffness: Optional[float] = field(default=None)
+    damping: Optional[float] = field(default=None)
+    armature: Optional[float] = field(default=None)
+    friction: Optional[float] = field(default=None)
+    effort_limit: Optional[float] = field(default=None)
+    velocity_limit: Optional[float] = field(default=None)
+
+
+def compute_joint_loss_weights(
+    kinematic_info: KinematicInfo,
+    discount: float = 0.9,
+    min_weight: float = 0.01,
+) -> torch.Tensor:
+    """Compute per-joint loss weights based on kinematic chain importance.
+    
+    Joints near the root get higher weights because their angular errors propagate
+    to all descendant bodies, causing large positional errors at extremities.
+    Based on "Total Descendants Length" heuristic from:
+    https://theorangeduck.com/page/joint-error-propagation
+    
+    Args:
+        kinematic_info: KinematicInfo with parent_indices, local_pos, hinge_axes_map
+        discount: Decay factor for descendant contributions (0.9 typical).
+                  Lower values bias toward uniform weighting.
+        min_weight: Minimum weight for leaf joints (end effectors).
+    
+    Returns:
+        Tensor of shape [num_joints] with normalized weights summing to num_joints.
+        Caller should expand based on their representation:
+        - For 6D rotation: weights.repeat_interleave(6)
+        - For raw DOF: weights.repeat_interleave(dofs_per_joint)
+    
+    Example:
+        >>> weights = compute_joint_loss_weights(robot_config.kinematic_info)
+        >>> weights_6d = weights.repeat_interleave(6)  # For 6D representation
+        >>> weighted_loss = ((pred - target) ** 2 * weights_6d).mean()
+    """
+    parent_indices = kinematic_info.parent_indices
+    local_pos = kinematic_info.local_pos  # [num_bodies, 3]
+    hinge_axes_map = kinematic_info.hinge_axes_map
+    num_bodies = kinematic_info.num_bodies
+    
+    # Compute bone lengths: ||local_pos|| for each body
+    bone_lengths = local_pos.norm(dim=-1).cpu()  # [num_bodies]
+    
+    # Compute total descendant length for each body using dynamic programming
+    # Iterate backwards through hierarchy (children before parents)
+    body_weights = torch.full((num_bodies,), min_weight)
+    
+    for i in range(num_bodies - 1, -1, -1):
+        parent_idx = parent_indices[i]
+        if parent_idx != -1:
+            # Add this body's contribution to parent (discounted)
+            body_weights[parent_idx] += discount * (bone_lengths[i] + body_weights[i])
+    
+    # Extract weights for bodies that have DOFs (joints)
+    joint_weights = []
+    for body_idx in range(num_bodies):
+        if body_idx in hinge_axes_map:
+            joint_weights.append(body_weights[body_idx].item())
+    
+    weights = torch.tensor(joint_weights, dtype=torch.float32)
+    
+    # Normalize so weights sum to num_joints (mean weighted loss ≈ mean uniform loss)
+    weights = weights / weights.sum() * len(weights)
+    
+    return weights
+
+
+def compute_body_density_weights(
+    kinematic_info: KinematicInfo,
+    discount: float = 0.9,
+) -> torch.Tensor:
+    """Compute per-body weights based on kinematic chain density.
+    
+    Bodies surrounded by many nearby bodies (in kinematic chain distance) get
+    lower weights. This prevents clustered bodies (e.g., finger chains) from
+    over-representing their region in mean reward calculations.
+    
+    Algorithm:
+    1. Compute pairwise chain distances (sum of bone lengths along tree path)
+    2. For each body i: density_i = sum_{j != i}(discount^chain_distance_ij)
+    3. weight_i = 1 / density_i
+    4. Normalize so weights sum to num_bodies
+    
+    Args:
+        kinematic_info: KinematicInfo with parent_indices and local_pos
+        discount: Per-unit-length discount factor (0.9 typical).
+                  Lower values make distant bodies contribute less to density.
+    
+    Returns:
+        Tensor of shape [num_bodies] with normalized weights summing to num_bodies.
+    """
+    parent_indices = kinematic_info.parent_indices
+    local_pos = kinematic_info.local_pos
+    num_bodies = kinematic_info.num_bodies
+    
+    bone_lengths = local_pos.norm(dim=-1).cpu()
+    
+    # Build path-to-root for each body for LCA computation
+    paths_to_root = []
+    for i in range(num_bodies):
+        path = []
+        current = i
+        cumulative_dist = 0.0
+        while current != -1:
+            path.append((current, cumulative_dist))
+            parent = parent_indices[current]
+            if parent != -1:
+                cumulative_dist += bone_lengths[current].item()
+            current = parent
+        paths_to_root.append(path)
+    
+    ancestor_dists = []
+    for path in paths_to_root:
+        ancestor_dists.append({body_idx: dist for body_idx, dist in path})
+    
+    # Compute pairwise chain distances: dist(i,j) = dist(i,LCA) + dist(j,LCA)
+    chain_distances = torch.zeros(num_bodies, num_bodies)
+    for i in range(num_bodies):
+        for j in range(i + 1, num_bodies):
+            i_ancestors = ancestor_dists[i]
+            j_ancestors = ancestor_dists[j]
+            
+            # Find LCA
+            lca = -1
+            lca_dist_i = 0.0
+            for ancestor, dist_i in paths_to_root[i]:
+                if ancestor in j_ancestors:
+                    lca = ancestor
+                    lca_dist_i = dist_i
+                    break
+            
+            if lca != -1:
+                lca_dist_j = j_ancestors[lca]
+                chain_dist = lca_dist_i + lca_dist_j
+            else:
+                # Should not happen in a connected tree
+                chain_dist = float('inf')
+            
+            chain_distances[i, j] = chain_dist
+            chain_distances[j, i] = chain_dist
+    
+    # Compute density for each body (excluding self)
+    # density_i = sum_{j != i}(discount^chain_distance_ij)
+    discounted = torch.pow(discount, chain_distances)
+    discounted.fill_diagonal_(0.0)  # Exclude self-contribution
+    densities = discounted.sum(dim=1)
+    
+    # Weight = 1 / density
+    weights = 1.0 / densities
+    
+    # Normalize so weights sum to num_bodies
+    weights = weights / weights.sum() * num_bodies
+    
+    return weights
 
 
 def build_body_ids_tensor(
@@ -436,7 +596,6 @@ def extract_control_info(
 # --- Helper: Extract Transforms from qpos ---
 
 
-@torch.jit.script
 def extract_transforms_from_qpos_non_root_ignore_fixed_helper(
     hinge_axes_map: Dict[int, torch.Tensor],
     qpos_non_root: torch.Tensor,
@@ -457,7 +616,7 @@ def extract_transforms_from_qpos_non_root_ignore_fixed_helper(
 
     joint_rot_mats = (
         torch.eye(3, device=device, dtype=dtype)
-        .reshape(1, 1, 3, 3)
+        .view(1, 1, 3, 3)
         .expand(B, num_movable_bodies, 3, 3)
         .clone()
     )
@@ -884,44 +1043,104 @@ def compute_joint_rot_mats_from_global_mats(
 def compute_cartesian_velocity(
     batched_robot_pos: torch.Tensor,
     fps: int,
+    velocity_max_horizon: int = 1,
 ) -> torch.Tensor:
     """
-    Computes Cartesian velocity by taking the gradient along the time dimension (dim 0).
+    Computes Cartesian velocity from position data over time.
+
+    When velocity_max_horizon=1, uses simple forward difference (original behavior).
+    When velocity_max_horizon>1, uses multi-horizon minimum to filter noise: computes
+    velocity over horizons 1 to velocity_max_horizon and selects the one with minimum
+    magnitude for each frame/body. This filters out spurious high velocities
+    caused by noise/errors while preserving genuine fast motion.
+
+    The intuition: noise spikes don't persist across multiple time horizons,
+    but genuine motion does. A 2-3cm mocap error at 30fps creates ~1m/s velocity
+    over 1 frame, but only ~0.3m/s over 3 frames.
 
     Args:
-        batched_robot_pos (B, Nb, 3): batched robot positions, where B is the time dimension.
+        batched_robot_pos (T, Nb, 3): Robot positions over time.
         fps (int): Frames per second.
+        velocity_max_horizon (int): Maximum number of frames to look ahead for
+                          numerical velocity computation (default: 1).
+                          Use 3 for noise filtering, 1 for original behavior.
 
     Returns:
-        torch.Tensor (B, Nb, 3): Cartesian velocities.
+        torch.Tensor (T, Nb, 3): Cartesian velocities.
     """
-    if batched_robot_pos.shape[0] < 2:  # Need at least 2 frames to compute velocity
+    T = batched_robot_pos.shape[0]
+    if T < 2:
         return torch.zeros_like(batched_robot_pos)
 
-    # Compute gradient along the time axis (dim=0)
-    # torch.gradient returns a list of tensors, one for each dimension gradient is computed over
-    pos_grad = torch.gradient(batched_robot_pos, dim=0)[0]
-    velocity = pos_grad / (1.0 / fps)
+    # Compute velocities for each horizon
+    velocities = []
+    for horizon in range(1, velocity_max_horizon + 1):
+        dt = horizon / fps
+        vel = torch.zeros_like(batched_robot_pos)
 
-    return velocity
+        if T > horizon:
+            # Forward difference for frames that have enough lookahead
+            vel[:-horizon] = (batched_robot_pos[horizon:] - batched_robot_pos[:-horizon]) / dt
+            # For last 'horizon' frames, use the last valid velocity
+            vel[-horizon:] = vel[-horizon - 1].unsqueeze(0).expand(horizon, -1, -1)
+        else:
+            # Not enough frames for this horizon, use simple forward diff
+            vel[:-1] = (batched_robot_pos[1:] - batched_robot_pos[:-1]) * fps
+            vel[-1] = vel[-2]
+
+        velocities.append(vel)
+
+    # If only one horizon, return directly (original behavior)
+    if velocity_max_horizon == 1:
+        return velocities[0]
+
+    # Stack velocities: (velocity_max_horizon, T, Nb, 3)
+    velocities_stacked = torch.stack(velocities, dim=0)
+
+    # Compute magnitudes: (velocity_max_horizon, T, Nb)
+    magnitudes = torch.norm(velocities_stacked, dim=-1)
+
+    # Find which horizon has minimum magnitude for each (frame, body)
+    min_indices = magnitudes.argmin(dim=0)  # (T, Nb)
+
+    # Gather the velocity vectors with minimum magnitude
+    min_indices_expanded = min_indices.unsqueeze(-1).expand(-1, -1, 3)
+
+    # Rearrange for gather: (velocity_max_horizon, T, Nb, 3) -> (T, Nb, 3, velocity_max_horizon)
+    velocities_for_gather = velocities_stacked.permute(1, 2, 3, 0)
+
+    # Gather minimum velocity for each component
+    result = torch.gather(velocities_for_gather, dim=-1, index=min_indices_expanded.unsqueeze(-1))
+    result = result.squeeze(-1)  # (T, Nb, 3)
+
+    return result
 
 
 def compute_angular_velocity(
     batched_robot_rot_mats: torch.Tensor,
     fps: int,
+    velocity_max_horizon: int = 1,
 ) -> torch.Tensor:
     """
-    Computes angular velocity from batched rotation matrices using quaternion differentiation.
+    Computes angular velocity from rotation matrices over time.
+
+    When velocity_max_horizon=1, uses simple quaternion differentiation (original behavior).
+    When velocity_max_horizon>1, uses multi-horizon minimum to filter noise: computes
+    angular velocity over horizons 1 to velocity_max_horizon and selects the one with
+    minimum magnitude for each frame/body.
 
     Args:
-        batched_robot_rot_mats (B, Nb, 3, 3): batched rotation matrices, B is time dimension.
+        batched_robot_rot_mats (T, Nb, 3, 3): Rotation matrices over time.
         fps (int): Frames per second.
+        velocity_max_horizon (int): Maximum number of frames to look ahead for
+                          numerical velocity computation (default: 1).
+                          Use 3 for noise filtering, 1 for original behavior.
 
     Returns:
-        torch.Tensor (B, Nb, 3): Angular velocities (axis * angle / dt).
+        torch.Tensor (T, Nb, 3): Angular velocities (axis * angle / dt).
     """
-    if batched_robot_rot_mats.shape[0] < 2:
-        # Return zero velocity if less than 2 frames
+    T = batched_robot_rot_mats.shape[0]
+    if T < 2:
         vel_shape = batched_robot_rot_mats.shape[:-2] + (3,)
         return torch.zeros(
             vel_shape,
@@ -929,28 +1148,69 @@ def compute_angular_velocity(
             dtype=batched_robot_rot_mats.dtype,
         )
 
-    # Convert matrices to quaternions (use consistent w_last convention)
+    device = batched_robot_rot_mats.device
+    dtype = batched_robot_rot_mats.dtype
+
+    # Convert to quaternions once
     batched_robot_quats = matrix_to_quaternion(batched_robot_rot_mats, w_last=True)
 
-    # Calculate difference quaternion between consecutive frames
-    # q_diff = q_{t+1} * q_t^{-1}
-    quat_t = batched_robot_quats[:-1]
-    quat_t_plus_1 = batched_robot_quats[1:]
-    quat_t_inv = quat_conjugate(quat_t, w_last=True)
-    diff_quat = quat_mul_norm(quat_t_plus_1, quat_t_inv, w_last=True)
+    # Compute angular velocities for each horizon
+    angular_velocities = []
+    for horizon in range(1, velocity_max_horizon + 1):
+        dt = horizon / fps
+        ang_vel = torch.zeros(
+            batched_robot_rot_mats.shape[:-2] + (3,),
+            device=device,
+            dtype=dtype,
+        )
 
-    # Pad the difference quaternion array to match the original time dimension length
-    # Use identity rotation for the first frame's difference
-    identity_quat = quat_identity_like(diff_quat[0:1], w_last=True)
-    diff_quat_padded = torch.cat([identity_quat, diff_quat], dim=0)
+        if T > horizon:
+            # Get quaternions at t and t+horizon
+            quat_t = batched_robot_quats[:-horizon]
+            quat_t_plus_h = batched_robot_quats[horizon:]
 
-    # Extract angle and axis from the difference quaternions
-    diff_angle, diff_axis = quat_angle_axis(diff_quat_padded, w_last=True)
+            # Compute difference quaternion: q_diff = q_{t+h} * q_t^{-1}
+            quat_t_inv = quat_conjugate(quat_t, w_last=True)
+            diff_quat = quat_mul_norm(quat_t_plus_h, quat_t_inv, w_last=True)
 
-    # Calculate angular velocity: axis * angle / dt
-    angular_velocity = diff_axis * diff_angle.unsqueeze(-1) / (1.0 / fps)
+            # Extract angle and axis
+            diff_angle, diff_axis = quat_angle_axis(diff_quat, w_last=True)
 
-    return angular_velocity
+            # Angular velocity = axis * angle / dt
+            ang_vel_valid = diff_axis * diff_angle.unsqueeze(-1) / dt
+
+            # Assign to output (first frame gets zero, rest get computed values)
+            ang_vel[1 : T - horizon + 1] = ang_vel_valid
+            # For last 'horizon-1' frames (if horizon > 1), repeat last valid
+            if horizon > 1 and T > horizon:
+                ang_vel[T - horizon + 1 :] = ang_vel_valid[-1:].expand(horizon - 1, -1, -1)
+
+        angular_velocities.append(ang_vel)
+
+    # If only one horizon, return directly (original behavior)
+    if velocity_max_horizon == 1:
+        return angular_velocities[0]
+
+    # Stack angular velocities: (velocity_max_horizon, T, Nb, 3)
+    angular_velocities_stacked = torch.stack(angular_velocities, dim=0)
+
+    # Compute magnitudes: (velocity_max_horizon, T, Nb)
+    magnitudes = torch.norm(angular_velocities_stacked, dim=-1)
+
+    # Find which horizon has minimum magnitude for each (frame, body)
+    min_indices = magnitudes.argmin(dim=0)  # (T, Nb)
+
+    # Gather the angular velocity vectors with minimum magnitude
+    min_indices_expanded = min_indices.unsqueeze(-1).expand(-1, -1, 3)
+
+    # Rearrange for gather: (velocity_max_horizon, T, Nb, 3) -> (T, Nb, 3, velocity_max_horizon)
+    ang_vel_for_gather = angular_velocities_stacked.permute(1, 2, 3, 0)
+
+    # Gather minimum angular velocity for each component
+    result = torch.gather(ang_vel_for_gather, dim=-1, index=min_indices_expanded.unsqueeze(-1))
+    result = result.squeeze(-1)  # (T, Nb, 3)
+
+    return result
 
 
 # --- Main FK Functions ---
@@ -960,14 +1220,24 @@ def compute_kinematics_velocities(
     batched_robot_pos: torch.Tensor,
     batched_robot_rot_mats: torch.Tensor,
     fps: int,
+    velocity_max_horizon: int = 3,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Compute linear and angular velocities from poses over time.
 
-    """
-    lin_vel = compute_cartesian_velocity(batched_robot_pos, fps)
+    Args:
+        batched_robot_pos (T, Nb, 3): Robot positions over time.
+        batched_robot_rot_mats (T, Nb, 3, 3): Rotation matrices over time.
+        fps (int): Frames per second.
+        velocity_max_horizon (int): Maximum horizon for numerical velocity
+                          computation (default: 3). Use 1 for simple finite
+                          difference, 3 for noise filtering.
 
-    ang_vel = compute_angular_velocity(batched_robot_rot_mats, fps)
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]: Linear and angular velocities.
+    """
+    lin_vel = compute_cartesian_velocity(batched_robot_pos, fps, velocity_max_horizon)
+    ang_vel = compute_angular_velocity(batched_robot_rot_mats, fps, velocity_max_horizon)
 
     return lin_vel, ang_vel
 
@@ -977,6 +1247,7 @@ def fk_batch_mjcf_with_velocities(
     qpos: torch.Tensor,
     fps: Optional[int] = None,
     compute_velocities: bool = True,
+    velocity_max_horizon: int = 3,
 ) -> RobotState:
     """
     Performs batched forward kinematics with velocities using PyTorch.
@@ -987,6 +1258,9 @@ def fk_batch_mjcf_with_velocities(
               (root pos, root quat WXYZ, hinge angles...)
         fps: Frames per second.
         compute_velocities: Whether to compute velocities.
+        velocity_max_horizon: Maximum horizon for numerical velocity computation
+                    (default: 3). Use 1 for simple finite difference, 3 for
+                    noise filtering.
 
     Returns:
 
@@ -1002,7 +1276,7 @@ def fk_batch_mjcf_with_velocities(
     root_pos, joint_rot_mats = extract_transforms_from_qpos(kinematic_info, qpos)
 
     return fk_from_transforms_with_velocities(
-        kinematic_info, root_pos, joint_rot_mats, fps, compute_velocities
+        kinematic_info, root_pos, joint_rot_mats, fps, compute_velocities, velocity_max_horizon
     )
 
 
@@ -1012,6 +1286,7 @@ def fk_from_transforms_with_velocities(
     joint_rot_mats: torch.Tensor,
     fps: Optional[int] = None,
     compute_velocities: bool = True,
+    velocity_max_horizon: int = 3,
 ) -> RobotState:
     """
     Performs forward kinematics with velocities from root position and joint rotations.
@@ -1022,6 +1297,9 @@ def fk_from_transforms_with_velocities(
         joint_rot_mats (B, Nb, 3, 3): Rotation matrices for each body.
         fps: Frames per second.
         compute_velocities: Whether to compute velocities.
+        velocity_max_horizon: Maximum horizon for numerical velocity computation
+                    (default: 3). Use 1 for simple finite difference, 3 for
+                    noise filtering.
 
     Returns:
 
@@ -1054,7 +1332,9 @@ def fk_from_transforms_with_velocities(
     # vels do not care about w_last convention
     if compute_velocities and root_pos.shape[0] > 1:
         assert fps is not None, "fps is required when compute_velocities is True"
-        lin_vel, ang_vel = compute_kinematics_velocities(world_pos, world_rot_mat, fps)
+        lin_vel, ang_vel = compute_kinematics_velocities(
+            world_pos, world_rot_mat, fps, velocity_max_horizon
+        )
         result.rigid_body_vel = lin_vel
         result.rigid_body_ang_vel = ang_vel
 

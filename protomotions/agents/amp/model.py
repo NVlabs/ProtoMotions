@@ -31,19 +31,20 @@ from tensordict.nn import TensorDictModuleBase
 from protomotions.utils.hydra_replacement import get_class
 from protomotions.agents.ppo.model import PPOModel
 from protomotions.agents.amp.config import DiscriminatorConfig, AMPModelConfig
+from protomotions.agents.common.common import ModuleContainer
 
 
 class Discriminator(TensorDictModuleBase):
     """Discriminator network for AMP style rewards.
 
     Binary classifier that distinguishes between agent-generated and reference motion data.
-    Uses SequentialModule structure - just chains modules together.
+    Uses ModuleContainer structure - just chains models together.
 
     Args:
-        config: DiscriminatorConfig (extends SequentialModuleConfig).
+        config: DiscriminatorConfig (extends ModuleContainerConfig).
 
     Attributes:
-        sequential_models: Sequential list of modules.
+        models: ModuleContainer list of modules.
         in_keys: Input keys from config.
         out_keys: Output keys from config.
     """
@@ -55,11 +56,11 @@ class Discriminator(TensorDictModuleBase):
         self.config = config
 
         # Build sequential modules
-        sequential_models = []
-        for input_model in config.input_models:
+        models = []
+        for input_model in config.models:
             model = get_class(input_model._target_)(config=input_model)
-            sequential_models.append(model)
-        self.sequential_models = nn.ModuleList(sequential_models)
+            models.append(model)
+        self.models = nn.ModuleList(models)
 
         # Set TensorDict keys from config
         self.in_keys = self.config.in_keys
@@ -75,7 +76,7 @@ class Discriminator(TensorDictModuleBase):
             TensorDict with discriminator output added.
         """
         # Chain through all modules
-        for model in self.sequential_models:
+        for model in self.models:
             tensordict = model(tensordict)
         return tensordict
 
@@ -104,7 +105,7 @@ class Discriminator(TensorDictModuleBase):
         Returns:
             List of weight parameters from all linear layers in discriminator.
         """
-        weights: list[nn.Parameter] = []
+        weights: List[nn.Parameter] = []
         for mod in self.modules():
             if hasattr(mod, "weight") and isinstance(mod.weight, nn.Parameter):
                 weights.append(mod.weight)
@@ -116,24 +117,25 @@ class Discriminator(TensorDictModuleBase):
         Returns:
             List containing the output layer weight parameter.
         """
-        last_module = self.sequential_models[-1]
+        last_module = self.models[-1]
         if hasattr(last_module, "mlp"):
             last_module = last_module.mlp[-1]
         return [last_module.weight]
 
 
 class AMPModel(PPOModel):
-    """AMP model with actor, critic, and discriminator networks.
+    """AMP model with actor, task critic, disc critic, and discriminator networks.
 
-    Extends PPOModel by adding a discriminator network that provides style rewards.
-    The complete model includes policy, value function, and style discriminator.
+    Extends PPOModel by adding a discriminator network that provides style rewards
+    and a separate critic for estimating discriminator reward values.
 
     Args:
-        config: AMPModelConfig specifying all three networks.
+        config: AMPModelConfig specifying all networks.
 
     Attributes:
         _actor: Policy network.
-        _critic: Value network.
+        _critic: Task value network.
+        _disc_critic: Discriminator reward value network.
         _discriminator: Style discriminator network.
     """
 
@@ -145,10 +147,11 @@ class AMPModel(PPOModel):
         self._discriminator: Discriminator = DiscriminatorClass(
             config=self.config.discriminator
         )
+        DiscCriticClass = get_class(self.config.disc_critic._target_)
+        self._disc_critic: ModuleContainer = DiscCriticClass(config=self.config.disc_critic)
 
-        # Set in_keys from actor (actor inherits from mu model)
-        discriminator_in_keys = self._discriminator.in_keys
-        discriminator_out_keys = self._discriminator.out_keys
+        discriminator_in_keys = list(set(self._discriminator.in_keys + self._disc_critic.in_keys))
+        discriminator_out_keys = list(set(self._discriminator.out_keys + self._disc_critic.out_keys))
         for key in discriminator_out_keys:
             assert (
                 key in self.config.out_keys
@@ -171,4 +174,5 @@ class AMPModel(PPOModel):
 
         # Discriminator forward: adds discriminator output
         tensordict = self._discriminator(tensordict)
+        tensordict = self._disc_critic(tensordict)
         return tensordict

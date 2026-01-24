@@ -33,6 +33,9 @@ def apply_all_inference_overrides(
     simulator_config: SimulatorConfig,
     env_config: EnvConfig,
     agent_config,
+    terrain_config,
+    motion_lib_config,
+    scene_lib_config,
     experiment_module=None,
     args=None,
 ) -> None:
@@ -65,7 +68,7 @@ def apply_all_inference_overrides(
                     "Applying experiment inference overrides from apply_inference_overrides()"
                 )
                 apply_inference_overrides_fn(
-                    robot_config, simulator_config, env_config, agent_config, args
+                    robot_config, simulator_config, env_config, agent_config, terrain_config, motion_lib_config, scene_lib_config, args
                 )
             except Exception as e:
                 log.warning(f"Failed to apply experiment inference overrides: {e}")

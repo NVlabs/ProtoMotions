@@ -28,7 +28,7 @@ from torch import distributions, nn
 from protomotions.utils.hydra_replacement import get_class
 from tensordict import TensorDict
 from tensordict.nn import TensorDictModuleBase
-from protomotions.agents.common.common import SequentialModuleConfig
+from protomotions.agents.common.common import ModuleContainer
 from protomotions.agents.ppo.config import PPOActorConfig, PPOModelConfig
 from protomotions.agents.base_agent.model import BaseModel
 
@@ -121,7 +121,7 @@ class PPOModel(BaseModel):
         self._actor: PPOActor = ActorClass(config=self.config.actor)
 
         CriticClass = get_class(self.config.critic._target_)
-        self._critic: SequentialModuleConfig = CriticClass(config=self.config.critic)
+        self._critic: ModuleContainer = CriticClass(config=self.config.critic)
 
         # Set in_keys from actor (actor inherits from mu model)
         actor_critic_in_keys = list(set(self._actor.in_keys + self._critic.in_keys))

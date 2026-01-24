@@ -623,6 +623,23 @@ def quat_to_tan_norm(q: Tensor, w_last: bool) -> Tensor:
     return norm_tan
 
 
+def tan_norm_to_quat(tan_norm: Tensor, w_last: bool) -> Tensor:
+    """Inverse of quat_to_tan_norm. Converts 6D [x_axis, z_axis] back to quaternion."""
+    tan = tan_norm[..., :3]
+    norm = tan_norm[..., 3:6]
+    
+    # Construct orthonormal basis
+    x_axis = normalize(tan)
+    z_axis = normalize(norm)
+    y_axis = torch.cross(z_axis, x_axis, dim=-1)
+    y_axis = normalize(y_axis)
+    z_axis = torch.cross(x_axis, y_axis, dim=-1)  # Re-orthogonalize
+    
+    # Rotation matrix: columns are [x, y, z]
+    rot_mat = torch.stack([x_axis, y_axis, z_axis], dim=-1)
+    return matrix_to_quaternion(rot_mat, w_last)
+
+
 @torch.jit.script
 def angle_from_matrix_axis(rot_mat: Tensor, axis: Tensor) -> Tensor:
     """

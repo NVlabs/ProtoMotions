@@ -300,7 +300,7 @@ motions:
   idx: 37
   sub_motions:
   - timings:
-      end: 34.93333333333333
+      end: 14.1
       start: 0.0
   weight: 1.0
 - file: MPI_HDM05/bk/HDM_bk_03_02_03_120_poses.motion
@@ -508,7 +508,7 @@ motions:
   idx: 63
   sub_motions:
   - timings:
-      end: 34.69166666666667
+      end: 15.166666666666666
       start: 0.0
   weight: 1.0
 - file: MPI_HDM05/bk/HDM_bk_01_02_01_120_poses.motion
@@ -596,7 +596,7 @@ motions:
   idx: 74
   sub_motions:
   - timings:
-      end: 36.55
+      end: 13.8
       start: 0.0
   weight: 1.0
 - file: MPI_HDM05/bk/HDM_bk_05_01_03_120_poses.motion
@@ -1020,7 +1020,7 @@ motions:
   idx: 127
   sub_motions:
   - timings:
-      end: 84.73333333333333
+      end: 89.73333333333333
       start: 0.0
   weight: 1.0
 - file: MPI_HDM05/tr/HDM_tr_03_04_03_120_poses.motion
@@ -1436,7 +1436,7 @@ motions:
   idx: 179
   sub_motions:
   - timings:
-      end: 29.425
+      end: 3.9
       start: 0.0
   weight: 1.0
 - file: MPI_HDM05/dg/HDM_dg_01_01_04_120_poses.motion
@@ -1580,7 +1580,7 @@ motions:
   idx: 197
   sub_motions:
   - timings:
-      end: 44.28333333333333
+      end: 32.666666666666664
       start: 0.0
   weight: 1.0
 - file: MPI_HDM05/dg/HDM_dg_06_03_03_120_poses.motion
@@ -1748,7 +1748,7 @@ motions:
   idx: 218
   sub_motions:
   - timings:
-      end: 27.6
+      end: 9.333333333333334
       start: 0.0
   weight: 1.0
 - file: MPI_HDM05/dg/HDM_dg_03_03_01_120_poses.motion
@@ -1756,7 +1756,7 @@ motions:
   idx: 219
   sub_motions:
   - timings:
-      end: 26.825
+      end: 9.633333333333333
       start: 0.0
   weight: 1.0
 - file: MPI_HDM05/dg/HDM_dg_03_04_01_120_poses.motion
@@ -1879,17 +1879,9 @@ motions:
       end: 24.566666666666666
       start: 0.0
   weight: 1.0
-- file: SFU/0008/0008_Yoga001_poses.motion
-  fps: 120.0
-  idx: 235
-  sub_motions:
-  - timings:
-      end: 32.19166666666667
-      start: 0.0
-  weight: 1.0
 - file: SFU/0008/0008_Walking001_poses.motion
   fps: 120.0
-  idx: 236
+  idx: 235
   sub_motions:
   - timings:
       end: 26.875
@@ -1897,7 +1889,7 @@ motions:
   weight: 1.0
 - file: SFU/0008/0008_Skipping001_poses.motion
   fps: 120.0
-  idx: 237
+  idx: 236
   sub_motions:
   - timings:
       end: 24.25
@@ -1905,7 +1897,7 @@ motions:
   weight: 1.0
 - file: SFU/0008/0008_ChaCha001_poses.motion
   fps: 120.0
-  idx: 238
+  idx: 237
   sub_motions:
   - timings:
       end: 54.19166666666667
@@ -1913,7 +1905,7 @@ motions:
   weight: 1.0
 - file: SFU/0005/0005_JumpRope001_poses.motion
   fps: 120.0
-  idx: 239
+  idx: 238
   sub_motions:
   - timings:
       end: 7.941666666666666
@@ -1921,7 +1913,7 @@ motions:
   weight: 1.0
 - file: SFU/0005/0005_2FeetJump001_poses.motion
   fps: 120.0
-  idx: 240
+  idx: 239
   sub_motions:
   - timings:
       end: 21.458333333333332
@@ -1929,7 +1921,7 @@ motions:
   weight: 1.0
 - file: SFU/0005/0005_SideSkip001_poses.motion
   fps: 120.0
-  idx: 241
+  idx: 240
   sub_motions:
   - timings:
       end: 9.041666666666666
@@ -1937,7 +1929,7 @@ motions:
   weight: 1.0
 - file: SFU/0005/0005_SlowTrot001_poses.motion
   fps: 120.0
-  idx: 242
+  idx: 241
   sub_motions:
   - timings:
       end: 9.908333333333333
@@ -1945,7 +1937,7 @@ motions:
   weight: 1.0
 - file: SFU/0005/0005_Jogging001_poses.motion
   fps: 120.0
-  idx: 243
+  idx: 242
   sub_motions:
   - timings:
       end: 11.475
@@ -1953,7 +1945,7 @@ motions:
   weight: 1.0
 - file: SFU/0005/0005_Stomping001_poses.motion
   fps: 120.0
-  idx: 244
+  idx: 243
   sub_motions:
   - timings:
       end: 22.825
@@ -1961,7 +1953,7 @@ motions:
   weight: 1.0
 - file: SFU/0005/0005_Walking001_poses.motion
   fps: 120.0
-  idx: 245
+  idx: 244
   sub_motions:
   - timings:
       end: 39.1
@@ -1969,7 +1961,7 @@ motions:
   weight: 1.0
 - file: SFU/0005/0005_BackwardsWalk001_poses.motion
   fps: 120.0
-  idx: 246
+  idx: 245
   sub_motions:
   - timings:
       end: 10.325
@@ -1977,7 +1969,7 @@ motions:
   weight: 1.0
 - file: SFU/0017/0017_WushuKicks001_poses.motion
   fps: 120.0
-  idx: 247
+  idx: 246
   sub_motions:
   - timings:
       end: 19.816666666666666
@@ -1985,15 +1977,15 @@ motions:
   weight: 1.0
 - file: SFU/0017/0017_RunningOnBench002_poses.motion
   fps: 120.0
-  idx: 248
+  idx: 247
   sub_motions:
   - timings:
-      end: 4.6
+      end: 4.0
       start: 0.0
   weight: 1.0
 - file: SFU/0017/0017_ParkourRoll001_poses.motion
   fps: 120.0
-  idx: 249
+  idx: 248
   sub_motions:
   - timings:
       end: 9.933333333333334
@@ -2001,7 +1993,7 @@ motions:
   weight: 1.0
 - file: SFU/0017/0017_JumpingOnBench001_poses.motion
   fps: 120.0
-  idx: 250
+  idx: 249
   sub_motions:
   - timings:
       end: 2.9
@@ -2009,7 +2001,7 @@ motions:
   weight: 1.0
 - file: SFU/0007/0007_Cartwheel001_poses.motion
   fps: 120.0
-  idx: 251
+  idx: 250
   sub_motions:
   - timings:
       end: 17.591666666666665
@@ -2017,7 +2009,7 @@ motions:
   weight: 1.0
 - file: SFU/0007/0007_Balance001_poses.motion
   fps: 120.0
-  idx: 252
+  idx: 251
   sub_motions:
   - timings:
       end: 32.88333333333333
@@ -2025,7 +2017,7 @@ motions:
   weight: 1.0
 - file: SFU/0007/0007_Crawling001_poses.motion
   fps: 120.0
-  idx: 253
+  idx: 252
   sub_motions:
   - timings:
       end: 13.125
@@ -2033,7 +2025,7 @@ motions:
   weight: 1.0
 - file: SFU/0007/0007_Walking001_poses.motion
   fps: 120.0
-  idx: 254
+  idx: 253
   sub_motions:
   - timings:
       end: 32.8
@@ -2041,7 +2033,7 @@ motions:
   weight: 1.0
 - file: SFU/0018/0018_Walking001_poses.motion
   fps: 120.0
-  idx: 255
+  idx: 254
   sub_motions:
   - timings:
       end: 17.75
@@ -2049,7 +2041,7 @@ motions:
   weight: 1.0
 - file: SFU/0018/0018_Bridge001_poses.motion
   fps: 120.0
-  idx: 256
+  idx: 255
   sub_motions:
   - timings:
       end: 9.383333333333333
@@ -2057,7 +2049,7 @@ motions:
   weight: 1.0
 - file: SFU/0018/0018_XinJiang002_poses.motion
   fps: 120.0
-  idx: 257
+  idx: 256
   sub_motions:
   - timings:
       end: 13.466666666666667
@@ -2065,7 +2057,7 @@ motions:
   weight: 1.0
 - file: SFU/0018/0018_DanceTurns002_poses.motion
   fps: 120.0
-  idx: 258
+  idx: 257
   sub_motions:
   - timings:
       end: 15.558333333333334
@@ -2073,7 +2065,7 @@ motions:
   weight: 1.0
 - file: SFU/0018/0018_TipToe001_poses.motion
   fps: 120.0
-  idx: 259
+  idx: 258
   sub_motions:
   - timings:
       end: 6.691666666666666
@@ -2081,7 +2073,7 @@ motions:
   weight: 1.0
 - file: SFU/0018/0018_DanceTurns001_poses.motion
   fps: 120.0
-  idx: 260
+  idx: 259
   sub_motions:
   - timings:
       end: 6.05
@@ -2089,7 +2081,7 @@ motions:
   weight: 1.0
 - file: SFU/0018/0018_Catwalk001_poses.motion
   fps: 120.0
-  idx: 261
+  idx: 260
   sub_motions:
   - timings:
       end: 11.758333333333333
@@ -2097,7 +2089,7 @@ motions:
   weight: 1.0
 - file: SFU/0018/0018_Moonwalk001_poses.motion
   fps: 120.0
-  idx: 262
+  idx: 261
   sub_motions:
   - timings:
       end: 15.483333333333333
@@ -2105,7 +2097,7 @@ motions:
   weight: 1.0
 - file: SFU/0018/0018_TraditionalChineseDance001_poses.motion
   fps: 120.0
-  idx: 263
+  idx: 262
   sub_motions:
   - timings:
       end: 11.4
@@ -2113,7 +2105,7 @@ motions:
   weight: 1.0
 - file: SFU/0018/0018_XinJiang003_poses.motion
   fps: 120.0
-  idx: 264
+  idx: 263
   sub_motions:
   - timings:
       end: 13.166666666666666
@@ -2121,7 +2113,7 @@ motions:
   weight: 1.0
 - file: SFU/0015/0015_Kirikaeshi001_poses.motion
   fps: 120.0
-  idx: 265
+  idx: 264
   sub_motions:
   - timings:
       end: 32.25
@@ -2129,7 +2121,7 @@ motions:
   weight: 1.0
 - file: SFU/0015/0015_JumpOverObstacle001_poses.motion
   fps: 120.0
-  idx: 266
+  idx: 265
   sub_motions:
   - timings:
       end: 15.166666666666666
@@ -2137,7 +2129,7 @@ motions:
   weight: 1.0
 - file: SFU/0015/0015_HopOverObstacle001_poses.motion
   fps: 120.0
-  idx: 267
+  idx: 266
   sub_motions:
   - timings:
       end: 8.675
@@ -2145,7 +2137,7 @@ motions:
   weight: 1.0
 - file: SFU/0015/0015_KendoKata001_poses.motion
   fps: 120.0
-  idx: 268
+  idx: 267
   sub_motions:
   - timings:
       end: 155.90833333333333
@@ -2153,7 +2145,7 @@ motions:
   weight: 1.0
 - file: SFU/0015/0015_BasicKendo001_poses.motion
   fps: 120.0
-  idx: 269
+  idx: 268
   sub_motions:
   - timings:
       end: 56.86666666666667
@@ -2161,7 +2153,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50021/army_poses_poses.motion
   fps: 100.0
-  idx: 270
+  idx: 269
   sub_motions:
   - timings:
       end: 13.36
@@ -2169,7 +2161,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50021/hips_poses.motion
   fps: 100.0
-  idx: 271
+  idx: 270
   sub_motions:
   - timings:
       end: 10.71
@@ -2177,7 +2169,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50021/misc_9_poses.motion
   fps: 100.0
-  idx: 272
+  idx: 271
   sub_motions:
   - timings:
       end: 3.68
@@ -2185,7 +2177,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50021/squat_simple_poses.motion
   fps: 100.0
-  idx: 273
+  idx: 272
   sub_motions:
   - timings:
       end: 7.92
@@ -2193,7 +2185,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50021/misc_7_poses.motion
   fps: 100.0
-  idx: 274
+  idx: 273
   sub_motions:
   - timings:
       end: 9.25
@@ -2201,7 +2193,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/00043/stretches_poses.motion
   fps: 100.0
-  idx: 275
+  idx: 274
   sub_motions:
   - timings:
       end: 21.23
@@ -2209,7 +2201,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/00043/simple_crouch_poses.motion
   fps: 100.0
-  idx: 276
+  idx: 275
   sub_motions:
   - timings:
       end: 7.14
@@ -2217,7 +2209,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50027/misc_dancing_hiphop_poses.motion
   fps: 120.0
-  idx: 277
+  idx: 276
   sub_motions:
   - timings:
       end: 19.883333333333333
@@ -2225,7 +2217,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50027/stretches_poses.motion
   fps: 120.0
-  idx: 278
+  idx: 277
   sub_motions:
   - timings:
       end: 18.183333333333334
@@ -2233,7 +2225,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50027/light_hopping_stiff_poses.motion
   fps: 120.0
-  idx: 279
+  idx: 278
   sub_motions:
   - timings:
       end: 4.85
@@ -2241,7 +2233,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50027/light_hopping_loose_poses.motion
   fps: 120.0
-  idx: 280
+  idx: 279
   sub_motions:
   - timings:
       end: 6.116666666666666
@@ -2249,7 +2241,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50027/jumping_jacks_poses.motion
   fps: 120.0
-  idx: 281
+  idx: 280
   sub_motions:
   - timings:
       end: 9.45
@@ -2257,7 +2249,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50022/hips_poses.motion
   fps: 100.0
-  idx: 282
+  idx: 281
   sub_motions:
   - timings:
       end: 11.16
@@ -2265,7 +2257,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50022/stretch_poses_poses.motion
   fps: 100.0
-  idx: 283
+  idx: 282
   sub_motions:
   - timings:
       end: 28.37
@@ -2273,7 +2265,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50022/side_to_side_hop_poses.motion
   fps: 100.0
-  idx: 284
+  idx: 283
   sub_motions:
   - timings:
       end: 5.22
@@ -2281,7 +2273,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50022/misc_1_poses.motion
   fps: 100.0
-  idx: 285
+  idx: 284
   sub_motions:
   - timings:
       end: 5.05
@@ -2289,7 +2281,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50022/simple_crouch_poses.motion
   fps: 100.0
-  idx: 286
+  idx: 285
   sub_motions:
   - timings:
       end: 9.42
@@ -2297,7 +2289,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50026/misc_1_poses.motion
   fps: 120.0
-  idx: 287
+  idx: 286
   sub_motions:
   - timings:
       end: 9.0
@@ -2305,7 +2297,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50026/jumping_jacks_1_poses.motion
   fps: 120.0
-  idx: 288
+  idx: 287
   sub_motions:
   - timings:
       end: 13.016666666666667
@@ -2313,7 +2305,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50026/light_hopping_stiff_poses.motion
   fps: 120.0
-  idx: 289
+  idx: 288
   sub_motions:
   - timings:
       end: 9.05
@@ -2321,7 +2313,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50026/light_hopping_loose_poses.motion
   fps: 120.0
-  idx: 290
+  idx: 289
   sub_motions:
   - timings:
       end: 8.233333333333333
@@ -2329,7 +2321,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50026/stretches_1_poses.motion
   fps: 120.0
-  idx: 291
+  idx: 290
   sub_motions:
   - timings:
       end: 16.25
@@ -2337,7 +2329,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50025/hips_poses.motion
   fps: 120.0
-  idx: 292
+  idx: 291
   sub_motions:
   - timings:
       end: 20.8
@@ -2345,7 +2337,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50025/side_to_side_hopping_1_poses.motion
   fps: 120.0
-  idx: 293
+  idx: 292
   sub_motions:
   - timings:
       end: 7.591666666666667
@@ -2353,7 +2345,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50025/light_hopping_stiff_poses.motion
   fps: 120.0
-  idx: 294
+  idx: 293
   sub_motions:
   - timings:
       end: 5.3
@@ -2361,7 +2353,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50025/light_hopping_loose_poses.motion
   fps: 120.0
-  idx: 295
+  idx: 294
   sub_motions:
   - timings:
       end: 7.133333333333334
@@ -2369,7 +2361,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50025/simple_crouch_poses.motion
   fps: 120.0
-  idx: 296
+  idx: 295
   sub_motions:
   - timings:
       end: 8.55
@@ -2377,7 +2369,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50025/one_leg_loose_poses.motion
   fps: 120.0
-  idx: 297
+  idx: 296
   sub_motions:
   - timings:
       end: 8.916666666666666
@@ -2385,7 +2377,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/00111/misc_poses.motion
   fps: 100.0
-  idx: 298
+  idx: 297
   sub_motions:
   - timings:
       end: 12.32
@@ -2393,7 +2385,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/00111/stretches_poses.motion
   fps: 100.0
-  idx: 299
+  idx: 298
   sub_motions:
   - timings:
       end: 32.87
@@ -2401,7 +2393,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/00111/simple_crouch_poses.motion
   fps: 100.0
-  idx: 300
+  idx: 299
   sub_motions:
   - timings:
       end: 7.32
@@ -2409,7 +2401,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/00059/misc_poses.motion
   fps: 120.0
-  idx: 301
+  idx: 300
   sub_motions:
   - timings:
       end: 9.141666666666667
@@ -2417,7 +2409,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/00059/stretches_poses.motion
   fps: 120.0
-  idx: 302
+  idx: 301
   sub_motions:
   - timings:
       end: 18.633333333333333
@@ -2425,7 +2417,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/00093/misc_poses.motion
   fps: 120.0
-  idx: 303
+  idx: 302
   sub_motions:
   - timings:
       end: 17.716666666666665
@@ -2433,7 +2425,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/00093/irish_dance_poses.motion
   fps: 120.0
-  idx: 304
+  idx: 303
   sub_motions:
   - timings:
       end: 12.566666666666666
@@ -2441,7 +2433,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/00093/stretches_poses.motion
   fps: 120.0
-  idx: 305
+  idx: 304
   sub_motions:
   - timings:
       end: 20.583333333333332
@@ -2449,7 +2441,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50004/misc_poses.motion
   fps: 100.0
-  idx: 306
+  idx: 305
   sub_motions:
   - timings:
       end: 13.64
@@ -2457,23 +2449,15 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50004/hips_poses.motion
   fps: 100.0
-  idx: 307
+  idx: 306
   sub_motions:
   - timings:
       end: 11.28
       start: 0.0
   weight: 1.0
-- file: MPI_mosh/50004/misc_1_poses.motion
-  fps: 100.0
-  idx: 308
-  sub_motions:
-  - timings:
-      end: 12.76
-      start: 0.0
-  weight: 1.0
 - file: MPI_mosh/50004/stretches_poses.motion
   fps: 100.0
-  idx: 309
+  idx: 307
   sub_motions:
   - timings:
       end: 19.22
@@ -2481,7 +2465,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50004/light_hopping_stiff_poses.motion
   fps: 100.0
-  idx: 310
+  idx: 308
   sub_motions:
   - timings:
       end: 6.36
@@ -2489,7 +2473,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50004/simple_crouch_poses.motion
   fps: 100.0
-  idx: 311
+  idx: 309
   sub_motions:
   - timings:
       end: 6.95
@@ -2497,7 +2481,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/00096/misc_2_poses.motion
   fps: 120.0
-  idx: 312
+  idx: 310
   sub_motions:
   - timings:
       end: 7.933333333333334
@@ -2505,7 +2489,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/00096/stretches_poses.motion
   fps: 120.0
-  idx: 313
+  idx: 311
   sub_motions:
   - timings:
       end: 25.716666666666665
@@ -2513,7 +2497,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/00096/simple_crouch_poses.motion
   fps: 120.0
-  idx: 314
+  idx: 312
   sub_motions:
   - timings:
       end: 12.2
@@ -2521,7 +2505,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/00031/misc_poses.motion
   fps: 120.0
-  idx: 315
+  idx: 313
   sub_motions:
   - timings:
       end: 4.325
@@ -2529,7 +2513,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/00031/stretches_poses.motion
   fps: 120.0
-  idx: 316
+  idx: 314
   sub_motions:
   - timings:
       end: 21.116666666666667
@@ -2537,7 +2521,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/00058/jiggles_2_poses.motion
   fps: 100.0
-  idx: 317
+  idx: 315
   sub_motions:
   - timings:
       end: 6.72
@@ -2545,7 +2529,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/00058/army_poses_poses.motion
   fps: 100.0
-  idx: 318
+  idx: 316
   sub_motions:
   - timings:
       end: 30.42
@@ -2553,7 +2537,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/00046/misc_dancing_in_the_rain_kick_poses.motion
   fps: 100.0
-  idx: 319
+  idx: 317
   sub_motions:
   - timings:
       end: 12.94
@@ -2561,7 +2545,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/00046/stretches_poses.motion
   fps: 100.0
-  idx: 320
+  idx: 318
   sub_motions:
   - timings:
       end: 27.78
@@ -2569,7 +2553,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/00046/misc_2_poses.motion
   fps: 100.0
-  idx: 321
+  idx: 319
   sub_motions:
   - timings:
       end: 22.34
@@ -2577,7 +2561,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50020/simple_crouch_3_poses.motion
   fps: 100.0
-  idx: 322
+  idx: 320
   sub_motions:
   - timings:
       end: 7.94
@@ -2585,7 +2569,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50020/hips_poses.motion
   fps: 100.0
-  idx: 323
+  idx: 321
   sub_motions:
   - timings:
       end: 11.5
@@ -2593,7 +2577,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50020/salsa_1_poses.motion
   fps: 100.0
-  idx: 324
+  idx: 322
   sub_motions:
   - timings:
       end: 19.85
@@ -2601,7 +2585,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50020/ankles_poses.motion
   fps: 100.0
-  idx: 325
+  idx: 323
   sub_motions:
   - timings:
       end: 9.08
@@ -2609,7 +2593,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50020/shake_hips_poses.motion
   fps: 100.0
-  idx: 326
+  idx: 324
   sub_motions:
   - timings:
       end: 6.85
@@ -2617,7 +2601,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50020/neck_poses.motion
   fps: 100.0
-  idx: 327
+  idx: 325
   sub_motions:
   - timings:
       end: 14.38
@@ -2625,7 +2609,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50020/shake_shoulders_poses.motion
   fps: 100.0
-  idx: 328
+  idx: 326
   sub_motions:
   - timings:
       end: 3.62
@@ -2633,7 +2617,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50020/shoulders_poses.motion
   fps: 100.0
-  idx: 329
+  idx: 327
   sub_motions:
   - timings:
       end: 5.04
@@ -2641,7 +2625,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50020/salsa_poses.motion
   fps: 100.0
-  idx: 330
+  idx: 328
   sub_motions:
   - timings:
       end: 19.22
@@ -2649,7 +2633,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50002/misc_poses.motion
   fps: 120.0
-  idx: 331
+  idx: 329
   sub_motions:
   - timings:
       end: 3.925
@@ -2657,7 +2641,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50002/hips_poses.motion
   fps: 120.0
-  idx: 332
+  idx: 330
   sub_motions:
   - timings:
       end: 11.383333333333333
@@ -2665,7 +2649,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50002/simple_crouch2_poses.motion
   fps: 120.0
-  idx: 333
+  idx: 331
   sub_motions:
   - timings:
       end: 14.116666666666667
@@ -2673,7 +2657,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50002/stretches_poses.motion
   fps: 120.0
-  idx: 334
+  idx: 332
   sub_motions:
   - timings:
       end: 26.383333333333333
@@ -2681,7 +2665,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50002/jumping_jacks_poses.motion
   fps: 120.0
-  idx: 335
+  idx: 333
   sub_motions:
   - timings:
       end: 9.9
@@ -2689,7 +2673,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/00008/misc_poses.motion
   fps: 120.0
-  idx: 336
+  idx: 334
   sub_motions:
   - timings:
       end: 8.466666666666667
@@ -2697,7 +2681,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/00008/stretches_poses.motion
   fps: 120.0
-  idx: 337
+  idx: 335
   sub_motions:
   - timings:
       end: 19.666666666666668
@@ -2705,7 +2689,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50007/misc_1_poses.motion
   fps: 120.0
-  idx: 338
+  idx: 336
   sub_motions:
   - timings:
       end: 16.816666666666666
@@ -2713,7 +2697,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50007/stretches_poses.motion
   fps: 120.0
-  idx: 339
+  idx: 337
   sub_motions:
   - timings:
       end: 21.416666666666668
@@ -2721,7 +2705,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50007/light_hopping_stiff_poses.motion
   fps: 120.0
-  idx: 340
+  idx: 338
   sub_motions:
   - timings:
       end: 6.966666666666667
@@ -2729,7 +2713,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50007/light_hopping_loose_poses.motion
   fps: 120.0
-  idx: 341
+  idx: 339
   sub_motions:
   - timings:
       end: 8.9
@@ -2737,7 +2721,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50007/jumping_jacks_poses.motion
   fps: 120.0
-  idx: 342
+  idx: 340
   sub_motions:
   - timings:
       end: 11.116666666666667
@@ -2745,7 +2729,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50009/misc_poses.motion
   fps: 100.0
-  idx: 343
+  idx: 341
   sub_motions:
   - timings:
       end: 20.11
@@ -2753,7 +2737,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50009/stretches_poses.motion
   fps: 100.0
-  idx: 344
+  idx: 342
   sub_motions:
   - timings:
       end: 16.81
@@ -2761,7 +2745,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50009/simple_crouch_poses.motion
   fps: 100.0
-  idx: 345
+  idx: 343
   sub_motions:
   - timings:
       end: 11.33
@@ -2769,7 +2753,7 @@ motions:
   weight: 1.0
 - file: MPI_mosh/50009/jumping_jacks_poses.motion
   fps: 100.0
-  idx: 346
+  idx: 344
   sub_motions:
   - timings:
       end: 9.16

@@ -80,6 +80,7 @@ class G1RobotConfig(RobotConfig):
     )
 
     default_root_height: float = 0.8
+    anchor_body_name: str = "torso_link"
 
     asset: RobotAssetConfig = field(
         default_factory=lambda: RobotAssetConfig(

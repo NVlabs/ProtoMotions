@@ -264,8 +264,15 @@ def main(
 
     os.makedirs(output_dir, exist_ok=True)
 
+    # Map robot types to their MJCF filenames
+    robot_mjcf_mapping = {
+        "g1": "g1_bm_box_feet.xml",
+        "h1_2": "h1_2.xml",
+    }
+
     # Get kinematic info for the specified robot
-    mjcf_path = f"protomotions/data/assets/mjcf/{robot_type}.xml"
+    mjcf_filename = robot_mjcf_mapping.get(robot_type, f"{robot_type}.xml")
+    mjcf_path = f"protomotions/data/assets/mjcf/{mjcf_filename}"
     if not os.path.exists(mjcf_path):
         raise FileNotFoundError(f"MJCF file not found at {mjcf_path}")
 
@@ -338,6 +345,7 @@ def main(
                 joint_rot_mats=joint_rot_mats,
                 fps=output_fps,
                 compute_velocities=True,
+                velocity_max_horizon=3,  # Use multi-horizon minimum for noise-filtered velocities
             )
 
             # to ensure joint angles falls into [-pi, pi]
@@ -366,7 +374,17 @@ def main(
 
             # motion.fix_height(height_offset=0.04)
 
-            motion.fix_height_per_frame(height_offset=0.02)
+            # Fix height per frame and manually update velocities for time-series data
+            translation_vecs = motion.fix_height_per_frame(height_offset=0.02)
+            if motion.rigid_body_vel is not None and motion.fps is not None:
+                vel_delta = torch.zeros(
+                    translation_vecs.shape[0], 1, 3,
+                    device=motion.rigid_body_vel.device,
+                    dtype=motion.rigid_body_vel.dtype,
+                )
+                vel_delta[:-1] = (translation_vecs[1:] - translation_vecs[:-1]).unsqueeze(1) / motion.motion_dt
+                motion.rigid_body_vel = motion.rigid_body_vel + vel_delta
+            
             motion.fix_height(height_offset=0.04)
 
             # Handle contact labels

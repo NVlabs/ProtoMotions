@@ -43,6 +43,9 @@ from typing import Tuple, Dict, Optional
 from pathlib import Path
 from protomotions.agents.ase.config import ASEAgentConfig
 from protomotions.agents.utils.normalization import RewardRunningMeanStd
+from protomotions.agents.ppo.utils import discount_values
+from protomotions.utils.hydra_replacement import instantiate
+from protomotions.agents.utils.training import handle_model_grad_clipping
 
 
 log = logging.getLogger(__name__)
@@ -120,13 +123,25 @@ class ASE(AMP):
         )
         super().setup()
 
+    def create_optimizers(self, model: ASEModel):
+        super().create_optimizers(model)
+        mi_critic_optimizer = instantiate(
+            self.config.model.mi_critic_optimizer,
+            params=list(model._mi_critic.parameters()),
+        )
+        self.mi_critic, self.mi_critic_optimizer = self.fabric.setup(
+            model._mi_critic, mi_critic_optimizer
+        )
+
     def load_parameters(self, state_dict):
         super().load_parameters(state_dict)
+        self.mi_critic_optimizer.load_state_dict(state_dict["mi_critic_optimizer"])
         if self.config.normalize_rewards:
             self.running_mi_enc_norm.load_state_dict(state_dict["running_mi_enc_norm"])
 
     def get_state_dict(self, state_dict):
         extra_state_dict = super().get_state_dict(state_dict)
+        extra_state_dict["mi_critic_optimizer"] = self.mi_critic_optimizer.state_dict()
         if self.config.normalize_rewards:
             extra_state_dict["running_mi_enc_norm"] = (
                 self.running_mi_enc_norm.state_dict()
@@ -205,7 +220,14 @@ class ASE(AMP):
         super().register_algorithm_experience_buffer_keys()
         if self.config.normalize_rewards:
             self.experience_buffer.register_key("unnormalized_mi_rewards")
-        self.experience_buffer.register_key("mi_rewards")  # mi = mutual information
+        self.experience_buffer.register_key("mi_rewards")
+
+        value_shape = getattr(self.experience_buffer, "value").shape[2:]
+        self.experience_buffer.register_key("next_mi_value", shape=value_shape)
+        self.experience_buffer.register_key("mi_returns")
+        if self.config.normalize_rewards:
+            self.experience_buffer.register_key("unnormalized_mi_value", shape=value_shape)
+            self.experience_buffer.register_key("unnormalized_next_mi_value", shape=value_shape)
 
     # -----------------------------
     # Environment Interaction
@@ -232,34 +254,129 @@ class ASE(AMP):
         extras,
         step,
     ):
-        """Record ASE-specific data: mutual information rewards for skill diversity."""
         super().record_rollout_step(
             next_obs_td, actions, rewards, dones, terminated, done_indices, extras, step
         )
 
-        # Get encoder outputs
         next_obs_td = self.discriminator(next_obs_td)
 
-        # Compute MI reward from outputs
         mi_r = self.discriminator.compute_mi_reward(
             next_obs_td, self.config.ase_parameters.mi_hypersphere_reward_shift
         ).view(-1)
+
+        next_mi_value = self.mi_critic(next_obs_td)[self.mi_critic.config.out_keys[0]]
+        next_mi_value = next_mi_value * (1 - terminated.float()).unsqueeze(-1)
+        self.experience_buffer.update_data("next_mi_value", step, next_mi_value)
+
         if self.config.normalize_rewards:
-            self.experience_buffer.update_data("unnormalized_mi_rewards", step, mi_r)
             self.running_mi_enc_norm.record_reward(mi_r, terminated)
-            mi_r = self.running_mi_enc_norm.normalize(mi_r)
         self.experience_buffer.update_data("mi_rewards", step, mi_r)
 
-    def get_combined_experience_buffer_rewards(self):
-        rewards = super().get_combined_experience_buffer_rewards()
-        return (
-            rewards
-            + self.experience_buffer.mi_rewards * self.config.ase_parameters.mi_reward_w
+    @torch.no_grad()
+    def normalize_rewards_in_buffer(self):
+        super().normalize_rewards_in_buffer()
+        if not self.config.normalize_rewards:
+            return
+
+        mi_rewards = self.experience_buffer.mi_rewards
+        self.experience_buffer.batch_update_data(
+            "unnormalized_mi_rewards", mi_rewards.clone()
         )
+        self.experience_buffer.batch_update_data(
+            "mi_rewards", self.running_mi_enc_norm.normalize(mi_rewards)
+        )
+
+        mi_value = self.experience_buffer.mi_value
+        unnorm_mi_value = self.running_mi_enc_norm.normalize(mi_value, un_norm=True)
+        self.experience_buffer.batch_update_data("unnormalized_mi_value", unnorm_mi_value)
+
+        next_mi_value = self.experience_buffer.next_mi_value
+        unnorm_next_mi_value = self.running_mi_enc_norm.normalize(
+            next_mi_value, un_norm=True
+        )
+        self.experience_buffer.batch_update_data(
+            "unnormalized_next_mi_value", unnorm_next_mi_value
+        )
+
+    @torch.no_grad()
+    def compute_advantages(self):
+        advantages_dict = super().compute_advantages()
+        dones = self.experience_buffer.dones
+
+        if self.config.normalize_rewards:
+            mi_rewards = self.experience_buffer.unnormalized_mi_rewards
+            mi_values = self.experience_buffer.unnormalized_mi_value.squeeze(-1)
+            mi_next_values = self.experience_buffer.unnormalized_next_mi_value.squeeze(-1)
+        else:
+            mi_rewards = self.experience_buffer.mi_rewards
+            mi_values = self.experience_buffer.mi_value.squeeze(-1)
+            mi_next_values = self.experience_buffer.next_mi_value.squeeze(-1)
+
+        mi_advantages = discount_values(
+            dones, mi_values, mi_rewards, mi_next_values, self.gamma, self.tau
+        )
+        mi_returns = mi_advantages + mi_values
+
+        if self.config.normalize_rewards:
+            mi_returns = self.running_mi_enc_norm.normalize(mi_returns)
+
+        self.experience_buffer.batch_update_data("mi_returns", mi_returns)
+
+        advantages_dict["advantages"] = (
+            advantages_dict["advantages"]
+            + mi_advantages * self.config.ase_parameters.mi_reward_w
+        )
+        return advantages_dict
 
     # -----------------------------
     # Optimization
     # -----------------------------
+    def perform_optimization_step(self, batch_dict, batch_idx: int) -> Dict:
+        iter_log_dict = super().perform_optimization_step(batch_dict, batch_idx)
+
+        mi_critic_loss, mi_critic_loss_dict = self.mi_critic_step(batch_dict)
+        iter_log_dict.update(mi_critic_loss_dict)
+        self.mi_critic_optimizer.zero_grad(set_to_none=True)
+        self.fabric.backward(mi_critic_loss)
+        mi_critic_grad_clip_dict = handle_model_grad_clipping(
+            config=self.config,
+            fabric=self.fabric,
+            model=self.mi_critic,
+            optimizer=self.mi_critic_optimizer,
+            model_name="mi_critic",
+        )
+        iter_log_dict.update(mi_critic_grad_clip_dict)
+        self.mi_critic_optimizer.step()
+
+        return iter_log_dict
+
+    def mi_critic_step(self, batch_dict) -> Tuple[Tensor, Dict]:
+        batch_td = TensorDict(batch_dict, batch_size=batch_dict["action"].shape[0])
+        batch_td = self.mi_critic(batch_td)
+        values = batch_td[self.mi_critic.config.out_keys[0]]
+
+        if self.config.clip_critic_loss:
+            mi_critic_loss_unclipped = (
+                values - batch_dict["mi_returns"].unsqueeze(-1)
+            ).pow(2)
+            v_clipped = batch_dict["mi_value"] + torch.clamp(
+                values - batch_dict["mi_value"],
+                -self.config.e_clip,
+                self.config.e_clip,
+            )
+            mi_critic_loss_clipped = (
+                v_clipped - batch_dict["mi_returns"].unsqueeze(-1)
+            ).pow(2)
+            mi_critic_loss_max = torch.max(mi_critic_loss_unclipped, mi_critic_loss_clipped)
+            mi_critic_loss = mi_critic_loss_max.mean()
+        else:
+            mi_critic_loss = (
+                (batch_dict["mi_returns"].unsqueeze(-1) - values).pow(2).mean()
+            )
+
+        log_dict = {"losses/mi_critic_loss": mi_critic_loss.detach()}
+        return mi_critic_loss, log_dict
+
     def get_expert_disc_obs(self, num_samples: int):
         expert_disc_obs = super().get_expert_disc_obs(num_samples)
         # Add the predicted latents to the batch dict. This produces a conditional discriminator, conditioned on the latents.
@@ -269,12 +386,16 @@ class ASE(AMP):
 
     def produce_negative_expert_obs(self, batch_dict):
         negative_expert_obs = {}
-        for key in self.config.amp_parameters.discriminator_keys:
+        # Use discriminator's in_keys dynamically
+        discriminator_keys = self.model._discriminator.in_keys
+        for key in discriminator_keys:
+            if key == "latents":
+                continue  # Handle latents separately below
             negative_expert_obs[key] = batch_dict[f"expert_{key}"][
                 : self.config.amp_parameters.discriminator_batch_size
             ]
         random_conditioned_latent = torch.rand_like(
-            batch_dict["latents"][: self.config.amp_parameters.discriminator_batch_size]
+            batch_dict["agent_latents"][: self.config.amp_parameters.discriminator_batch_size]
         )
         projected_latent = torch.nn.functional.normalize(
             random_conditioned_latent, dim=-1
@@ -295,25 +416,40 @@ class ASE(AMP):
             batch_dict
         )
 
-        agent_obs = batch_dict["historical_self_obs"][
-            : self.config.amp_parameters.discriminator_batch_size
-        ]
-        latents = batch_dict["latents"][
-            : self.config.amp_parameters.discriminator_batch_size
-        ]
+        # Extract agent and expert observations dynamically (like AMP parent class)
+        agent_obs = {}
+        for key in batch_dict.keys():
+            if key.startswith("agent_"):
+                agent_obs[key.replace("agent_", "")] = batch_dict[key][
+                    : self.config.amp_parameters.discriminator_batch_size
+                ]
 
-        expert_obs = batch_dict["expert_historical_self_obs"][
-            : self.config.amp_parameters.discriminator_batch_size
-        ]
+        expert_obs = {}
+        for key in batch_dict.keys():
+            if key.startswith("expert_"):
+                expert_obs[key.replace("expert_", "")] = batch_dict[key][
+                    : self.config.amp_parameters.discriminator_batch_size
+                ]
+
+        latents = agent_obs.get("latents", batch_dict.get("latents", None))
+        if latents is None:
+            raise KeyError("Could not find 'latents' in agent_obs or batch_dict")
+
+        # Get the observation key (first non-latents key from discriminator)
+        disc_in_keys = self.model._discriminator.in_keys
+        obs_key = [k for k in disc_in_keys if k != "latents"][0]
+
+        agent_obs_tensor = agent_obs[obs_key]
+        expert_obs_tensor = expert_obs[obs_key]
 
         if self.config.ase_parameters.mi_enc_grad_penalty > 0:
-            agent_obs.requires_grad_(True)
+            agent_obs_tensor.requires_grad_(True)
 
         # Compute MI encoder predictions for both agent and expert observations
-        agent_disc_obs = {"historical_self_obs": agent_obs, "latents": latents}
+        agent_disc_obs = {obs_key: agent_obs_tensor, "latents": latents}
         mi_enc_pred_agent = self.mi_enc_forward(agent_disc_obs)
 
-        expert_disc_obs = {"historical_self_obs": expert_obs, "latents": latents}
+        expert_disc_obs = {obs_key: expert_obs_tensor, "latents": latents}
         mi_enc_pred_expert = self.mi_enc_forward(expert_disc_obs)
 
         # Original MI encoder loss for agent observations

@@ -14,6 +14,7 @@
 # limitations under the License.
 #
 import sys
+from dataclasses import asdict
 from isaacgym import gymapi, gymtorch, gymutil  # type: ignore[misc]
 import torch
 from torch import Tensor
@@ -421,7 +422,7 @@ class IsaacGymSimulator(Simulator):
         )
         sim_params.use_gpu_pipeline = True
 
-        gymutil.parse_sim_config(self.config.sim, sim_params)
+        gymutil.parse_sim_config(asdict(self.config.sim), sim_params)
         return sim_params
 
     def _create_sim(
@@ -1176,28 +1177,23 @@ class IsaacGymSimulator(Simulator):
         torques_tensor = gymtorch.unwrap_tensor(torques)
         self._gym.set_dof_actuation_force_tensor(self._sim, torques_tensor)
 
-    def _push_robot(self):
-        forces = torch.zeros(
-            (1, self._rigid_body_state.shape[0], 3),
-            device=self.device,
-            dtype=torch.float,
-        )
-        torques = torch.zeros(
-            (1, self._rigid_body_state.shape[0], 3),
-            device=self.device,
-            dtype=torch.float,
-        )
-
-        # Apply force to the pelvis
-        for i in range(self._rigid_body_state.shape[0] // self._num_bodies):
-            forces[:, i * self._num_bodies, :] = -8000
-            forces[:, i * self._num_bodies, :] = -8000
-
-        self._gym.apply_rigid_body_force_tensors(
+    def _apply_root_velocity_impulse(
+        self,
+        linear_velocity: torch.Tensor,
+        angular_velocity: torch.Tensor,
+        env_ids: torch.Tensor,
+    ) -> None:
+        """Apply velocity impulse to robot root by adding to current velocities."""
+        self._gym.refresh_actor_root_state_tensor(self._sim)
+        self._humanoid_root_states[env_ids, 7:10] += linear_velocity
+        self._humanoid_root_states[env_ids, 10:13] += angular_velocity
+        
+        actor_ids = self._humanoid_actor_ids[env_ids]
+        self._gym.set_actor_root_state_tensor_indexed(
             self._sim,
-            gymtorch.unwrap_tensor(forces),
-            gymtorch.unwrap_tensor(torques),
-            gymapi.ENV_SPACE,
+            gymtorch.unwrap_tensor(self._root_states),
+            gymtorch.unwrap_tensor(actor_ids),
+            len(actor_ids),
         )
 
     # ===== Group 6: Domain Randomization =====

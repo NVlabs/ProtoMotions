@@ -1,19 +1,19 @@
 robot:
   asset:
     asset_root: protomotions/data/assets
-    self_collisions: true
+    self_collisions: 'True'
     asset_file_name: mjcf/smpl_humanoid.xml
     usd_asset_file_name: usd/smpl_humanoid.usda
     usd_bodies_root_prim_path: /World/envs/env_.*/Robot/bodies/
-    replace_cylinder_with_capsule: null
-    thickness: null
-    max_angular_velocity: 1000.0
-    max_linear_velocity: 1000.0
-    density: null
-    angular_damping: 0.0
-    linear_damping: 0.0
-    disable_gravity: null
-    fix_base_link: null
+    replace_cylinder_with_capsule: None
+    thickness: None
+    max_angular_velocity: '1000.0'
+    max_linear_velocity: '1000.0'
+    density: None
+    angular_damping: '0.0'
+    linear_damping: '0.0'
+    disable_gravity: None
+    fix_base_link: None
   common_naming_to_robot_body_names:
     all_left_foot_bodies:
     - L_Ankle
@@ -29,7 +29,7 @@ robot:
     - Head
     torso_body_name:
     - Torso
-  default_root_height: 0.95
+  default_root_height: '0.95'
   default_dof_pos:
   - 0.0
   - 0.0
@@ -100,7 +100,7 @@ robot:
   - 0.0
   - 0.0
   - 0.0
-  contact_bodies: null
+  contact_bodies: None
   trackable_bodies_subset:
   - Pelvis
   - L_Ankle
@@ -113,534 +113,535 @@ robot:
   - L_Ankle
   - R_Toe
   - L_Toe
-  init_state: null
-  mimic_small_marker_bodies: null
-  contact_pairs_multiplier: 16
+  init_state: None
+  mimic_small_marker_bodies: None
+  anchor_body_name: None
+  contact_pairs_multiplier: '16'
   control:
     override_control_info:
       .*_(Hip|Knee|Ankle)_.*:
-        stiffness: 800
-        damping: 80
-        armature: null
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '800'
+        damping: '80'
+        armature: None
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       .*_Toe_.*:
-        stiffness: 500
-        damping: 50
-        armature: null
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: None
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       (Torso|Spine|Chest)_.*:
-        stiffness: 1000
-        damping: 100
-        armature: null
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '1000'
+        damping: '100'
+        armature: None
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       (Neck|Head|.*_Thorax|.*_Shoulder|.*_Elbow)_.*:
-        stiffness: 500
-        damping: 50
-        armature: null
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: None
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       .*_(Wrist|Hand)_.*:
-        stiffness: 300
-        damping: 30
-        armature: null
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
-    control_type: built_in_pd
-    action_scale: 1.0
-    clamp_actions: 1.0
-    soft_pos_limit: 0.9
+        stiffness: '300'
+        damping: '30'
+        armature: None
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
+    control_type: ControlType.BUILT_IN_PD
+    action_scale: '1.0'
+    clamp_actions: '1.0'
+    soft_pos_limit: '0.9'
     control_info:
       L_Hip_x:
-        stiffness: 800
-        damping: 80
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '800'
+        damping: '80'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Hip_y:
-        stiffness: 800
-        damping: 80
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '800'
+        damping: '80'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Hip_z:
-        stiffness: 800
-        damping: 80
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '800'
+        damping: '80'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Knee_x:
-        stiffness: 800
-        damping: 80
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '800'
+        damping: '80'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Knee_y:
-        stiffness: 800
-        damping: 80
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '800'
+        damping: '80'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Knee_z:
-        stiffness: 800
-        damping: 80
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '800'
+        damping: '80'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Ankle_x:
-        stiffness: 800
-        damping: 80
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '800'
+        damping: '80'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Ankle_y:
-        stiffness: 800
-        damping: 80
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '800'
+        damping: '80'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Ankle_z:
-        stiffness: 800
-        damping: 80
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '800'
+        damping: '80'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Toe_x:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Toe_y:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Toe_z:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Hip_x:
-        stiffness: 800
-        damping: 80
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '800'
+        damping: '80'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Hip_y:
-        stiffness: 800
-        damping: 80
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '800'
+        damping: '80'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Hip_z:
-        stiffness: 800
-        damping: 80
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '800'
+        damping: '80'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Knee_x:
-        stiffness: 800
-        damping: 80
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '800'
+        damping: '80'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Knee_y:
-        stiffness: 800
-        damping: 80
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '800'
+        damping: '80'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Knee_z:
-        stiffness: 800
-        damping: 80
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '800'
+        damping: '80'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Ankle_x:
-        stiffness: 800
-        damping: 80
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '800'
+        damping: '80'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Ankle_y:
-        stiffness: 800
-        damping: 80
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '800'
+        damping: '80'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Ankle_z:
-        stiffness: 800
-        damping: 80
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '800'
+        damping: '80'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Toe_x:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Toe_y:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Toe_z:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       Torso_x:
-        stiffness: 1000
-        damping: 100
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '1000'
+        damping: '100'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       Torso_y:
-        stiffness: 1000
-        damping: 100
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '1000'
+        damping: '100'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       Torso_z:
-        stiffness: 1000
-        damping: 100
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '1000'
+        damping: '100'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       Spine_x:
-        stiffness: 1000
-        damping: 100
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '1000'
+        damping: '100'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       Spine_y:
-        stiffness: 1000
-        damping: 100
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '1000'
+        damping: '100'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       Spine_z:
-        stiffness: 1000
-        damping: 100
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '1000'
+        damping: '100'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       Chest_x:
-        stiffness: 1000
-        damping: 100
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '1000'
+        damping: '100'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       Chest_y:
-        stiffness: 1000
-        damping: 100
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '1000'
+        damping: '100'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       Chest_z:
-        stiffness: 1000
-        damping: 100
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '1000'
+        damping: '100'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       Neck_x:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       Neck_y:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       Neck_z:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       Head_x:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       Head_y:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       Head_z:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Thorax_x:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Thorax_y:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Thorax_z:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Shoulder_x:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Shoulder_y:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Shoulder_z:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Elbow_x:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Elbow_y:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Elbow_z:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Wrist_x:
-        stiffness: 300
-        damping: 30
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '300'
+        damping: '30'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Wrist_y:
-        stiffness: 300
-        damping: 30
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '300'
+        damping: '30'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Wrist_z:
-        stiffness: 300
-        damping: 30
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '300'
+        damping: '30'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Hand_x:
-        stiffness: 300
-        damping: 30
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '300'
+        damping: '30'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Hand_y:
-        stiffness: 300
-        damping: 30
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '300'
+        damping: '30'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       L_Hand_z:
-        stiffness: 300
-        damping: 30
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '300'
+        damping: '30'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Thorax_x:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Thorax_y:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Thorax_z:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Shoulder_x:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Shoulder_y:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Shoulder_z:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Elbow_x:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Elbow_y:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Elbow_z:
-        stiffness: 500
-        damping: 50
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '500'
+        damping: '50'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Wrist_x:
-        stiffness: 300
-        damping: 30
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '300'
+        damping: '30'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Wrist_y:
-        stiffness: 300
-        damping: 30
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '300'
+        damping: '30'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Wrist_z:
-        stiffness: 300
-        damping: 30
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '300'
+        damping: '30'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Hand_x:
-        stiffness: 300
-        damping: 30
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '300'
+        damping: '30'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Hand_y:
-        stiffness: 300
-        damping: 30
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '300'
+        damping: '30'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
       R_Hand_z:
-        stiffness: 300
-        damping: 30
-        armature: 0.02
-        friction: null
-        effort_limit: 500
-        velocity_limit: 100
+        stiffness: '300'
+        damping: '30'
+        armature: '0.02'
+        friction: None
+        effort_limit: '500'
+        velocity_limit: '100'
   kinematic_info:
     body_names:
     - Pelvis
@@ -1283,10 +1284,10 @@ robot:
       - - 0.0
         - 0.0
         - 1.0
-    nq: 76
-    nv: 75
-    num_bodies: 24
-    num_dofs: 69
+    nq: '76'
+    nv: '75'
+    num_bodies: '24'
+    num_dofs: '69'
     dof_limits_lower:
     - -3.1415927410125732
     - -3.1415927410125732
@@ -1427,81 +1428,93 @@ robot:
     - 3.1415927410125732
     - 3.1415927410125732
     - 3.1415927410125732
-  number_of_actions: 69
+  number_of_actions: '69'
+  anchor_body_index: '0'
   simulation_params:
     isaacgym:
-      fps: 60
-      decimation: 2
-      substeps: 2
+      fps: '60'
+      decimation: '2'
+      substeps: '2'
       physx:
-        num_threads: 4
-        solver_type: 1
-        num_position_iterations: 4
-        num_velocity_iterations: 0
-        contact_offset: 0.02
-        rest_offset: 0.0
-        bounce_threshold_velocity: 0.2
-        max_depenetration_velocity: 10.0
-        default_buffer_size_multiplier: 10.0
+        num_threads: '4'
+        solver_type: '1'
+        num_position_iterations: '4'
+        num_velocity_iterations: '0'
+        contact_offset: '0.02'
+        rest_offset: '0.0'
+        bounce_threshold_velocity: '0.2'
+        max_depenetration_velocity: '10.0'
+        default_buffer_size_multiplier: '10.0'
       flex:
-        num_inner_iterations: 10
-        warm_start: 0.25
+        num_inner_iterations: '10'
+        warm_start: '0.25'
     isaaclab:
-      fps: 120
-      decimation: 4
+      fps: '120'
+      decimation: '4'
       physx:
-        num_threads: 4
-        solver_type: 1
-        num_position_iterations: 4
-        num_velocity_iterations: 4
-        contact_offset: 0.02
-        rest_offset: 0.0
-        bounce_threshold_velocity: 0.2
-        max_depenetration_velocity: 1
-        default_buffer_size_multiplier: 10.0
-        gpu_found_lost_pairs_capacity: 2097152
-        gpu_max_rigid_contact_count: 8388608
-        gpu_found_lost_aggregate_pairs_capacity: 33554432
+        num_threads: '4'
+        solver_type: '1'
+        num_position_iterations: '4'
+        num_velocity_iterations: '4'
+        contact_offset: '0.02'
+        rest_offset: '0.0'
+        bounce_threshold_velocity: '0.2'
+        max_depenetration_velocity: '1'
+        default_buffer_size_multiplier: '10.0'
+        gpu_found_lost_pairs_capacity: '2097152'
+        gpu_max_rigid_contact_count: '8388608'
+        gpu_found_lost_aggregate_pairs_capacity: '33554432'
+        gpu_max_rigid_patch_count: '163840'
     genesis:
-      fps: 60
-      decimation: 2
-      substeps: 2
+      fps: '60'
+      decimation: '2'
+      substeps: '2'
     newton:
-      fps: 120
-      decimation: 4
+      fps: '120'
+      decimation: '4'
+      solver: newton
+      integrator: implicitfast
+      iterations: '100'
+      ls_iterations: '50'
+      ls_parallel: 'True'
+      impratio: '10.0'
+      njmax: '450'
+      nconmax: '300'
+      cone: pyramidal
 simulator:
   _target_: protomotions.simulator.isaaclab.simulator.IsaacLabSimulator
-  w_last: false
-  headless: true
-  num_envs: 4096
+  w_last: 'False'
+  headless: 'True'
+  num_envs: '2048'
   sim:
-    fps: 120
-    decimation: 4
+    fps: '120'
+    decimation: '4'
     physx:
-      num_threads: 4
-      solver_type: 1
-      num_position_iterations: 4
-      num_velocity_iterations: 4
-      contact_offset: 0.02
-      rest_offset: 0.0
-      bounce_threshold_velocity: 0.2
-      max_depenetration_velocity: 1
-      default_buffer_size_multiplier: 10.0
-      gpu_found_lost_pairs_capacity: 2097152
-      gpu_max_rigid_contact_count: 8388608
-      gpu_found_lost_aggregate_pairs_capacity: 33554432
+      num_threads: '4'
+      solver_type: '1'
+      num_position_iterations: '4'
+      num_velocity_iterations: '4'
+      contact_offset: '0.02'
+      rest_offset: '0.0'
+      bounce_threshold_velocity: '0.2'
+      max_depenetration_velocity: '1'
+      default_buffer_size_multiplier: '10.0'
+      gpu_found_lost_pairs_capacity: '2097152'
+      gpu_max_rigid_contact_count: '8388608'
+      gpu_found_lost_aggregate_pairs_capacity: '33554432'
+      gpu_max_rigid_patch_count: '163840'
   experiment_name: smpl_masked_mimic
-  camera: null
-  record_viewer: false
+  camera: None
+  record_viewer: 'False'
   viewer_record_dir: output/recordings/viewer
-  domain_randomization: null
+  domain_randomization: None
 terrain:
   _target_: protomotions.components.terrains.terrain.Terrain
-  map_length: 20.0
-  map_width: 20.0
-  border_size: 40.0
-  num_levels: 10
-  num_terrains: 10
+  map_length: '20.0'
+  map_width: '20.0'
+  border_size: '40.0'
+  num_levels: '10'
+  num_terrains: '10'
   terrain_proportions:
   - 0.0
   - 0.0
@@ -1511,299 +1524,460 @@ terrain:
   - 0.0
   - 0.0
   - 1.0
-  slope_threshold: 0.9
-  num_samples_per_axis: 16
-  sample_width: 1.0
-  terrain_obs_num_samples: 256
-  horizontal_scale: 0.1
-  vertical_scale: 0.005
-  spacing_between_scenes: 10.0
-  minimal_humanoid_spacing: 1.0
-  terrain_path: null
-  load_terrain: false
-  save_terrain: false
+  slope_threshold: '0.9'
+  num_samples_per_axis: '16'
+  sample_width: '1.0'
+  terrain_obs_num_samples: '256'
+  horizontal_scale: '0.1'
+  vertical_scale: '0.005'
+  spacing_between_scenes: '10.0'
+  minimal_humanoid_spacing: '1.0'
+  terrain_path: None
+  load_terrain: 'False'
+  save_terrain: 'False'
   sim_config:
-    static_friction: 1.0
-    dynamic_friction: 1.0
-    restitution: 0.0
-    height_offset: 0.0
-    combine_mode: average
+    static_friction: '1.0'
+    dynamic_friction: '1.0'
+    restitution: '0.0'
+    height_offset: '0.0'
+    combine_mode: CombineMode.AVERAGE
 scene_lib:
   _target_: protomotions.components.scene_lib.SceneLib
-  scene_file: null
-  subset_method: first
-  replicate_method: weighted
-  pointcloud_samples_per_object: null
-  num_objects_per_env: null
+  scene_file: None
+  subset_method: SubsetMethod.FIRST
+  replicate_method: ReplicationMethod.WEIGHTED
+  pointcloud_samples_per_object: None
+  num_objects_per_env: None
 motion_lib:
   _target_: protomotions.components.motion_lib.MotionLib
-  motion_file: None
-  world_size: 1
-  get_motion_state_use_blend: true
+  motion_file: 'null'
+  world_size: '1'
+  get_motion_state_use_blend: 'True'
 env:
-  max_episode_length: 1000000
-  _target_: protomotions.envs.mimic.env.Mimic
-  humanoid_obs:
-    max_coords_obs:
-      enabled: true
-      num_historical_steps: 120
-      local_obs: true
-      root_height_obs: true
-      observe_contacts: false
-    reduced_coords_obs:
-      enabled: false
-      num_historical_steps: 1
-    action_history:
-      enabled: true
-      num_historical_steps: 1
+  max_episode_length: '1000000'
+  reset_grace_period: '5'
+  num_state_history_steps: '5'
+  _target_: protomotions.envs.base_env.env.BaseEnv
   scene_obs:
-    enabled: false
-    obs_object_index: null
-  termination_height: 0.15
-  enable_height_termination: false
+    enabled: 'False'
+    obs_object_index: None
   motion_manager:
     _target_: protomotions.envs.motion_manager.mimic_motion_manager.MimicMotionManager
-    init_start_prob: 1.0
-    subset_method: null
-    exclude_motion_ids: null
-    realign_motion_with_humanoid_on_each_step: false
-    resample_on_reset: true
-  ref_respawn_offset: 0.05
-  ref_object_respawn_offset: 0.0
-  ref_contact_smooth_window: 0
-  skip_correct_terrain_height_on_flat: true
-  show_terrain_markers: false
+    init_start_prob: '1.0'
+    subset_method: None
+    exclude_motion_ids: None
+    exclude_motions_file: None
+    realign_motion_with_humanoid_on_each_step: 'False'
+    resample_on_reset: 'True'
+  ref_respawn_offset: '0.05'
+  ref_object_respawn_offset: '0.0'
+  ref_contact_smooth_window: '0'
+  skip_correct_terrain_height_on_flat: 'True'
+  show_terrain_markers: 'False'
   save_dir: ''
-  reward_config:
+  reward_components:
     gt_rew:
-      function: !!python/name:protomotions.envs.utils.rewards.mean_squared_error_exp ''
+      function: mean_squared_error_exp
       variables:
-        x: current_state.rigid_body_pos
-        ref_x: ref_state.rigid_body_pos
+        x: current_state_rigid_body_pos
+        ref_x: ref_state_rigid_body_pos
         coefficient: '-100.0'
-      indices_subset: null
-      weight: 0.5
-      multiplicative: false
-      min_value: null
-      max_value: null
-      zero_during_grace_period: false
+      indices_subset: None
+      weight: '0.5'
+      multiplicative: 'False'
+      min_value: None
+      max_value: None
+      zero_during_grace_period: 'False'
+      use_density_weights: 'False'
     gr_rew:
-      function: !!python/name:protomotions.envs.utils.rewards.rotation_error_exp ''
+      function: rotation_error_exp
       variables:
-        q: current_state.rigid_body_rot
-        ref_q: ref_state.rigid_body_rot
+        q: current_state_rigid_body_rot
+        ref_q: ref_state_rigid_body_rot
         coefficient: '-5.0'
-      indices_subset: null
-      weight: 0.3
-      multiplicative: false
-      min_value: null
-      max_value: null
-      zero_during_grace_period: false
-  mimic_obs:
-    enabled: true
-    mimic_phase_obs:
-      enabled: false
-    mimic_time_left_obs:
-      enabled: false
-    mimic_target_pose:
-      enabled: true
-      type: max-coords
-      with_time: true
-      with_contacts: false
-      with_velocities: true
-      future_steps: 1
-      num_future_steps: 1
-  mimic_early_termination: null
-  mimic_bootstrap_on_episode_end: true
-  reset_grace_period: 5
-  masked_mimic_obs:
-    enabled: true
-    masked_mimic_masking:
-      joint_masking:
-        masked_mimic_fixed_conditioning: null
-        force_max_conditioned_bodies_prob: 0.1
-        force_small_num_conditioned_bodies_prob: 0.1
-        visible_target_pose_prob: 0.8
-        masked_mimic_repeat_mask_probability: 0.8
-      time_sampling:
-        alpha: 2.0
-        beta: 5.0
-    masked_mimic_target_pose:
-      num_future_steps: 5
-    historical_obs:
-      num_historical_conditioned_steps: 15
-      use_reduced_coords_obs: false
-  sync_motion: false
+      indices_subset: None
+      weight: '0.3'
+      multiplicative: 'False'
+      min_value: None
+      max_value: None
+      zero_during_grace_period: 'False'
+      use_density_weights: 'False'
+  control_components:
+    masked_mimic:
+      _target_: protomotions.envs.control.masked_mimic_control.MaskedMimicControl
+      bootstrap_on_episode_end: 'True'
+      num_future_steps: '1'
+      num_masked_future_steps: '5'
+      time_alpha: '2.0'
+      time_beta: '5.0'
+      repeat_mask_probability: '0.8'
+      force_max_conditioned_bodies_prob: '0.1'
+      force_small_num_conditioned_bodies_prob: '0.1'
+      visible_target_pose_prob: '0.8'
+      fixed_conditioning: None
+      fully_hidden_pose_prob: '0.1'
+  termination_components: None
+  observation_components:
+    max_coords_obs:
+      function: compute_humanoid_max_coords_observations
+      variables:
+        body_pos: current_state_rigid_body_pos
+        body_rot: current_state_rigid_body_rot
+        body_vel: current_state_rigid_body_vel
+        body_ang_vel: current_state_rigid_body_ang_vel
+        ground_height: ground_heights_beneath_root
+        body_contacts: body_contacts
+        local_obs: 'True'
+        root_height_obs: 'True'
+        observe_contacts: 'False'
+        w_last: 'True'
+      indices_subset: None
+    historical_max_coords_obs:
+      function: compute_historical_max_coords_from_state
+      variables:
+        historical_rigid_body_pos: historical_rigid_body_pos
+        historical_rigid_body_rot: historical_rigid_body_rot
+        historical_rigid_body_vel: historical_rigid_body_vel
+        historical_rigid_body_ang_vel: historical_rigid_body_ang_vel
+        historical_ground_heights: historical_ground_heights
+        historical_body_contacts: historical_body_contacts
+        num_steps: None
+        local_obs: 'True'
+        root_height_obs: 'True'
+        observe_contacts: 'False'
+        w_last: 'True'
+      indices_subset: None
+    previous_actions:
+      function: passthrough
+      variables:
+        tensor: previous_actions
+      indices_subset: None
+    mimic_target_poses:
+      function: build_max_coords_target_poses
+      variables:
+        current_state_body_pos: current_state_rigid_body_pos
+        current_state_body_rot: current_state_rigid_body_rot
+        current_state_body_vel: current_state_rigid_body_vel
+        current_state_body_ang_vel: current_state_rigid_body_ang_vel
+        mimic_ref_pos: mimic_ref_pos
+        mimic_ref_rot: mimic_ref_rot
+        mimic_ref_vel: mimic_ref_vel
+        mimic_ref_ang_vel: mimic_ref_ang_vel
+        num_future_steps: '1'
+        with_velocities: 'True'
+        with_relative: 'True'
+        w_last: 'True'
+      indices_subset: None
+    masked_mimic_target_poses:
+      function: compute_target_poses_only
+      variables:
+        current_state_body_pos: current_state_rigid_body_pos
+        current_state_body_rot: current_state_rigid_body_rot
+        masked_mimic_ref_pos: masked_mimic_ref_pos
+        masked_mimic_ref_rot: masked_mimic_ref_rot
+        masked_mimic_target_bodies_masks: masked_mimic_target_bodies_masks
+        conditionable_body_ids:
+        - 0
+        - 3
+        - 7
+        - 18
+        - 23
+        - 13
+        num_future_steps: None
+      indices_subset: None
+    masked_mimic_target_masks:
+      function: compute_target_masks_only
+      variables:
+        masked_mimic_target_bodies_masks: masked_mimic_target_bodies_masks
+        conditionable_body_ids:
+        - 0
+        - 3
+        - 7
+        - 18
+        - 23
+        - 13
+        num_future_steps: None
+      indices_subset: None
+    masked_mimic_target_times:
+      function: compute_target_time_offsets
+      variables:
+        masked_mimic_time_offsets: masked_mimic_time_offsets
+        num_future_steps: None
+      indices_subset: None
+    historical_pose_obs:
+      function: compute_historical_poses_with_time
+      variables:
+        historical_rigid_body_pos: historical_rigid_body_pos
+        historical_rigid_body_rot: historical_rigid_body_rot
+        historical_rigid_body_vel: historical_rigid_body_vel
+        historical_rigid_body_ang_vel: historical_rigid_body_ang_vel
+        historical_ground_heights: historical_ground_heights
+        num_historical_conditioned_steps: '5'
+        total_stored_historical_steps: '5'
+        local_obs: 'True'
+        root_height_obs: 'True'
+        w_last: 'True'
+        dt: dt
+      indices_subset: None
+    masked_mimic_target_poses_masks:
+      function: passthrough_float
+      variables:
+        tensor: masked_mimic_target_poses_masks
+      indices_subset: None
+    masked_mimic_target_bodies_masks:
+      function: passthrough_float
+      variables:
+        tensor: masked_mimic_target_bodies_masks
+      indices_subset: None
 agent:
-  batch_size: 16384
-  training_max_steps: 10000000000000
+  batch_size: '8192'
+  training_max_steps: '10000000000000'
   _target_: protomotions.agents.masked_mimic.agent.MaskedMimic
   model:
     _target_: protomotions.agents.masked_mimic.model.MaskedMimicModel
     in_keys: []
     out_keys: []
     encoder:
-      input_models:
-      - output_models:
-        - normalize_obs: true
-          norm_clamp_value: 5
-          _target_: protomotions.agents.common.common.Flatten
-          in_keys:
-          - mimic_target_poses
-          out_keys:
-          - mimic_target_poses_norm
-          module_operations:
-          - {}
-        - normalize_obs: false
-          norm_clamp_value: 5.0
-          _target_: protomotions.agents.common.common.Flatten
-          in_keys:
-          - masked_mimic_target_bodies_masks
-          out_keys:
-          - masked_mimic_target_bodies_masks_flattened
-          module_operations:
-          - {}
-        _target_: protomotions.agents.common.common.MultiOutputModule
+      models:
+      - normalize_obs: 'True'
+        norm_clamp_value: '5'
+        _target_: protomotions.agents.common.common.ObsProcessor
+        in_keys:
+        - max_coords_obs
+        out_keys:
+        - max_coords_obs_norm
+        module_operations:
+        - {}
+      - normalize_obs: 'True'
+        norm_clamp_value: '5'
+        _target_: protomotions.agents.common.common.ObsProcessor
         in_keys:
         - mimic_target_poses
-        - masked_mimic_target_bodies_masks
         out_keys:
         - mimic_target_poses_norm
-        - masked_mimic_target_bodies_masks_flattened
-      - normalize_obs: false
-        norm_clamp_value: 5.0
-        num_out: 512
+        module_operations:
+        - {}
+      - normalize_obs: 'True'
+        norm_clamp_value: '5'
+        _target_: protomotions.agents.common.common.ObsProcessor
+        in_keys:
+        - masked_mimic_target_poses
+        out_keys:
+        - masked_mimic_target_poses_norm
+        module_operations:
+        - {}
+      - normalize_obs: 'True'
+        norm_clamp_value: '5'
+        _target_: protomotions.agents.common.common.ObsProcessor
+        in_keys:
+        - masked_mimic_target_times
+        out_keys:
+        - masked_mimic_target_times_norm
+        module_operations:
+        - {}
+      - normalize_obs: 'False'
+        norm_clamp_value: '5.0'
+        num_out: '512'
         layers:
-        - units: 1024
+        - units: '1024'
           activation: relu
-          use_layer_norm: false
-        - units: 1024
+          use_layer_norm: 'False'
+        - units: '1024'
           activation: relu
-          use_layer_norm: false
-        - units: 1024
+          use_layer_norm: 'False'
+        - units: '1024'
           activation: relu
-          use_layer_norm: false
-        - units: 1024
+          use_layer_norm: 'False'
+        - units: '1024'
           activation: relu
-          use_layer_norm: false
-        - units: 1024
+          use_layer_norm: 'False'
+        - units: '1024'
           activation: relu
-          use_layer_norm: false
+          use_layer_norm: 'False'
         _target_: protomotions.agents.common.mlp.MLPWithConcat
         in_keys:
+        - max_coords_obs_norm
         - mimic_target_poses_norm
-        - masked_mimic_target_bodies_masks_flattened
+        - masked_mimic_target_poses_norm
+        - masked_mimic_target_bodies_masks
+        - masked_mimic_target_times_norm
+        - masked_mimic_target_poses_masks
         out_keys:
         - encoder_trunk_out
         output_activation: relu
         module_operations:
         - {}
-      - output_models:
-        - normalize_obs: false
-          norm_clamp_value: 5.0
-          num_out: 64
-          layers:
-          - units: 256
-            activation: relu
-            use_layer_norm: false
-          - units: 128
-            activation: relu
-            use_layer_norm: false
-          _target_: protomotions.agents.common.mlp.MLPWithConcat
-          in_keys:
-          - encoder_trunk_out
-          out_keys:
-          - encoder_mu
-          output_activation: null
-          module_operations:
-          - {}
-        - normalize_obs: false
-          norm_clamp_value: 5.0
-          num_out: 64
-          layers:
-          - units: 256
-            activation: relu
-            use_layer_norm: false
-          - units: 128
-            activation: relu
-            use_layer_norm: false
-          _target_: protomotions.agents.common.mlp.MLPWithConcat
-          in_keys:
-          - encoder_trunk_out
-          out_keys:
-          - encoder_logvar
-          output_activation: null
-          module_operations:
-          - {}
-        _target_: protomotions.agents.common.common.MultiOutputModule
+      - normalize_obs: 'False'
+        norm_clamp_value: '5.0'
+        num_out: '64'
+        layers:
+        - units: '256'
+          activation: relu
+          use_layer_norm: 'False'
+        - units: '128'
+          activation: relu
+          use_layer_norm: 'False'
+        _target_: protomotions.agents.common.mlp.MLPWithConcat
         in_keys:
         - encoder_trunk_out
         out_keys:
         - encoder_mu
+        output_activation: None
+        module_operations:
+        - {}
+      - normalize_obs: 'False'
+        norm_clamp_value: '5.0'
+        num_out: '64'
+        layers:
+        - units: '256'
+          activation: relu
+          use_layer_norm: 'False'
+        - units: '128'
+          activation: relu
+          use_layer_norm: 'False'
+        _target_: protomotions.agents.common.mlp.MLPWithConcat
+        in_keys:
+        - encoder_trunk_out
+        out_keys:
         - encoder_logvar
-      _target_: protomotions.agents.common.common.SequentialModule
+        output_activation: None
+        module_operations:
+        - {}
+      _target_: protomotions.agents.common.common.ModuleContainer
       in_keys:
+      - max_coords_obs
       - mimic_target_poses
+      - masked_mimic_target_poses
       - masked_mimic_target_bodies_masks
+      - masked_mimic_target_times
+      - masked_mimic_target_poses_masks
       out_keys:
       - encoder_mu
       - encoder_logvar
     prior:
-      input_models:
-      - output_models:
-        - normalize_obs: true
-          norm_clamp_value: 5
-          num_out: 512
-          layers:
-          - units: 256
-            activation: relu
-            use_layer_norm: false
-          - units: 256
-            activation: relu
-            use_layer_norm: false
-          _target_: protomotions.agents.common.mlp.MLPWithConcat
-          in_keys:
-          - masked_mimic_target_poses
-          out_keys:
-          - masked_mimic_target_poses_token
-          output_activation: null
-          module_operations:
-          - new_shape:
-            - batch_size
-            - 5
-            - -1
-          - {}
-        - normalize_obs: true
-          norm_clamp_value: 5
-          num_out: 512
-          layers:
-          - units: 256
-            activation: relu
-            use_layer_norm: false
-          - units: 256
-            activation: relu
-            use_layer_norm: false
-          _target_: protomotions.agents.common.mlp.MLPWithConcat
-          in_keys:
-          - historical_pose_obs
-          out_keys:
-          - historical_pose_obs_token
-          output_activation: null
-          module_operations:
-          - new_shape:
-            - batch_size
-            - 15
-            - -1
-          - {}
-        _target_: protomotions.agents.common.common.MultiOutputModule
+      models:
+      - normalize_obs: 'True'
+        norm_clamp_value: '5'
+        _target_: protomotions.agents.common.common.ObsProcessor
         in_keys:
         - masked_mimic_target_poses
+        out_keys:
+        - target_poses_seq
+        module_operations:
+        - new_shape:
+          - batch_size
+          - 5
+          - -1
+        - {}
+      - normalize_obs: 'False'
+        norm_clamp_value: '5.0'
+        _target_: protomotions.agents.common.common.ObsProcessor
+        in_keys:
+        - masked_mimic_target_masks
+        out_keys:
+        - target_masks_seq
+        module_operations:
+        - new_shape:
+          - batch_size
+          - 5
+          - -1
+      - normalize_obs: 'True'
+        norm_clamp_value: '5'
+        _target_: protomotions.agents.common.common.ObsProcessor
+        in_keys:
+        - masked_mimic_target_times
+        out_keys:
+        - target_times_seq
+        module_operations:
+        - new_shape:
+          - batch_size
+          - 5
+          - -1
+        - {}
+      - normalize_obs: 'True'
+        norm_clamp_value: '5'
+        _target_: protomotions.agents.common.common.ObsProcessor
+        in_keys:
         - historical_pose_obs
         out_keys:
+        - historical_pose_obs_seq
+        module_operations:
+        - new_shape:
+          - batch_size
+          - 5
+          - -1
+        - {}
+      - normalize_obs: 'True'
+        norm_clamp_value: '5'
+        num_out: '512'
+        layers:
+        - units: '256'
+          activation: relu
+          use_layer_norm: 'False'
+        - units: '256'
+          activation: relu
+          use_layer_norm: 'False'
+        _target_: protomotions.agents.common.mlp.MLPWithConcat
+        in_keys:
+        - max_coords_obs
+        out_keys:
+        - current_state_token
+        output_activation: None
+        module_operations:
+        - new_shape:
+          - batch_size
+          - 1
+          - -1
+        - {}
+      - normalize_obs: 'False'
+        norm_clamp_value: '5.0'
+        num_out: '512'
+        layers:
+        - units: '256'
+          activation: relu
+          use_layer_norm: 'False'
+        - units: '256'
+          activation: relu
+          use_layer_norm: 'False'
+        _target_: protomotions.agents.common.mlp.MLPWithConcat
+        in_keys:
+        - target_poses_seq
+        - target_masks_seq
+        - target_times_seq
+        out_keys:
         - masked_mimic_target_poses_token
+        output_activation: None
+        module_operations:
+        - new_shape:
+          - batch_size
+          - 5
+          - -1
+        - {}
+      - normalize_obs: 'False'
+        norm_clamp_value: '5.0'
+        num_out: '512'
+        layers:
+        - units: '256'
+          activation: relu
+          use_layer_norm: 'False'
+        - units: '256'
+          activation: relu
+          use_layer_norm: 'False'
+        _target_: protomotions.agents.common.mlp.MLPWithConcat
+        in_keys:
+        - historical_pose_obs_seq
+        out_keys:
         - historical_pose_obs_token
+        output_activation: None
+        module_operations:
+        - new_shape:
+          - batch_size
+          - 5
+          - -1
+        - {}
       - _target_: protomotions.agents.common.transformer.Transformer
         in_keys:
+        - current_state_token
         - masked_mimic_target_poses_token
         - historical_pose_obs_token
         - masked_mimic_target_poses_masks
@@ -1811,165 +1985,140 @@ agent:
         - transformer_out
         input_and_mask_mapping:
           masked_mimic_target_poses_token: masked_mimic_target_poses_masks
-        transformer_token_size: 512
-        latent_dim: 512
-        num_heads: 4
-        ff_size: 1024
-        num_layers: 4
-        dropout: 0
+        transformer_token_size: '512'
+        latent_dim: '512'
+        num_heads: '4'
+        ff_size: '1024'
+        num_layers: '4'
+        dropout: '0.0'
         activation: relu
         output_activation: relu
-      - output_models:
-        - normalize_obs: false
-          norm_clamp_value: 5.0
-          num_out: 64
-          layers:
-          - units: 256
-            activation: relu
-            use_layer_norm: false
-          - units: 128
-            activation: relu
-            use_layer_norm: false
-          _target_: protomotions.agents.common.mlp.MLPWithConcat
-          in_keys:
-          - transformer_out
-          out_keys:
-          - prior_mu
-          output_activation: null
-          module_operations:
-          - {}
-        - normalize_obs: false
-          norm_clamp_value: 5.0
-          num_out: 64
-          layers:
-          - units: 256
-            activation: relu
-            use_layer_norm: false
-          - units: 128
-            activation: relu
-            use_layer_norm: false
-          _target_: protomotions.agents.common.mlp.MLPWithConcat
-          in_keys:
-          - transformer_out
-          out_keys:
-          - prior_logvar
-          output_activation: null
-          module_operations:
-          - {}
-        _target_: protomotions.agents.common.common.MultiOutputModule
+      - normalize_obs: 'False'
+        norm_clamp_value: '5.0'
+        num_out: '64'
+        layers:
+        - units: '256'
+          activation: relu
+          use_layer_norm: 'False'
+        - units: '128'
+          activation: relu
+          use_layer_norm: 'False'
+        _target_: protomotions.agents.common.mlp.MLPWithConcat
         in_keys:
         - transformer_out
         out_keys:
         - prior_mu
+        output_activation: None
+        module_operations:
+        - {}
+      - normalize_obs: 'False'
+        norm_clamp_value: '5.0'
+        num_out: '64'
+        layers:
+        - units: '256'
+          activation: relu
+          use_layer_norm: 'False'
+        - units: '128'
+          activation: relu
+          use_layer_norm: 'False'
+        _target_: protomotions.agents.common.mlp.MLPWithConcat
+        in_keys:
+        - transformer_out
+        out_keys:
         - prior_logvar
-      _target_: protomotions.agents.common.common.SequentialModule
+        output_activation: None
+        module_operations:
+        - {}
+      _target_: protomotions.agents.common.common.ModuleContainer
       in_keys:
+      - max_coords_obs
       - masked_mimic_target_poses
-      - masked_mimic_target_bodies_masks
+      - masked_mimic_target_masks
+      - masked_mimic_target_times
+      - masked_mimic_target_poses_masks
       - historical_pose_obs
       out_keys:
       - prior_mu
       - prior_logvar
     trunk:
-      input_models:
-      - output_models:
-        - normalize_obs: true
-          norm_clamp_value: 5
-          _target_: protomotions.agents.common.common.Flatten
-          in_keys:
-          - max_coords_obs
-          out_keys:
-          - max_coords_obs_norm
-          module_operations:
-          - {}
-        - normalize_obs: true
-          norm_clamp_value: 5
-          _target_: protomotions.agents.common.common.Flatten
-          in_keys:
-          - historical_previous_actions
-          out_keys:
-          - historical_previous_actions_norm
-          module_operations:
-          - {}
-        - normalize_obs: false
-          norm_clamp_value: 5.0
-          _target_: protomotions.agents.common.common.Flatten
-          in_keys:
-          - vae_latent
-          out_keys:
-          - vae_latent_flattened
-          module_operations:
-          - {}
-        _target_: protomotions.agents.common.common.MultiOutputModule
+      models:
+      - normalize_obs: 'True'
+        norm_clamp_value: '5'
+        _target_: protomotions.agents.common.common.ObsProcessor
         in_keys:
         - max_coords_obs
-        - historical_previous_actions
-        - vae_latent
         out_keys:
         - max_coords_obs_norm
-        - historical_previous_actions_norm
-        - vae_latent_flattened
-      - normalize_obs: false
-        norm_clamp_value: 5.0
-        num_out: 69
+        module_operations:
+        - {}
+      - normalize_obs: 'True'
+        norm_clamp_value: '5'
+        _target_: protomotions.agents.common.common.ObsProcessor
+        in_keys:
+        - previous_actions
+        out_keys:
+        - previous_actions_norm
+        module_operations:
+        - {}
+      - normalize_obs: 'False'
+        norm_clamp_value: '5.0'
+        num_out: '69'
         layers:
-        - units: 1024
+        - units: '1024'
           activation: relu
-          use_layer_norm: false
-        - units: 1024
+          use_layer_norm: 'False'
+        - units: '1024'
           activation: relu
-          use_layer_norm: false
-        - units: 1024
+          use_layer_norm: 'False'
+        - units: '1024'
           activation: relu
-          use_layer_norm: false
+          use_layer_norm: 'False'
         _target_: protomotions.agents.common.mlp.MLPWithConcat
         in_keys:
         - max_coords_obs_norm
-        - historical_previous_actions_norm
-        - vae_latent_flattened
+        - previous_actions_norm
+        - vae_latent
         out_keys:
         - actor_trunk_out
         output_activation: tanh
         module_operations:
         - {}
-      _target_: protomotions.agents.common.common.SequentialModule
+      _target_: protomotions.agents.common.common.ModuleContainer
       in_keys:
       - max_coords_obs
-      - historical_previous_actions
+      - previous_actions
       - vae_latent
       out_keys:
       - actor_trunk_out
     vae:
       kld_schedule:
-        init_kld_coeff: 0.0001
-        end_kld_coeff: 0.01
-        start_epoch: 500
-        end_epoch: 2000
-      vae_latent_dim: 64
-      vae_noise_type: normal
+        init_kld_coeff: '0.0001'
+        end_kld_coeff: '0.01'
+        start_epoch: '500'
+        end_epoch: '2000'
+      vae_latent_dim: '64'
+      vae_noise_type: VaeNoiseType.NORMAL
     optimizer:
       _target_: torch.optim.Adam
-      lr: 2.0e-05
-      weight_decay: 0.0
-      eps: 1.0e-08
-      betas: !!python/tuple
-      - 0.9
-      - 0.999
-  num_steps: 32
-  gradient_clip_val: 50.0
-  fail_on_bad_grads: false
-  check_grad_mag: true
-  gamma: 0.99
-  bounds_loss_coef: 0.0
-  task_reward_w: 1.0
-  num_mini_epochs: 6
-  training_early_termination: null
-  save_epoch_checkpoint_every: 1000
-  save_last_checkpoint_every: 10
-  max_episode_length_manager: null
+      lr: 2e-05
+      weight_decay: '0.0'
+      eps: 1e-08
+      betas: (0.9, 0.999)
+  num_steps: '32'
+  gradient_clip_val: '50.0'
+  fail_on_bad_grads: 'False'
+  check_grad_mag: 'True'
+  gamma: '0.99'
+  bounds_loss_coef: '0.0'
+  task_reward_w: '1.0'
+  num_mini_epochs: '6'
+  training_early_termination: None
+  save_epoch_checkpoint_every: '1000'
+  save_last_checkpoint_every: '10'
+  max_episode_length_manager: None
   evaluator:
     _target_: protomotions.agents.evaluators.base_evaluator.BaseEvaluator
-    eval_metrics_every: 200
-  normalize_rewards: true
-  normalized_reward_clamp_value: 5.0
-  expert_model_path: null
+    eval_metrics_every: '200'
+  normalize_rewards: 'True'
+  normalized_reward_clamp_value: '5.0'
+  expert_model_path: None

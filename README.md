@@ -43,6 +43,8 @@ Scale training to even larger datasets with each GPU handling a subset of motion
 
 Transfer (retarget) the entire [AMASS](https://amass.is.tue.mpg.de/) dataset to your favorite robot with the built-in [**PyRoki**](https://github.com/chungmin99/pyroki)-based optimizer—in one command.
 
+> **Note:** As of v3, we use [PyRoki](https://github.com/chungmin99/pyroki) for retargeting. Earlier versions used [Mink](https://github.com/kevinzakka/mink).
+
 <p align="center">
   <img src="data/static/retargeting-g1.gif" alt="G1 retargeting" height="280">
 </p>

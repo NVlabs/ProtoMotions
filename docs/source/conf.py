@@ -49,7 +49,11 @@ extensions = [
     # 'sphinx_autodoc_typehints',  # Disabled - conflicts with mocked imports
     "sphinx_copybutton",
     "myst_parser",
+    "dataclass_metadata",  # Extract help from field(metadata={"help": ...})
 ]
+
+# Add local extension directory
+sys.path.insert(0, os.path.abspath("_ext"))
 
 # Napoleon settings for Google-style docstrings
 napoleon_google_docstring = True
@@ -271,14 +275,13 @@ master_doc = "index"
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = "furo"
+html_theme = "nvidia_sphinx_theme"
 html_static_path = ["_static"]
 
-# Furo theme options
+# NVIDIA theme options
 html_theme_options = {
-    "sidebar_hide_name": False,
-    "navigation_with_keys": True,
-    "top_of_page_button": "edit",
+    "collapse_navigation": False,
+    "navigation_depth": 4,
 }
 
 # Global TOC depth - show all levels in navigation
@@ -286,17 +289,6 @@ html_show_sourcelink = False
 
 # Ensure all toctrees contribute to global navigation
 toc_object_entries_show_parents = "hide"
-
-# Sidebar configuration - use global TOC everywhere
-html_sidebars = {
-    "**": [
-        "sidebar/brand.html",
-        "sidebar/search.html",
-        "sidebar/scroll-start.html",
-        "sidebar/navigation.html",
-        "sidebar/scroll-end.html",
-    ],
-}
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = "ProtoMotionsdoc"

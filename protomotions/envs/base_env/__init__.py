@@ -17,16 +17,16 @@
 
 This package provides the foundational environment class that all tasks inherit from.
 It integrates with multiple simulators, manages robot state, and provides modular
-observation and reward components.
+observation, reward, and control components.
 
 Key Components:
     - BaseEnv: Core environment class
     - EnvConfig: Base environment configuration
-    - HumanoidObs: Humanoid observation component
-    - MotionManager: Motion library integration
+    - Control components: MimicControl, PathFollowerControl, etc.
+    - Reward/Termination components: Modular reward and termination functions
 
 Example:
-    >>> from protomotions.envs.mimic.env import Mimic
-    >>> env = Mimic(config, robot_config, simulator_config, device)
+    >>> from protomotions.envs.base_env.env import BaseEnv
+    >>> env = BaseEnv(config, device)
     >>> obs, info = env.reset()
 """

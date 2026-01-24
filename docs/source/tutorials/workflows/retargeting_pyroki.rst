@@ -127,6 +127,54 @@ Python interpreters:
 
 The script runs all steps automatically and outputs the final MotionLib ``.pt`` file.
 
+Retargeting a Single Motion File
+--------------------------------
+
+To retarget a single ``.motion`` file (instead of a packaged ``.pt`` MotionLib), use 
+the dedicated script:
+
+.. code-block:: bash
+
+   ./scripts/retarget_single_motion_to_robot.sh <proto_python> <pyroki_python> <motion_file> <output_dir> <robot_type>
+
+**Arguments:**
+
+* ``proto_python``: Path to Python interpreter with ProtoMotions installed
+* ``pyroki_python``: Path to Python interpreter with PyRoki installed
+* ``motion_file``: Path to input ``.motion`` file (SMPL format)
+* ``output_dir``: Directory for all outputs
+* ``robot_type``: Target robot (``g1`` or ``h1_2``)
+
+**Example:**
+
+.. code-block:: bash
+
+   ./scripts/retarget_single_motion_to_robot.sh \
+       ~/miniconda3/envs/protomotions/bin/python \
+       ~/miniconda3/envs/pyroki/bin/python \
+       /path/to/walk.motion \
+       /path/to/output \
+       g1
+
+The script automatically:
+
+1. Extracts keypoints from the SMPL motion
+2. Runs PyRoki retargeting to the target robot
+3. Extracts foot contact labels from the source motion
+4. Converts to ProtoMotions format with contacts
+5. Reports the output ``.motion`` file path
+
+To visualize the result:
+
+.. code-block:: bash
+
+   python examples/env_kinematic_playback.py \
+       --experiment-path=examples/experiments/mimic/mlp.py \
+       --motion-file /path/to/output/retargeted_g1_proto/walk.motion \
+       --robot-name g1 \
+       --simulator isaacgym \
+       --num-envs 1
+
 Step-by-Step Guide
 ------------------
 

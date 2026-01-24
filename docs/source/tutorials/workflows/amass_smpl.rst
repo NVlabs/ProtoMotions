@@ -129,7 +129,8 @@ For purely motion imitation (DeepMimic) rewards:
 .. code-block:: bash
 
    --overrides "env.reward_config.contact_match_rew.weight=0.0" \
-               "env.reward_config.contact_force_change_rew.weight=0.0"
+
+(yes, such string-based overrides will work with the factory method rewards)
 
 Visualizing Motions
 -------------------

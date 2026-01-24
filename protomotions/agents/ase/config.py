@@ -13,47 +13,89 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-from dataclasses import dataclass, field
+"""Configuration classes for ASE (Adversarial Skill Embeddings) agent.
+
+ASE extends AMP with a learned latent skill space that enables diverse behaviors
+and mutual information maximization between latent codes and behaviors.
+"""
+
 from typing import List
-from protomotions.utils.config_builder import ConfigBuilder
-from protomotions.agents.amp.config import AMPAgentConfig, DiscriminatorConfig
+from dataclasses import dataclass, field
+from protomotions.agents.amp.config import AMPAgentConfig, AMPModelConfig, DiscriminatorConfig
+from protomotions.agents.common.config import ModuleContainerConfig
+from protomotions.agents.ppo.config import OptimizerConfig
 
 
 @dataclass
-class ASEParametersConfig(ConfigBuilder):
+class ASEParametersConfig:
     """Configuration for ASE-specific hyperparameters."""
 
-    # Latent variable configuration
-    latent_dim: int = 64
-    latent_steps_min: int = 1
-    latent_steps_max: int = 150
+    latent_dim: int = field(
+        default=64,
+        metadata={"help": "Dimension of the latent skill space.", "min": 1}
+    )
+    latent_steps_min: int = field(
+        default=1,
+        metadata={"help": "Minimum steps before resampling latent.", "min": 1}
+    )
+    latent_steps_max: int = field(
+        default=150,
+        metadata={"help": "Maximum steps before resampling latent.", "min": 1}
+    )
 
-    # Mutual Information reward configuration
-    mi_reward_w: float = 0.5
-    mi_hypersphere_reward_shift: bool = True
+    mi_reward_w: float = field(
+        default=0.5,
+        metadata={"help": "Weight for mutual information reward.", "min": 0.0}
+    )
+    mi_hypersphere_reward_shift: bool = field(
+        default=True,
+        metadata={"help": "Shift MI reward to encourage hypersphere projections."}
+    )
 
-    # Encoder regularization
-    mi_enc_weight_decay: float = 0
-    mi_enc_grad_penalty: float = 0
+    mi_enc_weight_decay: float = field(
+        default=0.0,
+        metadata={"help": "Weight decay for MI encoder parameters.", "min": 0.0}
+    )
+    mi_enc_grad_penalty: float = field(
+        default=0.0,
+        metadata={"help": "Gradient penalty for MI encoder.", "min": 0.0}
+    )
 
-    # Diversity bonus configuration
-    diversity_bonus: float = 0.01
-    diversity_tar: float = 1.0
+    diversity_bonus: float = field(
+        default=0.01,
+        metadata={"help": "Bonus reward for behavior diversity.", "min": 0.0}
+    )
+    diversity_tar: float = field(
+        default=1.0,
+        metadata={"help": "Target diversity level.", "min": 0.0}
+    )
 
-    # Uniformity loss configuration
-    latent_uniformity_weight: float = 0.1
-    uniformity_kernel_scale: float = 1.0
+    latent_uniformity_weight: float = field(
+        default=0.1,
+        metadata={"help": "Weight for latent uniformity loss.", "min": 0.0}
+    )
+    uniformity_kernel_scale: float = field(
+        default=1.0,
+        metadata={"help": "Scale for uniformity kernel.", "min": 0.0}
+    )
 
 
 @dataclass
 class ASEDiscriminatorEncoderConfig(DiscriminatorConfig):
-    """Configuration for ASE Discriminator-Encoder network (extends SequentialModuleConfig)."""
+    """Configuration for ASE Discriminator-Encoder network (extends ModuleContainerConfig)."""
 
-    encoder_out_size: int = None  # Should match latent_dim
+    encoder_out_size: int = field(
+        default=None,
+        metadata={"help": "Output size for encoder. Should match latent_dim.", "min": 1}
+    )
     _target_: str = "protomotions.agents.ase.model.ASEDiscriminatorEncoder"
-    in_keys: List[str] = field(default_factory=list)
+    in_keys: List[str] = field(
+        default_factory=list,
+        metadata={"help": "Input observation keys."}
+    )
     out_keys: List[str] = field(
-        default_factory=lambda: ["disc_logits", "mi_enc_output"]
+        default_factory=lambda: ["disc_logits", "mi_enc_output"],
+        metadata={"help": "Output keys for discriminator logits and MI encoder output."}
     )
 
     def __post_init__(self):
@@ -64,10 +106,27 @@ class ASEDiscriminatorEncoderConfig(DiscriminatorConfig):
 
 
 @dataclass
+class ASEModelConfig(AMPModelConfig):
+    """Configuration for ASE model with MI critic."""
+
+    _target_: str = "protomotions.agents.ase.model.ASEModel"
+    mi_critic: ModuleContainerConfig = field(
+        default_factory=ModuleContainerConfig,
+        metadata={"help": "Critic network for mutual information reward."}
+    )
+    mi_critic_optimizer: OptimizerConfig = field(
+        default_factory=lambda: OptimizerConfig(lr=1e-4),
+        metadata={"help": "Optimizer settings for MI critic."}
+    )
+
+
+@dataclass
 class ASEAgentConfig(AMPAgentConfig):
     """Main configuration class for ASE Agent."""
 
     _target_: str = "protomotions.agents.ase.agent.ASE"
 
-    # ASE-specific parameters
-    ase_parameters: ASEParametersConfig = field(default_factory=ASEParametersConfig)
+    ase_parameters: ASEParametersConfig = field(
+        default_factory=ASEParametersConfig,
+        metadata={"help": "ASE-specific training parameters."}
+    )

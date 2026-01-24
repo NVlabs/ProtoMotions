@@ -24,6 +24,7 @@ from protomotions.agents.evaluators.metrics import MotionMetrics
 from protomotions.components.motion_lib import MotionLib
 from protomotions.agents.evaluators.config import MimicEvaluatorConfig
 from protomotions.envs.motion_manager.mimic_motion_manager import MimicMotionManager
+from protomotions.utils.rotations import quat_diff_norm
 
 
 class MimicEvaluator(BaseEvaluator):
@@ -59,8 +60,8 @@ class MimicEvaluator(BaseEvaluator):
 
     def _register_plugins(self) -> None:
         """Register metric computation plugins."""
-        # Register smoothness evaluator as a plugin (now in base class)
         self._register_smoothness_plugin(window_sec=0.4, high_jerk_threshold=6500.0)
+        self._register_action_smoothness_plugin()
 
     def _create_metrics_dict(
         self,
@@ -95,6 +96,12 @@ class MimicEvaluator(BaseEvaluator):
                 metrics, num_motions, motion_num_frames, max_eval_steps
             )
 
+        # Add actions metric for action smoothness computation
+        num_dofs = self.env.robot_config.kinematic_info.num_dofs
+        metrics["actions"] = MotionMetrics(
+            num_motions, motion_num_frames, max_eval_steps, num_dofs, device=self.device
+        )
+
         return metrics
 
     def initialize_eval(self) -> Dict:
@@ -105,7 +112,8 @@ class MimicEvaluator(BaseEvaluator):
             Dictionary of initialized MotionMetrics
         """
         num_motions = self.motion_lib.num_motions()
-        motion_num_frames = self.motion_lib.get_motion_num_frames(None)
+        motion_lengths = self.motion_lib.get_motion_length(None)
+        motion_num_frames = (motion_lengths / self.env.dt).floor().long()
         motion_num_frames = motion_num_frames.clamp(max=self.config.max_eval_steps)
 
         return self._create_metrics_dict(
@@ -143,7 +151,9 @@ class MimicEvaluator(BaseEvaluator):
         Returns:
             Dictionary with tracking_success_rate metric
         """
-        assert success_metric_key in metrics, f"Metric '{success_metric_key}' not found"
+        if success_metric_key not in metrics:
+            print(f"Warning: Metric '{success_metric_key}' not found, skipping weight update")
+            return {}
 
         # Determine success/failure
         gt_err_max = metrics[success_metric_key].max_reduce_each_motion()
@@ -157,11 +167,14 @@ class MimicEvaluator(BaseEvaluator):
         self._save_failed_motions(failed_motions, self.agent.current_epoch)
 
         # Update sampling weights
-        success_discount = math.pow(0.999, self.config.eval_metrics_every)
+        success_discount = math.pow(self.config.motion_weights_rules.motion_weights_update_success_discount, self.config.eval_metrics_every)
+        failure_discount = math.pow(self.config.motion_weights_rules.motion_weights_update_failure_discount, self.config.eval_metrics_every)
         new_weights = self.env.motion_manager.motion_weights.clone()
         new_weights[success_motions] *= success_discount
-        new_weights[failed_motions] /= success_discount
-        new_weights.clamp_(min=0.03, max=1.0)
+        if failure_discount != 0:
+            new_weights[failed_motions] /= failure_discount
+        else:
+            new_weights[failed_motions] = 1.0
         self.env.motion_manager.update_sampling_weights(new_weights)
 
         return {"eval/tracking_success_rate": tracking_success_rate}
@@ -182,35 +195,16 @@ class MimicEvaluator(BaseEvaluator):
         self._cached_motion_times = self.motion_manager.motion_times.clone()
         self._cached_respawn_offset = self.env.respawn_root_offset.clone()
 
-        # cache history buffers (cache all enabled observation history buffers)
-        if self.env.self_obs_cb.humanoid_max_coords_obs_hist_buf is not None:
-            self._cached_humanoid_max_coords_obs_hist = (
-                self.env.self_obs_cb.humanoid_max_coords_obs_hist_buf.data.clone()
-            )
+        if self.env.state_history is not None:
+            self._cached_state_history = self.env.state_history.save_state()
         else:
-            self._cached_humanoid_max_coords_obs_hist = None
-        if self.env.self_obs_cb.humanoid_reduced_coords_obs_hist_buf is not None:
-            self._cached_humanoid_reduced_coords_obs_hist = (
-                self.env.self_obs_cb.humanoid_reduced_coords_obs_hist_buf.data.clone()
-            )
-        else:
-            self._cached_humanoid_reduced_coords_obs_hist = None
-        if self.env.self_obs_cb.previous_actions_hist_buf is not None:
-            self._cached_previous_actions_hist = (
-                self.env.self_obs_cb.previous_actions_hist_buf.data.clone()
-            )
-        else:
-            self._cached_previous_actions_hist = None
+            self._cached_state_history = None
 
         fixed_motion_ids, first_env_indices = (
             self.motion_manager.get_unique_fixed_motions()
         )
 
         if fixed_motion_ids.numel() > 0:
-            # only evaluate fixed motions
-            # NOTE: we do not support some envs having no fixed motions (no scene)
-            # no such cases in current datasets, and also it
-            # would be awkward to define what evaluator should do in that case
             print(
                 f"Only evaluating fixed motions: {fixed_motion_ids}, First environment indices: {first_env_indices}"
             )
@@ -253,7 +247,9 @@ class MimicEvaluator(BaseEvaluator):
 
         # Initialize environment for this episode
         self.motion_manager.motion_ids[active_env_ids] = active_motion_ids
-        max_len = self.motion_lib.get_motion_num_frames(active_motion_ids).max().item()
+        # Motions have their own fps, we need to convert to env steps
+        motion_lengths = self.motion_lib.get_motion_length(active_motion_ids)
+        max_len = (motion_lengths.max() / self.env.dt).floor().long().item()
         max_len = min(max_len, self.config.max_eval_steps)
         self.motion_manager.motion_times[active_env_ids] = 0.0
 
@@ -265,7 +261,6 @@ class MimicEvaluator(BaseEvaluator):
         obs = self.agent.add_agent_info_to_obs(obs)
         obs_td = self.agent.obs_dict_to_tensordict(obs)
 
-        # Run the episode and collect metrics (no resets during episode)
         for _ in range(max_len):
             # Obtain actor predictions
             model_outs = self.agent.model(obs_td)
@@ -278,13 +273,63 @@ class MimicEvaluator(BaseEvaluator):
             obs = self.agent.add_agent_info_to_obs(obs)
 
             obs_td = self.agent.obs_dict_to_tensordict(obs)
-            # Update metrics
+            # Update metrics (including actions for smoothness computation)
             self.update_metrics_from_env_extras(
-                metrics, extras, active_env_ids, active_motion_ids
+                metrics, extras, active_env_ids, active_motion_ids, actions=actions
             )
 
     def add_extra_obs_to_agent(self, obs: Tensor):
         return obs
+
+    def _compute_tracking_errors(
+        self,
+        active_env_ids: Tensor,
+    ) -> Dict[str, Tensor]:
+        """Compute tracking error metrics directly from simulator and motion lib.
+        
+        This makes the evaluator self-contained and independent of env.extras.
+        
+        Args:
+            active_env_ids: Environment IDs being evaluated.
+            
+        Returns:
+            Dictionary of computed tracking error metrics.
+        """
+        # Get current robot state from simulator
+        current_state = self.env.simulator.get_robot_state()
+        
+        # Get reference state from motion library
+        ref_state = self.motion_lib.get_motion_state(
+            self.motion_manager.motion_ids, self.motion_manager.motion_times
+        )
+        
+        # Apply terrain height correction to reference
+        ref_gt = ref_state.rigid_body_pos.clone()
+        ref_gt += self.env.get_spawn_to_ref_pose_offset_with_terrain_height_correction(
+            ref_gt
+        )
+        
+        # Current state
+        gt = current_state.rigid_body_pos
+        gr = current_state.rigid_body_rot
+        ref_gr = ref_state.rigid_body_rot
+        
+        # Position error: mean of per-joint L2 errors
+        gt_per_joint_err = (ref_gt - gt).pow(2).sum(-1).sqrt()
+        gt_err = gt_per_joint_err.mean(-1)
+        max_joint_err = gt_per_joint_err.max(-1)[0]
+        
+        # Rotation error: mean quaternion angle difference
+        gr_diff = quat_diff_norm(gr, ref_gr, True)
+        gr_err = gr_diff.mean(-1)
+        gr_err_degrees = gr_err * 180 / torch.pi
+        
+        return {
+            "gt_err": gt_err[active_env_ids],
+            "gr_err": gr_err[active_env_ids],
+            "gr_err_degrees": gr_err_degrees[active_env_ids],
+            "max_joint_err": max_joint_err[active_env_ids],
+        }
 
     def update_metrics_from_env_extras(
         self,
@@ -292,33 +337,47 @@ class MimicEvaluator(BaseEvaluator):
         extras: Dict,
         active_env_ids: Tensor,
         active_motion_ids: Tensor,
+        actions: Tensor = None,
     ) -> None:
-        """
-        Update metrics from env.extras.
+        """Update metrics by computing tracking errors directly and looking up extras.
+
+        Computes tracking error metrics (gt_err, gr_err, etc.) directly from the
+        simulator and motion library rather than relying on env.extras.
+        For reward metrics and raw robot state, looks up from extras if available.
 
         Args:
             metrics: Dictionary to update with metrics
             extras: Dictionary of extra information from environment step
-            motion_ids: Tensor of motion IDs being evaluated
+            active_env_ids: Environment IDs being evaluated
+            active_motion_ids: Motion IDs being evaluated
+            actions: Actions taken this step (for action smoothness computation)
         """
-
         assert len(active_env_ids) == len(active_motion_ids)
 
-        # Use metrics dict as source of truth for which keys to update
+        # Compute tracking error metrics directly
+        tracking_errors = self._compute_tracking_errors(active_env_ids)
+
+        # Update each metric in the metrics dict
         for k in metrics.keys():
-            if f"mimic_other/{k}" in extras:
-                value = extras[f"mimic_other/{k}"].detach()
+            value = None
+            
+            # First check if we computed this metric directly
+            if k in tracking_errors:
+                value = tracking_errors[k]
+            # Handle actions separately
+            elif k == "actions" and actions is not None:
+                value = actions[active_env_ids].detach()
+            # Then check env.extras for reward metrics
             elif f"raw_r/{k}" in extras:
-                value = extras[f"raw_r/{k}"].detach()
-            # getting raw robot states in metrics for computation e.g. smoothness, etc.
+                value = extras[f"raw_r/{k}"][active_env_ids].detach()
             elif f"raw/{k}" in extras:
-                value = extras[f"raw/{k}"].detach()
+                value = extras[f"raw/{k}"][active_env_ids].detach()
+            elif f"mimic_other/{k}" in extras:
+                value = extras[f"mimic_other/{k}"][active_env_ids].detach()
             else:
-                raise ValueError(f"Key {k} not found in env.extras")
+                continue
 
-            metric = value[active_env_ids]  # in case there are more envs than motions
-
-            metrics[k].update(active_motion_ids, metric)
+            metrics[k].update(active_motion_ids, value)
 
     def process_eval_results(self, metrics: Dict) -> Tuple[Dict, Optional[float]]:
         """
@@ -343,14 +402,15 @@ class MimicEvaluator(BaseEvaluator):
         # This avoids the memory overhead of merging full MotionMetrics objects across ranks
 
         # Log base metrics with mean/max/min aggregations
-        base_metrics_log = self._gen_metrics(metrics, self.config.eval_metric_keys)
+        # Only log metrics that were actually collected
+        available_keys = [k for k in self.config.eval_metric_keys if k in metrics]
+        base_metrics_log = self._gen_metrics(metrics, available_keys)
         to_log.update(base_metrics_log)
 
         # Compute additional metrics from plugins (e.g., smoothness)
         additional_metrics = self._compute_additional_metrics(metrics)
         to_log.update(additional_metrics)
 
-        # Save the raw body pos and rot etc. at specified intervals
         if self.fabric.global_rank == 0:
             if (
                 self.config.save_predicted_motion_lib_every is not None
@@ -363,7 +423,6 @@ class MimicEvaluator(BaseEvaluator):
                 except Exception as e:
                     print(f"Warning: failed to save predicted MotionLib file: {e}")
 
-        # these return can optionally be used to save the "best metric" model
         return to_log, to_log.get(
             "eval/tracking_success_rate", to_log.get("eval/gt_err", None)
         )
@@ -375,19 +434,8 @@ class MimicEvaluator(BaseEvaluator):
         env_ids = torch.arange(0, self.num_envs, device=self.device)
         self.env.simulator.reset_envs(self._cached_robot_state, None, env_ids)
 
-        # Restore history buffers (all enabled observation history buffers)
-        if self.env.self_obs_cb.humanoid_max_coords_obs_hist_buf is not None:
-            self.env.self_obs_cb.humanoid_max_coords_obs_hist_buf.data.copy_(
-                self._cached_humanoid_max_coords_obs_hist
-            )
-        if self.env.self_obs_cb.humanoid_reduced_coords_obs_hist_buf is not None:
-            self.env.self_obs_cb.humanoid_reduced_coords_obs_hist_buf.data.copy_(
-                self._cached_humanoid_reduced_coords_obs_hist
-            )
-        if self.env.self_obs_cb.previous_actions_hist_buf is not None:
-            self.env.self_obs_cb.previous_actions_hist_buf.data.copy_(
-                self._cached_previous_actions_hist
-            )
+        if self._cached_state_history is not None:
+            self.env.state_history.load_state(self._cached_state_history)
 
         self.env.progress_buf[env_ids] = self._cached_progress_buf[env_ids]
         self.env.reset_buf[env_ids] = False
@@ -404,9 +452,7 @@ class MimicEvaluator(BaseEvaluator):
         del self._cached_progress_buf
         del self._cached_motion_ids
         del self._cached_motion_times
-        del self._cached_humanoid_max_coords_obs_hist
-        del self._cached_humanoid_reduced_coords_obs_hist
-        del self._cached_previous_actions_hist
+        del self._cached_state_history
 
     def simple_test_policy(self, collect_metrics: bool = False) -> None:
         """
@@ -453,7 +499,6 @@ class MimicEvaluator(BaseEvaluator):
                     0, cur_motion_ids.numel(), device=self.device
                 )
 
-                # Obtain actor predictions
                 model_outs = self.agent.model(obs_td)
 
                 if "mean_action" in model_outs:
@@ -461,22 +506,17 @@ class MimicEvaluator(BaseEvaluator):
                 else:
                     actions = model_outs["action"]
 
-                # Store actions for plotting (only for single motion and first environment)
                 if (
                     actions_storage is not None
                     and len(actions_storage) < motion_num_frames.max().item()
                 ):
-                    actions_storage.append(
-                        actions[0].detach().cpu().numpy()
-                    )  # Store first env's actions
+                    actions_storage.append(actions[0].detach().cpu().numpy())
 
-                # Step the environment
                 obs, rewards, dones, terminated, extras = self.env.step(actions)
                 obs = self.agent.add_agent_info_to_obs(obs)
                 obs_td = self.agent.obs_dict_to_tensordict(obs)
 
                 if collect_metrics:
-                    # remove duplicate motions sampled
                     unique_motion_ids, first_indices = np.unique(
                         cur_motion_ids.cpu().numpy(), return_index=True
                     )
@@ -494,10 +534,9 @@ class MimicEvaluator(BaseEvaluator):
             print("\nEvaluation interrupted by Ctrl+C, exiting...")
             if collect_metrics:
                 print("Metrics up to now:")
-                for k in (
-                    self.config.eval_metric_keys
-                ):  # do not reduce added eval keys for the raws
-                    print(f"{k}: {metrics[k].mean_mean_reduce().item()}")
+                for k in self.config.eval_metric_keys:
+                    if k in metrics:
+                        print(f"{k}: {metrics[k].mean_mean_reduce().item()}")
 
                 # Plot per-frame metrics if only one motion
                 if num_motions == 1:
@@ -521,12 +560,13 @@ class MimicEvaluator(BaseEvaluator):
         # Define custom colors for specific metrics
         custom_colors = {}
 
+        # Only plot metrics that were actually collected
+        available_keys = [k for k in self.config.eval_metric_keys if k in metrics]
+
         # Use base class generic plotting with custom colors
         super()._plot_per_frame_metrics(
             metrics,
-            keys_to_plot=self.config.eval_metric_keys
-            if hasattr(self.config, "eval_metric_keys")
-            else None,
+            keys_to_plot=available_keys if available_keys else None,
             custom_colors=custom_colors,
             output_filename="metrics_per_frame_plot.png",
         )
@@ -563,13 +603,11 @@ class MimicEvaluator(BaseEvaluator):
         device = self.device
         num_motions = self.motion_lib.num_motions()
 
-        # Use the per-motion valid frame counts from dof_pos (others should match)
         motion_num_frames = metrics["dof_pos"].motion_lens.to(device=device).long()
         assert (
             motion_num_frames.shape[0] == num_motions
         ), "motion_num_frames size mismatch"
 
-        # Compute length_starts like MotionLib
         lengths_shifted = motion_num_frames.roll(1)
         lengths_shifted[0] = 0
         length_starts = lengths_shifted.cumsum(0)
@@ -579,13 +617,11 @@ class MimicEvaluator(BaseEvaluator):
         )
         motion_lengths = motion_num_frames.to(dtype=torch.float32) * self.env.dt
 
-        # Helper to pack per-motion tensors into a single time-concatenated tensor
         def pack_metric(metric_key: str) -> torch.Tensor:
-            data = metrics[metric_key].data  # [num_motions, max_frames, ...]
+            data = metrics[metric_key].data
             per_motion = []
             for m in range(num_motions):
                 f = motion_num_frames[m].item()
-                # Clamp to available frames
                 f = min(f, data.shape[1])
                 per_motion.append(data[m, :f].detach().clone())
             return torch.cat(per_motion, dim=0)

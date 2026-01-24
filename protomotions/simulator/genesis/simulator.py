@@ -401,6 +401,20 @@ class GenesisSimulator(Simulator):
         """Applies torques to the robot DOFs."""
         self._robot.control_dofs_force(torques, self._genesis_dof_indices)
 
+    def _apply_root_velocity_impulse(
+        self,
+        linear_velocity: torch.Tensor,
+        angular_velocity: torch.Tensor,
+        env_ids: torch.Tensor,
+    ) -> None:
+        """Apply velocity impulse to robot root by adding to current velocities."""
+        current_lin_vel = self._robot.get_dofs_velocity([0, 1, 2])[env_ids]
+        current_ang_vel = self._robot.get_dofs_velocity([3, 4, 5])[env_ids]
+        new_lin_vel = current_lin_vel + linear_velocity
+        new_ang_vel = current_ang_vel + angular_velocity
+        self._robot.set_dofs_velocity(new_lin_vel, dofs_idx_local=[0, 1, 2], envs_idx=env_ids)
+        self._robot.set_dofs_velocity(new_ang_vel, dofs_idx_local=[3, 4, 5], envs_idx=env_ids)
+
     # ===== Group 6: Rendering & Visualization =====
     def _init_camera(self) -> None:
         """Initializes the camera position and orientation."""

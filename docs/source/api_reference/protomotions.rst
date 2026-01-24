@@ -9,17 +9,5 @@ protomotions package
 Subpackages
 -----------
 
-.. toctree::
-   :maxdepth: 4
-
-   protomotions.agents
-   protomotions.tests
-   protomotions.utils
-
-Submodules
-----------
-
-.. toctree::
-   :maxdepth: 4
-
-   protomotions.utils.fabric_config
+* :doc:`protomotions.agents` - RL agents and algorithms
+* :doc:`protomotions.utils` - Utility functions
