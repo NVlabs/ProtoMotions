@@ -78,14 +78,7 @@ Used when training with interactive objects (vaulting, manipulation).
 StateConversion
 ---------------
 
-Utility for coordinate frame conversions:
-
-.. code-block:: python
-
-   from protomotions.simulator.base_simulator.simulator_state import StateConversion
-   
-   # Convert to different reference frame
-   local_state = StateConversion.to_local_frame(robot_state, reference_pos, reference_rot)
+Utility for converting between common (base-simulator) and simulator-specific state representations, since different simulators may have different quaternion conventions and/or body/dof ordering.
 
 Common Operations
 -----------------
