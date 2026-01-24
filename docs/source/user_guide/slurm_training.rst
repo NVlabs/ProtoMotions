@@ -227,31 +227,6 @@ After submission, the script prints monitoring commands:
    # Cancel a job
    ssh myusername@cluster 'scancel <job_id>'
 
-Troubleshooting
----------------
-
-**Job fails immediately**
-
-* Check ``slurm_output.log`` for errors
-* Verify container paths are correct
-* Ensure motion file path exists on the cluster
-
-**WandB authentication fails**
-
-* Run ``wandb login`` on the cluster
-* Or set ``WANDB_API_KEY`` in your cluster ``~/.bashrc``
-
-**Out of GPU memory**
-
-* Reduce ``--num-envs``
-* Reduce ``--batch-size``
-
-**Training doesn't resume**
-
-* Ensure ``--use-slurm`` is enabled
-* Check that checkpoints are being saved (look for ``last.ckpt``)
-* Verify the experiment name matches for resume
-
 Next Steps
 ----------
 
