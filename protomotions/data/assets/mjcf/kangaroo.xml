@@ -248,6 +248,35 @@
     <exclude body1="leg_right_ankle_link" body2="leg_right_knee_link"/>
   </contact>
  
+  <actuator>
+    <motor name="pelvis_1_joint" joint="pelvis_1_joint"/>
+    <motor name="pelvis_2_joint" joint="pelvis_2_joint"/>
+
+    <motor name="leg_left_1_joint" joint="leg_left_1_joint"/>
+    <motor name="leg_left_2_joint" joint="leg_left_2_joint"/>
+    <motor name="leg_left_3_joint" joint="leg_left_3_joint"/>
+    <motor name="leg_left_length_joint" joint="leg_left_length_joint"/>
+    <motor name="leg_left_4_joint" joint="leg_left_4_joint"/>
+    <motor name="leg_left_5_joint" joint="leg_left_5_joint"/>
+
+    <motor name="leg_right_1_joint" joint="leg_right_1_joint"/>
+    <motor name="leg_right_2_joint" joint="leg_right_2_joint"/>
+    <motor name="leg_right_3_joint" joint="leg_right_3_joint"/>
+    <motor name="leg_right_length_joint" joint="leg_right_length_joint"/>
+    <motor name="leg_right_4_joint" joint="leg_right_4_joint"/>
+    <motor name="leg_right_5_joint" joint="leg_right_5_joint"/>
+
+    <motor name="arm_left_1_joint" joint="arm_left_1_joint"/>
+    <motor name="arm_left_2_joint" joint="arm_left_2_joint"/>
+    <motor name="arm_left_3_joint" joint="arm_left_3_joint"/>
+    <motor name="arm_left_4_joint" joint="arm_left_4_joint"/>
+
+    <motor name="arm_right_1_joint" joint="arm_right_1_joint"/>
+    <motor name="arm_right_2_joint" joint="arm_right_2_joint"/>
+    <motor name="arm_right_3_joint" joint="arm_right_3_joint"/>
+    <motor name="arm_right_4_joint" joint="arm_right_4_joint"/>
+  </actuator>
+
   <sensor>
     <gyro           name="imu_ang_vel" site="imu"/>
     <velocimeter    name="imu_lin_vel" site="imu"/>
