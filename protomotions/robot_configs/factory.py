@@ -53,6 +53,10 @@ def robot_config(robot_name: str, **updates) -> RobotConfig:
         from protomotions.robot_configs.rigv1 import Rigv1RobotConfig
 
         config = Rigv1RobotConfig()
+    elif robot_name == "kangaroo":
+        from protomotions.robot_configs.kangaroo import KangarooRobotConfig
+        
+        config = KangarooRobotConfig()
     else:
         raise ValueError(f"Invalid robot name: {robot_name}")
 
