@@ -67,6 +67,7 @@
           <geom name="pelvis_2_collision" size="0.163724 0.162985" pos="4.77798e-07 -1.67441e-06 0.234507" quat="1 -3.97075e-06 -1.19191e-05 0" class="collision"/>
           <site name="imu" pos="0.071 -0.0014 0.0261" quat="0 -0.707107 0.707107 0"/>
           <site name="head" pos="0.0 0.0 0.4" quat="0 0 0 1"/>
+          <body name="head_dummy_link" pos="0.0 0.0 0.4" quat="0 0 0 1"/> <!-- empty body for head tracking -->
           <body name="arm_left_1_link" pos="0 0.105954 0.390496" quat="-4.68302e-06 -2.52466e-06 0.642799 -0.766035">
             <inertial pos="0.0070639 0.0030301 -0.05724" quat="0.991252 0.0809813 -0.0910271 0.0507521" mass="1.1788" diaginertia="0.00192068 0.00177268 0.000875278" />
             <joint name="arm_left_1_joint" axis="0 0 -1" range="-2.61799 2.61799" />
@@ -85,6 +86,7 @@
                   <geom class="visual" mesh="fake_forearm_left_link" />
                   <geom name="arm_left_4_collision" size="0.054849 0.26" pos="0.26 -0.0167497 -0.0171982" quat="0.733112 0.0532001 0.678025 -2.2842e-07" class="collision"/>
                   <site name="ee_left" pos="0.45 -0.02 0.0"/>
+                  <body name="ee_left_dummy_link" pos="0.45 -0.02 0.0"/> <!-- empty body for end-effector tracking -->
                 </body>
               </body>
             </body>
@@ -107,6 +109,7 @@
                   <geom class="visual" mesh="fake_forearm_right_link" />
                   <geom name="arm_right_4_collision" size="0.0559132 0.26" pos="0.26 -0.0172373 -0.0265895" quat="0.717524 0.0513886 0.694636 -1.38234e-06" class="collision"/>
                   <site name="ee_right" pos="0.45 -0.02 0.0"/>
+                  <body name="ee_right_dummy_link" pos="0.45 -0.02 0.0"/> <!-- empty body for end-effector tracking -->
                 </body>
               </body>
             </body>
