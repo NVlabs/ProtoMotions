@@ -29,6 +29,18 @@ Key Features
 * **Multiple Robots**: SMPL, SMPL-X, Unitree G1, H1, and custom morphologies
 * **Open Source**: Permissively licensed under Apache-2.0
 
+Simulator Support
+-----------------
+
+.. raw:: html
+
+   <p>
+     <a href="https://github.com/newton-physics/newton/commit/8a2abf2"><img src="https://img.shields.io/badge/Newton-8a2abf2-brightgreen.svg" alt="Newton"></a>
+     <a href="https://github.com/isaac-sim/IsaacLab/releases/tag/v2.3.0"><img src="https://img.shields.io/badge/IsaacLab-2.3.0-blue.svg" alt="IsaacLab"></a>
+     <a href="https://developer.nvidia.com/isaac-gym"><img src="https://img.shields.io/badge/IsaacGym-Preview_4-blue.svg" alt="IsaacGym"></a>
+     <a href="https://github.com/Genesis-Embodied-AI/Genesis"><img src="https://img.shields.io/badge/Genesis-untested-lightgrey.svg" alt="Genesis"></a>
+   </p>
+
 High-Level Architecture
 -----------------------
 
