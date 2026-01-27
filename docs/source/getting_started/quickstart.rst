@@ -36,8 +36,8 @@ All trained with 4 A100 GPUs for around 24h.
      - MaskedMimic policy for SMPL
      - ``data/pretrained_models/masked_mimic/smpl/last.ckpt``
    * - MaskedMimic G1
-     - MaskedMimic policy for G1
-     - *Coming soon*
+     - MaskedMimic policy for G1 trained on AMASS
+     - ``data/pretrained_models/masked_mimic/g1-amass/last.ckpt``
 
 **Example Motion Data:**
 
