@@ -96,6 +96,7 @@ print(f"Headless: {simulator_cfg.headless}")
 
 from protomotions.components.terrains.config import TerrainConfig  # noqa: E402
 from protomotions.components.terrains.terrain import Terrain  # noqa: E402
+from protomotions.simulator.base_simulator.utils import convert_friction_for_simulator  # noqa: E402
 
 # We always require the surface plane to be defined.
 # In this case, we define an irregular terrain.
@@ -103,6 +104,11 @@ from protomotions.components.terrains.terrain import Terrain  # noqa: E402
 # Here we override the default terrain properties to include stepping stones and poles.
 terrain_config = TerrainConfig()
 # We also provide a pre-defined helper for complex terrains in from protomotions.components.terrains.config import ComplexTerrainConfig
+
+# Convert friction settings for the specific simulator
+# Newton requires CombineMode.MAX, IsaacGym requires CombineMode.AVERAGE
+# This utility handles the conversion automatically
+terrain_config, simulator_cfg = convert_friction_for_simulator(terrain_config, simulator_cfg)
 
 # The terrain config provides a pointer to the specific terrain class.
 terrain = Terrain(config=terrain_config, num_envs=simulator_cfg.num_envs, device=device)
@@ -154,11 +160,17 @@ table_options = ObjectOptions(
     },
 )
 
+object_path = None
+if args.simulator == "isaaclab":
+    object_path = "examples/data/elephant.usda"
+elif args.simulator == "newton":
+    object_path = "examples/data/elephant.stl"
+else:
+    object_path = "examples/data/elephant.urdf"
+
 # Create elephant object
 elephant = MeshSceneObject(
-    object_path="examples/data/elephant.usda"
-    if args.simulator == "isaaclab"
-    else "examples/data/elephant.urdf",
+    object_path=object_path,
     options=elephant_options,
     translation=(0.0, 0.0, 1.5),
     rotation=(0.0, 0.0, 0.0, 1.0),
@@ -240,6 +252,7 @@ print("Simulator now includes scenes with objects")
 default_state = simulator.get_default_robot_reset_state()
 default_object_state = scene_lib.get_default_object_state(device)
 default_state.root_pos[:, :2] += 10.5
+default_state.root_pos[:, 2] = robot_cfg.default_root_height + 0.1
 default_object_state.root_pos[:, :, :2] += 10.0
 
 print("\n=== Robot State Information ===")

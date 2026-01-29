@@ -279,8 +279,15 @@ print(f"Reward components: {list(reward_components.keys())}")
 
 # Create terrain with simple flat configuration
 from protomotions.components.terrains.terrain import Terrain  # noqa: E402
+from protomotions.simulator.base_simulator.utils import convert_friction_for_simulator  # noqa: E402
 
 terrain_config = TerrainConfig()  # Simple flat terrain for this demo (default is flat)
+
+# Convert friction settings for the specific simulator
+# Newton requires CombineMode.MAX, IsaacGym requires CombineMode.AVERAGE
+# This utility handles the conversion automatically
+terrain_config, simulator_cfg = convert_friction_for_simulator(terrain_config, simulator_cfg)
+
 terrain = Terrain(config=terrain_config, num_envs=simulator_cfg.num_envs, device=device)
 
 scene_lib_config = SceneLibConfig(scene_file=None)

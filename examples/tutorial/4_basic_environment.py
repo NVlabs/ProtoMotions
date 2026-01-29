@@ -151,6 +151,12 @@ env_config = EnvConfig(
 # Create terrain with complex configuration
 terrain_config = TerrainConfig()
 from protomotions.components.terrains.terrain import Terrain  # noqa: E402
+from protomotions.simulator.base_simulator.utils import convert_friction_for_simulator  # noqa: E402
+
+# Convert friction settings for the specific simulator
+# Newton requires CombineMode.MAX, IsaacGym requires CombineMode.AVERAGE
+# This utility handles the conversion automatically
+terrain_config, simulator_cfg = convert_friction_for_simulator(terrain_config, simulator_cfg)
 
 terrain = Terrain(config=terrain_config, num_envs=simulator_cfg.num_envs, device=device)
 
