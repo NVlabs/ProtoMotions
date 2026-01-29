@@ -226,8 +226,20 @@ class NewtonSimulator(Simulator):
                 env_static_object_poses = []
                 for obj_idx, obj in enumerate(scene.objects):
                     object_asset = self._object_assets[obj.first_instance_id]
+                    # Use initial translation and rotation from object definition
+                    # obj.translation is shape (N, 3), obj.rotation is shape (N, 4)
+                    obj_trans = obj.translation[0]  # Initial position
+                    obj_rot = obj.rotation[0]  # Initial rotation (xyzw)
                     object_pose = torch.tensor(
-                        [scene_offset_x, scene_offset_y, 0.0, 0.0, 0.0, 0.0, 1.0],
+                        [
+                            scene_offset_x + obj_trans[0].item(),
+                            scene_offset_y + obj_trans[1].item(),
+                            obj_trans[2].item(),
+                            obj_rot[0].item(),
+                            obj_rot[1].item(),
+                            obj_rot[2].item(),
+                            obj_rot[3].item(),
+                        ],
                         device=self.device,
                         dtype=torch.float,
                     )
@@ -236,9 +248,8 @@ class NewtonSimulator(Simulator):
 
                     if isinstance(object_asset, newton.Mesh):
                         if not obj.options.fix_base_link:
-                            builder.add_articulation(key=f"object_{env_id}_{obj_idx}")
-                            body_id = builder.add_body(xform=object_pose)
-                            builder.add_joint_free(body_id)
+                            # add_body is a convenience method that creates body + free joint + articulation
+                            body_id = builder.add_body(xform=object_pose, key=f"object_{env_id}_{obj_idx}")
                             xform = None
                         else:
                             body_id = -1
@@ -248,9 +259,8 @@ class NewtonSimulator(Simulator):
                         )
                     else:
                         if not obj.options.fix_base_link:
-                            builder.add_articulation(key=f"object_{env_id}_{obj_idx}")
-                            body_id = builder.add_body(xform=object_pose)
-                            builder.add_joint_free(body_id)
+                            # add_body is a convenience method that creates body + free joint + articulation
+                            body_id = builder.add_body(xform=object_pose, key=f"object_{env_id}_{obj_idx}")
                             xform = None
                         else:
                             body_id = -1
