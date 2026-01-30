@@ -4,6 +4,17 @@ Installation
 ProtoMotions supports four simulation backends: IsaacGym, IsaacLab, Genesis, and Newton. 
 You can install the simulation of your choice, and the simulation backend is selected via the configuration file.
 
+**Tested Versions:**
+
+.. raw:: html
+
+   <p>
+     <a href="https://github.com/newton-physics/newton/commit/8a2abf2"><img src="https://img.shields.io/badge/Newton-8a2abf2-brightgreen.svg" alt="Newton"></a>
+     <a href="https://github.com/isaac-sim/IsaacLab/releases/tag/v2.3.0"><img src="https://img.shields.io/badge/IsaacLab-2.3.0-blue.svg" alt="IsaacLab"></a>
+     <a href="https://developer.nvidia.com/isaac-gym"><img src="https://img.shields.io/badge/IsaacGym-Preview_4-blue.svg" alt="IsaacGym"></a>
+     <a href="https://github.com/Genesis-Embodied-AI/Genesis"><img src="https://img.shields.io/badge/Genesis-untested-lightgrey.svg" alt="Genesis"></a>
+   </p>
+
 .. note::
 
    We recommend creating a **separate virtual environment** for each simulator to avoid dependency conflicts.

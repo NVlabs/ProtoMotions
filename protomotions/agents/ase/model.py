@@ -43,7 +43,7 @@ class ASEDiscriminatorEncoder(Discriminator):
         """Initialize encoder weights after materialization."""
         encoder = None
         final_module = self.models[-1]
-        for model in final_module.output_models:
+        for model in final_module.models:
             if model.out_keys[0] == "mi_enc_output":  # Found the encoder module
                 encoder = model
                 break

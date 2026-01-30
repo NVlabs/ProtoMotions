@@ -170,21 +170,18 @@ class NewtonSimulator(Simulator):
         if wp.get_device().is_cuda and wp.is_mempool_enabled(wp.get_device()):
             print(f"[INFO] Using CUDA graph ({self.control_type.name})")
             self.use_cuda_graph = True
-            zeros = torch.zeros(self.num_envs, self.robot_config.number_of_actions,
+            zeros = torch.zeros(self.num_envs, 1, self.robot_config.number_of_actions,
                                 device=self.device, dtype=torch.float32)
 
             if self.control_type == ControlType.BUILT_IN_PD:
                 self.robot_view.set_attribute("joint_target_pos", self.control,
                                               wp.from_torch(zeros, dtype=wp.float32))
             else:
-                # Initialize PD targets for explicit PD mode
-                self._update_pd_targets(zeros)
+                self._update_pd_targets(zeros.squeeze(1))
 
             with wp.ScopedCapture() as capture:
                 self._simulate()
             self.graph = capture.graph
-        elif self.control_type == ControlType.TORQUE:
-            print("[INFO] Direct torque mode (no CUDA graph)")
         else:
             print(f"[INFO] {self.control_type.name} mode (no CUDA graph)")
 
@@ -229,8 +226,20 @@ class NewtonSimulator(Simulator):
                 env_static_object_poses = []
                 for obj_idx, obj in enumerate(scene.objects):
                     object_asset = self._object_assets[obj.first_instance_id]
+                    # Use initial translation and rotation from object definition
+                    # obj.translation is shape (N, 3), obj.rotation is shape (N, 4)
+                    obj_trans = obj.translation[0]  # Initial position
+                    obj_rot = obj.rotation[0]  # Initial rotation (xyzw)
                     object_pose = torch.tensor(
-                        [scene_offset_x, scene_offset_y, 0.0, 0.0, 0.0, 0.0, 1.0],
+                        [
+                            scene_offset_x + obj_trans[0].item(),
+                            scene_offset_y + obj_trans[1].item(),
+                            obj_trans[2].item(),
+                            obj_rot[0].item(),
+                            obj_rot[1].item(),
+                            obj_rot[2].item(),
+                            obj_rot[3].item(),
+                        ],
                         device=self.device,
                         dtype=torch.float,
                     )
@@ -239,9 +248,8 @@ class NewtonSimulator(Simulator):
 
                     if isinstance(object_asset, newton.Mesh):
                         if not obj.options.fix_base_link:
-                            builder.add_articulation(key=f"object_{env_id}_{obj_idx}")
-                            body_id = builder.add_body(xform=object_pose)
-                            builder.add_joint_free(body_id)
+                            # add_body is a convenience method that creates body + free joint + articulation
+                            body_id = builder.add_body(xform=object_pose, key=f"object_{env_id}_{obj_idx}")
                             xform = None
                         else:
                             body_id = -1
@@ -251,9 +259,8 @@ class NewtonSimulator(Simulator):
                         )
                     else:
                         if not obj.options.fix_base_link:
-                            builder.add_articulation(key=f"object_{env_id}_{obj_idx}")
-                            body_id = builder.add_body(xform=object_pose)
-                            builder.add_joint_free(body_id)
+                            # add_body is a convenience method that creates body + free joint + articulation
+                            body_id = builder.add_body(xform=object_pose, key=f"object_{env_id}_{obj_idx}")
                             xform = None
                         else:
                             body_id = -1
@@ -439,23 +446,27 @@ class NewtonSimulator(Simulator):
         joint_stiffness = wp.from_torch(
             torch.tensor(joint_stiffness, device=self.device, dtype=torch.float32)
             .unsqueeze(0)
-            .expand(self.num_envs, -1)
+            .unsqueeze(1)
+            .expand(self.num_envs, 1, -1)
         )
         joint_damping = wp.from_torch(
             torch.tensor(joint_damping, device=self.device, dtype=torch.float32)
             .unsqueeze(0)
-            .expand(self.num_envs, -1)
+            .unsqueeze(1)
+            .expand(self.num_envs, 1, -1)
         )
         joint_armature = wp.from_torch(
             torch.tensor(joint_armature, device=self.device, dtype=torch.float32)
             .unsqueeze(0)
-            .expand(self.num_envs, -1)
+            .unsqueeze(1)
+            .expand(self.num_envs, 1, -1)
         )
         if joint_friction is not None:
             joint_friction = wp.from_torch(
                 torch.tensor(joint_friction, device=self.device, dtype=torch.float32)
                 .unsqueeze(0)
-                .expand(self.num_envs, -1)
+                .unsqueeze(1)
+                .expand(self.num_envs, 1, -1)
             )
         if joint_effort_limit is not None:
             joint_effort_limit = wp.from_torch(
@@ -463,7 +474,8 @@ class NewtonSimulator(Simulator):
                     joint_effort_limit, device=self.device, dtype=torch.float32
                 )
                 .unsqueeze(0)
-                .expand(self.num_envs, -1)
+                .unsqueeze(1)
+                .expand(self.num_envs, 1, -1)
             )
         if joint_velocity_limit is not None:
             joint_velocity_limit = wp.from_torch(
@@ -471,7 +483,8 @@ class NewtonSimulator(Simulator):
                     joint_velocity_limit, device=self.device, dtype=torch.float32
                 )
                 .unsqueeze(0)
-                .expand(self.num_envs, -1)
+                .unsqueeze(1)
+                .expand(self.num_envs, 1, -1)
             )
 
         self.robot_view.set_attribute("joint_target_ke", self.model, joint_stiffness)
@@ -490,26 +503,28 @@ class NewtonSimulator(Simulator):
 
         self.default_body_transforms = (
             wp.to_torch(self.robot_view.get_link_transforms(self.model))
+            .squeeze(1)
             .clone()
             .view(self.num_envs, self.robot_config.kinematic_info.num_bodies, -1)
         )
         self.default_body_velocities = (
             wp.to_torch(self.robot_view.get_link_velocities(self.model))
+            .squeeze(1)
             .clone()
             .view(self.num_envs, self.robot_config.kinematic_info.num_bodies, -1)
         )
         self.default_root_transforms = wp.to_torch(
             self.robot_view.get_root_transforms(self.model)
-        ).clone()
+        ).squeeze(1).clone()
         self.default_root_velocities = wp.to_torch(
             self.robot_view.get_root_velocities(self.model)
-        ).clone()
+        ).squeeze(1).clone()
         self.default_dof_positions = wp.to_torch(
             self.robot_view.get_dof_positions(self.model)
-        ).clone()
+        ).squeeze(1).clone()
         self.default_dof_velocities = wp.to_torch(
             self.robot_view.get_dof_velocities(self.model)
-        ).clone()
+        ).squeeze(1).clone()
 
         self._setup_explicit_pd_arrays()
 
@@ -901,25 +916,30 @@ class NewtonSimulator(Simulator):
             [robot_state.root_vel, robot_state.root_ang_vel], dim=1
         )
 
+        root_state_3d = root_state.unsqueeze(1)
+        root_vel_state_3d = root_vel_state.unsqueeze(1)
+        dof_pos_3d = robot_state.dof_pos.unsqueeze(1)
+        dof_vel_3d = robot_state.dof_vel.unsqueeze(1)
+
         # Set state_0 using ArticulationView
-        self.robot_view.set_root_transforms(self.state_0, root_state, mask=env_mask)
-        self.robot_view.set_root_velocities(self.state_0, root_vel_state, mask=env_mask)
+        self.robot_view.set_root_transforms(self.state_0, root_state_3d, mask=env_mask)
+        self.robot_view.set_root_velocities(self.state_0, root_vel_state_3d, mask=env_mask)
         self.robot_view.set_dof_velocities(
-            self.state_0, robot_state.dof_vel, mask=env_mask
+            self.state_0, dof_vel_3d, mask=env_mask
         )
 
         self.robot_view.set_dof_positions(
-            self.state_0, robot_state.dof_pos, mask=env_mask
+            self.state_0, dof_pos_3d, mask=env_mask
         )
 
         # Also update state_1 to match state_0
-        self.robot_view.set_root_transforms(self.state_1, root_state, mask=env_mask)
-        self.robot_view.set_root_velocities(self.state_1, root_vel_state, mask=env_mask)
+        self.robot_view.set_root_transforms(self.state_1, root_state_3d, mask=env_mask)
+        self.robot_view.set_root_velocities(self.state_1, root_vel_state_3d, mask=env_mask)
         self.robot_view.set_dof_velocities(
-            self.state_1, robot_state.dof_vel, mask=env_mask
+            self.state_1, dof_vel_3d, mask=env_mask
         )
         self.robot_view.set_dof_positions(
-            self.state_1, robot_state.dof_pos, mask=env_mask
+            self.state_1, dof_pos_3d, mask=env_mask
         )
 
         # Clear forces after reset
@@ -993,16 +1013,15 @@ class NewtonSimulator(Simulator):
         self, env_ids: Optional[torch.Tensor] = None
     ) -> RobotState:
         """Returns the state of robot bodies."""
-        # Extract positions and quaternions: [x, y, z, qx, qy, qz, qw] per body
         body_transforms = wp.to_torch(
             self.robot_view.get_link_transforms(self.state_0)
-        ).view(self.num_envs, self.robot_config.kinematic_info.num_bodies, -1)
+        ).squeeze(1).view(self.num_envs, self.robot_config.kinematic_info.num_bodies, -1)
         body_pos = body_transforms[:, :, :3]
         body_rot = body_transforms[:, :, 3:]
 
         body_vel_transforms = wp.to_torch(
             self.robot_view.get_link_velocities(self.state_0)
-        ).view(self.num_envs, self.robot_config.kinematic_info.num_bodies, -1)
+        ).squeeze(1).view(self.num_envs, self.robot_config.kinematic_info.num_bodies, -1)
         body_vel = body_vel_transforms[:, :, :3]
         body_ang_vel = body_vel_transforms[:, :, 3:]
 
@@ -1024,8 +1043,8 @@ class NewtonSimulator(Simulator):
         self, env_ids: Optional[torch.Tensor] = None
     ) -> RootOnlyState:
         """Returns the root state of the robot."""
-        root_transforms = wp.to_torch(self.robot_view.get_root_transforms(self.state_0))
-        root_velocities = wp.to_torch(self.robot_view.get_root_velocities(self.state_0))
+        root_transforms = wp.to_torch(self.robot_view.get_root_transforms(self.state_0)).squeeze(1)
+        root_velocities = wp.to_torch(self.robot_view.get_root_velocities(self.state_0)).squeeze(1)
 
         if env_ids is not None:
             root_transforms = root_transforms[env_ids]
@@ -1109,7 +1128,7 @@ class NewtonSimulator(Simulator):
 
     def _get_simulator_dof_forces(self, env_ids=None):
         """Returns the DOF forces."""
-        dof_forces = wp.to_torch(self.robot_view.get_dof_forces(self.control))
+        dof_forces = wp.to_torch(self.robot_view.get_dof_forces(self.control)).squeeze(1)
         if env_ids is not None:
             dof_forces = dof_forces[env_ids]
         return RobotState(
@@ -1122,11 +1141,11 @@ class NewtonSimulator(Simulator):
         """Returns the state of robot DOFs."""
         dof_pos = wp.to_torch(
             self.robot_view.get_dof_positions(self.state_0)
-        ).view(self.num_envs, -1)
+        ).squeeze(1).view(self.num_envs, -1)
 
         dof_vel = wp.to_torch(
             self.robot_view.get_dof_velocities(self.state_0)
-        ).view(self.num_envs, -1)
+        ).squeeze(1).view(self.num_envs, -1)
 
         if env_ids is not None:
             dof_pos = dof_pos[env_ids]
@@ -1146,24 +1165,23 @@ class NewtonSimulator(Simulator):
             Tuple[torch.Tensor, torch.Tensor]: A tuple of (lower_limits, upper_limits)
                                               in Newton's DOF ordering.
         """
-        # Extract limits from Newton's internal representation
         dof_limits_lower = wp.to_torch(
             self.robot_view.get_attribute("joint_limit_lower", self.model)
-        )[0]
+        )[0, 0]
         dof_limits_upper = wp.to_torch(
             self.robot_view.get_attribute("joint_limit_upper", self.model)
-        )[0]
+        )[0, 0]
         return dof_limits_lower, dof_limits_upper
 
     # ===== Group 5: Control & Computation Methods =====
     def _apply_simulator_pd_targets(self, pd_targets: torch.Tensor) -> None:
         """Applies PD position targets using Newton's internal PD controller."""
-        a_wp = wp.from_torch(pd_targets, dtype=wp.float32, requires_grad=False)
+        a_wp = wp.from_torch(pd_targets.unsqueeze(1), dtype=wp.float32, requires_grad=False)
         self.robot_view.set_attribute("joint_target_pos", self.control, a_wp)
 
     def _apply_simulator_torques(self, torques: torch.Tensor) -> None:
         """Applies torques to the robot DOFs."""
-        a_wp = wp.from_torch(torques, dtype=wp.float32, requires_grad=False)
+        a_wp = wp.from_torch(torques.unsqueeze(1), dtype=wp.float32, requires_grad=False)
         self.robot_view.set_dof_forces(self.control, a_wp)
 
     def _apply_pd_kernel(self, state: newton.State) -> None:
@@ -1216,15 +1234,17 @@ class NewtonSimulator(Simulator):
         env_ids: torch.Tensor,
     ) -> None:
         """Apply velocity impulse to robot root by adding to current velocities."""
-        current_vel = wp.to_torch(self.robot_view.get_root_velocities(self.state_0))
+        current_vel_3d = wp.to_torch(self.robot_view.get_root_velocities(self.state_0))
+        current_vel = current_vel_3d.squeeze(1)
         new_vel = current_vel.clone()
         new_vel[env_ids, :3] += linear_velocity
         new_vel[env_ids, 3:6] += angular_velocity
         
         env_mask = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
         env_mask[env_ids] = True
-        self.robot_view.set_root_velocities(self.state_0, new_vel, mask=env_mask)
-        self.robot_view.set_root_velocities(self.state_1, new_vel, mask=env_mask)
+        new_vel_3d = new_vel.unsqueeze(1)
+        self.robot_view.set_root_velocities(self.state_0, new_vel_3d, mask=env_mask)
+        self.robot_view.set_root_velocities(self.state_1, new_vel_3d, mask=env_mask)
 
     # ===== Group 6: Rendering & Visualization =====
     def _init_camera(self) -> None:

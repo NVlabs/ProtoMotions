@@ -283,10 +283,17 @@ print(f"Max episode length: {env_config.max_episode_length}")
 
 # Create terrain with simple flat configuration
 from protomotions.components.terrains.terrain import Terrain  # noqa: E402
+from protomotions.simulator.base_simulator.utils import convert_friction_for_simulator  # noqa: E402
 
 terrain_config = (
     TerrainConfig()
 )  # Simple flat terrain for this motion demo (default is flat)
+
+# Convert friction settings for the specific simulator
+# Newton requires CombineMode.MAX, IsaacGym requires CombineMode.AVERAGE
+# This utility handles the conversion automatically
+terrain_config, simulator_cfg = convert_friction_for_simulator(terrain_config, simulator_cfg)
+
 terrain = Terrain(config=terrain_config, num_envs=simulator_cfg.num_envs, device=device)
 
 # Create scene library from the manually constructed scene

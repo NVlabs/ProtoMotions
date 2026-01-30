@@ -100,6 +100,7 @@ print(f"Headless: {simulator_cfg.headless}")
 
 from protomotions.components.terrains.config import ComplexTerrainConfig  # noqa: E402
 from protomotions.components.terrains.terrain import Terrain  # noqa: E402
+from protomotions.simulator.base_simulator.utils import convert_friction_for_simulator  # noqa: E402
 
 # We always require the surface plane to be defined.
 # In this case, we define an irregular terrain.
@@ -110,6 +111,11 @@ terrain_config = ComplexTerrainConfig(
     # default: terrain_proportions=[ 0.2, 0.1, 0.1, 0.1, 0.05, 0., 0., 0.45 ],
     terrain_proportions=[0.2, 0.1, 0.1, 0.1, 0.05, 0.2, 0.3, 0.1],
 )
+
+# Convert friction settings for the specific simulator
+# Newton requires CombineMode.MAX, IsaacGym requires CombineMode.AVERAGE
+# This utility handles the conversion automatically
+terrain_config, simulator_cfg = convert_friction_for_simulator(terrain_config, simulator_cfg)
 # The terrain config provides a pointer to the specific terrain class.
 TerrainClass = get_class(terrain_config._target_)
 terrain: Terrain = TerrainClass(

@@ -254,7 +254,7 @@ def convert_friction_for_combine_mode(
 
     print(
         f"[INFO] Material conversion {source_mode.value} -> {target_mode.value}: "
-        f"ground friction {ground_static:.2f} -> {adjusted_terrain.static_friction:.2f}"
+        f"ground friction {ground_static:.2f} -> {adjusted_terrain.static_friction:.2f} , ground restitution {ground_restitution:.2f} -> {adjusted_terrain.restitution:.2f}"
     )
 
     return adjusted_terrain, adjusted_friction
