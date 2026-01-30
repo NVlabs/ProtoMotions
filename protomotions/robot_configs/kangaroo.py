@@ -138,7 +138,7 @@ class KangarooRobotConfig(RobotConfig):
                 "leg_.*_femur_joint": ControlInfo(
                     stiffness=0.0,
                     damping=0.0,
-                    effort_limit=None,  # Don't set limit, or use small value like 0.001
+                    effort_limit=None,
                     velocity_limit=None,
                     armature=0.01,
                 ),
