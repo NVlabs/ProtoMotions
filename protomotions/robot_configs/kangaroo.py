@@ -134,7 +134,22 @@ class KangarooRobotConfig(RobotConfig):
                     velocity_limit=3.25,
                     armature=ARMATURE_S_MINUS,
                 ),
-            },
+                # Passive leg joints (closed kinematic chain)
+                "leg_.*_femur_joint": ControlInfo(
+                    stiffness=0.0,
+                    damping=0.0,
+                    effort_limit=None,  # Don't set limit, or use small value like 0.001
+                    velocity_limit=None,
+                    armature=0.01,
+                ),
+                "leg_.*_knee_joint": ControlInfo(
+                    stiffness=0.0,
+                    damping=0.0,
+                    effort_limit=None,
+                    velocity_limit=None,
+                    armature=0.01,
+                ),
+            }
         )
     )
 
