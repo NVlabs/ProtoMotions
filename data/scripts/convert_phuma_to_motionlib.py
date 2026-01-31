@@ -35,6 +35,7 @@ This will create:
 """
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -152,7 +153,9 @@ def main():
         convert_cmd.append("--force-remake")
 
     print(f"Running: {' '.join(convert_cmd)}")
-    result = subprocess.run(convert_cmd, cwd=project_root)
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(project_root) + os.pathsep + env.get("PYTHONPATH", "")
+    result = subprocess.run(convert_cmd, cwd=project_root, env=env)
 
     if result.returncode != 0:
         print(f"Error: PHUMA conversion failed with return code {result.returncode}")
@@ -202,7 +205,7 @@ def main():
         ]
 
         print(f"Running: {' '.join(package_cmd)}")
-        result = subprocess.run(package_cmd, cwd=project_root)
+        result = subprocess.run(package_cmd, cwd=project_root, env=env)
 
         # Clean up temp file
         temp_yaml.unlink()
