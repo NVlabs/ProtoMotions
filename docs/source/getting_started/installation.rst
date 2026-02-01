@@ -126,6 +126,7 @@ For full installation details, see the `Newton Installation Guide <https://newto
 
       git clone git@github.com:newton-physics/newton.git
       cd newton
+      git checkout 8a2abf2  # checkout last tested commit
       uv venv
       source .venv/bin/activate
 

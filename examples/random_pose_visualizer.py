@@ -202,10 +202,10 @@ class RandomPoseVisualizer:
 
         print("Generating new random pose")
 
-        dof_limits_lower = self.robot_config.kinematic_info.dof_limits_lower.to(
+        dof_limits_lower = self.robot_cfg.kinematic_info.dof_limits_lower.to(
             self.device
         )
-        dof_limits_upper = self.robot_config.kinematic_info.dof_limits_upper.to(
+        dof_limits_upper = self.robot_cfg.kinematic_info.dof_limits_upper.to(
             self.device
         )
         print("dof_limits_lower=", dof_limits_lower)
