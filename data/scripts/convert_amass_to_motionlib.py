@@ -32,6 +32,7 @@ This will create:
 """
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -157,7 +158,9 @@ Examples:
         convert_cmd.extend(["--motion-config", str(config)])
 
     print(f"Running: {' '.join(convert_cmd)}")
-    result = subprocess.run(convert_cmd, cwd=project_root)
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(project_root) + os.pathsep + env.get("PYTHONPATH", "")
+    result = subprocess.run(convert_cmd, cwd=project_root, env=env)
 
     if result.returncode != 0:
         print(f"Error: AMASS conversion failed with return code {result.returncode}")
@@ -207,7 +210,7 @@ Examples:
         ]
 
         print(f"Running: {' '.join(package_cmd)}")
-        result = subprocess.run(package_cmd, cwd=project_root)
+        result = subprocess.run(package_cmd, cwd=project_root, env=env)
 
         # Clean up temp file
         temp_yaml.unlink()
