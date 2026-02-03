@@ -56,6 +56,7 @@
 
 
 import torch
+import numpy as np
 from omegaconf.listconfig import ListConfig
 from protomotions.components.motion_lib import MotionLib
 from protomotions.envs.motion_manager.config import MotionManagerConfig
@@ -74,6 +75,7 @@ class MotionManager:
         env_dt: Environment timestep.
         device: Device for tensor storage.
         motion_lib: Motion library containing reference motions.
+        fixed_motion_ids_per_env: Optional fixed motion IDs per environment (-1 for random sampling).
     """
 
     def __init__(
@@ -83,6 +85,7 @@ class MotionManager:
         env_dt: float,
         device: torch.device,
         motion_lib: MotionLib,
+        fixed_motion_ids_per_env: Optional[torch.Tensor] = None,
     ):
         self.config = config
         self.num_envs = num_envs
@@ -109,6 +112,9 @@ class MotionManager:
 
         # Handle motion exclusion (store excluded IDs to apply during sampling)
         self._setup_motion_exclusion()
+
+        # Handle fixed motion IDs for scene-motion correspondence
+        self._setup_fixed_motion_ids(fixed_motion_ids_per_env)
 
     def _setup_motion_subset(self):
         """
@@ -211,6 +217,62 @@ class MotionManager:
         print(f"Motion Manager: Excluding {len(motion_ids)} motions from sampling")
         if len(motion_ids) <= 50:
             print(f"Excluded motion IDs: {motion_ids}")
+
+    def _setup_fixed_motion_ids(self, fixed_motion_ids_per_env: Optional[torch.Tensor]):
+        """Setup fixed motion IDs. Use -1 for environments that should use random sampling."""
+        self._fixed_motion_ids_per_env = fixed_motion_ids_per_env
+        self._env_has_fixed_motion = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.bool
+        )
+        if fixed_motion_ids_per_env is not None:
+            assert fixed_motion_ids_per_env.shape == (
+                self.num_envs,
+            ), f"fixed_motion_ids_per_env must be of shape ({self.num_envs},), got {fixed_motion_ids_per_env.shape}"
+            self._env_has_fixed_motion = fixed_motion_ids_per_env != -1
+            num_fixed = self._env_has_fixed_motion.sum().item()
+            if num_fixed > 0:
+                print(f"Motion Manager: {num_fixed} environments have fixed motion IDs")
+
+    def get_unique_fixed_motions(self) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Get unique fixed motion IDs and the first environment index for each.
+
+        Returns:
+            Tuple of (unique_motion_ids, first_env_indices). Excludes -1 entries.
+        """
+        empty_result = (
+            torch.tensor([], device=self.device, dtype=torch.long),
+            torch.tensor([], device=self.device, dtype=torch.long),
+        )
+
+        if self._fixed_motion_ids_per_env is None:
+            return empty_result
+
+        valid_mask_torch = self._fixed_motion_ids_per_env != -1
+
+        if not valid_mask_torch.any():
+            return empty_result
+
+        fixed_motion_ids_np = self._fixed_motion_ids_per_env.cpu().numpy()
+        valid_mask_np = valid_mask_torch.cpu().numpy()
+
+        valid_motion_ids_np = fixed_motion_ids_np[valid_mask_np]
+        all_env_indices_np = np.arange(len(self._fixed_motion_ids_per_env))
+        valid_env_indices_np = all_env_indices_np[valid_mask_np]
+
+        unique_motion_ids_np, first_indices_in_valid_np = np.unique(
+            valid_motion_ids_np, return_index=True
+        )
+
+        first_env_indices_np = valid_env_indices_np[first_indices_in_valid_np]
+
+        first_env_indices_torch = torch.from_numpy(first_env_indices_np).to(
+            device=self.device, dtype=torch.long
+        )
+        unique_motion_ids_torch = torch.from_numpy(unique_motion_ids_np).to(
+            device=self.device, dtype=torch.long
+        )
+
+        return unique_motion_ids_torch, first_env_indices_torch
 
     def _load_exclusions_from_file(self, file_path: str) -> Optional[list]:
         """Load motion IDs to exclude from a file (one ID per line)."""
@@ -320,6 +382,11 @@ class MotionManager:
             ), f"Available motion IDs length ({len(self.available_motion_ids)}) must equal num_envs ({self.num_envs})"
             new_motion_ids = self.available_motion_ids[env_ids].to(self.device)
         else:
+            # Apply fixed motion IDs if not overridden
+            if new_motion_ids is None and self._fixed_motion_ids_per_env is not None:
+                if any(self._env_has_fixed_motion[env_ids]):
+                    new_motion_ids = self._fixed_motion_ids_per_env[env_ids]
+
             # Handle normal case - random sampling with optional override
             if new_motion_ids is not None:
                 assert (
