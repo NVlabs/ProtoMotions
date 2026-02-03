@@ -1243,17 +1243,24 @@ class BaseEnv:
     # Motion and Visualization Helpers
     ###############################################################
     def create_motion_manager(self):
-        """Instantiate motion manager from configuration.
-
-        Creates the motion manager for sampling and tracking reference motions.
-        """
+        """Instantiate motion manager from configuration."""
         MotionManagerClass = get_class(self.config.motion_manager._target_)
+
+        fixed_motion_ids = None
+        if self.scene_lib.num_scenes() > 0:
+            humanoid_motion_ids = self.scene_lib.get_humanoid_motion_ids()
+            if humanoid_motion_ids is not None:
+                fixed_motion_ids = torch.tensor(
+                    humanoid_motion_ids, dtype=torch.long, device=self.device
+                )
+
         self.motion_manager = MotionManagerClass(
             config=self.config.motion_manager,
             num_envs=self.num_envs,
             env_dt=self.dt,
             device=self.device,
             motion_lib=self.motion_lib,
+            fixed_motion_ids_per_env=fixed_motion_ids,
         )
 
     def create_visualization_markers(self, headless: bool):
