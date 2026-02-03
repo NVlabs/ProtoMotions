@@ -115,15 +115,26 @@ def create_parser():
         default=[],
         help="Config overrides in format key=value (e.g., env.max_episode_length=5000 simulator.headless=True)",
     )
+    parser.add_argument(
+        "--disable-compile",
+        action="store_true",
+        default=False,
+        help="Disable torch.compile to avoid CUDA graph warnings during inference.",
+    )
 
     return parser
 
 
 # Parse arguments first (argparse is safe, doesn't import torch)
 import argparse  # noqa: E402
+import os  # noqa: E402
 
 parser = create_parser()
 args, unknown_args = parser.parse_known_args()
+
+# Must be set before importing torch/torch.compile is used.
+if args.disable_compile:
+    os.environ["TORCH_COMPILE_DISABLE"] = "1"
 
 # Import simulator before torch - isaacgym/isaaclab must be imported before torch
 # This also returns AppLauncher if using isaaclab, None otherwise
@@ -184,6 +195,11 @@ def main():
     # Re-use the parser and args from module level
     global parser, args
     args = parser.parse_args()
+
+    if torch.cuda.is_available():
+        torch.set_float32_matmul_precision("high")
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
 
     checkpoint = Path(args.checkpoint)
 
@@ -357,22 +373,29 @@ def main():
     agent.setup()
     agent.load(args.checkpoint, load_env=False)
 
-    if args.full_eval:
-        agent.evaluator.eval_count = 0
-        evaluation_log, evaluated_score = agent.evaluator.evaluate()
-        
-        # Print evaluation metrics
-        print("\n" + "=" * 60)
-        print("EVALUATION RESULTS")
-        print("=" * 60)
-        for key, value in sorted(evaluation_log.items()):
-            print(f"  {key}: {value:.6f}")
-        print("=" * 60)
-        if evaluated_score is not None:
-            print(f"  Overall Score: {evaluated_score:.6f}")
-        print("=" * 60 + "\n")
-    else:
-        agent.evaluator.simple_test_policy(collect_metrics=True)
+    def mark_cudagraph_step_begin():
+        if hasattr(torch, "compiler") and hasattr(torch.compiler, "cudagraph_mark_step_begin"):
+            torch.compiler.cudagraph_mark_step_begin()
+
+    with torch.no_grad():
+        if args.full_eval:
+            agent.evaluator.eval_count = 0
+            mark_cudagraph_step_begin()
+            evaluation_log, evaluated_score = agent.evaluator.evaluate()
+
+            # Print evaluation metrics
+            print("\n" + "=" * 60)
+            print("EVALUATION RESULTS")
+            print("=" * 60)
+            for key, value in sorted(evaluation_log.items()):
+                print(f"  {key}: {value:.6f}")
+            print("=" * 60)
+            if evaluated_score is not None:
+                print(f"  Overall Score: {evaluated_score:.6f}")
+            print("=" * 60 + "\n")
+        else:
+            mark_cudagraph_step_begin()
+            agent.evaluator.simple_test_policy(collect_metrics=True)
 
 
 if __name__ == "__main__":

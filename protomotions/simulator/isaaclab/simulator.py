@@ -293,6 +293,21 @@ class IsaacLabSimulator(Simulator):
                     v_x_sensitivity=0.8, v_y_sensitivity=0.4, omega_z_sensitivity=1.0
                 )
 
+        # Add WASD bindings in addition to the default arrow/numpad mappings.
+        if hasattr(self.keyboard_interface, "_INPUT_KEY_MAPPING"):
+            self.keyboard_interface._INPUT_KEY_MAPPING.update(
+                {
+                    "W": np.asarray([1.0, 0.0, 0.0])
+                    * self.keyboard_interface.v_x_sensitivity,
+                    "S": np.asarray([-1.0, 0.0, 0.0])
+                    * self.keyboard_interface.v_x_sensitivity,
+                    "D": np.asarray([0.0, 1.0, 0.0])
+                    * self.keyboard_interface.v_y_sensitivity,
+                    "A": np.asarray([0.0, -1.0, 0.0])
+                    * self.keyboard_interface.v_y_sensitivity,
+                }
+            )
+
         self.keyboard_interface.add_callback("R", self._requested_reset)
         self.keyboard_interface.add_callback("L", self._toggle_video_record)
         self.keyboard_interface.add_callback(";", self._cancel_video_record)

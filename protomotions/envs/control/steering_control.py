@@ -65,6 +65,9 @@ class SteeringControlConfig(ControlComponentConfig):
     standard_speed_change: float = 0.5
     stop_probability: float = 0.1
     enable_rand_facing: bool = True
+    manual_control: bool = False
+    manual_speed_scale: float = 1.0
+    manual_deadzone: float = 1e-3
 
 
 class SteeringControl(ControlComponent):
@@ -185,6 +188,35 @@ class SteeringControl(ControlComponent):
 
     def step(self):
         """Check if any environments need their heading task updated."""
+        # Manual control mode: use keyboard interface (if available) to set target direction/speed
+        if self.config.manual_control:
+            # Store previous root position before physics step
+            self._prev_root_pos[:] = self.env.simulator.get_root_state().root_pos
+
+            keyboard = getattr(self.env.simulator, "keyboard_interface", None)
+            if keyboard is None:
+                return
+
+            cmd = keyboard.advance()
+            cmd = cmd.to(self.env.device)
+            cmd_xy = cmd[:2]
+            speed = torch.linalg.norm(cmd_xy)
+
+            if speed > self.config.manual_deadzone:
+                tar_dir = cmd_xy / speed
+                tar_speed = torch.clamp(
+                    speed * self.config.manual_speed_scale,
+                    min=self.config.tar_speed_min,
+                    max=self.config.tar_speed_max,
+                )
+
+                self._tar_dir[:] = tar_dir
+                self._tar_speed[:] = tar_speed
+                self._tar_face_dir[:] = tar_dir
+            else:
+                self._tar_speed[:] = 0.0
+            return
+
         # Store previous root position before physics step
         self._prev_root_pos[:] = self.env.simulator.get_root_state().root_pos
 
@@ -276,4 +308,3 @@ class SteeringControl(ControlComponent):
                 orientation=facing_rot.view(self.env.num_envs, -1, 4),
             ),
         }
-

@@ -1,0 +1,22 @@
+{
+  "robot_name": "g1",
+  "simulator": "isaaclab",
+  "num_envs": 1024,
+  "batch_size": 4096,
+  "motion_file": "data/lafan1_phuma/g1_lafan1_fight1.pt",
+  "experiment_path": "examples/experiments/steering/mlp.py",
+  "experiment_name": "g1_lafan1_fight1_steering",
+  "scenes_file": null,
+  "checkpoint": null,
+  "use_wandb": false,
+  "use_slurm": false,
+  "ngpu": 1,
+  "nodes": 1,
+  "headless": true,
+  "seed": 0,
+  "torch_deterministic": false,
+  "training_max_steps": 10000000000000,
+  "overrides": [],
+  "create_config_only": false,
+  "wandb_id": null
+}

@@ -5,7 +5,6 @@
 outputs/*
 rendered_images/*
 *tmp*
-results/*
 .DS_Store
 **/.DS_Store
 

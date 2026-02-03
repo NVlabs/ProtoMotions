@@ -1,0 +1,10 @@
+motions:
+  - file: ../lafan1_phuma/g1/fight1_subject2.motion
+    fps: 30.0
+    weight: 1.0
+  - file: ../lafan1_phuma/g1/fight1_subject3.motion
+    fps: 30.0
+    weight: 1.0
+  - file: ../lafan1_phuma/g1/fight1_subject5.motion
+    fps: 30.0
+    weight: 1.0
