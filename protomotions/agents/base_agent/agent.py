@@ -801,7 +801,8 @@ class BaseAgent:
         aggregated_log_dict = aggregate_scalar_metrics(log_dict, self.fabric)
 
         # wandb logger does this: assert rank_zero_only.rank == 0
-        self.fabric.log_dict(aggregated_log_dict)
+        # Pass current_epoch so TensorBoard knows the X-axis value
+        self.fabric.log_dict(aggregated_log_dict, step=self.current_epoch)
 
     # -----------------------------
     # Helper Functions
