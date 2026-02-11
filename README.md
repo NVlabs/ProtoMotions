@@ -11,6 +11,7 @@
 [![IsaacLab](https://img.shields.io/badge/IsaacLab-2.3.0-blue.svg)](https://github.com/isaac-sim/IsaacLab/releases/tag/v2.3.0)
 [![IsaacGym](https://img.shields.io/badge/IsaacGym-Preview_4-blue.svg)](https://developer.nvidia.com/isaac-gym)
 [![Genesis](https://img.shields.io/badge/Genesis-untested-lightgrey.svg)](https://github.com/Genesis-Embodied-AI/Genesis)
+[![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/NVlabs/ProtoMotions)
 
 </div>
 
