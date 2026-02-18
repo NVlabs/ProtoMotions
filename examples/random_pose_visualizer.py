@@ -41,9 +41,9 @@ parser.add_argument(
 parser.add_argument(
     "--robot",
     type=str,
-    choices=["g1", "rigv1", "smpl"],
+    choices=["g1", "rigv1", "smpl", "kangaroo"],
     default="g1",
-    help="Robot to load (g1, rigv1, or smpl)",
+    help="Robot to load (g1, rigv1, smpl, or kangaroo)",
 )
 parser.add_argument("--num_envs", type=int, default=1, help="Number of environments")
 parser.add_argument("--headless", action="store_true", help="Run in headless mode")
@@ -93,6 +93,16 @@ ROBOT_SPECS = {
             "right_knee_link",
             "left_ankle_roll_link",
             "right_ankle_roll_link",
+        ],
+    ),
+    "kangaroo": RobotSpec(
+        viz_bodies=[
+            "base_link",
+            "pelvis_2_link",
+            "leg_left_knee_link",
+            "leg_right_knee_link",
+            "leg_left_5_link",
+            "leg_right_5_link",
         ],
     ),
     "rigv1": RobotSpec(
