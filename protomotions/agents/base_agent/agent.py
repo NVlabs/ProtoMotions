@@ -683,7 +683,7 @@ class BaseAgent:
             if isinstance(extras[key], torch.Tensor):
                 extra_val = extras[key].float()
                 if extras[key].numel() == 1:
-                    extras_mean_std_dict[key] = extra_val.item()
+                    extras_mean_std_dict[key] = extra_val.flatten()
                 else:
                     extras_mean_std_dict[f"{key}_mean"] = extra_val.mean()
                     # extras_mean_std_dict[f"{key}_std"] = extra_val.std()
