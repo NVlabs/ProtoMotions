@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,14 +19,17 @@ This module defines configurations for the AMP algorithm which uses a discrimina
 to learn motion priors from reference motions.
 """
 
-from typing import List, Dict
+from typing import List, Dict, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from protomotions.envs.mdp_component import MdpComponent
+
 from protomotions.agents.common.config import ModuleContainerConfig
 from protomotions.agents.ppo.config import (
     PPOModelConfig,
     PPOAgentConfig,
     OptimizerConfig,
 )
-from protomotions.envs.obs.observation_component import ObservationComponentConfig
 from dataclasses import dataclass, field
 
 
@@ -134,7 +137,7 @@ class AMPAgentConfig(PPOAgentConfig):
         metadata={"help": "AMP-specific training parameters."}
     )
 
-    reference_obs_components: Dict[str, ObservationComponentConfig] = field(
+    reference_obs_components: Dict[str, "MdpComponent"] = field(
         default_factory=dict,
-        metadata={"help": "Observation components for computing reference motion features."}
+        metadata={"help": "MdpComponent instances for computing reference motion features. Agent injects motion_lib params at runtime."}
     )

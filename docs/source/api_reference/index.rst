@@ -12,6 +12,7 @@ This section contains the complete API documentation for ProtoMotions.
    protomotions.simulator
    protomotions.robot_configs
    protomotions.utils
+   protomotions.tests
    scripts
 
 Agents

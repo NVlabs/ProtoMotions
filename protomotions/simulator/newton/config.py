@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -56,6 +56,10 @@ class NewtonSimParams(SimParams):
     cone: str = field(
         default="pyramidal",
         metadata={"help": "Friction cone: 'pyramidal' or 'elliptic'."}
+    )
+    ccd_iterations: int = field(
+        default=200,
+        metadata={"help": "CCD (continuous collision detection) iterations."}
     )
 
 

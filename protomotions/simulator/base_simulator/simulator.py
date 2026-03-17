@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,21 +33,17 @@ Key Features:
 """
 
 from abc import ABC, abstractmethod
-import os
+import logging
+import math
 
-from collections import deque
-from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple, Callable
 
 import torch
-from protomotions.utils import rotations
+
+log = logging.getLogger(__name__)
 
 from protomotions.components.scene_lib import SceneLib
 from protomotions.components.terrains.terrain import Terrain
-from protomotions.simulator.base_simulator.utils import (
-    build_motion_data,
-    build_pd_action_offset_scale,
-)
 from protomotions.simulator.base_simulator.simulator_state import (
     RobotState,
     DataConversionMapping,
@@ -63,12 +59,14 @@ from protomotions.simulator.base_simulator.config import (
     ActionNoiseDomainRandomizationConfig,
     FrictionDomainRandomizationConfig,
     CenterOfMassDomainRandomizationConfig,
+    ProjectileConfig,
     get_matching_indices,
 )
 from protomotions.robot_configs.base import ControlType, RobotConfig
+from protomotions.simulator.base_simulator.record import RecordingMixin
 
 
-class Simulator(ABC):
+class Simulator(RecordingMixin, ABC):
     """Base class for physics simulators.
 
     Provides a unified interface for different physics engines (IsaacGym, IsaacLab, Genesis, Newton).
@@ -159,17 +157,9 @@ class Simulator(ABC):
 
         self.user_requested_reset: bool = False
 
-        self._camera_target: Dict[str, int] = {"env": 0, "element": 0}
-        self._show_markers: bool = True
         self._simulation_running: bool = True
 
-        self._user_is_recording, self._user_recording_state_change = False, False
-        self._user_recording_video_queue_size = 100000
-        self._delete_user_viewer_recordings = False
-        os.makedirs("output/renderings", exist_ok=True)
-        self._user_recording_video_path = os.path.join(
-            "output/renderings", f"{self.config.experiment_name}-%s"
-        )
+        self._init_recording_state()
         self._common_actions = torch.zeros(
             self.num_envs,
             self.robot_config.number_of_actions,
@@ -181,6 +171,16 @@ class Simulator(ABC):
             self.robot_config.number_of_actions,
             device=self.device,
             dtype=torch.float,
+        )
+        self._prev_prev_actions = torch.zeros(
+            self.num_envs,
+            self.robot_config.number_of_actions,
+            device=self.device,
+            dtype=torch.float,
+        )
+        # Steps since last reset per env, for skipping accel clamp on first 2 steps
+        self._steps_since_reset = torch.zeros(
+            self.num_envs, device=self.device, dtype=torch.long
         )
 
         # Two-phase initialization support
@@ -204,6 +204,11 @@ class Simulator(ABC):
             raise RuntimeError("Simulator already initialized")
 
         self._visualization_markers = visualization_markers
+        # Save original marker configs before simulator-specific init may
+        # replace them (e.g. IsaacLab wraps them in its own class)
+        self._original_marker_configs = (
+            dict(visualization_markers) if visualization_markers else {}
+        )
         # Call simulator-specific initialization (subclass implements this)
         self._create_simulation()
         # Setup data conversion and finalize
@@ -273,18 +278,11 @@ class Simulator(ABC):
         # Verify that simulator-specific limits match the parsed ones
         self._verify_joint_limits()
 
-        self._common_pd_action_offset, self._common_pd_action_scale = (
-            build_pd_action_offset_scale(
-                self.robot_config.kinematic_info.hinge_axes_map,
-                self.robot_config.kinematic_info.dof_limits_lower.to(self.device),
-                self.robot_config.kinematic_info.dof_limits_upper.to(self.device),
-                self.robot_config.control.action_scale,
-                self.device,
-            )
-        )
-        
         # Initialize push randomization state
         self._init_push_randomization()
+
+        # Initialize projectile system
+        self._init_projectiles()
 
     def _init_push_randomization(self) -> None:
         """Initialize push randomization state buffers."""
@@ -295,9 +293,9 @@ class Simulator(ABC):
             and self.config.domain_randomization.push.has_push()
         ):
             push_cfg = self.config.domain_randomization.push
-        
+
         self._push_enabled = push_cfg is not None
-        
+
         if self._push_enabled:
             self._simulation_time = torch.zeros(self.num_envs, device=self.device)
             self._push_next_time = torch.zeros(self.num_envs, device=self.device)
@@ -314,36 +312,35 @@ class Simulator(ABC):
         """Schedule next push time for specified environments."""
         if not self._push_enabled or len(env_ids) == 0:
             return
-        
+
         interval_min, interval_max = self._push_interval_range
         random_intervals = (
-            torch.rand(len(env_ids), device=self.device)
-            * (interval_max - interval_min)
+            torch.rand(len(env_ids), device=self.device) * (interval_max - interval_min)
             + interval_min
         )
-        self._push_next_time[env_ids] = self._simulation_time[env_ids] + random_intervals
+        self._push_next_time[env_ids] = (
+            self._simulation_time[env_ids] + random_intervals
+        )
 
     def _apply_push_if_due(self) -> None:
         """Check if any environments are due for a push and apply it."""
         if not self._push_enabled:
             return
-        
+
         due_mask = self._simulation_time >= self._push_next_time
         if not due_mask.any():
             return
-        
+
         due_env_ids = torch.where(due_mask)[0]
         num_due = len(due_env_ids)
-        
+
         lin_vel = (
-            (torch.rand(num_due, 3, device=self.device) * 2 - 1)
-            * self._push_max_lin_vel
-        )
+            torch.rand(num_due, 3, device=self.device) * 2 - 1
+        ) * self._push_max_lin_vel
         ang_vel = (
-            (torch.rand(num_due, 3, device=self.device) * 2 - 1)
-            * self._push_max_ang_vel
-        )
-        
+            torch.rand(num_due, 3, device=self.device) * 2 - 1
+        ) * self._push_max_ang_vel
+
         self._apply_root_velocity_impulse(lin_vel, ang_vel, due_env_ids)
         self._schedule_push(due_env_ids)
 
@@ -355,9 +352,9 @@ class Simulator(ABC):
         env_ids: torch.Tensor,
     ) -> None:
         """Apply velocity impulse to robot root.
-        
+
         Adds the given velocities to the robot's current root velocities.
-        
+
         Args:
             linear_velocity: Linear velocity impulse [num_envs, 3] in m/s.
             angular_velocity: Angular velocity impulse [num_envs, 3] in rad/s.
@@ -365,18 +362,178 @@ class Simulator(ABC):
         """
         raise NotImplementedError
 
-    def _push_robot(self) -> None:
-        """Apply a random push to all robots (triggered by user button press)."""
-        push_magnitude = 1.0
+    # -------------------------
+    # Projectile system
+    # -------------------------
+    @abstractmethod
+    def _create_projectiles(self, config: ProjectileConfig) -> None:
+        """Create projectile rigid bodies in the simulator.
+
+        Called during _finalize_setup.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def _set_projectile_root_states(
+        self,
+        proj_indices: torch.Tensor,
+        positions: torch.Tensor,
+        rotations_xyzw: torch.Tensor,
+        velocities: torch.Tensor,
+        ang_velocities: torch.Tensor,
+        env_ids: torch.Tensor,
+    ) -> None:
+        """Set root state for specific projectiles in specific envs.
+
+        Args:
+            proj_indices: [N] which projectile index per env
+            positions: [N, 3]
+            rotations_xyzw: [N, 4] quaternion in common format (xyzw)
+            velocities: [N, 3]
+            ang_velocities: [N, 3]
+            env_ids: [N] which environments
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def _get_projectile_positions_rotations(
+        self,
+    ) -> tuple:
+        """Return projectile positions and rotations in common format.
+
+        Returns:
+            (positions, rotations_xyzw) where:
+                positions: [num_envs, num_projectiles, 3]
+                rotations_xyzw: [num_envs, num_projectiles, 4]
+        """
+        raise NotImplementedError
+
+    def _init_projectiles(self) -> None:
+        """Initialize projectile pool state and create physics bodies."""
+        self._proj_config = ProjectileConfig()
+        N = self._proj_config.num_projectiles
+
+        self._proj_next_idx = torch.zeros(
+            self.num_envs, dtype=torch.long, device=self.device
+        )
+        self._proj_throw_time = torch.full(
+            (self.num_envs, N), float("-inf"), device=self.device
+        )
+        self._proj_sim_time = torch.zeros(self.num_envs, device=self.device)
+
+        self._create_projectiles(self._proj_config)
+        self._hide_all_projectiles()
+
+    def _throw_projectile(self) -> None:
+        """J-key handler: launch next projectile cube at each robot.
+
+        Follows ASE humanoid_perturb.py logic:
+        1. Spawn at random angle/distance around robot, height relative to root
+        2. Aim at robot root with small Gaussian noise on all 3 direction components
+        3. Lead the target by adding robot XY velocity to launch velocity
+        """
+        cfg = self._proj_config
         all_env_ids = torch.arange(self.num_envs, device=self.device)
-        
-        random_dir = torch.randn(self.num_envs, 3, device=self.device)
-        random_dir = random_dir / (torch.norm(random_dir, dim=-1, keepdim=True) + 1e-8)
-        lin_vel = random_dir * push_magnitude
+        cube_idx = self._proj_next_idx.clone()
+
+        robot_state = self._get_simulator_root_state()
+        robot_pos = robot_state.root_pos  # [num_envs, 3]
+
+        # Random spawn in polar coords around robot
+        angle = torch.rand(self.num_envs, device=self.device) * 2 * math.pi
+        dist_min, dist_max = cfg.spawn_distance_range
+        distance = (
+            torch.rand(self.num_envs, device=self.device) * (dist_max - dist_min)
+            + dist_min
+        )
+        h_min, h_max = cfg.spawn_height_range
+        height_offset = (
+            torch.rand(self.num_envs, device=self.device) * (h_max - h_min) + h_min
+        )
+
+        spawn_pos = robot_pos.clone()
+        spawn_pos[:, 0] += torch.cos(angle) * distance
+        spawn_pos[:, 1] += torch.sin(angle) * distance
+        spawn_pos[:, 2] = robot_pos[:, 2] + height_offset
+
+        # Velocity aimed at robot with slight noise on all 3 components (ASE-style)
+        launch_dir = robot_pos - spawn_pos
+        launch_dir += cfg.direction_noise_std * torch.randn_like(launch_dir)
+        launch_dir = launch_dir / (torch.norm(launch_dir, dim=-1, keepdim=True) + 1e-8)
+        speed_min, speed_max = cfg.speed_range
+        speed = (
+            torch.rand(self.num_envs, 1, device=self.device) * (speed_max - speed_min)
+            + speed_min
+        )
+        velocity = launch_dir * speed
+
+        # Lead the target: add robot XY velocity to projectile velocity
+        velocity[:, 0:2] += robot_state.root_vel[:, 0:2]
+
+        rotation = torch.zeros(self.num_envs, 4, device=self.device)
+        rotation[:, 3] = 1.0  # identity quaternion xyzw
         ang_vel = torch.zeros(self.num_envs, 3, device=self.device)
-        
-        self._apply_root_velocity_impulse(lin_vel, ang_vel, all_env_ids)
-        print("Push applied to all robots")
+
+        self._set_projectile_root_states(
+            cube_idx, spawn_pos, rotation, velocity, ang_vel, all_env_ids
+        )
+
+        self._proj_throw_time[all_env_ids, cube_idx] = self._proj_sim_time
+        self._proj_next_idx = (cube_idx + 1) % cfg.num_projectiles
+        log.info("Projectile thrown (cube indices: %s...)", cube_idx[:4].tolist())
+
+    def _update_projectiles(self) -> None:
+        """Timer-based hiding of expired projectiles."""
+        self._proj_sim_time += self.dt
+        elapsed = self._proj_sim_time.unsqueeze(1) - self._proj_throw_time
+        expired_mask = (elapsed > self._proj_config.hide_delay) & (
+            self._proj_throw_time > float("-inf")
+        )
+        if not expired_mask.any():
+            return
+
+        env_indices, proj_indices = torch.where(expired_mask)
+        hide_pos = torch.zeros(len(env_indices), 3, device=self.device)
+        hide_pos[:, 2] = self._proj_config.hide_z
+        zero_rot = torch.zeros(len(env_indices), 4, device=self.device)
+        zero_rot[:, 3] = 1.0
+        zero_vel = torch.zeros(len(env_indices), 3, device=self.device)
+
+        self._set_projectile_root_states(
+            proj_indices, hide_pos, zero_rot, zero_vel, zero_vel, env_indices
+        )
+        self._proj_throw_time[expired_mask] = float("-inf")
+
+    def _reset_projectiles(self, env_ids: torch.Tensor) -> None:
+        """Reset projectile state on environment reset."""
+        self._proj_sim_time[env_ids] = 0.0
+        self._proj_throw_time[env_ids] = float("-inf")
+        self._proj_next_idx[env_ids] = 0
+        self._hide_projectiles_for_envs(env_ids)
+
+    def _hide_all_projectiles(self) -> None:
+        """Move all projectiles underground."""
+        all_env_ids = torch.arange(self.num_envs, device=self.device)
+        self._hide_projectiles_for_envs(all_env_ids)
+
+    def _hide_projectiles_for_envs(self, env_ids: torch.Tensor) -> None:
+        """Move all projectiles for given envs underground."""
+        N = self._proj_config.num_projectiles
+        num_e = len(env_ids)
+
+        # Expand: each env x each projectile
+        env_expanded = env_ids.repeat_interleave(N)
+        proj_expanded = torch.arange(N, device=self.device).repeat(num_e)
+
+        hide_pos = torch.zeros(len(env_expanded), 3, device=self.device)
+        hide_pos[:, 2] = self._proj_config.hide_z
+        zero_rot = torch.zeros(len(env_expanded), 4, device=self.device)
+        zero_rot[:, 3] = 1.0
+        zero_vel = torch.zeros(len(env_expanded), 3, device=self.device)
+
+        self._set_projectile_root_states(
+            proj_expanded, hide_pos, zero_rot, zero_vel, zero_vel, env_expanded
+        )
 
     def _verify_joint_limits(self) -> None:
         """
@@ -423,16 +580,9 @@ class Simulator(ABC):
                         f"Simulator={sim_upper_common[i]:.4f}"
                     )
         except NotImplementedError:
-            # Simulator hasn't implemented verification yet - raise error
-            raise NotImplementedError(
-                f"{self.__class__.__name__} has not implemented _get_simulator_dof_limits_for_verification()"
-            )
-        except Exception as e:
-            # Re-raise any other exceptions
-            if not isinstance(e, (ValueError, NotImplementedError)):
-                raise RuntimeError(f"Failed to verify joint limits: {e}") from e
-            else:
-                raise
+            raise
+        except ValueError:
+            raise
 
     # -------------------------
     # ⏱️ Group 3: Simulation Steps & State Management
@@ -481,19 +631,30 @@ class Simulator(ABC):
             markers_callback (Callable): Optional callback function that returns marker states.
                                         Called after physics step but before rendering.
         """
-        # Store the previous actions
+        # Store the action history (two-step buffer for acceleration clamp)
+        self._prev_prev_actions = self._previous_actions.clone()
         self._previous_actions = self._common_actions.clone()
         self.user_requested_reset = False
         self._common_actions = common_actions.to(self.device)
+
+        # Apply PD target acceleration clamp (limits oscillatory jerk)
+        if self.config.pd_target_max_accel is not None:
+            self._apply_accel_clamp()
+
+        self._steps_since_reset += 1
         self._physics_step()
-        
+
         # Update simulation time and apply push randomization
         if self._push_enabled:
             self._simulation_time += self.dt
             self._apply_push_if_due()
 
+        # Update projectile timers (hide expired cubes)
+        self._update_projectiles()
+
         # Get fresh markers state after physics step
         markers_state = markers_callback() if markers_callback is not None else None
+        self._last_markers_state = markers_state
         self._update_markers(markers_state)
 
         self.render()
@@ -516,16 +677,21 @@ class Simulator(ABC):
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=self.device)
         new_states = new_states.convert_to_sim(self.data_conversion)
-        
+
         self._previous_actions[env_ids] = 0.0
+        self._prev_prev_actions[env_ids] = 0.0
+        self._steps_since_reset[env_ids] = 0
         if new_object_states is not None:
             new_object_states = new_object_states.convert_to_sim(self.data_conversion)
         self._set_simulator_env_state(new_states, new_object_states, env_ids)
-        
+
         # Reset push randomization state for reset environments
         if self._push_enabled:
             self._simulation_time[env_ids] = 0.0
             self._schedule_push(env_ids)
+
+        # Reset projectiles for reset environments
+        self._reset_projectiles(env_ids)
 
     @abstractmethod
     def _set_simulator_env_state(
@@ -905,32 +1071,6 @@ class Simulator(ABC):
     # -------------------------
     # 🎮 Group 5: Control & Computation Methods
     # -------------------------
-    def _action_to_pd_targets(self, action: torch.Tensor) -> torch.Tensor:
-        """
-        Convert a common action tensor into PD targets for simulation.
-
-        Args:
-            action (torch.Tensor): Input actions.
-
-        Returns:
-            torch.Tensor: PD targets computed as offset + scale * action.
-        """
-        pd_tar = self._common_pd_action_offset + self._common_pd_action_scale * action
-        return pd_tar
-
-    def _action_to_torque_targets(self, action: torch.Tensor) -> torch.Tensor:
-        """
-        Convert a common action tensor into torque targets for simulation.
-
-        Maps actions from [-1, 1] to [-torque_limit, torque_limit].
-
-        Args:
-            action (torch.Tensor): Input actions in range [-1, 1].
-
-        Returns:
-            torch.Tensor: Torque targets scaled to torque limits.
-        """
-        return action * self._torque_limits_common
 
     @abstractmethod
     def _apply_simulator_pd_targets(self, pd_targets: torch.Tensor) -> None:
@@ -944,6 +1084,32 @@ class Simulator(ABC):
             pd_targets (torch.Tensor): PD position targets in simulator DOF ordering.
         """
         raise NotImplementedError
+
+    def _apply_accel_clamp(self) -> None:
+        """Clamp PD target acceleration (second derivative) to prevent oscillatory jerk.
+
+        Allows large single-step corrections (high velocity) but limits how fast
+        the direction of change can reverse. Back-and-forth oscillation hits the
+        clamp every frame; a clean step-change only hits it once.
+
+        Skipped for the first 2 steps after reset (insufficient history).
+        Modifies self._common_actions in place.
+        """
+        max_accel = self.config.pd_target_max_accel
+        # Only apply where we have 2+ steps of history
+        active = self._steps_since_reset >= 2
+        if not active.any():
+            return
+
+        delta = self._common_actions - self._previous_actions
+        prev_delta = self._previous_actions - self._prev_prev_actions
+        accel = delta - prev_delta
+
+        clamped_accel = accel.clamp(-max_accel, max_accel)
+        clamped_actions = self._previous_actions + prev_delta + clamped_accel
+
+        # Only apply to envs with enough history
+        self._common_actions[active] = clamped_actions[active]
 
     @abstractmethod
     def _apply_simulator_torques(self, torques: torch.Tensor) -> None:
@@ -962,25 +1128,35 @@ class Simulator(ABC):
         """
         Apply control based on control type.
 
-        All three control modes (BUILT_IN_PD, PROPORTIONAL, TORQUE) are co-located here.
-        Child simulators call this method from _physics_step() instead of branching
-        on control_type themselves.
+        Actions are expected to be pre-processed by ActionProcessor in the network:
+        - For BUILT_IN_PD/PROPORTIONAL: actions are PD targets (already clamped and mapped)
+        - For TORQUE: actions are torques (already clamped and scaled)
+
+        All three control modes are co-located here. Child simulators call this method
+        from _physics_step() instead of branching on control_type themselves.
         """
         if self.control_type == ControlType.BUILT_IN_PD:
-            pd_targets = self._action_to_pd_targets(self._common_actions)
-            
-            if self._domain_randomization is not None and "action_noise" in self._domain_randomization:
-                pd_targets[
+            targets = self._common_actions
+            if (
+                self._domain_randomization is not None
+                and "action_noise" in self._domain_randomization
+            ):
+                targets = targets.clone()
+                targets[
                     ..., self._domain_randomization["action_noise"]["dof_indices"]
                 ] += self._domain_randomization["action_noise"]["action_noise"]
-            
-            sim_targets = pd_targets[:, self.data_conversion.dof_convert_to_sim]
+
+            sim_targets = targets[:, self.data_conversion.dof_convert_to_sim]
             self._apply_simulator_pd_targets(sim_targets)
+
         elif self.control_type == ControlType.PROPORTIONAL:
-            pd_tar = self._action_to_pd_targets(self._common_actions)
-            
-            if self._domain_randomization is not None and "action_noise" in self._domain_randomization:
-                pd_tar[
+            targets = self._common_actions
+            if (
+                self._domain_randomization is not None
+                and "action_noise" in self._domain_randomization
+            ):
+                targets = targets.clone()
+                targets[
                     ..., self._domain_randomization["action_noise"]["dof_indices"]
                 ] += self._domain_randomization["action_noise"]["action_noise"]
 
@@ -988,7 +1164,7 @@ class Simulator(ABC):
                 self.data_conversion
             )
             torques = (
-                self._common_p_gains * (pd_tar - common_dof_state.dof_pos)
+                self._common_p_gains * (targets - common_dof_state.dof_pos)
                 - self._common_d_gains * common_dof_state.dof_vel
             )
             torques = torch.clip(
@@ -996,9 +1172,15 @@ class Simulator(ABC):
             )
             sim_torques = torques[:, self.data_conversion.dof_convert_to_sim]
             self._apply_simulator_torques(sim_torques)
+
         elif self.control_type == ControlType.TORQUE:
-            torques = self._action_to_torque_targets(self._common_actions)
-            if self._domain_randomization is not None and "action_noise" in self._domain_randomization:
+            torques = self._common_actions
+
+            if (
+                self._domain_randomization is not None
+                and "action_noise" in self._domain_randomization
+            ):
+                torques = torques.clone()
                 torques[
                     ..., self._domain_randomization["action_noise"]["dof_indices"]
                 ] += self._domain_randomization["action_noise"]["action_noise"]
@@ -1008,6 +1190,7 @@ class Simulator(ABC):
             )
             sim_torques = torques[:, self.data_conversion.dof_convert_to_sim]
             self._apply_simulator_torques(sim_torques)
+
         else:
             raise NameError(f"Unknown controller type: {self.control_type}")
 
@@ -1200,151 +1383,12 @@ class Simulator(ABC):
         return com_dict
 
     # -------------------------
-    # 🎨 Group 6: Rendering & Visualization
+    # 🎨 Group 6: Rendering & Visualization (abstract methods only)
     # -------------------------
-    def _toggle_camera_target(self) -> None:
-        """
-        Toggle the camera target between different environments and objects.
-
-        The target cycles through all objects in the scene, with 0 referring to the environment.
-        """
-        if self.scene_lib.num_objects_per_scene > 0:
-            self._camera_target["element"] = (self._camera_target["element"] + 1) % (
-                self.scene_lib.num_objects_per_scene + 1
-            )
-            print("Updated camera target to element", self._camera_target["element"])
-
-        if self._camera_target["element"] == 0:
-            self._camera_target["env"] = (
-                self._camera_target["env"] + 1
-            ) % self.num_envs
-            print("Updated camera target to env", self._camera_target["env"])
-
-    def render(self):
-        """
-        Render the current simulation state and handle video recording if enabled.
-
-        This method manages:
-        1. Video recording state transitions and initialization
-        2. Frame capture and saving during recording
-        3. Video compilation when recording ends
-        4. Cleanup of temporary image files
-        """
-        if not self.headless:
-            # Handle recording state transitions
-            if self._user_recording_state_change:
-                if self._user_is_recording:
-                    # Initialize new recording
-                    self._user_recording_video_queue = deque(
-                        maxlen=self._user_recording_video_queue_size
-                    )
-                    curr_date_time = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
-                    self._curr_user_recording_name = (
-                        self._user_recording_video_path % curr_date_time
-                    )
-                    self._user_recording_frame = 0
-
-                    self._recorded_motion = {
-                        "gts": [],  # rigid_body_pos (global translations)
-                        "grs": [],  # rigid_body_rot (global rotations)
-                        "gvs": [],  # rigid_body_vel (global velocities)
-                        "gavs": [],  # rigid_body_ang_vel (global angular velocities)
-                        "dps": [],  # dof_pos
-                        "dvs": [],  # dof_vel
-                        "contacts": [],  # rigid_body_contacts
-                    }
-
-                    if not os.path.exists(self._curr_user_recording_name):
-                        os.makedirs(self._curr_user_recording_name)
-                    print(
-                        f"Started recording to folder {self._curr_user_recording_name}"
-                    )
-                else:
-                    # Finalize recording and create video
-                    from moviepy import ImageSequenceClip
-
-                    image_dir = self._curr_user_recording_name
-                    images = sorted(
-                        [
-                            os.path.join(image_dir, f)
-                            for f in os.listdir(image_dir)
-                            if f.endswith(".png")
-                        ]
-                    )
-
-                    clip = ImageSequenceClip(images, fps=30)
-                    clip.write_videofile(
-                        f"{self._curr_user_recording_name}.mp4",
-                        codec="libx264",
-                        audio=False,
-                        threads=32,
-                        preset="veryfast",
-                        ffmpeg_params=[
-                            "-profile:v",
-                            "main",
-                            "-level",
-                            "4.0",
-                            "-pix_fmt",
-                            "yuv420p",
-                            "-movflags",
-                            "+faststart",
-                            "-crf",
-                            "23",
-                            "-x264-params",
-                            "keyint=60:min-keyint=30",
-                        ],
-                    )
-                    self._delete_user_viewer_recordings = True
-                    print(f"Video saved to {self._curr_user_recording_name}.mp4")
-
-                    # Save the recorded motion as a .motion file
-                    motion_data = build_motion_data(
-                        self._recorded_motion,
-                        fps=30,  # Video recording FPS
-                        num_dof=self._num_dof,
-                    )
-                    motion_file_path = f"{self._curr_user_recording_name}.motion"
-                    torch.save(motion_data, motion_file_path)
-                    print(f"Motion saved to {motion_file_path}")
-                    self._recorded_motion = None
-
-                self._user_recording_state_change = False
-
-            # Capture frame if recording
-            if self._user_is_recording:
-                file_name = (
-                    self._curr_user_recording_name
-                    + "/%04d.png" % self._user_recording_frame
-                )
-                self._write_viewport_to_file(file_name)
-                self._user_recording_frame += 1
-
-                robot_state = self.get_robot_state()
-                self._recorded_motion["gts"].append(robot_state.rigid_body_pos)
-                self._recorded_motion["grs"].append(robot_state.rigid_body_rot)
-                if robot_state.rigid_body_vel is not None:
-                    self._recorded_motion["gvs"].append(robot_state.rigid_body_vel)
-                if robot_state.rigid_body_ang_vel is not None:
-                    self._recorded_motion["gavs"].append(robot_state.rigid_body_ang_vel)
-                if robot_state.dof_pos is not None:
-                    self._recorded_motion["dps"].append(robot_state.dof_pos)
-                if robot_state.dof_vel is not None:
-                    self._recorded_motion["dvs"].append(robot_state.dof_vel)
-                if robot_state.rigid_body_contacts is not None:
-                    self._recorded_motion["contacts"].append(robot_state.rigid_body_contacts)
-
-            # Clean up temporary files if needed
-            if self._delete_user_viewer_recordings:
-                images = [
-                    img
-                    for img in os.listdir(self._curr_user_recording_name)
-                    if img.endswith(".png")
-                ]
-                for image in images:
-                    os.remove(os.path.join(self._curr_user_recording_name, image))
-                os.removedirs(self._curr_user_recording_name)
-                self._delete_user_viewer_recordings = False
-                self._recorded_motion = None
+    # Non-abstract rendering methods (render, _toggle_camera_target,
+    # _toggle_video_record, _cancel_video_record, _toggle_markers,
+    # _update_markers, _build_markers_save_data, _build_objects_save_data)
+    # are provided by RecordingMixin in record.py.
 
     @abstractmethod
     def _write_viewport_to_file(self, file_name: str) -> None:
@@ -1361,47 +1405,6 @@ class Simulator(ABC):
         Must be implemented in a simulator-specific manner.
         """
         raise NotImplementedError
-
-    def _toggle_video_record(self):
-        self._user_is_recording = not self._user_is_recording
-        self._user_recording_state_change = True
-
-    def _cancel_video_record(self):
-        self._user_is_recording = False
-        self._user_recording_state_change = False
-        self._delete_user_viewer_recordings = True
-
-    def _toggle_markers(self):
-        self._show_markers = not self._show_markers
-        print(f"Markers are now {'visible' if self._show_markers else 'hidden'}")
-
-    def _update_markers(
-        self, markers_state: Optional[Dict[str, MarkerState]] = None
-    ) -> None:
-        """
-        Update visualization markers for the simulator.
-
-        Converts marker orientations if necessary and delegates to the simulator-specific update.
-
-        Args:
-            markers_state (Dict[str, MarkerState]): Dictionary containing marker states.
-        """
-
-        if not markers_state or len(markers_state) == 0:
-            return
-
-        if not self.config.w_last:
-            for key in markers_state.keys():
-                markers_state[key].orientation = rotations.xyzw_to_wxyz(
-                    markers_state[key].orientation
-                )
-        if not self._show_markers:
-            for key in markers_state.keys():
-                # Throw it out of view
-                markers_state[key].translation = (
-                    torch.zeros_like(markers_state[key].translation) - 1000000
-                )
-        self._update_simulator_markers(markers_state)
 
     @abstractmethod
     def _update_simulator_markers(

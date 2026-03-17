@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -40,6 +40,10 @@ import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 from convert_amass_to_proto import convert_amass_to_motion, foot_offsets_dict
+
+# FPS at which occlusion bound indices (from PHC) are defined.
+# The occlusion data stores frame indices assuming 30 FPS.
+OCCLUSION_BOUND_FPS = 30.0
 
 
 @dataclass
@@ -212,7 +216,7 @@ def is_valid_motion(
     if not options.ignore_occlusions and len(motion_occlusion_data) > 0:
         issue = motion_occlusion_data.get("issue", "")
         if (issue == "sitting" or issue == "airborne") and "idxes" in motion_occlusion_data:
-            bound = motion_occlusion_data["idxes"][0]  # Bound assumes 30 FPS
+            bound = motion_occlusion_data["idxes"][0]  # Bound is in OCCLUSION_BOUND_FPS frames
             if bound < 10:
                 options.occlusion_bound += 1
                 print("bound too small", motion_name, bound)
@@ -348,8 +352,8 @@ def process_dataset_split(
                         end_time = float(duration_seconds)
                     else:
                         end_time = (
-                            bound * 1.0 / 30.0
-                        )  # Convert to seconds. Bounds assume 30 fps.
+                            bound / OCCLUSION_BOUND_FPS
+                        )  # Convert bound frame index to seconds.
 
                     if end_time < 0.1:
                         filtered_count += 1
@@ -369,8 +373,8 @@ def process_dataset_split(
                             if bound is not None:
                                 start_frame = 0
                                 end_frame = int(
-                                    bound * mocap_fr / 30.0
-                                )  # Convert bound from 30fps to actual fps
+                                    bound * mocap_fr / OCCLUSION_BOUND_FPS
+                                )  # Convert bound from occlusion fps to actual fps
                                 end_frame = min(end_frame, pose_aa_to_check.shape[0])
                                 pose_aa_to_check = pose_aa_to_check[
                                     start_frame:end_frame
@@ -390,7 +394,7 @@ def process_dataset_split(
                                 kinematic_info=kinematic_info,
                                 device=device,
                                 dtype=dtype,
-                                output_fps=30,
+                                output_fps=int(OCCLUSION_BOUND_FPS),
                             )
 
                             (

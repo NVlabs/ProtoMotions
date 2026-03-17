@@ -1,5 +1,5 @@
 #!/bin/bash
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Convenience script to retarget AMASS SMPL motions to a robot (G1 or H1_2)
@@ -7,47 +7,44 @@
 # IMPORTANT: ProtoMotions and PyRoki require separate Python environments.
 # You must provide paths to both Python interpreters.
 #
-# Usage: ./scripts/retarget_amass_to_robot.sh <proto_python> <pyroki_python> <amass_pt_file> <output_dir> <robot_type> [skip_freq]
+# Usage: ./scripts/retarget_amass_to_robot.sh <proto_python> <pyroki_python> <amass_pt_file> <robot_type> [skip_freq]
 #
 # Example:
 #   ./scripts/retarget_amass_to_robot.sh \
 #       ~/miniconda3/envs/protomotions/bin/python \
 #       ~/miniconda3/envs/pyroki/bin/python \
-#       /path/to/amass.pt /path/to/output g1 15
+#       /path/to/amass.pt g1 15
 #
 # Arguments:
 #   proto_python:  Path to Python interpreter with ProtoMotions installed
 #   pyroki_python: Path to Python interpreter with PyRoki installed
-#   amass_pt_file: Path to packaged AMASS MotionLib .pt file (SMPL format)
-#   output_dir:    Directory where all intermediate and final outputs will be saved
+#   amass_pt_file: Path to packaged AMASS MotionLib .pt file (outputs saved in same directory)
 #   robot_type:    Target robot: 'g1' or 'h1_2'
 #   skip_freq:     (Optional) Skip every N motions for subset processing (default: 1 = all motions)
 
 set -e  # Exit on error
 
 # Parse arguments
-if [ $# -lt 5 ]; then
-    echo "Usage: $0 <proto_python> <pyroki_python> <amass_pt_file> <output_dir> <robot_type> [skip_freq]"
+if [ $# -lt 4 ]; then
+    echo "Usage: $0 <proto_python> <pyroki_python> <amass_pt_file> <robot_type> [skip_freq]"
     echo ""
     echo "Arguments:"
     echo "  proto_python   Path to Python interpreter with ProtoMotions installed"
     echo "  pyroki_python  Path to Python interpreter with PyRoki installed"
-    echo "  amass_pt_file  Path to packaged AMASS MotionLib .pt file (SMPL format)"
-    echo "  output_dir     Directory where all outputs will be saved"
+    echo "  amass_pt_file  Path to packaged AMASS MotionLib .pt file (outputs saved in same dir)"
     echo "  robot_type     Target robot: 'g1' or 'h1_2'"
     echo "  skip_freq      (Optional) Skip every N motions (default: 1 = all motions)"
     echo ""
     echo "Example:"
-    echo "  $0 ~/miniconda3/envs/protomotions/bin/python ~/miniconda3/envs/pyroki/bin/python /data/amass.pt /data/retargeted g1 15"
+    echo "  $0 ~/miniconda3/envs/protomotions/bin/python ~/miniconda3/envs/pyroki/bin/python /data/amass.pt g1 15"
     exit 1
 fi
 
 PROTO_PYTHON="$1"
 PYROKI_PYTHON="$2"
 AMASS_PT_FILE="$3"
-OUTPUT_DIR="$4"
-ROBOT_TYPE="$5"
-SKIP_FREQ="${6:-1}"
+ROBOT_TYPE="$4"
+SKIP_FREQ="${5:-1}"
 
 # Validate robot type
 if [ "$ROBOT_TYPE" != "g1" ] && [ "$ROBOT_TYPE" != "h1_2" ]; then
@@ -72,14 +69,13 @@ if [ ! -f "$AMASS_PT_FILE" ]; then
     exit 1
 fi
 
-# Create output directories
-KEYPOINTS_DIR="${OUTPUT_DIR}/keypoints"
-RETARGETED_DIR="${OUTPUT_DIR}/retargeted_${ROBOT_TYPE}"
+# Output directories are in the same location as input (follows rigv1-vaulting convention)
+OUTPUT_DIR="$(dirname "$AMASS_PT_FILE")"
+KEYPOINTS_DIR="${OUTPUT_DIR}/keypoints-for-retarget"
+RETARGETED_DIR="${OUTPUT_DIR}/pyroki-retargeted-${ROBOT_TYPE}"
 CONTACTS_DIR="${OUTPUT_DIR}/contacts"
-PROTO_DIR="${OUTPUT_DIR}/retargeted_${ROBOT_TYPE}_proto"
-FINAL_PT="${OUTPUT_DIR}/retargeted_${ROBOT_TYPE}.pt"
-
-mkdir -p "$OUTPUT_DIR"
+PROTO_DIR="${OUTPUT_DIR}/proto-${ROBOT_TYPE}"
+FINAL_PT="${OUTPUT_DIR}/proto-${ROBOT_TYPE}.pt"
 
 echo "=============================================="
 echo "Retargeting AMASS to ${ROBOT_TYPE^^}"
@@ -170,4 +166,3 @@ echo ""
 echo "To verify the result:"
 echo "  python examples/motion_libs_visualizer.py --motion_files $FINAL_PT --robot $ROBOT_TYPE --simulator isaacgym"
 echo ""
-

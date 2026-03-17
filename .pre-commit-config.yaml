@@ -1,0 +1,66 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+
+# Common exclude pattern matching .gitignore
+exclude: |
+  (?x)^(
+    \.idea/.*|
+    \.vscode/.*|
+    .*__pycache__.*|
+    .*\.egg-info/.*|
+    outputs/.*|
+    output/.*|
+    rendered_images/.*|
+    .*tmp.*|
+    results/.*|
+    exps/.*|
+    wandb/.*|
+    newton_source/.*|
+    env_isaaclab/.*
+  )$
+
+repos:
+  # License header insertion
+  - repo: https://github.com/Lucas-C/pre-commit-hooks
+    rev: v1.5.5
+    hooks:
+      - id: insert-license
+        name: Insert license header (Python)
+        files: \.py$
+        args:
+          - --license-filepath=.license-header.txt
+          - --comment-style=#
+          - --use-current-year
+          - --no-extra-eol
+        exclude: setup\.py$
+
+  # Ruff linter and formatter
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.1
+    hooks:
+      - id: ruff
+        name: Ruff linter
+        types: [python]
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+        name: Ruff formatter
+        types: [python]
+
+  # Typos spell checker
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.28.1
+    hooks:
+      - id: typos
+        types: [python]
+
+  # General pre-commit hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        types: [python]
+      - id: end-of-file-fixer
+        types: [python]
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=1000']

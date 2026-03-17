@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,6 +24,7 @@ from typing import Dict, Any, Tuple, TYPE_CHECKING
 import torch
 from torch import Tensor
 
+from protomotions.envs.context_views import EnvContext, PathContext
 from protomotions.envs.control.base import ControlComponent, ControlComponentConfig
 from protomotions.envs.utils.path_generator import PathGenerator, PathGeneratorConfig
 from protomotions.components.pose_lib import build_body_ids_tensor
@@ -245,17 +246,17 @@ class PathFollowerControl(ControlComponent):
 
         return head_position
 
-    def get_context(self) -> Dict[str, Any]:
-        """Get path context for observations and rewards."""
+    def populate_context(self, ctx: EnvContext) -> None:
+        """Populate path-specific view in the EnvContext."""
         env_ids = torch.arange(self.env.num_envs, device=self.env.device, dtype=torch.long)
 
-        return {
-            "tar_pos": self.calc_target_pos(env_ids),
-            "head_pos": self.get_head_position(env_ids),
-            "traj_samples": self.fetch_path_samples(env_ids),
-            "height_conditioned": self.height_conditioned,
-            "head_body_id": self._head_body_id,
-        }
+        ctx.path = PathContext(
+            tar_pos=self.calc_target_pos(env_ids),
+            head_pos=self.get_head_position(env_ids),
+            traj_samples=self.fetch_path_samples(env_ids),
+            height_conditioned=self.height_conditioned,
+            head_body_id=self._head_body_id,
+        )
 
     def create_visualization_markers(
         self, headless: bool

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -705,6 +705,22 @@ def main():
             os.environ["RANK"] = str(fabric.global_rank)
         app_launcher = AppLauncher(app_launcher_flags)
         simulator_extra_params["simulation_app"] = app_launcher.app
+
+        # Suppress verbose PhysX/IsaacLab warnings that flood stdout.
+        # These warnings (e.g., "Stiffness unsupported for articulation joints",
+        # "Could not perform modify_collision_properties") are harmless but produce
+        # 10K+ log lines across multi-GPU runs, causing Lustre I/O backpressure
+        # and NCCL timeouts during initialization.
+        # References:
+        #   https://forums.developer.nvidia.com/t/isaac-sim-log-level-to-many-log-messages/308545/3
+        #   https://github.com/isaac-sim/IsaacLab/issues/1691
+        import omni.log
+
+        _omni_log = omni.log.get_log()
+        for _channel in ["omni.physx.plugin", "isaaclab.sim.utils"]:
+            _omni_log.set_channel_enabled(
+                _channel, False, omni.log.SettingBehavior.OVERRIDE
+            )
 
     if args.seed is not None:
         rank = fabric.global_rank if fabric.global_rank is not None else 0

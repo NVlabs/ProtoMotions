@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -42,10 +42,17 @@ def motion_lib_config(args: argparse.Namespace):
 
 
 def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
-    """Build environment configuration (training defaults)."""
-    from protomotions.envs.obs import max_coords_obs_factory, mimic_target_poses_simple_factory
-    from protomotions.envs.control.mimic_control import MimicControlConfig
+    """Build environment configuration (training defaults).
+    
+    Uses factory functions for standard observations/rewards/terminations.
+    """
     from protomotions.envs.motion_manager.config import MimicMotionManagerConfig
+    from protomotions.envs.control.mimic_control import MimicControlConfig
+    from protomotions.envs.component_factories import (
+        max_coords_obs_factory,
+        mimic_target_poses_reduced_coords_factory,
+    )
+    from protomotions.envs.action import make_pd_action_config
 
     # Control components - MimicControl provides ref_state for mimic target poses
     control_components = {
@@ -56,16 +63,15 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
 
     # Observation components configuration
     observation_components = {
-        # Humanoid self-observations
         "max_coords_obs": max_coords_obs_factory(),
-        # Mimic target poses - reference motion for policy
-        "mimic_target_poses": mimic_target_poses_simple_factory(),
+        "mimic_target_poses": mimic_target_poses_reduced_coords_factory(),
     }
 
     return EnvConfig(
         max_episode_length=1000,
         control_components=control_components,
         observation_components=observation_components,
+        action_config=make_pd_action_config(robot_cfg),
         motion_manager=MimicMotionManagerConfig(
             init_start_prob=0.9,
             resample_on_reset=False,  # We resample on reset to ensure the discriminator and policy observe the same data distribution (random).
@@ -81,6 +87,7 @@ def agent_config(
     from protomotions.agents.amp.config import AMPModelConfig, DiscriminatorConfig
     from protomotions.agents.base_agent.config import OptimizerConfig
     from protomotions.agents.evaluators.config import MimicEvaluatorConfig
+    from protomotions.envs.component_factories import gt_error_factory, gr_error_factory, max_joint_error_factory
 
     actor_config = PPOActorConfig(
         num_out=robot_config.kinematic_info.num_dofs,
@@ -94,7 +101,6 @@ def agent_config(
             norm_clamp_value=5,
             num_out=robot_config.number_of_actions,
             layers=[MLPLayerConfig(units=1024, activation="relu") for _ in range(6)],
-            output_activation="tanh",
         ),
     )
 
@@ -145,7 +151,11 @@ def agent_config(
         gradient_clip_val=50.0,
         clip_critic_loss=True,
         evaluator=MimicEvaluatorConfig(
-            eval_metric_keys=["gt_err", "gr_err", "gr_err_degrees", "lr_err_degrees"],
+            evaluation_components={
+                "gt_error": gt_error_factory(threshold=0.5),
+                "gr_error": gr_error_factory(),
+                "max_joint_error": max_joint_error_factory(),
+            },
         ),
         amp_parameters=AMPParametersConfig(
             discriminator_reward_threshold=0.03,

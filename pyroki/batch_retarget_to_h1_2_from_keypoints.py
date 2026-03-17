@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -408,6 +408,12 @@ def main():
         default=None,
         help="Directory to save contact labels. Defaults to {keypoints_folder_path}/contacts",
     )
+    parser.add_argument(
+        "--input-fps",
+        type=float,
+        default=30.0,
+        help="FPS of the input keypoint data (before subsampling). Used for velocity limit cost.",
+    )
 
     args = parser.parse_args()
 
@@ -563,6 +569,7 @@ def main():
                 h1_2_retarget_mask=h1_2_retarget_mask,
                 weights=weights.get_weights(),  # type: ignore
                 subsample_factor=subsample_factor,
+                input_fps=args.input_fps,
             )
             gen_button.disabled = False
             retarget_next_button.disabled = False  # Re-enable after generating
@@ -631,7 +638,7 @@ def main():
             except Exception as _:
                 pass
 
-            time.sleep(0.03 * subsample_factor)
+            time.sleep(subsample_factor / args.input_fps)
     else:
         print(
             "Running in non-visualize mode. Retargeting all motions and saving to disk."
@@ -675,6 +682,7 @@ def main():
                 h1_2_retarget_mask=h1_2_retarget_mask,
                 weights=weights_dict,
                 subsample_factor=subsample_factor,
+                input_fps=args.input_fps,
             )
 
             # Save results, sliced to the actual motion length
@@ -858,6 +866,7 @@ def solve_retargeting(
     h1_2_retarget_mask: jnp.ndarray,
     weights: RetargetingWeights,
     subsample_factor: int = 1,
+    input_fps: float = 30.0,
 ) -> Tuple[jaxlie.SE3, jnp.ndarray]:
     """Solve the simplified retargeting problem."""
 
@@ -1123,7 +1132,7 @@ def solve_retargeting(
             robot.joint_var_cls(jnp.arange(1, timesteps)),
             robot.joint_var_cls(jnp.arange(0, timesteps - 1)),
             20.0,  # max velocity in rad/s
-            subsample_factor / 30.0,  # dt in seconds (accounting for subsampling)
+            subsample_factor / input_fps,  # dt in seconds (accounting for subsampling)
             weights["joint_vel_limit"],
         ),
     ]

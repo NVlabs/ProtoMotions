@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -124,6 +124,10 @@ class StateHistoryBuffer:
             num_envs, buffer_size, action_dim,
             dtype=torch.float, device=device
         )
+        self.processed_actions = torch.zeros(
+            num_envs, buffer_size, action_dim,
+            dtype=torch.float, device=device
+        )
         self.ground_heights = torch.zeros(
             num_envs, buffer_size,
             dtype=torch.float, device=device
@@ -207,6 +211,11 @@ class StateHistoryBuffer:
     def historical_actions(self) -> Tensor:
         """Historical actions [envs, history_steps-1, action_dim]."""
         return self.actions[:, 1:]
+    
+    @property
+    def historical_processed_actions(self) -> Tensor:
+        """Historical processed actions [envs, history_steps-1, action_dim]."""
+        return self.processed_actions[:, 1:]
     
     @property
     def historical_ground_heights(self) -> Tensor:
@@ -329,6 +338,7 @@ class StateHistoryBuffer:
         actions: Tensor,
         ground_heights: Tensor,
         body_contacts: Tensor,
+        processed_actions: Optional[Tensor] = None,
         noisy_rigid_body_pos: Optional[Tensor] = None,
         noisy_rigid_body_rot: Optional[Tensor] = None,
         noisy_rigid_body_vel: Optional[Tensor] = None,
@@ -349,9 +359,10 @@ class StateHistoryBuffer:
             rigid_body_ang_vel: Current body angular velocities [envs, bodies, 3] (clean/privileged).
             dof_pos: Current DOF positions [envs, num_dofs] (clean/privileged).
             dof_vel: Current DOF velocities [envs, num_dofs] (clean/privileged).
-            actions: Current actions [envs, action_dim].
+            actions: Current raw actions [envs, action_dim].
             ground_heights: Ground heights beneath root [envs] (clean/privileged).
             body_contacts: Body contact flags [envs, num_contact_bodies].
+            processed_actions: Optional processed actions [envs, action_dim] (after tanh/clamp).
             noisy_rigid_body_pos: Optional noisy body positions [envs, bodies, 3].
             noisy_rigid_body_rot: Optional noisy body rotations [envs, bodies, 4].
             noisy_rigid_body_vel: Optional noisy body velocities [envs, bodies, 3].
@@ -368,6 +379,7 @@ class StateHistoryBuffer:
         self.dof_pos = self.dof_pos.roll(shifts=1, dims=1)
         self.dof_vel = self.dof_vel.roll(shifts=1, dims=1)
         self.actions = self.actions.roll(shifts=1, dims=1)
+        self.processed_actions = self.processed_actions.roll(shifts=1, dims=1)
         self.ground_heights = self.ground_heights.roll(shifts=1, dims=1)
         self.body_contacts = self.body_contacts.roll(shifts=1, dims=1)
         
@@ -379,6 +391,7 @@ class StateHistoryBuffer:
         self.dof_pos[:, 0] = dof_pos
         self.dof_vel[:, 0] = dof_vel
         self.actions[:, 0] = actions
+        self.processed_actions[:, 0] = processed_actions if processed_actions is not None else actions
         self.ground_heights[:, 0] = ground_heights
         self.body_contacts[:, 0] = body_contacts
         
@@ -443,8 +456,10 @@ class StateHistoryBuffer:
         
         if actions is not None:
             self.actions[env_ids] = actions
+            self.processed_actions[env_ids] = actions  # Use raw actions as processed on reset
         else:
             self.actions[env_ids] = 0.0
+            self.processed_actions[env_ids] = 0.0
         
         # Reset noisy buffers to clean data (no noise on reset)
         if self.store_noisy:
@@ -505,6 +520,7 @@ class StateHistoryBuffer:
         self.ground_heights[env_ids] = ground_heights.unsqueeze(1).expand(-1, buffer_size)
         self.body_contacts[env_ids] = body_contacts.unsqueeze(1).expand(-1, buffer_size, -1)
         self.actions[env_ids] = 0.0
+        self.processed_actions[env_ids] = 0.0
         
         # Reset noisy buffers to clean data (no noise on reset)
         if self.store_noisy:
@@ -533,6 +549,7 @@ class StateHistoryBuffer:
             'dof_pos': self.dof_pos.clone(),
             'dof_vel': self.dof_vel.clone(),
             'actions': self.actions.clone(),
+            'processed_actions': self.processed_actions.clone(),
             'ground_heights': self.ground_heights.clone(),
             'body_contacts': self.body_contacts.clone(),
             'store_noisy': self.store_noisy,
@@ -560,6 +577,10 @@ class StateHistoryBuffer:
         self.dof_pos.copy_(state['dof_pos'])
         self.dof_vel.copy_(state['dof_vel'])
         self.actions.copy_(state['actions'])
+        if 'processed_actions' in state:
+            self.processed_actions.copy_(state['processed_actions'])
+        else:
+            self.processed_actions.copy_(state['actions'])  # Fallback for old checkpoints
         self.ground_heights.copy_(state['ground_heights'])
         self.body_contacts.copy_(state['body_contacts'])
         if self.store_noisy and state.get('store_noisy', False):

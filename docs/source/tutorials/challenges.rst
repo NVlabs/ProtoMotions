@@ -116,14 +116,22 @@ teaching the robot to walk while staying low.
 
 .. code-block:: python
 
-   "crouch_rew": RewardComponentConfig(
-       function=mean_squared_error_exp,
-       variables={
-           "x": "current_state.rigid_body_pos[:, 0, 2]",  # Root Z
-           "ref_x": "0.6",  # Target height
-           "coefficient": "-10.0",
+   from protomotions.envs.context_views import EnvContext
+   from protomotions.envs.context_router import ContextRouter
+   from protomotions.envs.rewards.base import mean_squared_error_exp
+   
+   # Add a simple crouch reward kernel
+   def compute_crouch_rew(root_height, target_height, coefficient):
+       return mean_squared_error_exp(root_height, target_height, coefficient)
+   
+   # Then in reward_components:
+   "crouch_rew": ContextRouter(
+       kernel=compute_crouch_rew,
+       dynamic_bindings={
+           "root_height": EnvContext.current.root_height,
+           "target_height": EnvContext.current.root_height,  # Will broadcast scalar
        },
-       weight=1.0,
+       static_params={"weight": 1.0, "coefficient": -10.0, "target_height": 0.6},
    )
 
 Challenge 5: Agent Class Extension

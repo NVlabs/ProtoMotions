@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -140,14 +140,14 @@ def combine_fall_termination(
 
 
 # ==============================================================================
-# Functions for dynamic TerminationComponentConfig system
+# Context-taking termination functions
 # ==============================================================================
 
 
 def threshold_termination(value: Tensor, threshold: float, greater_than: bool = True) -> Tensor:
     """Terminate when value exceeds (or falls below) a threshold.
     
-    Generic termination function for use with TerminationComponentConfig.
+    Generic termination function that can be used in MdpComponent.
     
     Args:
         value: Values to check [num_envs] or [num_envs, ...].
@@ -176,7 +176,7 @@ def fall_termination(
     non_termination_contact_body_ids: Tensor,
     progress_buf: Tensor,
 ) -> Tensor:
-    """Combined fall termination check for use with TerminationComponentConfig.
+    """Combined fall termination check.
     
     Checks for falls using both unwanted body contacts and height violations.
     An agent has fallen if both conditions are met: unexpected contact and
@@ -220,7 +220,7 @@ def height_termination(
     termination_height: float,
     non_termination_body_ids: Tensor,
 ) -> Tensor:
-    """Height-only termination check for use with TerminationComponentConfig.
+    """Height-only termination check.
     
     Checks if any body parts are below termination height (adjusted for terrain).
     
@@ -254,7 +254,7 @@ def contact_termination(
     non_termination_contact_body_ids: Tensor,
     progress_buf: Tensor,
 ) -> Tensor:
-    """Contact-only termination check for use with TerminationComponentConfig.
+    """Contact-only termination check.
     
     Checks if any non-allowed body parts are in contact with ground.
     

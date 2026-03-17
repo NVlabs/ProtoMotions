@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,40 +18,32 @@ import numpy as np
 from typing import Dict, Optional, Tuple, Any
 from torch import Tensor
 import math
+from dataclasses import dataclass
 
 from protomotions.agents.evaluators.base_evaluator import BaseEvaluator
 from protomotions.agents.evaluators.metrics import MotionMetrics
 from protomotions.components.motion_lib import MotionLib
 from protomotions.agents.evaluators.config import MimicEvaluatorConfig
 from protomotions.envs.motion_manager.mimic_motion_manager import MimicMotionManager
-from protomotions.utils.rotations import quat_diff_norm
+
+
+@dataclass
+class MimicEpisodeContext:
+    """Per-episode-batch state for mimic evaluation."""
+    motion_ids: Tensor  # which motion each env is tracking
+    frame_limits: Tensor  # how many frames before clip ends
 
 
 class MimicEvaluator(BaseEvaluator):
     """Evaluator for Mimic agent's motion tracking performance."""
 
     def __init__(self, agent: Any, fabric: Any, config: MimicEvaluatorConfig):
-        """
-        Initialize the Mimic evaluator.
-
-        Args:
-            agent: The Mimic agent to evaluate
-            fabric: Lightning Fabric instance for distributed training
-        """
         super().__init__(agent, fabric, config)
-
-        # Base metric keys from config; do not mutate across evaluations
-        self.base_eval_keys = config.eval_metric_keys.copy()
 
     @property
     def motion_lib(self) -> MotionLib:
         """Motion library (from agent)."""
         return self.agent.motion_lib
-
-    @property
-    def num_envs(self) -> int:
-        """Number of environments (from agent)."""
-        return self.agent.num_envs
 
     @property
     def motion_manager(self) -> MimicMotionManager:
@@ -63,40 +55,19 @@ class MimicEvaluator(BaseEvaluator):
         self._register_smoothness_plugin(window_sec=0.4, high_jerk_threshold=6500.0)
         self._register_action_smoothness_plugin()
 
-    def _create_metrics_dict(
+    def _create_metrics(
         self,
         num_motions: int,
         motion_num_frames: Tensor,
         max_eval_steps: int,
-        include_raw_robot_state: bool = True,
     ) -> Dict[str, MotionMetrics]:
-        """Initialize the metrics dictionary for tracking evaluation progress.
+        """Create MotionMetrics buffers for trajectory collection (robot state + actions)."""
+        metrics = {}
 
-        Creates MotionMetrics objects for base evaluation keys and optionally
-        for raw robot state (for detailed analysis or saving).
-
-        Args:
-            num_motions: Total number of unique motions being evaluated.
-            motion_num_frames: Tensor containing the frame count for each motion.
-            max_eval_steps: Maximum number of steps to record per motion.
-            include_raw_robot_state: If True, includes metrics for full robot
-                state (positions, rotations, velocities).
-
-        Returns:
-            A dictionary mapping metric names to MotionMetrics objects.
-        """
-        # Use base class helper to create metrics from config keys
-        metrics = self._create_base_metrics(
-            self.base_eval_keys, num_motions, motion_num_frames, max_eval_steps
+        self._add_robot_state_metrics(
+            metrics, num_motions, motion_num_frames, max_eval_steps
         )
 
-        # Add raw robot state metrics if requested
-        if include_raw_robot_state:
-            self._add_robot_state_metrics(
-                metrics, num_motions, motion_num_frames, max_eval_steps
-            )
-
-        # Add actions metric for action smoothness computation
         num_dofs = self.env.robot_config.kinematic_info.num_dofs
         metrics["actions"] = MotionMetrics(
             num_motions, motion_num_frames, max_eval_steps, num_dofs, device=self.device
@@ -105,22 +76,20 @@ class MimicEvaluator(BaseEvaluator):
         return metrics
 
     def initialize_eval(self) -> Dict:
-        """
-        Initialize metrics dictionary with required keys.
-
-        Returns:
-            Dictionary of initialized MotionMetrics
-        """
+        """Initialize evaluation tracking and cache env state for restoration."""
         num_motions = self.motion_lib.num_motions()
         motion_lengths = self.motion_lib.get_motion_length(None)
         motion_num_frames = (motion_lengths / self.env.dt).floor().long()
         motion_num_frames = motion_num_frames.clamp(max=self.config.max_eval_steps)
+        self._init_eval_component_buffers(num_motions)
 
-        return self._create_metrics_dict(
-            num_motions,
-            motion_num_frames,
-            self.config.max_eval_steps,
-            include_raw_robot_state=True,
+        # Cache env + motion manager state (restored in cleanup_after_evaluation)
+        self._env_snapshot = self.env.save_state()
+        self._cached_motion_ids = self.motion_manager.motion_ids.clone()
+        self._cached_motion_times = self.motion_manager.motion_times.clone()
+
+        return self._create_metrics(
+            num_motions, motion_num_frames, self.config.max_eval_steps
         )
 
     def _save_failed_motions(self, failed_motions: list, epoch: int) -> None:
@@ -134,41 +103,24 @@ class MimicEvaluator(BaseEvaluator):
         filename = f"failed_motions_epoch_{epoch}_rank_{self.fabric.global_rank}.txt"
         self._save_list_to_file(failed_motions, filename, subdirectory="failed_motions")
 
-    def _update_motion_sampling_weights(
-        self,
-        metrics: Dict[str, MotionMetrics],
-        success_metric_key: str = "gt_err",
-        failure_threshold: float = 0.5,
-    ) -> Dict[str, float]:
-        """
-        Update motion sampling weights based on success/failure rates.
+    def _update_motion_sampling_weights(self) -> None:
+        """Update motion sampling weights based on evaluation component failures."""
+        if self._motion_failed is None:
+            return
 
-        Args:
-            metrics: Dictionary of evaluation metrics
-            success_metric_key: Key to use for determining success/failure
-            failure_threshold: Threshold above which motion is considered failed
+        failed_motions = torch.nonzero(self._motion_failed).flatten().tolist()
+        success_motions = torch.nonzero(~self._motion_failed).flatten().tolist()
 
-        Returns:
-            Dictionary with tracking_success_rate metric
-        """
-        if success_metric_key not in metrics:
-            print(f"Warning: Metric '{success_metric_key}' not found, skipping weight update")
-            return {}
-
-        # Determine success/failure
-        gt_err_max = metrics[success_metric_key].max_reduce_each_motion()
-        tracking_failures = gt_err_max > failure_threshold
-        tracking_success_rate = 1.0 - tracking_failures.float().mean().item()
-
-        failed_motions = torch.nonzero(tracking_failures).flatten().tolist()
-        success_motions = torch.nonzero(~tracking_failures).flatten().tolist()
-
-        # Save failed motions to disk
         self._save_failed_motions(failed_motions, self.agent.current_epoch)
 
-        # Update sampling weights
-        success_discount = math.pow(self.config.motion_weights_rules.motion_weights_update_success_discount, self.config.eval_metrics_every)
-        failure_discount = math.pow(self.config.motion_weights_rules.motion_weights_update_failure_discount, self.config.eval_metrics_every)
+        success_discount = math.pow(
+            self.config.motion_weights_rules.motion_weights_update_success_discount,
+            self.config.eval_metrics_every,
+        )
+        failure_discount = math.pow(
+            self.config.motion_weights_rules.motion_weights_update_failure_discount,
+            self.config.eval_metrics_every,
+        )
         new_weights = self.env.motion_manager.motion_weights.clone()
         new_weights[success_motions] *= success_discount
         if failure_discount != 0:
@@ -177,238 +129,131 @@ class MimicEvaluator(BaseEvaluator):
             new_weights[failed_motions] = 1.0
         self.env.motion_manager.update_sampling_weights(new_weights)
 
-        return {"eval/tracking_success_rate": tracking_success_rate}
+    def evaluate_episode(self, env_ids: torch.Tensor, max_steps: int) -> None:
+        """Run a single episode batch, optionally with EMA action smoothing.
 
-    def run_evaluation(self, metrics: Dict) -> None:
+        When eval_action_ema_alpha is set, actions are low-pass filtered to
+        simulate deployment conditions. Motions that fail under EMA get higher
+        sampling weight, creating curriculum pressure toward smooth policies.
         """
-        Run evaluation across multiple motions.
+        ema_alpha = self.config.eval_action_ema_alpha
 
-        Args:
-            metrics: Dictionary to collect evaluation metrics
+        self._on_episode_start(env_ids)
+
+        obs, _ = self.env.reset(env_ids, **self._get_reset_kwargs())
+        obs = self.agent.add_agent_info_to_obs(obs)
+        obs_td = self.agent.obs_dict_to_tensordict(obs)
+
+        prev_actions = None
+
+        for step_idx in range(max_steps):
+            model_outs = self.agent.model(obs_td)
+            actions = model_outs.get("mean_action", model_outs.get("action"))
+
+            # Apply EMA smoothing (deployment simulation)
+            if ema_alpha is not None:
+                if prev_actions is None:
+                    prev_actions = actions.clone()
+                actions = ema_alpha * actions + (1.0 - ema_alpha) * prev_actions
+                prev_actions = actions.clone()
+
+            obs, rewards, dones, terminated, extras = self.env.step(actions)
+            obs = self.agent.add_agent_info_to_obs(obs)
+            obs_td = self.agent.obs_dict_to_tensordict(obs)
+
+            self._check_eval_components(env_ids, step_idx)
+            self._on_episode_step(env_ids, extras, actions)
+
+    def run_evaluation(self) -> None:
+        """Run evaluation across multiple motions."""
+        for env_ids, motion_ids in self._build_eval_batches():
+            motion_lengths = self.motion_lib.get_motion_length(motion_ids)
+            max_len = min(
+                (motion_lengths.max() / self.env.dt).floor().long().item(),
+                self.config.max_eval_steps,
+            )
+            # Build episode context before evaluate_episode so hooks can read it
+            self._episode_ctx = MimicEpisodeContext(
+                motion_ids=motion_ids,
+                frame_limits=(motion_lengths / self.env.dt).floor().long().clamp(
+                    max=self.config.max_eval_steps
+                ),
+            )
+            self.evaluate_episode(env_ids, max_len)
+
+    def _build_eval_batches(self):
+        """Build list of (env_ids, motion_ids) batches to evaluate.
+        
+        Returns:
+            List of (env_ids, motion_ids) tuples
         """
-
-        self._cached_robot_state = self.env.simulator.get_robot_state()
-        self._cached_markers_state = self.env.get_markers_state()
-        self._cached_env_actions = self.env.simulator.get_current_actions()
-        self._cached_progress_buf = self.env.progress_buf.clone()
-        self._cached_motion_ids = self.motion_manager.motion_ids.clone()
-        self._cached_motion_times = self.motion_manager.motion_times.clone()
-        self._cached_respawn_offset = self.env.respawn_root_offset.clone()
-
-        if self.env.state_history is not None:
-            self._cached_state_history = self.env.state_history.save_state()
-        else:
-            self._cached_state_history = None
-
         fixed_motion_ids, first_env_indices = (
             self.motion_manager.get_unique_fixed_motions()
         )
 
         if fixed_motion_ids.numel() > 0:
-            print(
-                f"Only evaluating fixed motions: {fixed_motion_ids}, First environment indices: {first_env_indices}"
-            )
-            self.evaluate_episode(metrics, first_env_indices, fixed_motion_ids)
-            return
+            print(f"Only evaluating fixed motions: {fixed_motion_ids}")
+            return [(first_env_indices, fixed_motion_ids)]
 
         num_motions = self.motion_lib.num_motions()
-
-        for motion_id_start in range(0, num_motions, self.num_envs):
-            motion_id_end = min(motion_id_start + self.num_envs, num_motions)
-            motion_ids = torch.arange(
-                motion_id_start, motion_id_end, device=self.device
-            )
+        batches = []
+        for start in range(0, num_motions, self.num_envs):
+            end = min(start + self.num_envs, num_motions)
+            motion_ids = torch.arange(start, end, device=self.device)
             env_ids = torch.arange(0, motion_ids.numel(), device=self.device)
+            print(f"Evaluating motions {start} to {end}, out of total {num_motions}")
+            batches.append((env_ids, motion_ids))
+        return batches
 
-            print(
-                f"Evaluating motions {motion_id_start} to {motion_id_end}, out of total {num_motions} motions"
-            )
-
-            self.evaluate_episode(metrics, env_ids, motion_ids)
-
-    def evaluate_episode(
-        self,
-        metrics: Dict,
-        active_env_ids: Tensor,
-        active_motion_ids: Tensor,
-    ) -> None:
-        """Evaluate a single episode for a batch of motions.
-
-        Resets the environment with the specified motions and steps through
-        the episode until completion or max steps, accumulating metrics.
-
-        Args:
-            metrics: Dictionary to collect evaluation metrics.
-            active_env_ids: Tensor of environment IDs to use for this batch.
-            active_motion_ids: Tensor of motion IDs to evaluate in these environments.
-        """
-
-        assert len(active_env_ids) == len(active_motion_ids)
-
-        # Initialize environment for this episode
-        self.motion_manager.motion_ids[active_env_ids] = active_motion_ids
-        # Motions have their own fps, we need to convert to env steps
-        motion_lengths = self.motion_lib.get_motion_length(active_motion_ids)
-        max_len = (motion_lengths.max() / self.env.dt).floor().long().item()
-        max_len = min(max_len, self.config.max_eval_steps)
-        self.motion_manager.motion_times[active_env_ids] = 0.0
-
-        # Reset the environment once at the beginning on flat terrain
-        # disable_motion_resample=True to use the motion_ids we just set above
-        obs, _ = self.env.reset(
-            active_env_ids, sample_flat=True, disable_motion_resample=True
+    # --- Hook overrides ---
+    
+    def _on_episode_start(self, env_ids: Tensor) -> None:
+        """Set motion_ids/times in the motion manager before reset."""
+        self.motion_manager.motion_ids[env_ids] = self._episode_ctx.motion_ids
+        self.motion_manager.motion_times[env_ids] = 0.0
+    
+    def _get_reset_kwargs(self) -> dict:
+        """Customize env.reset() for mimic evaluation."""
+        return {"sample_flat": True, "disable_motion_resample": True}
+    
+    def _check_eval_components(self, env_ids: Tensor, step_idx: int) -> None:
+        """Filter by frame limits and check failures only for active clips."""
+        still_active = self._episode_ctx.frame_limits > step_idx
+        if still_active.any():
+            active_env_ids = env_ids[still_active]
+            active_motion_ids = self._episode_ctx.motion_ids[still_active]
+            self._check_evaluation_failures(active_env_ids, active_motion_ids)
+    
+    def _on_episode_step(self, env_ids: Tensor, extras: Dict, actions: Tensor) -> None:
+        """Collect smoothness metrics each step."""
+        self._record_trajectory_step(
+            self._metrics, extras, env_ids, self._episode_ctx.motion_ids, actions
         )
-        obs = self.agent.add_agent_info_to_obs(obs)
-        obs_td = self.agent.obs_dict_to_tensordict(obs)
 
-        for _ in range(max_len):
-            # Obtain actor predictions
-            model_outs = self.agent.model(obs_td)
-            if "mean_action" in model_outs:
-                actions = model_outs["mean_action"]
-            else:
-                actions = model_outs["action"]
-            # Step the environment
-            obs, rewards, dones, terminated, extras = self.env.step(actions)
-            obs = self.agent.add_agent_info_to_obs(obs)
-
-            obs_td = self.agent.obs_dict_to_tensordict(obs)
-            # Update metrics (including actions for smoothness computation)
-            self.update_metrics_from_env_extras(
-                metrics, extras, active_env_ids, active_motion_ids, actions=actions
-            )
-
-    def add_extra_obs_to_agent(self, obs: Tensor):
-        return obs
-
-    def _compute_tracking_errors(
-        self,
-        active_env_ids: Tensor,
-    ) -> Dict[str, Tensor]:
-        """Compute tracking error metrics directly from simulator and motion lib.
-        
-        This makes the evaluator self-contained and independent of env.extras.
-        
-        Args:
-            active_env_ids: Environment IDs being evaluated.
-            
-        Returns:
-            Dictionary of computed tracking error metrics.
-        """
-        # Get current robot state from simulator
-        current_state = self.env.simulator.get_robot_state()
-        
-        # Get reference state from motion library
-        ref_state = self.motion_lib.get_motion_state(
-            self.motion_manager.motion_ids, self.motion_manager.motion_times
-        )
-        
-        # Apply terrain height correction to reference
-        ref_gt = ref_state.rigid_body_pos.clone()
-        ref_gt += self.env.get_spawn_to_ref_pose_offset_with_terrain_height_correction(
-            ref_gt
-        )
-        
-        # Current state
-        gt = current_state.rigid_body_pos
-        gr = current_state.rigid_body_rot
-        ref_gr = ref_state.rigid_body_rot
-        
-        # Position error: mean of per-joint L2 errors
-        gt_per_joint_err = (ref_gt - gt).pow(2).sum(-1).sqrt()
-        gt_err = gt_per_joint_err.mean(-1)
-        max_joint_err = gt_per_joint_err.max(-1)[0]
-        
-        # Rotation error: mean quaternion angle difference
-        gr_diff = quat_diff_norm(gr, ref_gr, True)
-        gr_err = gr_diff.mean(-1)
-        gr_err_degrees = gr_err * 180 / torch.pi
-        
-        return {
-            "gt_err": gt_err[active_env_ids],
-            "gr_err": gr_err[active_env_ids],
-            "gr_err_degrees": gr_err_degrees[active_env_ids],
-            "max_joint_err": max_joint_err[active_env_ids],
-        }
-
-    def update_metrics_from_env_extras(
+    def _record_trajectory_step(
         self,
         metrics: Dict,
         extras: Dict,
         active_env_ids: Tensor,
         active_motion_ids: Tensor,
-        actions: Tensor = None,
+        actions: Tensor,
     ) -> None:
-        """Update metrics by computing tracking errors directly and looking up extras.
+        """Record robot state and actions into trajectory buffers for this step."""
+        if "actions" in metrics and actions is not None:
+            metrics["actions"].update(active_motion_ids, actions[active_env_ids].detach())
 
-        Computes tracking error metrics (gt_err, gr_err, etc.) directly from the
-        simulator and motion library rather than relying on env.extras.
-        For reward metrics and raw robot state, looks up from extras if available.
-
-        Args:
-            metrics: Dictionary to update with metrics
-            extras: Dictionary of extra information from environment step
-            active_env_ids: Environment IDs being evaluated
-            active_motion_ids: Motion IDs being evaluated
-            actions: Actions taken this step (for action smoothness computation)
-        """
-        assert len(active_env_ids) == len(active_motion_ids)
-
-        # Compute tracking error metrics directly
-        tracking_errors = self._compute_tracking_errors(active_env_ids)
-
-        # Update each metric in the metrics dict
         for k in metrics.keys():
-            value = None
-            
-            # First check if we computed this metric directly
-            if k in tracking_errors:
-                value = tracking_errors[k]
-            # Handle actions separately
-            elif k == "actions" and actions is not None:
-                value = actions[active_env_ids].detach()
-            # Then check env.extras for reward metrics
-            elif f"raw_r/{k}" in extras:
-                value = extras[f"raw_r/{k}"][active_env_ids].detach()
-            elif f"raw/{k}" in extras:
-                value = extras[f"raw/{k}"][active_env_ids].detach()
-            elif f"mimic_other/{k}" in extras:
-                value = extras[f"mimic_other/{k}"][active_env_ids].detach()
-            else:
+            if k == "actions":
                 continue
+            if f"raw/{k}" in extras:
+                metrics[k].update(active_motion_ids, extras[f"raw/{k}"][active_env_ids].detach())
 
-            metrics[k].update(active_motion_ids, value)
+    def process_eval_results(self) -> Tuple[Dict, Optional[float]]:
+        """Process results and update motion sampling weights."""
+        to_log, success_rate = super().process_eval_results()
+        self._update_motion_sampling_weights()
 
-    def process_eval_results(self, metrics: Dict) -> Tuple[Dict, Optional[float]]:
-        """
-        Process results and check for early termination.
-
-        Args:
-            metrics: Dictionary of collected metrics
-
-        Returns:
-            Tuple containing:
-                - Dict of processed metrics for logging
-                - Optional score value for determining best model
-        """
-        to_log = {}
-
-        # Each rank uses its own tracking success rate to update the weights
-        tracking_metrics = self._update_motion_sampling_weights(metrics)
-        to_log.update(tracking_metrics)
-
-        # Each rank computes its own scalar metrics from its local MotionMetrics
-        # These scalars will be averaged across ranks by aggregate_scalar_metrics in post_epoch_logging
-        # This avoids the memory overhead of merging full MotionMetrics objects across ranks
-
-        # Log base metrics with mean/max/min aggregations
-        # Only log metrics that were actually collected
-        available_keys = [k for k in self.config.eval_metric_keys if k in metrics]
-        base_metrics_log = self._gen_metrics(metrics, available_keys)
-        to_log.update(base_metrics_log)
-
-        # Compute additional metrics from plugins (e.g., smoothness)
-        additional_metrics = self._compute_additional_metrics(metrics)
+        additional_metrics = self._compute_additional_metrics(self._metrics)
         to_log.update(additional_metrics)
 
         if self.fabric.global_rank == 0:
@@ -416,135 +261,20 @@ class MimicEvaluator(BaseEvaluator):
                 self.config.save_predicted_motion_lib_every is not None
                 and self.eval_count % self.config.save_predicted_motion_lib_every == 0
             ):
-                try:
-                    self._save_predicted_motion_lib(
-                        metrics, epoch=self.agent.current_epoch
-                    )
-                except Exception as e:
-                    print(f"Warning: failed to save predicted MotionLib file: {e}")
+                self._save_predicted_motion_lib(self._metrics, epoch=self.agent.current_epoch)
 
-        return to_log, to_log.get(
-            "eval/tracking_success_rate", to_log.get("eval/gt_err", None)
-        )
+        return to_log, success_rate
 
     def cleanup_after_evaluation(self) -> None:
-        self.motion_manager.motion_ids = self._cached_motion_ids.clone()
-        self.motion_manager.motion_times = self._cached_motion_times.clone()
-
-        env_ids = torch.arange(0, self.num_envs, device=self.device)
-        self.env.simulator.reset_envs(self._cached_robot_state, None, env_ids)
-
-        if self._cached_state_history is not None:
-            self.env.state_history.load_state(self._cached_state_history)
-
-        self.env.progress_buf[env_ids] = self._cached_progress_buf[env_ids]
-        self.env.reset_buf[env_ids] = False
-        self.env.terminate_buf[env_ids] = False
-        self.env.respawn_root_offset.copy_(self._cached_respawn_offset)
-
-        # hack: if isaacgym
-        if "isaacgym" in self.env.simulator.config._target_.lower():
-            self.env.simulator.step(self._cached_env_actions, markers_callback=None)
-
-        del self._cached_robot_state
-        del self._cached_markers_state
-        del self._cached_env_actions
-        del self._cached_progress_buf
+        """Restore env and motion manager state after evaluation."""
+        self.motion_manager.motion_ids = self._cached_motion_ids
+        self.motion_manager.motion_times = self._cached_motion_times
+        self.env.restore_state(self._env_snapshot)
+        
+        del self._env_snapshot
         del self._cached_motion_ids
         del self._cached_motion_times
-        del self._cached_state_history
-
-    def simple_test_policy(self, collect_metrics: bool = False) -> None:
-        """
-        Evaluates the policy in evaluation mode.
-
-        Args:
-            collect_metrics: whether to collect metrics from the evaluation
-            Will print the metrics to the console if collect_metrics is True
-        """
-        assert (
-            self.fabric.world_size == 1
-        ), "Simple test policy only supported for single process"
-
-        num_motions = self.motion_lib.num_motions()
-        motion_lengths = self.motion_lib.get_motion_length(None)
-        motion_num_frames = (motion_lengths / self.env.dt).floor().long()
-
-        if collect_metrics:
-            metrics = self._create_metrics_dict(
-                num_motions,
-                motion_num_frames,
-                motion_num_frames.max().item(),
-                include_raw_robot_state=False,  # Simple test doesn't need robot state
-            )
-        else:
-            metrics = None
-
-        self.agent.eval()
-        done_indices = None  # Force reset on first entry
-        step = 0
-
-        # Store actions for plotting (only for single motion evaluation)
-        actions_storage = [] if collect_metrics and num_motions == 1 else None
-
-        print("Evaluating policy...")
-        try:
-            while True:
-                obs, _ = self.env.reset(done_indices)
-                obs = self.agent.add_agent_info_to_obs(obs)
-                obs_td = self.agent.obs_dict_to_tensordict(obs)
-
-                cur_motion_ids = self.motion_manager.motion_ids
-                cur_env_ids = torch.arange(
-                    0, cur_motion_ids.numel(), device=self.device
-                )
-
-                model_outs = self.agent.model(obs_td)
-
-                if "mean_action" in model_outs:
-                    actions = model_outs["mean_action"]
-                else:
-                    actions = model_outs["action"]
-
-                if (
-                    actions_storage is not None
-                    and len(actions_storage) < motion_num_frames.max().item()
-                ):
-                    actions_storage.append(actions[0].detach().cpu().numpy())
-
-                obs, rewards, dones, terminated, extras = self.env.step(actions)
-                obs = self.agent.add_agent_info_to_obs(obs)
-                obs_td = self.agent.obs_dict_to_tensordict(obs)
-
-                if collect_metrics:
-                    unique_motion_ids, first_indices = np.unique(
-                        cur_motion_ids.cpu().numpy(), return_index=True
-                    )
-                    cur_env_ids = torch.from_numpy(first_indices).to(device=self.device)
-                    cur_motion_ids = torch.from_numpy(unique_motion_ids).to(
-                        device=self.device
-                    )
-                    self.update_metrics_from_env_extras(
-                        metrics, extras, cur_env_ids, cur_motion_ids
-                    )
-
-                done_indices = dones.nonzero(as_tuple=False).squeeze(-1)
-                step += 1
-        except KeyboardInterrupt:
-            print("\nEvaluation interrupted by Ctrl+C, exiting...")
-            if collect_metrics:
-                print("Metrics up to now:")
-                for k in self.config.eval_metric_keys:
-                    if k in metrics:
-                        print(f"{k}: {metrics[k].mean_mean_reduce().item()}")
-
-                # Plot per-frame metrics if only one motion
-                if num_motions == 1:
-                    self._plot_per_frame_metrics(metrics, actions_storage)
-            return
-        except Exception as e:
-            print(f"Error in simple_test_policy: {e}")
-            raise e
+        super().cleanup_after_evaluation()
 
     def _plot_per_frame_metrics(
         self, metrics: Dict, actions_storage: list = None
@@ -561,7 +291,8 @@ class MimicEvaluator(BaseEvaluator):
         custom_colors = {}
 
         # Only plot metrics that were actually collected
-        available_keys = [k for k in self.config.eval_metric_keys if k in metrics]
+        eval_metric_keys = list(self.config.evaluation_components.keys())
+        available_keys = [k for k in eval_metric_keys if k in metrics]
 
         # Use base class generic plotting with custom colors
         super()._plot_per_frame_metrics(

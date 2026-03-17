@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,6 +19,7 @@
 
 from typing import Dict, List
 import argparse
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -45,9 +46,9 @@ parser.add_argument(
 parser.add_argument(
     "--robot",
     type=str,
-    choices=["g1", "rigv1", "h1_2", "smpl"],
+    choices=["g1", "rigv1", "h1_2", "smpl", "soma23"],
     default="g1",
-    help="Robot to load (g1, rigv1, h1_2, or smpl)",
+    help="Robot to load (g1, rigv1, h1_2, smpl, or soma23)",
 )
 parser.add_argument("--headless", action="store_true", help="Run in headless mode")
 parser.add_argument(
@@ -148,6 +149,9 @@ ROBOT_SPECS = {
     "smpl": RobotSpec(
         viz_bodies=[],
     ),
+    "soma23": RobotSpec(
+        viz_bodies=[],
+    ),
 }
 
 
@@ -199,8 +203,9 @@ def oscillation_index_from_vel(vel, dt, eps=0.001):
     a = _diff(vel, dt)  # [T-1, N, 3]
     a1, a2 = a[:-1], a[1:]  # [T-2, N, 3]
 
-    a1 /= 30.0
-    a2 /= 30.0
+    fps = 1.0 / dt
+    a1 = a1 / fps
+    a2 = a2 / fps
 
     num = (a1 * a2).sum(-1)  # [T-2, N]
     den = (torch.linalg.norm(a1, dim=-1) * torch.linalg.norm(a2, dim=-1)).clamp_min(eps)
@@ -872,8 +877,11 @@ class MotionVisualizerSmoothness:
         """Main simulation loop"""
         step_count = 0
         marker_states = None
+        target_dt = 1.0 / FPS  # wall-clock time per motion frame
 
         while True:
+            frame_start = time.perf_counter()
+
             # Check for reset request (R key press triggers this in simulator)
             if self.simulator.user_requested_reset:
                 self._switch_to_next_motion()
@@ -917,6 +925,12 @@ class MotionVisualizerSmoothness:
             self.simulator.step(_common_actions, markers_callback=lambda: marker_states)
 
             step_count += 1
+
+            # Throttle to real-time (adjusted by playback speed)
+            elapsed = time.perf_counter() - frame_start
+            sleep_time = target_dt / max(self.playback_speed, 0.01) - elapsed
+            if sleep_time > 0:
+                time.sleep(sleep_time)
 
 
 def main():

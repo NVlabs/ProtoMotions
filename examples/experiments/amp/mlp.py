@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +18,10 @@ from protomotions.simulator.base_simulator.config import SimulatorConfig
 from protomotions.envs.base_env.config import EnvConfig
 from protomotions.agents.amp.config import AMPAgentConfig
 import argparse
+
+
+# Dilated history steps for temporal context (used by actor and discriminator)
+HISTORY_STEPS = [1, 2, 3, 4, 8, 16, 32]
 
 
 def terrain_config(args: argparse.Namespace):
@@ -43,22 +47,37 @@ def motion_lib_config(args: argparse.Namespace):
 
 
 def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
-    """Build environment configuration (training defaults)."""
-    from protomotions.envs.obs import max_coords_obs_factory, historical_max_coords_obs_factory
+    """Build environment configuration (training defaults).
+    
+    Uses MdpComponent-based component configuration with explicit context bindings:
+        MdpComponent(compute_func=compute_fn, dynamic_vars={...}, static_params={...})
+    """
+    from protomotions.envs.component_factories import max_coords_obs_factory, historical_max_coords_obs_factory
     from protomotions.envs.motion_manager.config import MotionManagerConfig
+    from protomotions.envs.action import make_pd_action_config
 
     # Observation components configuration
     observation_components = {
         # Humanoid self-observations (current state)
-        "max_coords_obs": max_coords_obs_factory(),
+        "max_coords_obs": max_coords_obs_factory(
+            local_obs=True,
+            root_height_obs=True,
+            observe_contacts=False,
+        ),
         # Historical observations for AMP discriminator (from StateHistoryBuffer)
-        "historical_max_coords_obs": historical_max_coords_obs_factory(),
+        "historical_max_coords_obs": historical_max_coords_obs_factory(
+            local_obs=True,
+            root_height_obs=True,
+            observe_contacts=False,
+            history_steps=HISTORY_STEPS,
+        ),
     }
 
     env_config: EnvConfig = EnvConfig(
         max_episode_length=300,  # Training default (eval override applied automatically)
-        num_state_history_steps=8,  # Historical obs for AMP discriminator
+        num_state_history_steps=max(HISTORY_STEPS),  # Store enough history for max dilation
         observation_components=observation_components,
+        action_config=make_pd_action_config(robot_cfg),
         motion_manager=MotionManagerConfig(
             init_start_prob=0.5  # Bias agent to start at the beginning of the motion to prevent getting stuck in a local-minima (standing still).
         ),
@@ -78,7 +97,7 @@ def agent_config(
         DiscriminatorConfig,
         AMPParametersConfig,
     )
-    from protomotions.envs.obs import historical_max_coords_ref_obs_factory
+    from protomotions.envs.obs import compute_historical_max_coords_from_motion_lib
 
     actor_config = PPOActorConfig(
         num_out=robot_config.kinematic_info.num_dofs,
@@ -95,12 +114,11 @@ def agent_config(
                 MLPLayerConfig(units=512, activation="relu"),
                 MLPLayerConfig(units=256, activation="relu"),
             ],
-            output_activation="tanh",
         ),
     )
 
     critic_config = MLPWithConcatConfig(
-        in_keys=["max_coords_obs"],
+        in_keys=["max_coords_obs", "historical_max_coords_obs"],
         out_keys=["value"],
         normalize_obs=True,
         norm_clamp_value=5,
@@ -148,9 +166,15 @@ def agent_config(
     )
 
     # Reference observation components for discriminator expert data
-    # These define how to compute observations from motion library reference motions
+    # Agent injects motion_lib/motion_ids/motion_times/dt at runtime (not in EnvContext)
+    from protomotions.envs.mdp_component import MdpComponent
+    
     reference_obs_components = {
-        "historical_max_coords_obs": historical_max_coords_ref_obs_factory(),
+        "historical_max_coords_obs": MdpComponent(
+            compute_func=compute_historical_max_coords_from_motion_lib,
+            dynamic_vars={},  # All parameters injected by agent
+            static_params={"history_steps": HISTORY_STEPS},
+        ),
     }
 
     agent_config: AMPAgentConfig = AMPAgentConfig(

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+import dataclasses
+
 from protomotions.simulator.base_simulator.config import SimulatorConfig
 from protomotions.robot_configs.base import RobotConfig
 import logging
@@ -48,6 +50,10 @@ def get_simulator_config_class(simulator: str):
         from protomotions.simulator.genesis.config import GenesisSimulatorConfig
 
         return GenesisSimulatorConfig
+    elif simulator == "mujoco":
+        from protomotions.simulator.mujoco.config import MujocoSimulatorConfig
+
+        return MujocoSimulatorConfig
     else:
         raise ValueError(f"Unsupported simulator: {simulator}")
 
@@ -97,7 +103,7 @@ def update_simulator_config_for_test(
 
     Args:
         current_simulator_config: The simulator config from training (loaded from resolved_configs_inference.pt)
-        new_simulator: The new simulator type to use (e.g., 'isaaclab', 'isaacgym', 'genesis', 'newton')
+        new_simulator: The new simulator type to use (e.g., 'isaaclab', 'isaacgym', 'genesis', 'newton', 'mujoco')
         robot_config: Robot configuration containing simulation_params for all simulators
 
     Returns:
@@ -106,6 +112,17 @@ def update_simulator_config_for_test(
     Raises:
         ValueError: If simulator type is not supported or robot config lacks params for the simulator
     """
+    # Check if the simulator params exist; if not, add defaults for newly added simulators
+    if not hasattr(robot_config.simulation_params, new_simulator):
+        log.warning(
+            f"Robot config missing simulation_params for '{new_simulator}'. "
+            f"Adding default params (likely from an older checkpoint)."
+        )
+        # Get the simulator config class to extract default sim params
+        SimConfigClass = get_simulator_config_class(new_simulator)
+        default_sim_params = SimConfigClass.__dataclass_fields__["sim"].default_factory()
+        setattr(robot_config.simulation_params, new_simulator, default_sim_params)
+    
     if getattr(robot_config.simulation_params, new_simulator) is None:
         raise ValueError(
             f"Robot config does not have simulation_params for '{new_simulator}'. "
@@ -131,6 +148,20 @@ def update_simulator_config_for_test(
     current_simulator_config._target_ = new_target
     current_simulator_config.w_last = new_w_last
     current_simulator_config.sim = new_sim_params
+
+    # Copy any simulator-specific fields that don't exist on the old config object
+    # (e.g. MujocoSimulatorConfig.use_implicit_pd when switching from IsaacGym/Lab)
+    for field_name, field_def in config_fields.items():
+        if field_name in ("_target_", "w_last", "sim"):
+            continue  # Already handled above
+        if not hasattr(current_simulator_config, field_name):
+            default = (
+                field_def.default_factory()
+                if field_def.default_factory is not dataclasses.MISSING
+                else field_def.default
+            )
+            setattr(current_simulator_config, field_name, default)
+            log.info(f"  {field_name} -> {default} (new field, default value)")
 
     log.info(f"  _target_ -> {current_simulator_config._target_}")
     log.info(f"  w_last -> {current_simulator_config.w_last}")

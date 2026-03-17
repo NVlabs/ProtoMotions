@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -58,9 +58,8 @@ Key Features:
 """
 
 from functools import cached_property
-from typing import Optional, TYPE_CHECKING, Tuple
+from typing import Any, Dict, Optional, TYPE_CHECKING, Tuple
 
-import numpy as np
 import torch
 from torch import Tensor
 from protomotions.utils.hydra_replacement import get_class
@@ -77,18 +76,30 @@ from protomotions.simulator.base_simulator.simulator_state import (
     ResetState,
 )
 from protomotions.envs.terminations import check_max_length_term
-from protomotions.envs.obs.humanoid import compute_local_ang_vel
-from protomotions.envs.obs.observation_noise import apply_observation_noise
+from protomotions.envs.context_views import (
+    EnvContext,
+    CurrentStateView,
+    HistoricalView,
+)
+from protomotions.envs.obs.observation_noise import (
+    NoisyObservations,
+    apply_observation_noise,
+    apply_reset_noise,
+)
 from protomotions.components.terrains.terrain import Terrain
 from protomotions.envs.obs.scene_obs import SceneObs
 from protomotions.envs.obs.terrain_obs import TerrainObs
 from protomotions.envs.obs.state_history_buffer import StateHistoryBuffer
 from protomotions.envs.base_env.config import EnvConfig
-from protomotions.envs.managers.control_manager import ControlManager
-from protomotions.envs.managers.observation_manager import ObservationManager
-from protomotions.envs.managers.reward_manager import RewardManager
-from protomotions.envs.managers.termination_manager import TerminationManager
+from protomotions.envs.control.manager import ControlManager
 
+# Component infrastructure for MdpComponent-based configs
+from protomotions.envs.component_manager import ComponentManager
+from protomotions.envs.base_env.utils import (
+    combine_rewards,
+    combine_terminations,
+)
+from protomotions.components.pose_lib import compute_body_density_weights
 
 from protomotions.components.pose_lib import build_body_ids_tensor
 
@@ -126,7 +137,7 @@ class BaseEnv:
         >>> robot_config = G1Config()
         >>> env = Steering(config, robot_config, simulator_config, device)
         >>> obs, _ = env.reset()
-        >>> next_obs, rewards, dones, info = env.step(actions)
+        >>> next_obs, rewards, dones, info = env.step(action_dict)
     """
 
     def __init__(
@@ -178,10 +189,27 @@ class BaseEnv:
         self.respawn_root_offset = torch.zeros(
             self.num_envs, 3, dtype=torch.float, device=self.device
         )
-        
+
         # Contact force tracking for impact penalty rewards
         # Initialized properly after simulator init when we know num_bodies
         self.prev_contact_force_magnitudes = None
+
+        # Action buffers (current step only; previous actions come from state_history)
+        num_actions = robot_config.number_of_actions
+        self._current_raw_action = torch.zeros(
+            self.num_envs, num_actions, dtype=torch.float, device=self.device
+        )
+        self._current_processed_action = torch.zeros(
+            self.num_envs, num_actions, dtype=torch.float, device=self.device
+        )
+
+        # Global context cache - built once per step in post_physics_step
+        # and reused by observations, rewards, and terminations
+        self._current_context: Dict[str, Any] = None
+
+        # Noisy observation cache - computed once in post_physics_step,
+        # reused by both state_history and _build_global_context
+        self._current_noisy_obs = None
 
         self.skip_height_correction = (
             self.config.skip_correct_terrain_height_on_flat and self.terrain.is_flat()
@@ -195,20 +223,24 @@ class BaseEnv:
         Called at the end of __init__ to finalize simulator setup after visualization
         markers have been created (potentially by child env class override).
         """
-        if hasattr(self.robot_config, 'kinematic_info') and self.robot_config.kinematic_info is not None:
+        if (
+            hasattr(self.robot_config, "kinematic_info")
+            and self.robot_config.kinematic_info is not None
+        ):
             self.robot_config.kinematic_info.to(self.device)
-        
+
         # Initialize contact force buffer now that we know num_bodies
         num_bodies = self.robot_config.kinematic_info.num_bodies
         self.prev_contact_force_magnitudes = torch.zeros(
             self.num_envs, num_bodies, dtype=torch.float, device=self.device
         )
-        
+
         if self.config.num_state_history_steps > 0:
             # Check if observation noise is configured - if so, allocate noisy buffers
             store_noisy = (
                 self.simulator.config.domain_randomization is not None
-                and self.simulator.config.domain_randomization.observation_noise is not None
+                and self.simulator.config.domain_randomization.observation_noise
+                is not None
                 and self.simulator.config.domain_randomization.observation_noise.has_noise()
             )
             self.state_history = StateHistoryBuffer(
@@ -224,7 +256,7 @@ class BaseEnv:
             )
         else:
             self.state_history = None
-        
+
         if (
             self.motion_lib.num_motions() > 0
             and self.config.ref_contact_smooth_window > 0
@@ -234,42 +266,57 @@ class BaseEnv:
         self.dt = self.simulator.dt
 
         if self.motion_lib.num_motions() > 0:
+            self._validate_motion_lib_compatibility()
             self.create_motion_manager()
         else:
             self.motion_manager = None
 
         self.terrain_obs_cb = TerrainObs(self.terrain.config, self)
         self.scene_obs_cb = SceneObs(self.config.scene_obs, self)
-        
+
         self.control_manager = ControlManager(self.config.control_components, self)
 
         visualization_markers = self.create_visualization_markers(
             self.simulator.headless
         )
         self.simulator._initialize_with_markers(visualization_markers)
-        
-        self.observation_manager = ObservationManager(
-            self.config.observation_components,
-            self.robot_config,
-            self.device,
-            self.num_envs,
-            self.dt,
+
+        # Component infrastructure for MdpComponent
+        self._component_manager = ComponentManager(self.device)
+        self._observation_buffer: Dict[str, Tensor] = {}
+        self._density_weights = compute_body_density_weights(
+            self.robot_config.kinematic_info
+        ).to(self.device)
+
+        # Initialize observations
+        self._initialize_observations()
+
+    def _validate_motion_lib_compatibility(self):
+        """Validate that the motion file is compatible with the robot config."""
+        ki = self.robot_config.kinematic_info
+        expected_dofs = ki.num_dofs
+        expected_bodies = ki.num_bodies
+
+        sample_state = self.motion_lib.get_motion_state(
+            torch.zeros(1, dtype=torch.long, device=self.device),
+            torch.zeros(1, device=self.device),
         )
-        self.reward_manager = RewardManager(
-            self.config.reward_components,
-            self.robot_config,
-            self.device,
-            self.num_envs,
-        )
-        self.termination_manager = TerminationManager(
-            self.config.termination_components,
-            self.robot_config,
-            self.device,
-            self.num_envs,
-        )
-        
-        context = self._get_global_context()
-        self.observation_manager.initialize(context)
+        motion_dofs = sample_state.dof_pos.shape[1]
+        motion_bodies = sample_state.rigid_body_pos.shape[1]
+
+        if motion_dofs != expected_dofs:
+            raise ValueError(
+                f"\n{'=' * 70}\n"
+                f"MOTION FILE / ROBOT MISMATCH\n"
+                f"{'=' * 70}\n"
+                f"Motion file has {motion_dofs} DOFs and {motion_bodies} bodies,\n"
+                f"but robot '{type(self.robot_config).__name__}' expects "
+                f"{expected_dofs} DOFs and {expected_bodies} bodies.\n\n"
+                f"The motion file was likely generated for a different robot.\n"
+                f"Make sure --motion-file matches the robot in your "
+                f"checkpoint/config.\n"
+                f"{'=' * 70}"
+            )
 
     ###############################################################
     # Getters
@@ -295,10 +342,13 @@ class BaseEnv:
         if self.scene_lib.num_scenes() > 0 and self.config.scene_obs.enabled:
             scene_obs = self.scene_obs_cb.get_obs()
             obs.update(scene_obs)
-        
-        dynamic_obs = self.observation_manager.get_observations()
+
+        # Get dynamic observations
+        dynamic_obs = {
+            name: tensor.clone() for name, tensor in self._observation_buffer.items()
+        }
         obs.update(dynamic_obs)
-        
+
         return obs
 
     def get_action_size(self):
@@ -308,6 +358,88 @@ class BaseEnv:
             Number of action dimensions
         """
         return self.simulator.num_act
+
+    ###############################################################
+    # Component Processing
+    ###############################################################
+    def _initialize_observations(self):
+        """Initialize observation buffers."""
+        all_env_ids = torch.arange(self.num_envs, dtype=torch.long, device=self.device)
+        self._process_observations(self.context, all_env_ids)
+
+    def _process_observations(self, context: EnvContext, env_ids: Tensor):
+        """Process observations using MdpComponent."""
+        raw_obs = self._component_manager.execute_all(
+            components=self.config.observation_components,
+            ctx=context,
+        )
+
+        # Update observation buffer with results
+        for name, obs_value in raw_obs.items():
+            if name not in self._observation_buffer:
+                self._observation_buffer[name] = torch.zeros(
+                    self.num_envs,
+                    obs_value.shape[-1],
+                    dtype=obs_value.dtype,
+                    device=self.device,
+                )
+            # MdpComponent always computes for all envs, update specified subset
+            self._observation_buffer[name][env_ids] = obs_value[env_ids]
+
+    def _process_rewards(
+        self, context: EnvContext, grace_mask: Optional[Tensor] = None
+    ):
+        """Process rewards using MdpComponent."""
+        raw_rewards = self._component_manager.execute_all(
+            components=self.config.reward_components,
+            ctx=context,
+        )
+
+        return combine_rewards(
+            raw_rewards=raw_rewards,
+            configs=self.config.reward_components,
+            grace_mask=grace_mask,
+            region_weights=self._density_weights,
+            num_envs=self.num_envs,
+            device=self.device,
+        )
+
+    def _process_terminations(self, context: EnvContext):
+        """Process terminations using MdpComponent."""
+        raw_terms = self._component_manager.execute_all(
+            components=self.config.termination_components,
+            ctx=context,
+        )
+
+        return combine_terminations(
+            raw_terms=raw_terms,
+            configs=self.config.termination_components,
+            num_envs=self.num_envs,
+            device=self.device,
+        )
+
+    _action_config_device_ready: bool = False
+
+    def _process_action(self, action: Tensor, context: EnvContext) -> Dict[str, Tensor]:
+        """Process action using single action config dict.
+
+        action_config is a single dict with "fn" key and parameters.
+        """
+        if self.config.action_config is None:
+            return {"processed_action": action}
+
+        # Lazy device migration on first call
+        if not self._action_config_device_ready:
+            for key, val in self.config.action_config.items():
+                if isinstance(val, torch.Tensor):
+                    self.config.action_config[key] = val.to(action.device)
+            self._action_config_device_ready = True
+
+        fn = self.config.action_config["fn"]
+        # Extract all params except "fn"
+        params = {k: v for k, v in self.config.action_config.items() if k != "fn"}
+        params["action"] = action
+        return fn(**params)
 
     ###############################################################
     # Cached Properties
@@ -420,26 +552,26 @@ class BaseEnv:
         self.respawn_root_offset[env_ids, :2] = (
             root_pos[:, :2] - ref_state.rigid_body_pos[:, 0, :2]
         )
-    
+
     def get_spawn_to_ref_pose_offset_with_terrain_height_correction(
         self, target_pos: Tensor, env_ids: Optional[Tensor] = None
     ) -> Tensor:
         """Compute spawn offset with terrain height correction for reference poses.
-        
+
         Used by motion tracking tasks to correctly position reference poses in the environment,
         accounting for both XY spawn offset and terrain height.
-        
+
         Args:
-            target_pos: Reference body positions [num_envs, num_bodies, 3] 
+            target_pos: Reference body positions [num_envs, num_bodies, 3]
                        without spawning offset applied.
             env_ids: Environment indices [num_envs]. If None, uses all envs.
-        
+
         Returns:
             Offset to add to target_pos [num_envs, num_bodies, 3].
-            
+
         Note:
             - For XY offset: all bodies share the same respawn_root_offset
-            - For Z offset: all bodies share the same offset computed from 
+            - For Z offset: all bodies share the same offset computed from
               the body furthest below terrain
             - This preserves the rigid body structure during spawning
         """
@@ -502,7 +634,7 @@ class BaseEnv:
                     self.num_envs, height_maps.shape[1], 4, device=self.device
                 ),
             )
-        
+
         # Merge markers from control components
         control_markers_state = self.control_manager.get_markers_state()
         markers_state.update(control_markers_state)
@@ -512,26 +644,30 @@ class BaseEnv:
     ###############################################################
     # Environment step logic
     ###############################################################
-    def step(self, actions):
+    def step(self, action: Tensor):
         """Step the environment forward one timestep.
 
         Args:
-            actions: Action tensor [num_envs, action_dim]
+            action: Raw action tensor from the policy [num_envs, num_actions]
 
         Returns:
-            obs: Dictionary of observation tensors
-            rewards: Reward tensor [num_envs]
-            dones: Reset flags [num_envs]
-            terminated: Termination flags [num_envs]
-            info: Dictionary containing step metadata (extras)
+            obs, rewards, dones, terminated, extras
         """
-
         self.extras = {}
 
-        actions = self.process_actions(actions)
+        # Invalidate cached context - will be rebuilt after physics in post_physics_step
+        self._current_context = None
+        self._current_noisy_obs = None
 
-        # Pass callback - simulator will call it after physics step
-        self.simulator.step(actions, markers_callback=self.get_markers_state)
+        # Store current actions
+        self._current_raw_action[:] = action
+
+        # Process action
+        action_dict = self._process_action(action, self.context)
+        processed_action = action_dict["processed_action"]
+        self._current_processed_action[:] = processed_action
+
+        self.simulator.step(processed_action, markers_callback=self.get_markers_state)
 
         self.post_physics_step()
 
@@ -540,22 +676,6 @@ class BaseEnv:
 
         obs = self.get_obs()
         return obs, self.rew_buf, self.reset_buf, self.terminate_buf, self.extras
-
-    def process_actions(self, actions):
-        """Process and clamp actions before passing to simulator.
-
-        Args:
-            actions: Raw action tensor [num_envs, action_dim]
-
-        Returns:
-            Processed action tensor [num_envs, action_dim]
-        """
-        clamp_actions = self.robot_config.control.clamp_actions
-        if clamp_actions is not None:
-            actions = torch.clamp(actions, -clamp_actions, clamp_actions)
-            self.extras["action_clamp"] = (actions.abs() == clamp_actions).float()
-
-        return actions
 
     def on_epoch_end(self, current_epoch: int):
         """Hook called at end of each training epoch. Override in subclasses if needed.
@@ -572,39 +692,41 @@ class BaseEnv:
         checks for resets, and stores raw robot state in extras for logging.
         """
         self.progress_buf += 1
-        
+
         if self.state_history is not None:
             current_state = self.simulator.get_robot_state()
-            current_actions = self.simulator.get_current_actions()
-            ground_heights = self.terrain.get_ground_heights(current_state.rigid_body_pos[:, 0]).squeeze(-1)
-            body_contacts = current_state.rigid_body_contacts[:, self.contact_body_ids].bool()
-            
+            ground_heights = self.terrain.get_ground_heights(
+                current_state.rigid_body_pos[:, 0]
+            ).squeeze(-1)
+            body_contacts = current_state.rigid_body_contacts[
+                :, self.contact_body_ids
+            ].bool()
+
             # Compute noisy versions if observation noise is configured and history stores noisy data
             noisy_kwargs = {}
             if self.state_history.store_noisy:
-                obs_noise_cfg = self.simulator.config.domain_randomization.observation_noise
-                
-                # Apply whole-body noise
-                if obs_noise_cfg.body_pos_noise > 0.0:
-                    noisy_kwargs["noisy_rigid_body_pos"] = current_state.rigid_body_pos + torch.randn_like(current_state.rigid_body_pos) * obs_noise_cfg.body_pos_noise
-                if obs_noise_cfg.body_rot_noise > 0.0:
-                    noisy_rot = current_state.rigid_body_rot + torch.randn_like(current_state.rigid_body_rot) * obs_noise_cfg.body_rot_noise
-                    noisy_kwargs["noisy_rigid_body_rot"] = noisy_rot / torch.norm(noisy_rot, dim=-1, keepdim=True)
-                if obs_noise_cfg.body_vel_noise > 0.0:
-                    noisy_kwargs["noisy_rigid_body_vel"] = current_state.rigid_body_vel + torch.randn_like(current_state.rigid_body_vel) * obs_noise_cfg.body_vel_noise
-                if obs_noise_cfg.body_ang_vel_noise > 0.0:
-                    noisy_kwargs["noisy_rigid_body_ang_vel"] = current_state.rigid_body_ang_vel + torch.randn_like(current_state.rigid_body_ang_vel) * obs_noise_cfg.body_ang_vel_noise
-                
-                # Apply DOF noise
-                if obs_noise_cfg.dof_pos_noise > 0.0:
-                    noisy_kwargs["noisy_dof_pos"] = current_state.dof_pos + torch.randn_like(current_state.dof_pos) * obs_noise_cfg.dof_pos_noise
-                if obs_noise_cfg.dof_vel_noise > 0.0:
-                    noisy_kwargs["noisy_dof_vel"] = current_state.dof_vel + torch.randn_like(current_state.dof_vel) * obs_noise_cfg.dof_vel_noise
-                
-                # Apply ground height noise
-                if obs_noise_cfg.ground_height_noise > 0.0:
-                    noisy_kwargs["noisy_ground_heights"] = ground_heights + torch.randn_like(ground_heights) * obs_noise_cfg.ground_height_noise
-            
+                obs_noise_cfg = (
+                    self.simulator.config.domain_randomization.observation_noise
+                )
+
+                # Single source of truth: uniform noise via apply_observation_noise
+                noisy = apply_observation_noise(
+                    obs_noise_cfg=obs_noise_cfg,
+                    robot_state=current_state,
+                    anchor_idx=self.robot_config.anchor_body_index,
+                    ground_heights=ground_heights,
+                )
+                self._current_noisy_obs = noisy
+
+                # Extract noisy tensors for history buffer
+                noisy_kwargs["noisy_rigid_body_pos"] = noisy.rigid_body_pos
+                noisy_kwargs["noisy_rigid_body_rot"] = noisy.rigid_body_rot
+                noisy_kwargs["noisy_rigid_body_vel"] = noisy.rigid_body_vel
+                noisy_kwargs["noisy_rigid_body_ang_vel"] = noisy.rigid_body_ang_vel
+                noisy_kwargs["noisy_dof_pos"] = noisy.dof_pos
+                noisy_kwargs["noisy_dof_vel"] = noisy.dof_vel
+                noisy_kwargs["noisy_ground_heights"] = noisy.ground_heights
+
             self.state_history.rotate_and_update(
                 rigid_body_pos=current_state.rigid_body_pos,
                 rigid_body_rot=current_state.rigid_body_rot,
@@ -612,15 +734,18 @@ class BaseEnv:
                 rigid_body_ang_vel=current_state.rigid_body_ang_vel,
                 dof_pos=current_state.dof_pos,
                 dof_vel=current_state.dof_vel,
-                actions=current_actions,
+                actions=self._current_raw_action,
                 ground_heights=ground_heights,
                 body_contacts=body_contacts,
+                processed_actions=self._current_processed_action,
                 **noisy_kwargs,
             )
-        
-        if self.motion_manager is not None and hasattr(self.motion_manager, 'post_physics_step'):
+
+        if self.motion_manager is not None and hasattr(
+            self.motion_manager, "post_physics_step"
+        ):
             self.motion_manager.post_physics_step()
-        
+
         self.control_manager.step()
 
         if (
@@ -634,16 +759,21 @@ class BaseEnv:
                 self.simulator.get_root_state().root_pos,
             )
 
-        self.compute_observations()
-        self.compute_reward()
-        self.reset_buf[:], self.terminate_buf[:] = self.check_resets_and_terminations()
+        # Build context once and reuse for observations, rewards, and terminations
+        self._current_context = self._build_global_context()
+
+        self.compute_observations(context=self._current_context)
+        self.compute_reward(context=self._current_context)
+        self.reset_buf[:], self.terminate_buf[:] = self.check_resets_and_terminations(
+            context=self._current_context
+        )
 
         self.extras["terminate"] = self.terminate_buf
 
         rbs: RobotState = self.simulator.get_robot_state()
         for k, _ in rbs.get_shape_mapping(flattened=True).items():
             self.extras[f"raw/{k}"] = rbs.flatten_bodies(k)
-        
+
         # Update previous contact forces for next step's impact penalty
         self.prev_contact_force_magnitudes[:] = torch.norm(
             rbs.rigid_body_contact_forces, dim=-1
@@ -653,29 +783,36 @@ class BaseEnv:
         """Force environments to reset on next check (triggered by user input)."""
         self.progress_buf[:] = 100000000000
 
-    def compute_observations(self, env_ids=None):
+    def compute_observations(self, env_ids=None, context: EnvContext = None):
         """Compute observations for specified environments.
 
         Args:
             env_ids: Environment indices to update (None = all environments)
+            context: Pre-built EnvContext from self.context property.
         """
         if env_ids is None:
             env_ids = torch.arange(self.num_envs, device=self.device, dtype=torch.long)
 
-        context = self._get_global_context()
-        self.observation_manager.compute_observations(context, env_ids)
-        
+        if context is None:
+            raise ValueError("context is required - use self.context to build it")
+
+        # Process dynamic observations
+        self._process_observations(context, env_ids)
+
         self.terrain_obs_cb.compute_observations(env_ids)
         if self.scene_lib.num_scenes() > 0:
             self.scene_obs_cb.compute_observations(env_ids)
 
-    def check_resets_and_terminations(self):
+    def check_resets_and_terminations(self, context: EnvContext):
         """Check reset and termination conditions.
-        
+
         Only handles max episode length directly. All other terminations
         (including height/fall termination) should be configured via:
         - termination_components (dynamic termination system)
         - control_components (task-specific terminations)
+
+        Args:
+            context: Pre-built context from self.context property.
 
         Returns:
             Tuple of (reset_buf, terminate_buf) boolean tensors
@@ -685,13 +822,15 @@ class BaseEnv:
         )
         reset_buf = max_length_reached.clone()
         terminated = torch.zeros_like(self.reset_buf, dtype=torch.bool)
-        
-        comp_reset, comp_terminate = self.control_manager.check_resets_and_terminations()
+
+        comp_reset, comp_terminate = (
+            self.control_manager.check_resets_and_terminations()
+        )
         reset_buf = reset_buf | comp_reset
         terminated = terminated | comp_terminate
-        
-        context = self._get_global_context()
-        comp_reset, comp_terminate, term_logging = self.termination_manager.check_terminations(context)
+
+        # Process terminations
+        comp_reset, comp_terminate, term_logging = self._process_terminations(context)
         reset_buf = reset_buf | comp_reset
         terminated = terminated | comp_terminate
         self.extras.update(term_logging)
@@ -701,202 +840,99 @@ class BaseEnv:
     ###############################################################
     # Dynamic Reward System
     ###############################################################
-    def _get_global_context(self):
-        """Get the global context for observations, rewards, and terminations.
-        
-        Merges base environment state with control component context.
-        
-        Naming convention:
-        - Clean variables (no prefix): e.g., current_state_dof_pos - always ground truth
-        - Noisy variables (noisy_* prefix): e.g., noisy_current_state_dof_pos - potentially noisy
-        
-        When observation noise is configured in domain randomization:
-        - noisy_* variables have noise applied
-        - Regular variables contain clean data
-        
+    @property
+    def context(self) -> EnvContext:
+        """Get global context for observation/reward/termination evaluation.
+
+        Returns cached context from _current_context if set (after post_physics_step),
+        otherwise builds a fresh context.
+
+        Returns:
+            Typed EnvContext for observation/reward/termination functions.
+        """
+        if self._current_context is None:
+            self._current_context = self._build_global_context()
+        return self._current_context
+
+    def _build_global_context(self) -> EnvContext:
+        """Build a fresh global context for observations, rewards, and terminations.
+
+        Creates typed EnvContext with view wrappers around existing data structures.
+        Controllers populate their task-specific views via populate_context().
+
+        When observation noise is configured:
+        - noisy views have noise applied
+        - current views contain clean data
+
         When no observation noise is configured:
         - Both point to the same tensors (memory efficient)
 
         Returns:
-            Dict of variables available for eval in observation/reward/termination functions.
+            Typed EnvContext for observation/reward/termination functions.
         """
         current_state = self.simulator.get_robot_state()
-        
+        anchor_idx = self.robot_config.anchor_body_index
+
         ground_heights = self.terrain.get_ground_heights(
             current_state.rigid_body_pos[:, 0]
-        )
-        
+        ).squeeze(-1)
+
         body_contacts = current_state.rigid_body_contacts[
             :, self.contact_body_ids
         ].bool()
-        
+
         # Contact force magnitudes for impact penalty rewards
         current_contact_force_magnitudes = torch.norm(
             current_state.rigid_body_contact_forces, dim=-1
         )
-        
-        # Check if observation noise is configured
-        obs_noise_cfg = None
-        if (
-            self.simulator.config.domain_randomization is not None
-            and self.simulator.config.domain_randomization.observation_noise is not None
-            and self.simulator.config.domain_randomization.observation_noise.has_noise()
-        ):
-            obs_noise_cfg = self.simulator.config.domain_randomization.observation_noise
-        
-        # =====================================================================
-        # Compute derived clean values from robot state
-        # =====================================================================
-        anchor_idx = self.robot_config.anchor_body_index
-        
-        # Root local angular velocity (derived from clean whole-body)
-        root_local_ang_vel = compute_local_ang_vel(
-            current_state.root_rot,
-            current_state.rigid_body_ang_vel[:, 0, :],
-        )
-        
-        # Anchor values (derived from clean whole-body)
-        anchor_rot = current_state.rigid_body_rot[:, anchor_idx, :]
-        anchor_local_ang_vel = compute_local_ang_vel(
-            anchor_rot,
-            current_state.rigid_body_ang_vel[:, anchor_idx, :],
-        )
-        
-        # =====================================================================
-        # Apply observation noise if configured
-        # =====================================================================
-        noisy = apply_observation_noise(
-            obs_noise_cfg=obs_noise_cfg,
-            robot_state=current_state,
-            anchor_idx=anchor_idx,
-            root_local_ang_vel=root_local_ang_vel,
-            anchor_rot=anchor_rot,
-            anchor_local_ang_vel=anchor_local_ang_vel,
+
+        # Use cached noisy obs from post_physics_step when available.
+        # During init/reset the cache is None — use clean (no-noise) fallback.
+        if self._current_noisy_obs is not None:
+            noisy = self._current_noisy_obs
+        else:
+            noisy = apply_observation_noise(
+                obs_noise_cfg=None,
+                robot_state=current_state,
+                anchor_idx=anchor_idx,
+                ground_heights=ground_heights,
+            )
+
+        # Build context with view wrappers
+        ctx = EnvContext(
+            # Core state views (wrap RobotState without copying)
+            current=CurrentStateView(current_state, anchor_idx),
+            noisy=CurrentStateView(noisy, anchor_idx),
+            # Historical views (wrap StateHistoryBuffer without copying)
+            historical=HistoricalView(self.state_history, use_noisy=False)
+            if self.state_history
+            else None,
+            noisy_historical=HistoricalView(self.state_history, use_noisy=True)
+            if self.state_history
+            else None,
+            # Actions (historical)
+            current_processed_action=self._current_processed_action,
+            previous_action=self.state_history.actions[:, 1]
+            if (self.state_history and self.state_history.num_history_steps >= 1)
+            else None,
+            previous_processed_action=self.state_history.processed_actions[:, 1]
+            if (self.state_history and self.state_history.num_history_steps >= 1)
+            else None,
+            # Environment state
             ground_heights=ground_heights,
+            noisy_ground_heights=noisy.ground_heights,
+            body_contacts=body_contacts,
+            current_contact_force_magnitudes=current_contact_force_magnitudes,
+            prev_contact_force_magnitudes=self.prev_contact_force_magnitudes,
+            dt=self.dt,
+            # Contact tracking
+            contact_body_ids=self.contact_body_ids,
         )
-        
-        context = {
-            # Clean state variables - always ground truth (no prefix)
-            "current_state_rigid_body_pos": current_state.rigid_body_pos,
-            "current_state_rigid_body_rot": current_state.rigid_body_rot,
-            "current_state_rigid_body_vel": current_state.rigid_body_vel,
-            "current_state_rigid_body_ang_vel": current_state.rigid_body_ang_vel,
-            "current_state_rigid_body_contacts": current_state.rigid_body_contacts,
-            "current_state_dof_pos": current_state.dof_pos,
-            "current_state_dof_vel": current_state.dof_vel,
-            "current_state_dof_forces": current_state.dof_forces,
-            "current_state_root_rot": current_state.root_rot,
-            
-            # Derived clean root values
-            "current_state_root_pos": current_state.rigid_body_pos[:, 0, :],
-            "current_state_root_ang_vel": current_state.rigid_body_ang_vel[:, 0, :],
-            "current_state_root_local_ang_vel": root_local_ang_vel,
-            "current_state_root_height": current_state.rigid_body_pos[:, 0, 2],
 
-            # Derived clean anchor values
-            "current_state_anchor_pos": current_state.rigid_body_pos[:, anchor_idx, :],
-            "current_state_anchor_rot": anchor_rot,
-            "current_state_anchor_vel": current_state.rigid_body_vel[:, anchor_idx, :],
-            "current_state_anchor_ang_vel": current_state.rigid_body_ang_vel[:, anchor_idx, :],
-            "current_state_anchor_local_ang_vel": anchor_local_ang_vel,
-            
-            # Noisy state variables (noisy_* prefix) - potentially noisy if obs noise is configured
-            "noisy_current_state_rigid_body_pos": noisy.rigid_body_pos,
-            "noisy_current_state_rigid_body_rot": noisy.rigid_body_rot,
-            "noisy_current_state_rigid_body_vel": noisy.rigid_body_vel,
-            "noisy_current_state_rigid_body_ang_vel": noisy.rigid_body_ang_vel,
-            "noisy_current_state_dof_pos": noisy.dof_pos,
-            "noisy_current_state_dof_vel": noisy.dof_vel,
-            "noisy_current_state_root_rot": noisy.root_rot,
-            "noisy_current_state_root_local_ang_vel": noisy.root_local_ang_vel,
-            "noisy_current_state_anchor_rot": noisy.anchor_rot,
-            "noisy_current_state_anchor_local_ang_vel": noisy.anchor_local_ang_vel,
-            
-            # Derived noisy root values
-            "noisy_current_state_root_pos": noisy.rigid_body_pos[:, 0, :],
-            "noisy_current_state_root_ang_vel": noisy.rigid_body_ang_vel[:, 0, :],
-            "noisy_current_state_root_height": noisy.rigid_body_pos[:, 0, 2],
-            
-            # Derived noisy anchor values
-            "noisy_current_state_anchor_pos": noisy.rigid_body_pos[:, anchor_idx, :],
-            "noisy_current_state_anchor_vel": noisy.rigid_body_vel[:, anchor_idx, :],
-            "noisy_current_state_anchor_ang_vel": noisy.rigid_body_ang_vel[:, anchor_idx, :],
+        # Controllers populate their task-specific views
+        self.control_manager.populate_context(ctx)
 
-            "current_actions": self.simulator.get_current_actions(),
-            # Previous actions (t-1) - from history buffer index 1 (index 0 is current after rotate_and_update)
-            "previous_actions": self.state_history.actions[:, 1] if (self.state_history and self.state_history.num_history_steps > 1) else self.simulator.get_previous_actions(),
-            # PD action scale for converting normalized actions to radians
-            "pd_action_scale": self.simulator._common_pd_action_scale,
-            
-            # Clean historical state tensors [envs, history_steps-1, ...] (past only, excludes current)
-            "historical_rigid_body_pos": self.state_history.historical_rigid_body_pos if self.state_history else None,
-            "historical_rigid_body_rot": self.state_history.historical_rigid_body_rot if self.state_history else None,
-            "historical_rigid_body_vel": self.state_history.historical_rigid_body_vel if self.state_history else None,
-            "historical_rigid_body_ang_vel": self.state_history.historical_rigid_body_ang_vel if self.state_history else None,
-            "historical_dof_pos": self.state_history.historical_dof_pos if self.state_history else None,
-            "historical_dof_vel": self.state_history.historical_dof_vel if self.state_history else None,
-            "historical_ground_heights": self.state_history.historical_ground_heights if self.state_history else None,
-            # These terms are not affected by observation noise
-            "historical_actions": self.state_history.historical_actions if self.state_history else None,
-            "historical_body_contacts": self.state_history.historical_body_contacts if self.state_history else None,
-            # Derived clean historical root values (past only)
-            "historical_root_pos": self.state_history.historical_root_pos if self.state_history else None,
-            "historical_root_rot": self.state_history.historical_root_rot if self.state_history else None,
-            "historical_root_ang_vel": self.state_history.historical_root_ang_vel if self.state_history else None,
-            "historical_root_local_ang_vel": compute_local_ang_vel(self.state_history.historical_root_rot, self.state_history.historical_root_ang_vel) if self.state_history else None,
-            # Derived clean historical anchor values (past only)
-            "historical_anchor_pos": self.state_history.historical_anchor_pos if self.state_history else None,
-            "historical_anchor_rot": self.state_history.historical_anchor_rot if self.state_history else None,
-            "historical_anchor_vel": self.state_history.historical_anchor_vel if self.state_history else None,
-            "historical_anchor_ang_vel": self.state_history.historical_anchor_ang_vel if self.state_history else None,
-            
-            # Noisy historical state tensors (for actor with observation noise)
-            # These point to same data as clean versions when store_noisy=False
-            "noisy_historical_rigid_body_pos": self.state_history.noisy_historical_rigid_body_pos if self.state_history else None,
-            "noisy_historical_rigid_body_rot": self.state_history.noisy_historical_rigid_body_rot if self.state_history else None,
-            "noisy_historical_rigid_body_vel": self.state_history.noisy_historical_rigid_body_vel if self.state_history else None,
-            "noisy_historical_rigid_body_ang_vel": self.state_history.noisy_historical_rigid_body_ang_vel if self.state_history else None,
-            "noisy_historical_dof_pos": self.state_history.noisy_historical_dof_pos if self.state_history else None,
-            "noisy_historical_dof_vel": self.state_history.noisy_historical_dof_vel if self.state_history else None,
-            # Derived noisy historical root values
-            "noisy_historical_root_pos": self.state_history.noisy_historical_root_pos if self.state_history else None,
-            "noisy_historical_root_rot": self.state_history.noisy_historical_root_rot if self.state_history else None,
-            "noisy_historical_root_ang_vel": self.state_history.noisy_historical_root_ang_vel if self.state_history else None,
-            "noisy_historical_root_local_ang_vel": compute_local_ang_vel(self.state_history.noisy_historical_root_rot, self.state_history.noisy_historical_root_ang_vel) if self.state_history else None,
-            # Derived noisy historical anchor values
-            "noisy_historical_anchor_pos": self.state_history.noisy_historical_anchor_pos if self.state_history else None,
-            "noisy_historical_anchor_rot": self.state_history.noisy_historical_anchor_rot if self.state_history else None,
-            # Noisy historical ground heights
-            "noisy_historical_ground_heights": self.state_history.noisy_historical_ground_heights if self.state_history else None,
-            
-            # Environment state (clean ground heights and noisy version)
-            "ground_heights_beneath_root": ground_heights,
-            "noisy_ground_heights_beneath_root": noisy.ground_heights,
-            "body_contacts": body_contacts,
-            "current_contact_force_magnitudes": current_contact_force_magnitudes,
-            "prev_contact_force_magnitudes": self.prev_contact_force_magnitudes,
-            
-            # Control parameters (tensors)
-            "soft_dof_limits_lower": self.robot_config.kinematic_info.dof_limits_lower.to(
-                self.device
-            )
-            * self.robot_config.control.soft_pos_limit,
-            "soft_dof_limits_upper": self.robot_config.kinematic_info.dof_limits_upper.to(
-                self.device
-            )
-            * self.robot_config.control.soft_pos_limit,
-            "contact_body_ids": self.contact_body_ids,
-            "non_termination_contact_body_ids": self.non_termination_contact_body_ids,
-            
-            # Constants
-            "dt": self.dt,
-            "hinge_axes_map": self.robot_config.kinematic_info.hinge_axes_map,
-        }
-        
-        control_context = self.control_manager.get_context()
-        context.update(control_context)
-        
-        return context
+        return ctx
 
     def get_has_reset_grace(self):
         """Check if environments are in the grace period after reset.
@@ -912,16 +948,18 @@ class BaseEnv:
             return None
         return self.progress_buf <= self.config.reset_grace_period
 
-    def compute_reward(self):
+    def compute_reward(self, context: EnvContext):
         """Compute base rewards using the dynamic reward component system.
+
+        Args:
+            context: Pre-built EnvContext from self.context property.
 
         Subclasses should override this to add task-specific rewards, calling super().compute_reward() first.
         """
-
-        context = self._get_global_context()
         grace_mask = self.get_has_reset_grace()
 
-        combined_reward, reward_logging = self.reward_manager.compute_rewards(context, grace_mask)
+        # Process rewards
+        combined_reward, reward_logging = self._process_rewards(context, grace_mask)
 
         self.rew_buf[:] = combined_reward
         self.extras.update(reward_logging)
@@ -1059,12 +1097,22 @@ class BaseEnv:
             new_states[ref_indices] = ref_states
             new_object_states[ref_indices] = ref_object_states
 
+        if self.robot_config.reset_noise is not None:
+            apply_reset_noise(
+                reset_state=new_states,
+                config=self.robot_config.reset_noise,
+                dof_limits_lower=self.robot_config.kinematic_info.dof_limits_lower,
+                dof_limits_upper=self.robot_config.kinematic_info.dof_limits_upper,
+            )
+
         self.simulator.reset_envs(new_states, new_object_states, env_ids)
 
         default_mask = ~torch.isin(env_ids, ref_env_ids)
         if self.state_history is not None:
-            self._reset_state_history(env_ids, default_mask, ref_env_ids, motion_ids, motion_times)
-        
+            self._reset_state_history(
+                env_ids, default_mask, ref_env_ids, motion_ids, motion_times
+            )
+
         # Reset control components after motion_manager has been reset
         self.control_manager.reset(env_ids)
 
@@ -1072,9 +1120,29 @@ class BaseEnv:
         self.reset_buf[env_ids] = False
         self.terminate_buf[env_ids] = False
         self.prev_contact_force_magnitudes[env_ids] = 0.0
+        self._current_raw_action[env_ids] = 0.0
+        self._current_processed_action[env_ids] = 0.0
+
+        # Update cached noisy obs for the reset envs with fresh noise
+        if self._current_noisy_obs is not None:
+            current_state = self.simulator.get_robot_state()
+            ground_heights = self.terrain.get_ground_heights(
+                current_state.rigid_body_pos[env_ids, 0]
+            ).squeeze(-1)
+            obs_noise_cfg = self.simulator.config.domain_randomization.observation_noise
+            noisy_subset = apply_observation_noise(
+                obs_noise_cfg=obs_noise_cfg,
+                robot_state=current_state,
+                env_ids=env_ids,
+                anchor_idx=self.robot_config.anchor_body_index,
+                ground_heights=ground_heights,
+            )
+            self._current_noisy_obs.update_subset(env_ids, noisy_subset)
 
         # Recompute observations after reset to reflect new control component state
-        self.compute_observations(env_ids)
+        # Invalidate and rebuild context since state changed
+        self._current_context = None
+        self.compute_observations(env_ids, context=self.context)
 
         return self.get_obs(), {}
 
@@ -1082,7 +1150,7 @@ class BaseEnv:
         self, env_ids, force_default_mask, disable_motion_resample=False
     ):
         """Determine which envs should use reference motion reset and reset motion manager.
-        
+
         This method is responsible for resetting the motion_manager by calling
         motion_manager.sample_motions(). Control components should be reset AFTER
         this method is called so they have access to fresh motion_ids and motion_times.
@@ -1130,10 +1198,10 @@ class BaseEnv:
         motion_times: Optional[Tensor],
     ):
         """Reset state history buffer for specified environments.
-        
+
         For default reset: repeat current state across all history slots.
         For ref reset: query motion_lib at t-dt, t-2*dt, ... to get historical states.
-        
+
         Args:
             env_ids: All environment indices being reset.
             default_mask: Boolean mask indicating which envs use default reset.
@@ -1145,14 +1213,16 @@ class BaseEnv:
         num_history_steps = self.state_history.num_history_steps
         # Buffer stores current + history, so total slots = num_history_steps + 1
         buffer_size = num_history_steps + 1
-        
+
         # Default reset: repeat current simulator state to all buffer slots
         if len(default_env_ids) > 0:
             current_state = self.simulator.get_robot_state()
             ground_heights = self.terrain.get_ground_heights(
                 current_state.rigid_body_pos[default_env_ids, 0]
             ).squeeze(-1)
-            body_contacts = current_state.rigid_body_contacts[default_env_ids][:, self.contact_body_ids].bool()
+            body_contacts = current_state.rigid_body_contacts[default_env_ids][
+                :, self.contact_body_ids
+            ].bool()
             self.state_history.reset_from_single_state(
                 env_ids=default_env_ids,
                 rigid_body_pos=current_state.rigid_body_pos[default_env_ids],
@@ -1164,55 +1234,64 @@ class BaseEnv:
                 ground_heights=ground_heights,
                 body_contacts=body_contacts,
             )
-        
+
         # Reference reset: fill buffer with current state at index 0 and historical states at index 1+
         # This ensures historical_* properties (which return [:, 1:]) give exactly num_history_steps elements
         if len(ref_env_ids) > 0 and motion_ids is not None and motion_times is not None:
             # motion_ids shape: [len(ref_env_ids)]
             # motion_times shape: [len(ref_env_ids)]
             num_ref_envs = len(ref_env_ids)
-            
+
             # Create time offsets: [0, -dt, -2*dt, ..., -N*dt] for buffer_size slots
             # Index 0 = current (t), Index 1..N = historical (t-dt, t-2*dt, ..., t-N*dt)
             time_offsets = -self.dt * torch.arange(buffer_size, device=self.device)
-            
+
             # Expand for batch query: [num_ref_envs, buffer_size]
             expanded_motion_ids = motion_ids.unsqueeze(1).expand(-1, buffer_size)
-            expanded_motion_times = motion_times.unsqueeze(1) + time_offsets.unsqueeze(0)
-            
+            expanded_motion_times = motion_times.unsqueeze(1) + time_offsets.unsqueeze(
+                0
+            )
+
             # Clamp times to valid range
             motion_lengths = self.motion_lib.motion_lengths[motion_ids]
             expanded_motion_times = expanded_motion_times.clamp(min=0.0)
             expanded_motion_times = torch.min(
                 expanded_motion_times,
-                motion_lengths.unsqueeze(1).expand(-1, buffer_size)
+                motion_lengths.unsqueeze(1).expand(-1, buffer_size),
             )
-            
+
             # Flatten for motion_lib query
             flat_motion_ids = expanded_motion_ids.reshape(-1)
             flat_motion_times = expanded_motion_times.reshape(-1)
-            
+
             # Query motion library
-            historical_state = self.motion_lib.get_motion_state(flat_motion_ids, flat_motion_times)
-            
+            historical_state = self.motion_lib.get_motion_state(
+                flat_motion_ids, flat_motion_times
+            )
+
             # Motion library data is recorded on flat terrain (height = 0)
             # Only simulator-based states need terrain height queries
             historical_ground_heights = torch.zeros(
                 num_ref_envs, buffer_size, device=self.device
             )
-            
+
             # Get contacts from motion library if available, otherwise zeros
             if historical_state.rigid_body_contacts is not None:
-                flat_contacts = historical_state.rigid_body_contacts[:, self.contact_body_ids].bool()
+                flat_contacts = historical_state.rigid_body_contacts[
+                    :, self.contact_body_ids
+                ].bool()
                 historical_body_contacts = flat_contacts.view(
                     num_ref_envs, buffer_size, -1
                 )
             else:
                 historical_body_contacts = torch.zeros(
-                    num_ref_envs, buffer_size, len(self.contact_body_ids),
-                    dtype=torch.bool, device=self.device
+                    num_ref_envs,
+                    buffer_size,
+                    len(self.contact_body_ids),
+                    dtype=torch.bool,
+                    device=self.device,
                 )
-            
+
             # Reshape back to [num_ref_envs, buffer_size, ...]
             self.state_history.reset_from_states(
                 env_ids=ref_env_ids,
@@ -1228,12 +1307,8 @@ class BaseEnv:
                 rigid_body_ang_vel=historical_state.rigid_body_ang_vel.view(
                     num_ref_envs, buffer_size, -1, 3
                 ),
-                dof_pos=historical_state.dof_pos.view(
-                    num_ref_envs, buffer_size, -1
-                ),
-                dof_vel=historical_state.dof_vel.view(
-                    num_ref_envs, buffer_size, -1
-                ),
+                dof_pos=historical_state.dof_pos.view(num_ref_envs, buffer_size, -1),
+                dof_vel=historical_state.dof_vel.view(num_ref_envs, buffer_size, -1),
                 ground_heights=historical_ground_heights,
                 body_contacts=historical_body_contacts,
                 actions=None,  # Zero actions for historical reset
@@ -1286,7 +1361,7 @@ class BaseEnv:
                 type="sphere", color=(0.008, 0.345, 0.224), markers=terrain_markers
             )
             visualization_markers["terrain_markers"] = terrain_markers_cfg
-        
+
         # Merge markers from control components
         control_markers = self.control_manager.create_visualization_markers(headless)
         visualization_markers.update(control_markers)
@@ -1376,6 +1451,64 @@ class BaseEnv:
         except Exception as e:
             print(f"Error applying motion weights to scene weights: {e}")
             return None
+
+    def save_state(self) -> dict:
+        """Save all mutable env state for later restoration.
+
+        Snapshots the current state of the environment including robot state,
+        simulator state, progress/reset/terminate buffers, and state history.
+        This is useful for temporarily interrupting normal training to run
+        evaluation episodes, then restoring to continue training from where
+        it left off.
+
+        Returns:
+            Dictionary containing cloned copies of all mutable state tensors
+        """
+        snapshot = {
+            "robot_state": self.simulator.get_robot_state(),
+            "markers_state": self.get_markers_state(),
+            "actions": self.simulator.get_current_actions(),
+            "progress_buf": self.progress_buf.clone(),
+            "reset_buf": self.reset_buf.clone(),
+            "terminate_buf": self.terminate_buf.clone(),
+            "respawn_root_offset": self.respawn_root_offset.clone(),
+        }
+        if self.state_history is not None:
+            snapshot["state_history"] = self.state_history.save_state()
+        if self._current_noisy_obs is not None:
+            from dataclasses import fields as dc_fields
+
+            noisy = self._current_noisy_obs
+            snapshot["_current_noisy_obs"] = NoisyObservations(
+                **{f.name: getattr(noisy, f.name).clone() for f in dc_fields(noisy)}
+            )
+        return snapshot
+
+    def restore_state(self, snapshot: dict) -> None:
+        """Restore env state from a previous save_state() snapshot.
+
+        Restores all mutable state that was captured by save_state(),
+        including robot positions/velocities, buffers, and state history.
+
+        Args:
+            snapshot: Dictionary from save_state() containing state tensors
+        """
+        env_ids = torch.arange(self.num_envs, device=self.device)
+        self.simulator.reset_envs(snapshot["robot_state"], None, env_ids)
+
+        if "state_history" in snapshot and self.state_history is not None:
+            self.state_history.load_state(snapshot["state_history"])
+
+        self.progress_buf.copy_(snapshot["progress_buf"])
+        self.reset_buf.copy_(snapshot["reset_buf"])
+        self.terminate_buf.copy_(snapshot["terminate_buf"])
+        self.respawn_root_offset.copy_(snapshot["respawn_root_offset"])
+        self._current_noisy_obs = snapshot.get("_current_noisy_obs")
+        self._current_context = None
+
+        # IsaacGym needs an extra step after state restore to sync internal state
+        if "isaacgym" in self.simulator.config._target_.lower():
+            self.simulator.step(snapshot["actions"], markers_callback=None)
 
     def close(self):
         """

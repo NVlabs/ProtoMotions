@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,19 @@
 # limitations under the License.
 #
 from .mimic_evaluator import MimicEvaluator
-from .smoothness_evaluator import SmoothnessEvaluator
+from .smoothness_calculator import SmoothnessCalculator
 from .metrics import MotionMetrics
+from .aggregate_metrics import (
+    AggregateMetric,
+    SmoothnessAggregateMetric,
+    ActionSmoothnessAggregateMetric,
+)
 
-__all__ = ["MimicEvaluator", "SmoothnessEvaluator", "MotionMetrics"]
+__all__ = [
+    "MimicEvaluator",
+    "SmoothnessCalculator",
+    "MotionMetrics",
+    "AggregateMetric",
+    "SmoothnessAggregateMetric",
+    "ActionSmoothnessAggregateMetric",
+]

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -54,7 +54,7 @@ class PPOActor(TensorDictModuleBase):
         self.config = config
         self.logstd = nn.Parameter(
             torch.ones(self.config.num_out) * self.config.actor_logstd,
-            requires_grad=False,
+            requires_grad=self.config.learnable_std,
         )
         MuClass = get_class(self.config.mu_model._target_)
         self.mu: TensorDictModuleBase = MuClass(config=self.config.mu_model)
@@ -69,8 +69,6 @@ class PPOActor(TensorDictModuleBase):
     def forward(self, tensordict: TensorDict) -> TensorDict:
         """Forward pass: compute mu/std, sample action, compute neglogp.
 
-        This is the only method - self-contained and clean.
-
         Args:
             tensordict: TensorDict containing observations.
 
@@ -83,7 +81,9 @@ class PPOActor(TensorDictModuleBase):
         std = torch.exp(self.logstd)
 
         # Sample action from distribution
-        dist = distributions.Normal(mu, std)
+        # mu * 0 + std broadcasts std to match mu's batch shape while preserving
+        # the computational graph when std is learnable
+        dist = distributions.Normal(mu, mu * 0 + std)
         action = dist.sample()
 
         # Compute negative log probability
@@ -141,7 +141,7 @@ class PPOModel(BaseModel):
     def forward(self, tensordict: TensorDict) -> TensorDict:
         """Forward pass through actor and critic.
 
-        This is the main interface for the model. Computes all outputs:
+        Computes all outputs:
         - action: Sampled action
         - mean_action: Deterministic action (mean)
         - neglogp: Negative log probability of sampled action

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -60,7 +60,7 @@ AppLauncher = import_simulator_before_torch(args.simulator)
 from protomotions.simulator.base_simulator.config import SimulatorConfig  # noqa: E402
 from protomotions.envs.base_env.env import BaseEnv  # noqa: E402
 from protomotions.envs.base_env.config import EnvConfig  # noqa: E402
-from protomotions.envs.obs import max_coords_obs_factory  # noqa: E402
+from protomotions.envs.component_factories import max_coords_obs_factory  # noqa: E402
 from protomotions.components.terrains.config import TerrainConfig  # noqa: E402
 from protomotions.utils.hydra_replacement import get_class  # noqa: E402
 import torch  # noqa: E402
@@ -142,7 +142,8 @@ scene = Scene(objects=[chair], humanoid_motion_id=0)
 
 env_config = EnvConfig(
     max_episode_length=1000,
-    # Modular observation components (new pattern)
+    # Modular observation components using factory functions
+    # Factory functions return pre-configured MdpComponent instances
     observation_components={
         "max_coords_obs": max_coords_obs_factory(),
     },
@@ -233,19 +234,12 @@ print("  ; - cancel recording")
 print("  O - toggle camera target")
 print("  Q - close simulator")
 
+actions = torch.empty(env.num_envs, robot_cfg.number_of_actions, device=device)
+
 try:
     step_count = 0
     while env.is_simulation_running():
-        # Generate random actions (normally these would come from a policy)
-        actions = torch.randn(env.num_envs, robot_cfg.number_of_actions, device=device)
-
-        # BaseEnv.step() returns the full RL interface: (obs, rewards, done, extras)
-        # This automatically handles:
-        # - Stepping the simulator
-        # - Computing observations
-        # - Computing rewards (if implemented)
-        # - Checking termination conditions
-        # - Resetting terminated environments
+        actions.normal_()
         obs, rewards, dones, terminated, extras = env.step(actions)
 
         step_count += 1

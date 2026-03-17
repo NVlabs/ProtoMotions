@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -231,6 +231,19 @@ class AMP(PPO):
         
         Iterates over reference_obs_components defined in AMPAgentConfig
         and uses them to compute demo observations from sampled motions.
+        
+        reference_obs_components uses MdpComponent format::
+
+            {
+                "historical_max_coords_obs": MdpComponent(
+                    compute_func=compute_historical_max_coords_from_motion_lib,
+                    dynamic_vars={},  # Agent injects params
+                    static_params={"history_steps": 16},
+                ),
+            }
+
+        The agent injects motion_lib, motion_ids, motion_times, and dt parameters
+        at runtime since these are not available in EnvContext.
         """
         motion_ids = self.motion_manager.sample_n_motion_ids(num_samples)
         motion_times = self.motion_manager.sample_time(motion_ids)
@@ -240,44 +253,26 @@ class AMP(PPO):
         if not ref_obs_components:
             raise ValueError(
                 "AMP requires reference_obs_components to be defined in AMPAgentConfig. "
-                "Use factories like historical_max_coords_ref_obs_factory() to define them."
+                "Use MdpComponent instances (agent injects motion_lib params at runtime)."
             )
-        
-        # Build context for evaluating variables
-        # Provide motion library and sampled motion info
-        context = {
-            "motion_lib": self.motion_lib,
-            "motion_ids": motion_ids,
-            "motion_times": motion_times,
-            "dt": self.env.simulator.dt,
-            "num_historical_steps": self.env.config.num_state_history_steps,
-        }
         
         all_demo_obs = {}
         
-        # Iterate over reference observation components
-        for obs_name, component in ref_obs_components.items():
-            if component.function is None:
-                continue
+        # Iterate over reference observation components (MdpComponent format)
+        for obs_name, router in ref_obs_components.items():
+            # Extract compute_func and static params from MdpComponent
+            fn = router.get_compute_func()
+            params = router.get_params().copy()
             
-            # Build kwargs for the observation function
-            func_kwargs = {}
-            for arg_name, var_value in component.variables.items():
-                if isinstance(var_value, str):
-                    # Look up string values in context
-                    if var_value in context:
-                        func_kwargs[arg_name] = context[var_value]
-                    else:
-                        raise ValueError(
-                            f"Variable '{var_value}' not found in context for "
-                            f"reference obs component '{obs_name}'"
-                        )
-                else:
-                    # Non-string values are passed directly as constants
-                    func_kwargs[arg_name] = var_value
-            
-            # Call the observation function
-            obs = component.function(**func_kwargs)
+            # Inject required motion lib parameters at runtime
+            # These are not available in EnvContext, so agent provides them
+            obs = fn(
+                motion_lib=self.motion_lib,
+                motion_ids=motion_ids,
+                motion_times=motion_times,
+                dt=self.env.simulator.dt,
+                **params,
+            )
             all_demo_obs[obs_name] = obs.view(num_samples, -1)
         
         # Filter to only keys the discriminator uses

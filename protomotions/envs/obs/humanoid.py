@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -112,6 +112,21 @@ def obs_to_dof(
 
 
 def root_projected_gravity(root_rot: Tensor, w_last: bool = True) -> torch.Tensor:
+    """
+    Computes the direction of gravity in the root's local frame.
+
+    Given the root orientation quaternion(s) and assuming gravity points as [0, 0, -1] in world coordinates,
+    this function transforms the gravity vector into the local (body) frame of the root by applying the 
+    inverse rotation. The resulting vector describes how gravity would be measured relative to the root's axes.
+
+    Args:
+        root_rot: Root orientation quaternion(s), shape [batch, 4].
+        w_last: If True, quaternions use xyzw ordering.
+
+    Returns:
+        Tensor of shape [batch, 3]: Gravity vector(s) expressed in the local root frame.
+        Returns None if root_rot is None.
+    """
     GRAVITY_VEC_W = torch.tensor([0.0, 0.0, -1.0]).reshape(1, 3)
     if root_rot is not None:
         if GRAVITY_VEC_W.device != root_rot.device:
@@ -220,6 +235,9 @@ def compute_humanoid_reduced_coords_observations(
     return obs
 
 
+# Context mapping for ONNX export
+
+
 def compute_humanoid_max_coords_observations(
     body_pos: Tensor,
     body_rot: Tensor,
@@ -232,6 +250,10 @@ def compute_humanoid_max_coords_observations(
     observe_contacts: bool,
     w_last: bool,
 ) -> Tensor:
+    """Compute humanoid max-coords observations from body state.
+    
+    This is the helper function used for both training and ONNX export.
+    """
     if ground_height.dim() == 1:
         ground_height = ground_height.unsqueeze(-1)
 
@@ -323,3 +345,6 @@ def compute_humanoid_max_coords_observations(
 
     obs = torch.cat(obs, dim=-1)
     return obs
+
+
+# Context mapping for ONNX export (maps params to context keys)

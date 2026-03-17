@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,8 +15,10 @@
 #
 """Configuration classes for evaluators."""
 
-from typing import List, Optional, Union
+from typing import Any, Dict, Optional, Union
 from dataclasses import dataclass, field
+
+from protomotions.envs.mdp_component import MdpComponent
 
 
 @dataclass
@@ -24,6 +26,14 @@ class EvaluatorConfig:
     """Configuration for base evaluator."""
 
     _target_: str = "protomotions.agents.evaluators.base_evaluator.BaseEvaluator"
+    evaluation_components: Dict[str, MdpComponent] = field(
+        default_factory=dict,
+        metadata={"help": "Dictionary of MdpComponent evaluation metrics for success/failure tracking."}
+    )
+    max_eval_steps: int = field(
+        default=600,
+        metadata={"help": "Maximum steps per evaluation episode.", "min": 1}
+    )
     eval_metrics_every: Optional[int] = field(
         default=200,
         metadata={"help": "Evaluate metrics every N epochs. None = disabled.", "min": 1}
@@ -53,14 +63,6 @@ class MimicEvaluatorConfig(EvaluatorConfig):
     """Configuration for Mimic evaluator."""
 
     _target_: str = "protomotions.agents.evaluators.mimic_evaluator.MimicEvaluator"
-    eval_metric_keys: List[str] = field(
-        default_factory=list,
-        metadata={"help": "Metric keys to track during evaluation."}
-    )
-    max_eval_steps: int = field(
-        default=600,
-        metadata={"help": "Maximum steps per evaluation episode.", "min": 1}
-    )
     save_predicted_motion_lib_every: Optional[int] = field(
         default=3,
         metadata={"help": "Save pred_motion_lib every M evals. None = disabled.", "min": 1}
@@ -68,4 +70,18 @@ class MimicEvaluatorConfig(EvaluatorConfig):
     motion_weights_rules: MotionWeightsRulesConfig = field(
         default_factory=MotionWeightsRulesConfig,
         metadata={"help": "Rules for updating motion sampling weights."}
+    )
+    eval_action_ema_alpha: Optional[float] = field(
+        default=None,
+        metadata={
+            "help": (
+                "EMA smoothing factor for actions during evaluation only. "
+                "Simulates deployment low-pass filtering. "
+                "a_applied = alpha * a_policy + (1-alpha) * a_prev. "
+                "None = disabled (raw actions). Typical values: 0.5-0.8."
+                "Smaller alpha = more smoothing."
+            ),
+            "min": 0.0,
+            "max": 1.0,
+        }
     )

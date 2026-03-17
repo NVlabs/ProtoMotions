@@ -17,7 +17,7 @@ High-Level Data Flow
                    ▼
    ┌─────────────────────────────┐
    │        Simulator            │
-   │  (IsaacGym/Lab/Newton/Gen)  │◄─── Robot Config
+   │(IsaacGym/Lab/Newton/Gen/MJ)│◄─── Robot Config
    └──────────────┬──────────────┘
                   │
                   ▼ SimulatorState
@@ -44,7 +44,7 @@ interactive objects in the scene.
 settings. The MJCF file is the ground truth; config adds simulator-specific details.
 
 **Simulator**: Physics engine abstraction. All backends (IsaacGym, IsaacLab, 
-Newton, Genesis) implement the same interface. This is "how to simulate"
+Newton, Genesis, MuJoCo) implement the same interface. This is "how to simulate"
 
 **Motion Library**: Stores reference motions in packed tensors for efficient 
 parallel access.
@@ -63,7 +63,7 @@ Why This Design?
 
 **Problem**: We need to support many combinations:
 
-* 4 simulators × N robots × M algorithms × K environments
+* 5 simulators × N robots × M algorithms × K environments
 
 Without abstractions, this would require N×M×K separate implementations.
 

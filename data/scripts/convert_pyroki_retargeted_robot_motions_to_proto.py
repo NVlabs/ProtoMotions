@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,9 +20,7 @@ from typing import Optional
 import torch
 import typer
 import numpy as np
-import pandas as pd
 from tqdm import tqdm
-from scipy.spatial.transform import Rotation as R
 
 from protomotions.components.pose_lib import (
     extract_kinematic_info,
@@ -36,83 +34,59 @@ from motion_filter import passes_exclude_motion_filter
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
+"""
+    Converts retargeted robot motions (from .npz or .csv files) to the ProtoMotions motion format.
 
-def euler_to_quaternion_wxyz(euler_xyz_degrees):
-    """
-    Convert Euler angles (XYZ order, in degrees) to quaternion (w, x, y, z).
+    Expected file formats:
 
-    Args:
-        euler_xyz_degrees: numpy array of shape (N, 3) with Euler angles in degrees
+    NPZ files should contain:
+        - base_frame_pos: (N, 3) root position in meters
+        - base_frame_wxyz: (N, 4) root rotation quaternion (w, x, y, z)
+        - joint_angles: (N, num_joints) joint angles in radians
 
-    Returns:
-        numpy array of shape (N, 4) with quaternions in (w, x, y, z) order
-    """
-    # Convert degrees to radians
-    euler_xyz_radians = np.radians(euler_xyz_degrees)
-
-    # Create rotation objects from Euler angles (XYZ order)
-    rotations = R.from_euler("xyz", euler_xyz_radians)
-
-    # Get quaternions in (w, x, y, z) order
-    quaternions_wxyz = rotations.as_quat()
-
-    # scipy returns (x, y, z, w) but we need (w, x, y, z)
-    quaternions_wxyz = quaternions_wxyz[:, [3, 0, 1, 2]]
-
-    return quaternions_wxyz
+    CSV files should be headerless with columns:
+        - Columns 0-2: root position (x, y, z) in meters
+        - Columns 3-6: root rotation quaternion (w, x, y, z)
+        - Columns 7+: joint angles in radians
+"""
 
 
 def process_csv_file(csv_path, input_fps, output_fps, device, dtype):
     """
     Process a CSV file and extract motion data.
 
+    CSV format (headerless, comma-separated):
+        - Columns 0-2: root position (x, y, z) in meters
+        - Columns 3-6: root rotation quaternion (w, x, y, z)
+        - Columns 7+: joint angles in radians
+
     Args:
         csv_path: Path to CSV file
+        input_fps: Input motion fps
+        output_fps: Output motion fps
         device: torch device
         dtype: torch data type
 
     Returns:
         tuple: (root_pos, root_rot_wxyz, joint_angles)
     """
-    # Read CSV file
-    df = pd.read_csv(csv_path)
+    # Read headerless CSV file
+    data = np.loadtxt(csv_path, delimiter=",")
 
-    # Extract root position (convert from cm to meters)
-    root_pos_cm = df[["root_translateX", "root_translateY", "root_translateZ"]].values
-    root_pos = root_pos_cm / 100.0  # Convert cm to meters
+    # Extract root position (already in meters)
+    root_pos = data[:, 0:3]
 
-    # Extract root rotation (Euler angles in degrees)
-    root_euler = df[["root_rotateX", "root_rotateY", "root_rotateZ"]].values
+    # Extract root rotation quaternion (wxyz)
+    root_rot_wxyz = data[:, 3:7]
 
-    # Convert Euler to quaternion (wxyz format)
-    root_rot_wxyz = euler_to_quaternion_wxyz(root_euler)
+    # Extract joint angles (already in radians)
+    joint_angles = data[:, 7:]
 
-    # Extract joint angles (all remaining columns except Frame and root pose)
-    joint_angle_cols = [
-        col
-        for col in df.columns
-        if col
-        not in [
-            "Frame",
-            "root_translateX",
-            "root_translateY",
-            "root_translateZ",
-            "root_rotateX",
-            "root_rotateY",
-            "root_rotateZ",
-        ]
-    ]
-    joint_angles = df[joint_angle_cols].values
-
-    # Convert to radians (assuming joint angles are in degrees)
-    joint_angles = np.radians(joint_angles)
-
-    # assume 120 fps input motion, convert to 30 fps
-    assert input_fps % output_fps == 0, "Input fps must be divisible by output fps"
     factor = input_fps // output_fps
-    joint_angles = joint_angles[::factor]
-    root_pos = root_pos[::factor]
-    root_rot_wxyz = root_rot_wxyz[::factor]
+    if factor > 1:
+        joint_angles = joint_angles[::factor]
+        root_pos = root_pos[::factor]
+        root_rot_wxyz = root_rot_wxyz[::factor]
 
     # Convert to torch tensors
     root_pos = torch.from_numpy(root_pos).to(device, dtype)
@@ -136,7 +110,6 @@ def process_npz_file(npz_path, input_fps, output_fps, device, dtype):
     """
     data = np.load(npz_path, allow_pickle=True)
 
-    assert input_fps % output_fps == 0, "Input fps must be divisible by output fps"
     factor = input_fps // output_fps
 
     # Extract and downsample the arrays (can't modify NpzFile in-place)
@@ -192,8 +165,6 @@ def apply_contact_labels_to_motion(
     contact_data = np.load(contact_labels_path, allow_pickle=True)
     foot_contacts = contact_data["foot_contacts"]  # [K, 2] - left, right
 
-    # Downsample if needed
-    assert input_fps % output_fps == 0, "Input fps must be divisible by output fps"
     factor = input_fps // output_fps
     if factor > 1:
         foot_contacts = foot_contacts[::factor]
@@ -256,9 +227,7 @@ def main(
         help="Directory with contact label files (*_contacts.npz). If provided, use these for rigid_body_contacts.",
     ),
 ):
-    """
-    Converts retargeted G1 motions (from .npz or .csv files) to the ProtoMotions motion format.
-    """
+
     device = torch.device("cpu")
     dtype = torch.float32
 
@@ -295,6 +264,11 @@ def main(
     print(f"Robot type: {robot_type}")
     print(f"Left foot: {left_foot_name} (index {left_foot_idx})")
     print(f"Right foot: {right_foot_name} (index {right_foot_idx})")
+
+    if input_fps % output_fps != 0:
+        raise ValueError(
+            f"input_fps ({input_fps}) must be divisible by output_fps ({output_fps})"
+        )
 
     # Find both NPZ and CSV files
     npz_files = sorted(list(glob.glob(str(retargeted_motion_dir / "*.npz"))))

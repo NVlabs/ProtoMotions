@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     git \
     vim \
     wget \
+    cmake \
     libglu1-mesa-dev \
     libgl1-mesa-dev \
     libosmesa6-dev \

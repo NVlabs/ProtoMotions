@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,6 +36,7 @@ from dataclasses import dataclass, field
 if TYPE_CHECKING:
     from protomotions.simulator.base_simulator.config import VisualizationMarkerConfig, MarkerState
     from protomotions.envs.base_env.env import BaseEnv
+    from protomotions.envs.context_views import EnvContext
 
 
 @dataclass
@@ -107,20 +108,20 @@ class ControlComponent(ABC):
         )
     
     @abstractmethod
-    def get_context(self) -> Dict[str, any]:
-        """Get context variables to add to the global context.
+    def populate_context(self, ctx: "EnvContext") -> None:
+        """Populate control-specific views in the EnvContext.
         
-        The returned dictionary will be merged into the global context dict
-        used for computing observations, rewards, and terminations.
+        Each control component populates its own view (e.g., ctx.mimic, ctx.steering)
+        with task-specific data for use in observation, reward, and termination functions.
         
-        Returns:
-            Dictionary mapping variable names to tensors or other values.
+        Args:
+            ctx: The EnvContext to populate with control-specific views.
             
         Example:
-            >>> return {
-            ...     "ref_state": self.get_reference_state(),
-            ...     "motion_times": self.motion_manager.motion_times,
-            ... }
+            >>> ctx.mimic = MimicContext(
+            ...     ref_state=self.get_reference_state(),
+            ...     future_pos=...,
+            ... )
         """
         pass
     

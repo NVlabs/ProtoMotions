@@ -1,0 +1,52 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+env_isaaclab/
+venv/
+ENV/
+env/
+
+# Experiments and outputs
+exps/
+outputs/
+output/
+results/
+wandb/
+tmp/
+
+# Documentation
+docs/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Egg info (will be regenerated)
+*.egg-info/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Newton source (if not needed)
+newton_source/
+

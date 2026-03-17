@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,6 +26,7 @@ import numpy as np
 import torch
 from torch import Tensor
 
+from protomotions.envs.context_views import EnvContext, SteeringContext
 from protomotions.envs.control.base import ControlComponent, ControlComponentConfig
 from protomotions.utils import rotations
 from protomotions.simulator.base_simulator.config import (
@@ -105,8 +106,12 @@ class SteeringControl(ControlComponent):
             self.env.num_envs, device=self.env.device, dtype=torch.float
         )
 
-        # Previous root position for reward computation
+        # Double buffer for root position (prev = t-1, curr = t)
+        # Allows correct velocity computation in rewards
         self._prev_root_pos = torch.zeros(
+            self.env.num_envs, 3, device=self.env.device, dtype=torch.float
+        )
+        self._curr_root_pos = torch.zeros(
             self.env.num_envs, 3, device=self.env.device, dtype=torch.float
         )
 
@@ -115,7 +120,9 @@ class SteeringControl(ControlComponent):
         if len(env_ids) == 0:
             return
 
-        self._prev_root_pos[env_ids] = self.env.simulator.get_root_state().root_pos[env_ids]
+        root_pos = self.env.simulator.get_root_state().root_pos[env_ids]
+        self._prev_root_pos[env_ids] = root_pos
+        self._curr_root_pos[env_ids] = root_pos
 
         n = len(env_ids)
         device = self.env.device
@@ -185,8 +192,9 @@ class SteeringControl(ControlComponent):
 
     def step(self):
         """Check if any environments need their heading task updated."""
-        # Store previous root position before physics step
-        self._prev_root_pos[:] = self.env.simulator.get_root_state().root_pos
+        # Rotate double buffer: prev <- curr, curr <- new position
+        self._prev_root_pos[:] = self._curr_root_pos
+        self._curr_root_pos[:] = self.env.simulator.get_root_state().root_pos
 
         # Check for heading changes
         reset_task_mask = self.env.progress_buf >= self._heading_change_steps
@@ -200,15 +208,15 @@ class SteeringControl(ControlComponent):
         terminate_buf = torch.zeros(self.env.num_envs, dtype=torch.bool, device=self.env.device)
         return reset_buf, terminate_buf
 
-    def get_context(self) -> Dict[str, Any]:
-        """Get steering context for observations and rewards."""
-        return {
-            "tar_dir": self._tar_dir,
-            "tar_dir_theta": self._tar_dir_theta,
-            "tar_speed": self._tar_speed,
-            "tar_face_dir": self._tar_face_dir,
-            "prev_root_pos": self._prev_root_pos,
-        }
+    def populate_context(self, ctx: EnvContext) -> None:
+        """Populate steering-specific view in the EnvContext."""
+        ctx.steering = SteeringContext(
+            tar_dir=self._tar_dir,
+            tar_dir_theta=self._tar_dir_theta,
+            tar_speed=self._tar_speed,
+            tar_face_dir=self._tar_face_dir,
+            prev_root_pos=self._prev_root_pos,
+        )
 
     def create_visualization_markers(
         self, headless: bool

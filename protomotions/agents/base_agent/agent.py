@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -364,28 +364,23 @@ class BaseAgent:
         Subclasses implement this to:
         1. Query the policy to select actions from observations
         2. Store intermediate training data in experience buffer (e.g., values, log probs)
-        3. Return actions to apply to the environment
+        3. Return actor outputs for the environment step
 
         Args:
-            obs: Dictionary of observations from environment
+            obs_td: TensorDict of observations from environment
             step: Current timestep index in the rollout [0, num_steps)
 
         Returns:
-            Actions tensor to apply to environment [num_envs, action_dim]
+            TensorDict with actor outputs (action, etc.) for env.step()
         """
-        # Single forward pass through model
         output_td = self.model(obs_td)
 
-        # Store all model outputs in experience buffer
         for key in self.model_output_keys:
             if key in output_td:
-                assert torch.all(
-                    torch.isfinite(output_td[key])
-                ), f"NaN or Inf in {key}: {output_td[key]}"
+                assert torch.all(torch.isfinite(output_td[key])), f"NaN or Inf in {key}"
                 self.experience_buffer.update_data(key, step, output_td[key])
 
-        # Return action for environment
-        return output_td["action"]
+        return output_td
 
     def fit(self):
         """Main training loop for the agent.
@@ -474,12 +469,10 @@ class BaseAgent:
                     for key, env_tensor in obs_td.items():
                         self.experience_buffer.update_data(key, step, env_tensor)
 
-                    # Collect: Get actions and store algorithm-specific data
-                    action = self.collect_rollout_step(obs_td, step)
-                    self.check_obs_for_nans(obs_td, action)
+                    actor_output = self.collect_rollout_step(obs_td, step)
+                    self.check_for_nans(obs_td, actor_output)
 
-                    # Step the environment
-                    next_obs, rewards, dones, terminated, extras = self.env.step(action)
+                    next_obs, rewards, dones, terminated, extras = self.env.step(actor_output["action"])
                     assert torch.all(
                         torch.isfinite(rewards)
                     ), f"NaN or Inf in rewards: {rewards}"
@@ -496,7 +489,7 @@ class BaseAgent:
                     # Record metrics and store data from this rollout step
                     self.record_rollout_step(
                         next_obs_td,
-                        action,
+                        actor_output["action"],
                         rewards,
                         dones,
                         terminated,
@@ -622,13 +615,11 @@ class BaseAgent:
         """
         return dones, terminated, extras
 
-    def check_obs_for_nans(self, obs, action):
-        # Check for NaNs in observations and actions
-        for key in obs.keys():
-            assert not torch.isnan(obs[key]).any(), f"NaN in {key}: {obs[key]}"
-            assert not torch.isinf(obs[key]).any(), f"Inf in {key}: {obs[key]}"
-        assert not torch.isnan(action).any(), f"NaN in action: {action}"
-        assert not torch.isinf(action).any(), f"Inf in action: {action}"
+    def check_for_nans(self, *tensordicts: TensorDict):
+        for td in tensordicts:
+            for key in td.keys():
+                if torch.is_tensor(td[key]):
+                    assert torch.isfinite(td[key]).all(), f"NaN/Inf in {key}"
 
     def record_rollout_step(
         self,

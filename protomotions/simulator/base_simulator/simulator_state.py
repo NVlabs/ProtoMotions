@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -561,30 +561,32 @@ class RobotState(BaseBatchedState):
         return translation_vecs
 
     def __post_init__(self):
-        if self.rigid_body_pos is not None:
-            assert torch.all(
-                torch.isfinite(self.rigid_body_pos)
-            ), f"rigid_body_pos is not finite: {self.rigid_body_pos}"
-        if self.rigid_body_rot is not None:
-            assert torch.all(
-                torch.isfinite(self.rigid_body_rot)
-            ), f"rigid_body_rot is not finite: {self.rigid_body_rot}"
-        if self.rigid_body_vel is not None:
-            assert torch.all(
-                torch.isfinite(self.rigid_body_vel)
-            ), f"rigid_body_vel is not finite: {self.rigid_body_vel}"
-        if self.rigid_body_ang_vel is not None:
-            assert torch.all(
-                torch.isfinite(self.rigid_body_ang_vel)
-            ), f"rigid_body_ang_vel is not finite: {self.rigid_body_ang_vel}"
-        if self.dof_pos is not None:
-            assert torch.all(
-                torch.isfinite(self.dof_pos)
-            ), f"dof_pos is not finite: {self.dof_pos}"
-        if self.dof_vel is not None:
-            assert torch.all(
-                torch.isfinite(self.dof_vel)
-            ), f"dof_vel is not finite: {self.dof_vel}"
+        self._check_finite("rigid_body_pos", self.rigid_body_pos)
+        self._check_finite("rigid_body_rot", self.rigid_body_rot)
+        self._check_finite("rigid_body_vel", self.rigid_body_vel)
+        self._check_finite("rigid_body_ang_vel", self.rigid_body_ang_vel)
+        self._check_finite("dof_pos", self.dof_pos)
+        self._check_finite("dof_vel", self.dof_vel)
+
+    def _check_finite(self, name: str, tensor) -> None:
+        if tensor is None:
+            return
+        if torch.all(torch.isfinite(tensor)):
+            return
+        # Identify which envs have non-finite values
+        bad_mask = ~torch.isfinite(tensor)
+        if tensor.dim() >= 2:
+            bad_envs = bad_mask.any(dim=tuple(range(1, tensor.dim())))
+            bad_env_ids = torch.nonzero(bad_envs, as_tuple=False).flatten()
+            msg = (
+                f"{name} is not finite. "
+                f"{bad_env_ids.numel()}/{tensor.shape[0]} envs affected. "
+                f"Bad env indices (first 10): {bad_env_ids[:10].tolist()}"
+            )
+        else:
+            bad_ids = torch.nonzero(bad_mask, as_tuple=False).flatten()
+            msg = f"{name} is not finite at indices: {bad_ids[:10].tolist()}"
+        raise AssertionError(msg)
 
 
 @dataclass
