@@ -18,13 +18,13 @@ framework.
 ### 1. Clone RoboJudo at the compatible commit
 
 The patch is built against RoboJudo commit
-[`1199579`](https://github.com/hansz8/robojudo/tree/1199579188964bf82a90f0f320b4ff781907684b).
+[`806850e`](https://github.com/hansz8/robojudo/tree/806850e46f2fef7f15e48ff8da867d8cb6f7db71).
 Clone and check out this specific commit:
 
 ```bash
 git clone https://github.com/hansz8/robojudo.git
 cd robojudo
-git checkout 1199579188964bf82a90f0f320b4ff781907684b
+git checkout 806850e46f2fef7f15e48ff8da867d8cb6f7db71
 ```
 
 ### 2. Apply the patch
@@ -58,7 +58,7 @@ python scripts/run_pipeline.py -c g1_protomotions_bm_tracker \
 ### Real Robot
 
 ```bash
-python scripts/run_pipeline.py g1_protomotions_bm_tracker_real \
+python scripts/run_pipeline.py -c g1_protomotions_bm_tracker_real \
     --onnx-path /path/to/unified_pipeline.onnx \
     --motion-path /path/to/motion.motion
 ```

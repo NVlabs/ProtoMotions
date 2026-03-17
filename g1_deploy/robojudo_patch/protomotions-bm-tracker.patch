@@ -1,353 +1,51 @@
-From 3ad64c62b5f215dc77a053505b3e5d4e3be1b123 Mon Sep 17 00:00:00 2001
+From 289d755bcbcd39e00cf77d1db956702213e57615 Mon Sep 17 00:00:00 2001
 From: Chen Tessler <ctessler@nvidia.com>
-Date: Fri, 27 Feb 2026 09:17:11 -0800
-Subject: [PATCH 01/16] fix protomotions sys.path: robojudo is a sibling, not
- nested
+Date: Tue, 17 Mar 2026 09:46:19 -0700
+Subject: [PATCH] Add ProtoMotions BeyondMimic tracker policy
 
-parents[3] resolved to ~ instead of ~/protomotions because robojudo
-lives alongside protomotions, not inside it. Use parents[2].parent /
-"protomotions" to find the sibling repo.
+Adds support for deploying ProtoMotions BeyondMimic (BM) tracker
+policies on the Unitree G1 via ONNX inference.
 
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+New files:
+- g1_protomotions_bm_tracker_cfg.py: sim + real pipeline configs
+- protomotions_bm_tracker_policy.py: ONNX policy with action history
+  feedback, anchor-body rotation references, motion fade-in/fade-out
+- protomotions_utils/: bundled motion playback and state derivation
+  utilities from ProtoMotions (no protomotions install needed)
+
+Modified files:
+- g1_cfg.py: BM tracker DOF + body configs
+- env_cfgs.py: virtual gantry spring-damper safety harness
+- mujoco_env.py: FK body tracking, gantry forces, blend-in/blend-out
+- rl_pipeline.py: motion callbacks, gantry lifecycle
+- base_policy.py: post_step_callback / reset_alignment hooks
+- __init__.py: register BM tracker policy
+- run_pipeline.py: --onnx-path, --motion-path, --motion-index,
+  --simulate-deploy, --prepare-seconds, --hold-seconds CLI args
+
 Signed-off-by: Chen Tessler <ctessler@nvidia.com>
 ---
- robojudo/policy/protomotions_tracker_policy.py | 5 +++--
- 1 file changed, 3 insertions(+), 2 deletions(-)
-
-diff --git a/robojudo/policy/protomotions_tracker_policy.py b/robojudo/policy/protomotions_tracker_policy.py
-index fa52df7..6580794 100644
---- a/robojudo/policy/protomotions_tracker_policy.py
-+++ b/robojudo/policy/protomotions_tracker_policy.py
-@@ -33,8 +33,9 @@ import onnxruntime as ort
- import yaml
- 
- # Add the protomotions repo root to sys.path so deployment.* is importable.
--# Path: robojudo/robojudo/policy/this_file.py -> parents[3] = protomotions repo root
--_PROTO_ROOT = str(Path(__file__).resolve().parents[3])
-+# robojudo/robojudo/policy/this_file.py -> parents[2] = robojudo repo root
-+# protomotions is expected as a sibling: ../protomotions
-+_PROTO_ROOT = str(Path(__file__).resolve().parents[2].parent / "protomotions")
- if _PROTO_ROOT not in sys.path:
-     sys.path.insert(0, _PROTO_ROOT)
- 
--- 
-2.43.0
-
-
-From 03bbdad6993db8a7714e5c1b50f4bdcbe1348c94 Mon Sep 17 00:00:00 2001
-From: Chen Tessler <ctessler@nvidia.com>
-Date: Fri, 27 Feb 2026 09:19:09 -0800
-Subject: [PATCH 02/16] implement heading-alignment helpers locally
-
-compute_yaw_offset_np and apply_heading_offset_np were imported from
-deployment.state_utils but never existed there. Implement them as local
-pure-NumPy quaternion helpers in the policy file to remove the missing
-dependency.
-
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
-Signed-off-by: Chen Tessler <ctessler@nvidia.com>
----
- .../policy/protomotions_tracker_policy.py     | 67 +++++++++++++++++--
- 1 file changed, 63 insertions(+), 4 deletions(-)
-
-diff --git a/robojudo/policy/protomotions_tracker_policy.py b/robojudo/policy/protomotions_tracker_policy.py
-index 6580794..6fd4159 100644
---- a/robojudo/policy/protomotions_tracker_policy.py
-+++ b/robojudo/policy/protomotions_tracker_policy.py
-@@ -40,10 +40,6 @@ if _PROTO_ROOT not in sys.path:
-     sys.path.insert(0, _PROTO_ROOT)
- 
- from deployment.motion_utils import MotionPlayer
--from deployment.state_utils import (
--    apply_heading_offset_np,
--    compute_yaw_offset_np,
--)
- from robojudo.policy import Policy, policy_registry
- from robojudo.policy.policy_cfgs import PolicyCfg
- from robojudo.tools.tool_cfgs import DoFConfig
-@@ -51,6 +47,69 @@ from robojudo.tools.tool_cfgs import DoFConfig
- logger = logging.getLogger(__name__)
- 
- 
-+# ---------------------------------------------------------------------------
-+# Heading-alignment helpers (pure NumPy, xyzw convention)
-+# ---------------------------------------------------------------------------
-+
-+
-+def _quat_yaw_only_np(q_xyzw: np.ndarray) -> np.ndarray:
-+    """Project a quaternion to yaw-only (rotation about world Z)."""
-+    x, y, z, w = q_xyzw[..., 0], q_xyzw[..., 1], q_xyzw[..., 2], q_xyzw[..., 3]
-+    yaw_w = w.copy()
-+    yaw_z = z.copy()
-+    norm = np.sqrt(yaw_w**2 + yaw_z**2) + 1e-8
-+    out = np.zeros_like(q_xyzw)
-+    out[..., 2] = yaw_z / norm
-+    out[..., 3] = yaw_w / norm
-+    return out
-+
-+
-+def _quat_conjugate_np(q_xyzw: np.ndarray) -> np.ndarray:
-+    """Return the conjugate (inverse for unit quaternions), xyzw convention."""
-+    conj = q_xyzw.copy()
-+    conj[..., :3] *= -1.0
-+    return conj
-+
-+
-+def _quat_mul_np(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-+    """Hamilton product of two quaternions in xyzw convention."""
-+    ax, ay, az, aw = a[..., 0], a[..., 1], a[..., 2], a[..., 3]
-+    bx, by, bz, bw = b[..., 0], b[..., 1], b[..., 2], b[..., 3]
-+    out = np.empty_like(a)
-+    out[..., 0] = aw * bx + ax * bw + ay * bz - az * by
-+    out[..., 1] = aw * by - ax * bz + ay * bw + az * bx
-+    out[..., 2] = aw * bz + ax * by - ay * bx + az * bw
-+    out[..., 3] = aw * bw - ax * bx - ay * by - az * bz
-+    return out
-+
-+
-+def compute_yaw_offset_np(
-+    robot_quat: np.ndarray, motion_quat: np.ndarray
-+) -> np.ndarray:
-+    """Compute a yaw-only offset that rotates the motion heading to match the robot.
-+
-+    Returns ``offset`` such that ``offset * motion_yaw == robot_yaw``.
-+    """
-+    robot_yaw = _quat_yaw_only_np(np.asarray(robot_quat, dtype=np.float32))
-+    motion_yaw = _quat_yaw_only_np(np.asarray(motion_quat, dtype=np.float32))
-+    return _quat_mul_np(robot_yaw, _quat_conjugate_np(motion_yaw))
-+
-+
-+def apply_heading_offset_np(
-+    offset: np.ndarray, body_rot: np.ndarray
-+) -> np.ndarray:
-+    """Pre-rotate an array of body quaternions by a yaw offset.
-+
-+    Args:
-+        offset: Yaw-only quaternion ``[4]`` (xyzw).
-+        body_rot: Body rotations ``[..., 4]`` (xyzw).
-+
-+    Returns:
-+        Rotated body quaternions, same shape as *body_rot*.
-+    """
-+    return _quat_mul_np(offset, body_rot)
-+
-+
- @policy_registry.register
- class ProtoMotionsTrackerPolicy(Policy):
-     """Policy that drives a ProtoMotions tracker via unified ONNX model.
--- 
-2.43.0
-
-
-From 81dc4de42f7b79759d2b83013d79b9d3f734903b Mon Sep 17 00:00:00 2001
-From: Chen Tessler <ctessler@nvidia.com>
-Date: Fri, 27 Feb 2026 09:21:17 -0800
-Subject: [PATCH 03/16] restore heading-alignment imports from
- deployment.state_utils
-
-The functions exist on protomotions branch yifengj/tracker-exps-wobm.
-Revert local implementations and import from deployment.state_utils.
-
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
-Signed-off-by: Chen Tessler <ctessler@nvidia.com>
----
- .../policy/protomotions_tracker_policy.py     | 67 ++-----------------
- 1 file changed, 4 insertions(+), 63 deletions(-)
-
-diff --git a/robojudo/policy/protomotions_tracker_policy.py b/robojudo/policy/protomotions_tracker_policy.py
-index 6fd4159..6580794 100644
---- a/robojudo/policy/protomotions_tracker_policy.py
-+++ b/robojudo/policy/protomotions_tracker_policy.py
-@@ -40,6 +40,10 @@ if _PROTO_ROOT not in sys.path:
-     sys.path.insert(0, _PROTO_ROOT)
- 
- from deployment.motion_utils import MotionPlayer
-+from deployment.state_utils import (
-+    apply_heading_offset_np,
-+    compute_yaw_offset_np,
-+)
- from robojudo.policy import Policy, policy_registry
- from robojudo.policy.policy_cfgs import PolicyCfg
- from robojudo.tools.tool_cfgs import DoFConfig
-@@ -47,69 +51,6 @@ from robojudo.tools.tool_cfgs import DoFConfig
- logger = logging.getLogger(__name__)
- 
- 
--# ---------------------------------------------------------------------------
--# Heading-alignment helpers (pure NumPy, xyzw convention)
--# ---------------------------------------------------------------------------
--
--
--def _quat_yaw_only_np(q_xyzw: np.ndarray) -> np.ndarray:
--    """Project a quaternion to yaw-only (rotation about world Z)."""
--    x, y, z, w = q_xyzw[..., 0], q_xyzw[..., 1], q_xyzw[..., 2], q_xyzw[..., 3]
--    yaw_w = w.copy()
--    yaw_z = z.copy()
--    norm = np.sqrt(yaw_w**2 + yaw_z**2) + 1e-8
--    out = np.zeros_like(q_xyzw)
--    out[..., 2] = yaw_z / norm
--    out[..., 3] = yaw_w / norm
--    return out
--
--
--def _quat_conjugate_np(q_xyzw: np.ndarray) -> np.ndarray:
--    """Return the conjugate (inverse for unit quaternions), xyzw convention."""
--    conj = q_xyzw.copy()
--    conj[..., :3] *= -1.0
--    return conj
--
--
--def _quat_mul_np(a: np.ndarray, b: np.ndarray) -> np.ndarray:
--    """Hamilton product of two quaternions in xyzw convention."""
--    ax, ay, az, aw = a[..., 0], a[..., 1], a[..., 2], a[..., 3]
--    bx, by, bz, bw = b[..., 0], b[..., 1], b[..., 2], b[..., 3]
--    out = np.empty_like(a)
--    out[..., 0] = aw * bx + ax * bw + ay * bz - az * by
--    out[..., 1] = aw * by - ax * bz + ay * bw + az * bx
--    out[..., 2] = aw * bz + ax * by - ay * bx + az * bw
--    out[..., 3] = aw * bw - ax * bx - ay * by - az * bz
--    return out
--
--
--def compute_yaw_offset_np(
--    robot_quat: np.ndarray, motion_quat: np.ndarray
--) -> np.ndarray:
--    """Compute a yaw-only offset that rotates the motion heading to match the robot.
--
--    Returns ``offset`` such that ``offset * motion_yaw == robot_yaw``.
--    """
--    robot_yaw = _quat_yaw_only_np(np.asarray(robot_quat, dtype=np.float32))
--    motion_yaw = _quat_yaw_only_np(np.asarray(motion_quat, dtype=np.float32))
--    return _quat_mul_np(robot_yaw, _quat_conjugate_np(motion_yaw))
--
--
--def apply_heading_offset_np(
--    offset: np.ndarray, body_rot: np.ndarray
--) -> np.ndarray:
--    """Pre-rotate an array of body quaternions by a yaw offset.
--
--    Args:
--        offset: Yaw-only quaternion ``[4]`` (xyzw).
--        body_rot: Body rotations ``[..., 4]`` (xyzw).
--
--    Returns:
--        Rotated body quaternions, same shape as *body_rot*.
--    """
--    return _quat_mul_np(offset, body_rot)
--
--
- @policy_registry.register
- class ProtoMotionsTrackerPolicy(Policy):
-     """Policy that drives a ProtoMotions tracker via unified ONNX model.
--- 
-2.43.0
-
-
-From 77834aa6932b13033f5849c023292d580cba26d7 Mon Sep 17 00:00:00 2001
-From: Chen Tessler <ctessler@nvidia.com>
-Date: Fri, 27 Feb 2026 09:24:11 -0800
-Subject: [PATCH 04/16] add --onnx-path and --motion-path CLI args to
- run_pipeline
-
-Remove hardcoded paths from g1_protomotions_tracker config. Paths are
-now provided via CLI:
-
-  python scripts/run_pipeline.py -c g1_protomotions_tracker \
-    --onnx-path /path/to/model.onnx \
-    --motion-path /path/to/motion.50fps.pt
-
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
-Signed-off-by: Chen Tessler <ctessler@nvidia.com>
----
- robojudo/config/g1/g1_cfg.py |  5 +----
- scripts/run_pipeline.py      | 18 ++++++++++++++++++
- 2 files changed, 19 insertions(+), 4 deletions(-)
-
-diff --git a/robojudo/config/g1/g1_cfg.py b/robojudo/config/g1/g1_cfg.py
-index 05074dd..e26fee3 100644
---- a/robojudo/config/g1/g1_cfg.py
-+++ b/robojudo/config/g1/g1_cfg.py
-@@ -363,10 +363,7 @@ class g1_protomotions_tracker(RlPipelineCfg):
-         ),
-     ]
- 
--    policy: ProtoMotionsTrackerPolicyCfg = ProtoMotionsTrackerPolicyCfg(
--        onnx_path="/tmp/deploy_test_export/unified_pipeline.onnx",
--        motion_path="/home/yifengj/Downloads/bones_g1_protomotions_1030_0/210531_walk_forward_energetic_003__A001_keypoints_retargeted.50fps.pt",
--    )
-+    policy: ProtoMotionsTrackerPolicyCfg = ProtoMotionsTrackerPolicyCfg()
- 
- 
- # TIPS: check g1_loco_mimic_cfg.py for more complex examples
-diff --git a/scripts/run_pipeline.py b/scripts/run_pipeline.py
-index d0cfc3e..0321369 100644
---- a/scripts/run_pipeline.py
-+++ b/scripts/run_pipeline.py
-@@ -26,6 +26,18 @@ def parse_args():
-         default="g1",
-         help="Name of the config class to use",
-     )
-+    parser.add_argument(
-+        "--onnx-path",
-+        type=str,
-+        default=None,
-+        help="Path to the ONNX policy file (overrides config)",
-+    )
-+    parser.add_argument(
-+        "--motion-path",
-+        type=str,
-+        default=None,
-+        help="Path to the motion file (overrides config)",
-+    )
-     args = parser.parse_args()
-     return args
- 
-@@ -37,6 +49,12 @@ def main():
- 
-     cfg: RlPipelineCfg = config_manager.get_cfg()
- 
-+    # Override policy paths from CLI arguments
-+    if args.onnx_path is not None and hasattr(cfg, "policy"):
-+        cfg.policy.onnx_path = args.onnx_path
-+    if args.motion_path is not None and hasattr(cfg, "policy"):
-+        cfg.policy.motion_path = args.motion_path
-+
-     pipeline_type = cfg.pipeline_type
- 
-     pipeline_class: type[RlPipeline] = getattr(robojudo.pipeline, pipeline_type)
--- 
-2.43.0
-
-
-From e511805220c1cc69528d56f6290f3261b5088d24 Mon Sep 17 00:00:00 2001
-From: Chen Tessler <ctessler@nvidia.com>
-Date: Fri, 27 Feb 2026 09:57:29 -0800
-Subject: [PATCH 05/16] add ProtoMotionsBMTrackerPolicy for BeyondMimic exports
-
-New policy handles BM-specific ONNX inputs:
-- historical.processed_actions (action history feedback)
-- mimic.future_anchor_rot (anchor-body-only rotation refs)
-
-New config: g1_protomotions_bm_tracker
-
-Usage:
-  python scripts/run_pipeline.py -c g1_protomotions_bm_tracker \
-    --onnx-path /path/to/unified_pipeline.onnx \
-    --motion-path /path/to/motion.motion
-
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
-Signed-off-by: Chen Tessler <ctessler@nvidia.com>
----
- robojudo/config/g1/g1_cfg.py                  |  28 +++
- .../policy/g1_protomotions_bm_tracker_cfg.py  |  44 ++++
+ robojudo/config/g1/g1_cfg.py                  |  78 ++++
+ .../policy/g1_protomotions_bm_tracker_cfg.py  |  46 ++
+ robojudo/environment/env_cfgs.py              |   3 +
+ robojudo/environment/mujoco_env.py            | 112 +++++
+ robojudo/pipeline/rl_pipeline.py              | 222 ++++++++-
  robojudo/policy/__init__.py                   |   1 +
- .../policy/protomotions_bm_tracker_policy.py  | 238 ++++++++++++++++++
- 4 files changed, 311 insertions(+)
+ robojudo/policy/base_policy.py                |   7 +
+ .../policy/protomotions_bm_tracker_policy.py  | 275 ++++++++++++
+ .../policy/protomotions_utils/__init__.py     |  27 ++
+ .../policy/protomotions_utils/motion_utils.py | 423 ++++++++++++++++++
+ .../policy/protomotions_utils/state_utils.py  | 163 +++++++
+ scripts/run_pipeline.py                       | 110 ++++-
+ 12 files changed, 1445 insertions(+), 22 deletions(-)
  create mode 100644 robojudo/config/g1/policy/g1_protomotions_bm_tracker_cfg.py
  create mode 100644 robojudo/policy/protomotions_bm_tracker_policy.py
+ create mode 100644 robojudo/policy/protomotions_utils/__init__.py
+ create mode 100644 robojudo/policy/protomotions_utils/motion_utils.py
+ create mode 100644 robojudo/policy/protomotions_utils/state_utils.py
 
 diff --git a/robojudo/config/g1/g1_cfg.py b/robojudo/config/g1/g1_cfg.py
-index e26fee3..5340efb 100644
+index 6ff1eb0..426c70e 100644
 --- a/robojudo/config/g1/g1_cfg.py
 +++ b/robojudo/config/g1/g1_cfg.py
 @@ -28,6 +28,7 @@ from .policy.g1_h2h_policy_cfg import G1H2HPolicyCfg  # noqa: F401
@@ -355,13 +53,32 @@ index e26fee3..5340efb 100644
  from .policy.g1_smooth_policy_cfg import G1SmoothPolicyCfg  # noqa: F401
  from .policy.g1_twist_policy_cfg import G1TwistPolicyCfg  # noqa: F401
 +from .policy.g1_protomotions_bm_tracker_cfg import ProtoMotionsBMTrackerPolicyCfg  # noqa: F401
- from .policy.g1_protomotions_tracker_cfg import ProtoMotionsTrackerPolicyCfg  # noqa: F401
  from .policy.g1_unitree_policy_cfg import G1UnitreePolicyCfg, G1UnitreeWoGaitPolicyCfg  # noqa: F401
  
-@@ -366,4 +367,31 @@ class g1_protomotions_tracker(RlPipelineCfg):
-     policy: ProtoMotionsTrackerPolicyCfg = ProtoMotionsTrackerPolicyCfg()
+ 
+@@ -335,4 +336,81 @@ class g1_switch_beyondmimic(RlMultiPolicyPipelineCfg):
+     ]
  
  
++@cfg_registry.register
++class g1_beyondmimic_real(g1_beyondmimic):
++    """BeyondMimic Policy on real G1 hardware."""
++
++    env: G1RealEnvCfg = G1RealEnvCfg(
++        env_type="UnitreeCppEnv",
++        unitree=G1UnitreeCfg(
++            net_if="eth0",  # note: change to your network interface
++        ),
++    )
++    ctrl: list[UnitreeCtrlCfg] = [
++        UnitreeCtrlCfg(),
++    ]
++    do_safety_check: bool = True
++
++
++# ======================== ProtoMotions BM Tracker ======================== #
++
++
 +@cfg_registry.register
 +class g1_protomotions_bm_tracker(RlPipelineCfg):
 +    """ProtoMotions BeyondMimic tracker with cached 50fps motion.
@@ -379,23 +96,54 @@ index e26fee3..5340efb 100644
 +    robot: str = "g1"
 +    env: G1MujocoEnvCfg = G1MujocoEnvCfg(
 +        born_place_align=False,
++        random_heading=True,
 +    )
 +    ctrl: list[KeyboardCtrlCfg] = [
 +        KeyboardCtrlCfg(
-+            triggers={"r": "[MOTION_RESET]", "i": "[SIM_REBORN]", "o": "[SHUTDOWN]"},
++            triggers={
++                "r": "[MOTION_RESET]",
++                "i": "[SIM_REBORN]",
++                "o": "[SHUTDOWN]",
++                "<": "[MOTION_FADE_IN]",
++                ">": "[MOTION_FADE_OUT]",
++            },
 +        ),
 +    ]
 +
 +    policy: ProtoMotionsBMTrackerPolicyCfg = ProtoMotionsBMTrackerPolicyCfg()
 +
 +
++@cfg_registry.register
++class g1_protomotions_bm_tracker_real(g1_protomotions_bm_tracker):
++    """ProtoMotions BeyondMimic tracker on real G1 hardware.
++
++    Usage::
++
++        cd robojudo && python scripts/run_pipeline.py -c g1_protomotions_bm_tracker_real \\
++            --onnx-path /path/to/unified_pipeline.onnx \\
++            --motion-path /path/to/motion.motion
++    """
++
++    env: G1RealEnvCfg = G1RealEnvCfg(
++        env_type="UnitreeCppEnv",
++        unitree=G1UnitreeCfg(
++            net_if="eth0",  # note: change to your network interface
++        ),
++        born_place_align=False,
++    )
++    ctrl: list[UnitreeCtrlCfg] = [
++        UnitreeCtrlCfg(),
++    ]
++    do_safety_check: bool = True
++
++
  # TIPS: check g1_loco_mimic_cfg.py for more complex examples
 diff --git a/robojudo/config/g1/policy/g1_protomotions_bm_tracker_cfg.py b/robojudo/config/g1/policy/g1_protomotions_bm_tracker_cfg.py
 new file mode 100644
-index 0000000..b145aa6
+index 0000000..978b5a7
 --- /dev/null
 +++ b/robojudo/config/g1/policy/g1_protomotions_bm_tracker_cfg.py
-@@ -0,0 +1,44 @@
+@@ -0,0 +1,46 @@
 +"""Configuration for ProtoMotions BeyondMimic tracker policy.
 +
 +DOF config (joint names, stiffness, damping) is loaded from the ONNX YAML
@@ -425,6 +173,8 @@ index 0000000..b145aa6
 +    onnx_name: str = "unified_pipeline"
 +    onnx_path: str | None = None
 +    motion_path: str = ""
++    motion_index: int = 0
++    """Index of the motion clip within a multi-motion .pt library."""
 +
 +    @property
 +    def policy_file(self) -> str:
@@ -440,817 +190,6 @@ index 0000000..b145aa6
 +    # Placeholder DOF config (overridden from YAML metadata at runtime)
 +    obs_dof: DoFConfig = DoFConfig(joint_names=["placeholder"], default_pos=[0.0])
 +    action_dof: DoFConfig = DoFConfig(joint_names=["placeholder"], default_pos=[0.0])
-diff --git a/robojudo/policy/__init__.py b/robojudo/policy/__init__.py
-index 692dfe5..fe7bb40 100644
---- a/robojudo/policy/__init__.py
-+++ b/robojudo/policy/__init__.py
-@@ -36,3 +36,4 @@ policy_registry.add("AsapLocoPolicy", ".asap_policy")
- policy_registry.add("KungfuBotGeneralPolicy", ".kungfubot_policy")
- policy_registry.add("TwistPolicy", ".twist_policy")
- policy_registry.add("ProtoMotionsTrackerPolicy", ".protomotions_tracker_policy")
-+policy_registry.add("ProtoMotionsBMTrackerPolicy", ".protomotions_bm_tracker_policy")
-diff --git a/robojudo/policy/protomotions_bm_tracker_policy.py b/robojudo/policy/protomotions_bm_tracker_policy.py
-new file mode 100644
-index 0000000..c43a43d
---- /dev/null
-+++ b/robojudo/policy/protomotions_bm_tracker_policy.py
-@@ -0,0 +1,238 @@
-+"""ProtoMotions BeyondMimic tracker policy for RoboJuDo.
-+
-+Runs a unified ONNX model exported by
-+``deployment/export_bm_tracker_onnx.py`` with cached 50 fps motion from
-+``deployment/motion_utils.MotionPlayer``.
-+
-+This policy handles BM-specific inputs compared to
-+:class:`ProtoMotionsTrackerPolicy`:
-+
-+- ``historical.processed_actions`` — action history feedback (previous PD
-+  targets are fed back as an ONNX input)
-+- ``mimic.future_anchor_rot`` — anchor-body-only rotation references
-+  (instead of full-body ``mimic.future_rot``)
-+
-+Heading alignment
-+-----------------
-+Same as :class:`ProtoMotionsTrackerPolicy`: yaw-only offset computed on
-+first step to align motion heading with robot heading.
-+
-+Sensor requirements (real G1)
-+-----------------------------
-+- ``env_data.dof_pos`` / ``env_data.dof_vel`` -- joint encoders
-+- ``env_data.base_quat`` (xyzw) -- pelvis IMU
-+- ``env_data.base_ang_vel`` -- pelvis IMU gyro (body-local frame)
-+- ``env_data.torso_quat`` (xyzw) -- FK-computed (requires ``update_with_fk=True``)
-+"""
-+
-+import logging
-+import sys
-+from pathlib import Path
-+
-+import numpy as np
-+import onnxruntime as ort
-+import yaml
-+
-+# Add the protomotions repo root to sys.path so deployment.* is importable.
-+# robojudo/robojudo/policy/this_file.py -> parents[2] = robojudo repo root
-+# protomotions is expected as a sibling: ../protomotions
-+_PROTO_ROOT = str(Path(__file__).resolve().parents[2].parent / "protomotions")
-+if _PROTO_ROOT not in sys.path:
-+    sys.path.insert(0, _PROTO_ROOT)
-+
-+from deployment.motion_utils import MotionPlayer
-+from deployment.state_utils import (
-+    apply_heading_offset_np,
-+    compute_yaw_offset_np,
-+)
-+from robojudo.policy import Policy, policy_registry
-+from robojudo.policy.policy_cfgs import PolicyCfg
-+from robojudo.tools.tool_cfgs import DoFConfig
-+
-+logger = logging.getLogger(__name__)
-+
-+
-+@policy_registry.register
-+class ProtoMotionsBMTrackerPolicy(Policy):
-+    """Policy that drives a ProtoMotions BeyondMimic tracker via ONNX.
-+
-+    Compared to :class:`ProtoMotionsTrackerPolicy`, this policy:
-+
-+    - Feeds back previous PD targets as ``historical.processed_actions``
-+    - Provides anchor-body-only rotation references
-+      (``mimic.future_anchor_rot``) instead of full-body references
-+    """
-+
-+    cfg_policy: PolicyCfg
-+
-+    def __init__(self, cfg_policy: PolicyCfg, device: str = "cpu"):
-+        # Load YAML metadata BEFORE calling super().__init__ so we can
-+        # build the DOF config from it.
-+        onnx_path = cfg_policy.policy_file
-+        yaml_path = onnx_path.replace(".onnx", ".yaml")
-+
-+        with open(yaml_path) as f:
-+            self._meta = yaml.safe_load(f)
-+
-+        robot_meta = self._meta["robot"]
-+        control_meta = self._meta["control"]
-+        motion_meta = self._meta["motion"]
-+        runtime = self._meta["_runtime"]
-+
-+        joint_names = robot_meta["joint_names"]
-+        num_dofs = robot_meta["num_dofs"]
-+        stiffness = control_meta["stiffness"]
-+        damping = control_meta["damping"]
-+        effort_limits = control_meta.get("effort_limits")
-+
-+        # Build DOF config from YAML metadata.
-+        dof_cfg = DoFConfig(
-+            joint_names=joint_names,
-+            default_pos=[0.0] * num_dofs,
-+            stiffness=stiffness,
-+            damping=damping,
-+            torque_limits=effort_limits,
-+        )
-+        cfg_policy_updated = cfg_policy.model_copy()
-+        cfg_policy_updated.obs_dof = dof_cfg
-+        cfg_policy_updated.action_dof = dof_cfg
-+
-+        super().__init__(cfg_policy=cfg_policy_updated, device="cpu")
-+
-+        # ONNX session
-+        logger.info(f"[BMTrackerPolicy] Loading ONNX: {onnx_path}")
-+        self._session = ort.InferenceSession(
-+            onnx_path, providers=["CPUExecutionProvider"]
-+        )
-+        self._onnx_in_names = [inp.name for inp in self._session.get_inputs()]
-+        self._onnx_out_names = [out.name for out in self._session.get_outputs()]
-+        self._onnx_name_to_key = runtime["onnx_name_to_in_key"]
-+
-+        # Motion player (cached mode -- no protomotions import)
-+        motion_path = getattr(cfg_policy, "motion_path", None)
-+        if motion_path is None:
-+            raise ValueError("ProtoMotionsBMTrackerPolicyCfg must set motion_path")
-+        timing = self._meta["timing"]
-+        self._player = MotionPlayer(motion_path, control_dt=timing["control_dt"])
-+
-+        # ONNX input config
-+        self._anchor_idx = robot_meta["anchor_body_index"]
-+        self._root_idx = robot_meta["root_body_index"]
-+        self._future_step_indices = motion_meta["future_step_indices"]
-+
-+        # Action post-processing config
-+        self._pd_target_max_accel = control_meta.get("pd_target_max_accel")
-+        self._action_ema_alpha = control_meta.get("action_ema_alpha", 0.8)
-+
-+        logger.info(
-+            f"[BMTrackerPolicy] {num_dofs} DOFs, "
-+            f"{self._player.total_frames} motion frames, "
-+            f"anchor_idx={self._anchor_idx}, root_idx={self._root_idx}"
-+        )
-+
-+        self.reset()
-+
-+    def reset(self):
-+        self._frame = 0
-+        self._heading_offset = None
-+        self._prev_pd = None
-+        self._prev_prev_pd = None
-+        self._ema_prev = None
-+        self._stashed_pd_targets = np.zeros(self.num_actions, dtype=np.float32)
-+        self._prev_actions = np.zeros(self.num_actions, dtype=np.float32)
-+
-+    def post_step_callback(self, commands=None):
-+        self._frame += 1
-+        if self._frame >= self._player.total_frames:
-+            self._frame = self._player.total_frames - 1
-+        for cmd in (commands or []):
-+            if cmd == "[MOTION_RESET]":
-+                self.reset()
-+
-+    def get_observation(self, env_data, ctrl_data):
-+        # -- Heading alignment (first step after reset) --
-+        if self._heading_offset is None:
-+            motion_anchor_rot = self._player.get_state_at_frame(0)["body_rot"][
-+                self._anchor_idx
-+            ]
-+            robot_anchor_rot = np.asarray(env_data.torso_quat, dtype=np.float32)
-+            self._heading_offset = compute_yaw_offset_np(
-+                robot_anchor_rot, motion_anchor_rot
-+            )
-+
-+        # -- State from env_data (already xyzw) --
-+        anchor_rot = np.asarray(env_data.torso_quat, dtype=np.float32)
-+        dof_pos = np.asarray(env_data.dof_pos, dtype=np.float32)
-+        dof_vel = np.asarray(env_data.dof_vel, dtype=np.float32)
-+        # env_data.base_ang_vel comes from MuJoCo qvel[3:6] which is ALREADY
-+        # in the pelvis local frame (not world frame).  On the real G1, the
-+        # IMU gyroscope also reads in body-local frame.  So we use it directly
-+        # as root_local_ang_vel -- NO quat_rotate_inverse needed.
-+        root_local_ang_vel = np.asarray(env_data.base_ang_vel, dtype=np.float32)
-+
-+        # -- Future motion references with heading alignment --
-+        future_refs = self._player.get_future_references(
-+            self._frame, self._future_step_indices
-+        )
-+        future_body_rot = apply_heading_offset_np(
-+            self._heading_offset, future_refs["body_rot"]
-+        )
-+        # Anchor-body-only rotation: [num_steps, 4]
-+        future_anchor_rot = future_body_rot[:, self._anchor_idx, :]
-+
-+        # -- Build ONNX inputs --
-+        key_to_array = {
-+            "current.dof_pos": dof_pos[None],
-+            "current.dof_vel": dof_vel[None],
-+            "current.anchor_rot": anchor_rot[None],
-+            "current.root_local_ang_vel": root_local_ang_vel[None],
-+            "mimic.future_anchor_rot": future_anchor_rot[None],
-+            "mimic.future_dof_pos": future_refs["dof_pos"][None],
-+            "mimic.future_dof_vel": future_refs["dof_vel"][None],
-+            "historical.processed_actions": self._prev_actions[None, None],
-+        }
-+        onnx_inputs = {}
-+        for onnx_name in self._onnx_in_names:
-+            sem_key = self._onnx_name_to_key.get(onnx_name)
-+            if sem_key and sem_key in key_to_array:
-+                onnx_inputs[onnx_name] = key_to_array[sem_key].astype(np.float32)
-+
-+        # -- ONNX inference --
-+        ort_out = self._session.run(self._onnx_out_names, onnx_inputs)
-+        pd_targets = ort_out[1].squeeze().copy()
-+
-+        # -- PD target acceleration clamp --
-+        if (
-+            self._pd_target_max_accel is not None
-+            and self._prev_pd is not None
-+            and self._prev_prev_pd is not None
-+        ):
-+            delta = pd_targets - self._prev_pd
-+            prev_delta = self._prev_pd - self._prev_prev_pd
-+            accel = delta - prev_delta
-+            clamped_accel = np.clip(
-+                accel, -self._pd_target_max_accel, self._pd_target_max_accel
-+            )
-+            pd_targets = self._prev_pd + prev_delta + clamped_accel
-+        self._prev_prev_pd = self._prev_pd
-+        self._prev_pd = pd_targets.copy()
-+
-+        # -- EMA action filter --
-+        alpha = self._action_ema_alpha
-+        if alpha < 1.0:
-+            if self._ema_prev is None:
-+                self._ema_prev = pd_targets.copy()
-+            pd_targets = alpha * pd_targets + (1.0 - alpha) * self._ema_prev
-+            self._ema_prev = pd_targets.copy()
-+
-+        self._stashed_pd_targets = pd_targets
-+        self._prev_actions = pd_targets.copy()
-+        extras = {}
-+        dummy_obs = np.zeros(1, dtype=np.float32)
-+        return dummy_obs, extras
-+
-+    def get_action(self, obs):
-+        return self._stashed_pd_targets
-+
-+    def get_init_dof_pos(self):
-+        return self._player.get_state_at_frame(0)["dof_pos"].copy()
--- 
-2.43.0
-
-
-From 8b5aea8b30cd4ec3892ab98456bb400e0459c19e Mon Sep 17 00:00:00 2001
-From: Chen Tessler <ctessler@nvidia.com>
-Date: Fri, 27 Feb 2026 10:11:25 -0800
-Subject: [PATCH 06/16] fix BM tracker: use correct anchor body from YAML
- metadata
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
-
-The BM model uses pelvis (index 0) as anchor, not torso_link (16).
-Look up the anchor body by name: use fk_info for named bodies,
-base_quat for pelvis/root. This was the main cause of the policy
-failing — it was feeding torso_link rotation to a model expecting
-pelvis rotation.
-
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
-Signed-off-by: Chen Tessler <ctessler@nvidia.com>
----
- .../policy/protomotions_bm_tracker_policy.py  | 30 +++++++++++++++++--
- 1 file changed, 28 insertions(+), 2 deletions(-)
-
-diff --git a/robojudo/policy/protomotions_bm_tracker_policy.py b/robojudo/policy/protomotions_bm_tracker_policy.py
-index c43a43d..8214766 100644
---- a/robojudo/policy/protomotions_bm_tracker_policy.py
-+++ b/robojudo/policy/protomotions_bm_tracker_policy.py
-@@ -120,6 +120,14 @@ class ProtoMotionsBMTrackerPolicy(Policy):
-         self._root_idx = robot_meta["root_body_index"]
-         self._future_step_indices = motion_meta["future_step_indices"]
- 
-+        # Determine how to read the anchor body rotation from env_data.
-+        # Use body name to look up in fk_info; pelvis uses base_quat directly.
-+        self._anchor_body_name = robot_meta.get("anchor_body_name")
-+        logger.info(
-+            f"[BMTrackerPolicy] anchor body: "
-+            f"{self._anchor_body_name or 'pelvis'} (idx={self._anchor_idx})"
-+        )
-+
-         # Action post-processing config
-         self._pd_target_max_accel = control_meta.get("pd_target_max_accel")
-         self._action_ema_alpha = control_meta.get("action_ema_alpha", 0.8)
-@@ -155,13 +163,13 @@ class ProtoMotionsBMTrackerPolicy(Policy):
-             motion_anchor_rot = self._player.get_state_at_frame(0)["body_rot"][
-                 self._anchor_idx
-             ]
--            robot_anchor_rot = np.asarray(env_data.torso_quat, dtype=np.float32)
-+            robot_anchor_rot = self._get_anchor_quat(env_data)
-             self._heading_offset = compute_yaw_offset_np(
-                 robot_anchor_rot, motion_anchor_rot
-             )
- 
-         # -- State from env_data (already xyzw) --
--        anchor_rot = np.asarray(env_data.torso_quat, dtype=np.float32)
-+        anchor_rot = self._get_anchor_quat(env_data)
-         dof_pos = np.asarray(env_data.dof_pos, dtype=np.float32)
-         dof_vel = np.asarray(env_data.dof_vel, dtype=np.float32)
-         # env_data.base_ang_vel comes from MuJoCo qvel[3:6] which is ALREADY
-@@ -231,6 +239,24 @@ class ProtoMotionsBMTrackerPolicy(Policy):
-         dummy_obs = np.zeros(1, dtype=np.float32)
-         return dummy_obs, extras
- 
-+    def _get_anchor_quat(self, env_data) -> np.ndarray:
-+        """Read the anchor body's quaternion from env_data.
-+
-+        Uses the body name from YAML metadata to look up in fk_info.
-+        Falls back to base_quat for pelvis (root body).
-+        """
-+        name = self._anchor_body_name
-+        if name is not None and name not in (None, "pelvis"):
-+            # Named body -- look up in FK info
-+            fk = env_data.fk_info
-+            if fk is not None and name in fk:
-+                return np.asarray(fk[name]["quat"], dtype=np.float32)
-+            # Fallback: if the env exposes it as torso_quat and name matches
-+            if name == "torso_link" and env_data.torso_quat is not None:
-+                return np.asarray(env_data.torso_quat, dtype=np.float32)
-+        # Pelvis / root body -- always available as base_quat
-+        return np.asarray(env_data.base_quat, dtype=np.float32)
-+
-     def get_action(self, obs):
-         return self._stashed_pd_targets
- 
--- 
-2.43.0
-
-
-From c58bc8c46686dab62e269f4ae146307816f3db32 Mon Sep 17 00:00:00 2001
-From: Chen Tessler <ctessler@nvidia.com>
-Date: Fri, 27 Feb 2026 10:17:24 -0800
-Subject: [PATCH 07/16] add --motion-index CLI arg for multi-motion .pt
- libraries
-
-MotionPlayer already supports motion_index for packaged .pt files
-with multiple clips. Expose it through both tracker policy configs
-and the run_pipeline CLI.
-
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
-Signed-off-by: Chen Tessler <ctessler@nvidia.com>
----
- .../config/g1/policy/g1_protomotions_bm_tracker_cfg.py    | 2 ++
- robojudo/config/g1/policy/g1_protomotions_tracker_cfg.py  | 2 ++
- robojudo/policy/protomotions_bm_tracker_policy.py         | 5 ++++-
- robojudo/policy/protomotions_tracker_policy.py            | 5 ++++-
- scripts/run_pipeline.py                                   | 8 ++++++++
- 5 files changed, 20 insertions(+), 2 deletions(-)
-
-diff --git a/robojudo/config/g1/policy/g1_protomotions_bm_tracker_cfg.py b/robojudo/config/g1/policy/g1_protomotions_bm_tracker_cfg.py
-index b145aa6..978b5a7 100644
---- a/robojudo/config/g1/policy/g1_protomotions_bm_tracker_cfg.py
-+++ b/robojudo/config/g1/policy/g1_protomotions_bm_tracker_cfg.py
-@@ -27,6 +27,8 @@ class ProtoMotionsBMTrackerPolicyCfg(PolicyCfg):
-     onnx_name: str = "unified_pipeline"
-     onnx_path: str | None = None
-     motion_path: str = ""
-+    motion_index: int = 0
-+    """Index of the motion clip within a multi-motion .pt library."""
- 
-     @property
-     def policy_file(self) -> str:
-diff --git a/robojudo/config/g1/policy/g1_protomotions_tracker_cfg.py b/robojudo/config/g1/policy/g1_protomotions_tracker_cfg.py
-index d28832a..bdb0bc8 100644
---- a/robojudo/config/g1/policy/g1_protomotions_tracker_cfg.py
-+++ b/robojudo/config/g1/policy/g1_protomotions_tracker_cfg.py
-@@ -27,6 +27,8 @@ class ProtoMotionsTrackerPolicyCfg(PolicyCfg):
-     onnx_name: str = "unified_pipeline"
-     onnx_path: str | None = None
-     motion_path: str = ""
-+    motion_index: int = 0
-+    """Index of the motion clip within a multi-motion .pt library."""
- 
-     @property
-     def policy_file(self) -> str:
-diff --git a/robojudo/policy/protomotions_bm_tracker_policy.py b/robojudo/policy/protomotions_bm_tracker_policy.py
-index 8214766..aafcbc4 100644
---- a/robojudo/policy/protomotions_bm_tracker_policy.py
-+++ b/robojudo/policy/protomotions_bm_tracker_policy.py
-@@ -112,8 +112,11 @@ class ProtoMotionsBMTrackerPolicy(Policy):
-         motion_path = getattr(cfg_policy, "motion_path", None)
-         if motion_path is None:
-             raise ValueError("ProtoMotionsBMTrackerPolicyCfg must set motion_path")
-+        motion_index = getattr(cfg_policy, "motion_index", 0)
-         timing = self._meta["timing"]
--        self._player = MotionPlayer(motion_path, control_dt=timing["control_dt"])
-+        self._player = MotionPlayer(
-+            motion_path, motion_index=motion_index, control_dt=timing["control_dt"]
-+        )
- 
-         # ONNX input config
-         self._anchor_idx = robot_meta["anchor_body_index"]
-diff --git a/robojudo/policy/protomotions_tracker_policy.py b/robojudo/policy/protomotions_tracker_policy.py
-index 6580794..35db1e9 100644
---- a/robojudo/policy/protomotions_tracker_policy.py
-+++ b/robojudo/policy/protomotions_tracker_policy.py
-@@ -114,8 +114,11 @@ class ProtoMotionsTrackerPolicy(Policy):
-         motion_path = getattr(cfg_policy, "motion_path", None)
-         if motion_path is None:
-             raise ValueError("ProtoMotionsTrackerPolicyCfg must set motion_path")
-+        motion_index = getattr(cfg_policy, "motion_index", 0)
-         timing = self._meta["timing"]
--        self._player = MotionPlayer(motion_path, control_dt=timing["control_dt"])
-+        self._player = MotionPlayer(
-+            motion_path, motion_index=motion_index, control_dt=timing["control_dt"]
-+        )
- 
-         # ONNX input config
-         self._anchor_idx = robot_meta["anchor_body_index"]
-diff --git a/scripts/run_pipeline.py b/scripts/run_pipeline.py
-index 0321369..7959c29 100644
---- a/scripts/run_pipeline.py
-+++ b/scripts/run_pipeline.py
-@@ -38,6 +38,12 @@ def parse_args():
-         default=None,
-         help="Path to the motion file (overrides config)",
-     )
-+    parser.add_argument(
-+        "--motion-index",
-+        type=int,
-+        default=None,
-+        help="Index of motion clip within a multi-motion .pt library",
-+    )
-     args = parser.parse_args()
-     return args
- 
-@@ -54,6 +60,8 @@ def main():
-         cfg.policy.onnx_path = args.onnx_path
-     if args.motion_path is not None and hasattr(cfg, "policy"):
-         cfg.policy.motion_path = args.motion_path
-+    if args.motion_index is not None and hasattr(cfg, "policy"):
-+        cfg.policy.motion_index = args.motion_index
- 
-     pipeline_type = cfg.pipeline_type
- 
--- 
-2.43.0
-
-
-From 0299a9e18562fdf835f64756335d28ac615d7e11 Mon Sep 17 00:00:00 2001
-From: Chen Tessler <ctessler@nvidia.com>
-Date: Fri, 27 Feb 2026 10:31:08 -0800
-Subject: [PATCH 08/16] add --pd-accel-limit and --action-ema CLI overrides
-
-Allow enabling PD target acceleration clamp and EMA filter at deploy
-time even if the training config had them disabled. CLI values take
-precedence over YAML metadata.
-
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
-Signed-off-by: Chen Tessler <ctessler@nvidia.com>
----
- .../policy/g1_protomotions_bm_tracker_cfg.py  |  6 ++++++
- .../policy/protomotions_bm_tracker_policy.py  | 20 ++++++++++++++++---
- scripts/run_pipeline.py                       | 16 +++++++++++++++
- 3 files changed, 39 insertions(+), 3 deletions(-)
-
-diff --git a/robojudo/config/g1/policy/g1_protomotions_bm_tracker_cfg.py b/robojudo/config/g1/policy/g1_protomotions_bm_tracker_cfg.py
-index 978b5a7..a24a8ae 100644
---- a/robojudo/config/g1/policy/g1_protomotions_bm_tracker_cfg.py
-+++ b/robojudo/config/g1/policy/g1_protomotions_bm_tracker_cfg.py
-@@ -30,6 +30,12 @@ class ProtoMotionsBMTrackerPolicyCfg(PolicyCfg):
-     motion_index: int = 0
-     """Index of the motion clip within a multi-motion .pt library."""
- 
-+    pd_accel_limit: float | None = None
-+    """PD target acceleration clamp. None = use YAML value (or disabled)."""
-+
-+    action_ema: float | None = None
-+    """Action EMA alpha override. None = use YAML value."""
-+
-     @property
-     def policy_file(self) -> str:
-         if self.onnx_path is not None:
-diff --git a/robojudo/policy/protomotions_bm_tracker_policy.py b/robojudo/policy/protomotions_bm_tracker_policy.py
-index aafcbc4..9004237 100644
---- a/robojudo/policy/protomotions_bm_tracker_policy.py
-+++ b/robojudo/policy/protomotions_bm_tracker_policy.py
-@@ -131,9 +131,23 @@ class ProtoMotionsBMTrackerPolicy(Policy):
-             f"{self._anchor_body_name or 'pelvis'} (idx={self._anchor_idx})"
-         )
- 
--        # Action post-processing config
--        self._pd_target_max_accel = control_meta.get("pd_target_max_accel")
--        self._action_ema_alpha = control_meta.get("action_ema_alpha", 0.8)
-+        # Action post-processing config (CLI/config overrides take precedence)
-+        pd_accel_override = getattr(cfg_policy, "pd_accel_limit", None)
-+        ema_override = getattr(cfg_policy, "action_ema", None)
-+        self._pd_target_max_accel = (
-+            pd_accel_override
-+            if pd_accel_override is not None
-+            else control_meta.get("pd_target_max_accel")
-+        )
-+        self._action_ema_alpha = (
-+            ema_override
-+            if ema_override is not None
-+            else control_meta.get("action_ema_alpha", 0.8)
-+        )
-+        logger.info(
-+            f"[BMTrackerPolicy] pd_accel_limit={self._pd_target_max_accel}, "
-+            f"action_ema={self._action_ema_alpha}"
-+        )
- 
-         logger.info(
-             f"[BMTrackerPolicy] {num_dofs} DOFs, "
-diff --git a/scripts/run_pipeline.py b/scripts/run_pipeline.py
-index 7959c29..a058473 100644
---- a/scripts/run_pipeline.py
-+++ b/scripts/run_pipeline.py
-@@ -44,6 +44,18 @@ def parse_args():
-         default=None,
-         help="Index of motion clip within a multi-motion .pt library",
-     )
-+    parser.add_argument(
-+        "--pd-accel-limit",
-+        type=float,
-+        default=None,
-+        help="PD target acceleration clamp (e.g. 0.5). Overrides YAML value.",
-+    )
-+    parser.add_argument(
-+        "--action-ema",
-+        type=float,
-+        default=None,
-+        help="Action EMA alpha (e.g. 0.8). Overrides YAML value.",
-+    )
-     args = parser.parse_args()
-     return args
- 
-@@ -62,6 +74,10 @@ def main():
-         cfg.policy.motion_path = args.motion_path
-     if args.motion_index is not None and hasattr(cfg, "policy"):
-         cfg.policy.motion_index = args.motion_index
-+    if args.pd_accel_limit is not None and hasattr(cfg, "policy"):
-+        cfg.policy.pd_accel_limit = args.pd_accel_limit
-+    if args.action_ema is not None and hasattr(cfg, "policy"):
-+        cfg.policy.action_ema = args.action_ema
- 
-     pipeline_type = cfg.pipeline_type
- 
--- 
-2.43.0
-
-
-From 9b7aef15e5414d7b21032874fbbae3c7a6884ab4 Mon Sep 17 00:00:00 2001
-From: Chen Tessler <ctessler@nvidia.com>
-Date: Fri, 27 Feb 2026 10:34:29 -0800
-Subject: [PATCH 09/16] fix action history feedback with deploy-time accel
- clamp
-
-The model was trained without accel clamp, so historical.processed_actions
-must contain the raw ONNX output. Post-processing (accel clamp, EMA) only
-affects what goes to the simulator, not the feedback to the model.
-Previously the clamped value was fed back, causing a mismatch that made
-the model overcorrect.
-
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
-Signed-off-by: Chen Tessler <ctessler@nvidia.com>
----
- robojudo/policy/protomotions_bm_tracker_policy.py | 9 +++++++--
- 1 file changed, 7 insertions(+), 2 deletions(-)
-
-diff --git a/robojudo/policy/protomotions_bm_tracker_policy.py b/robojudo/policy/protomotions_bm_tracker_policy.py
-index 9004237..92e99f9 100644
---- a/robojudo/policy/protomotions_bm_tracker_policy.py
-+++ b/robojudo/policy/protomotions_bm_tracker_policy.py
-@@ -226,7 +226,13 @@ class ProtoMotionsBMTrackerPolicy(Policy):
-         ort_out = self._session.run(self._onnx_out_names, onnx_inputs)
-         pd_targets = ort_out[1].squeeze().copy()
- 
--        # -- PD target acceleration clamp --
-+        # Store the raw ONNX output as the action history feedback.
-+        # This is what the model saw as "processed_actions" during training,
-+        # so it must NOT include any deploy-time post-processing (accel
-+        # clamp, EMA) that wasn't present during training.
-+        self._prev_actions = pd_targets.copy()
-+
-+        # -- PD target acceleration clamp (deploy-time smoothing) --
-         if (
-             self._pd_target_max_accel is not None
-             and self._prev_pd is not None
-@@ -251,7 +257,6 @@ class ProtoMotionsBMTrackerPolicy(Policy):
-             self._ema_prev = pd_targets.copy()
- 
-         self._stashed_pd_targets = pd_targets
--        self._prev_actions = pd_targets.copy()
-         extras = {}
-         dummy_obs = np.zeros(1, dtype=np.float32)
-         return dummy_obs, extras
--- 
-2.43.0
-
-
-From 008640c22d38ce849dd1b85a81b28d5ccff45e04 Mon Sep 17 00:00:00 2001
-From: Chen Tessler <ctessler@nvidia.com>
-Date: Fri, 27 Feb 2026 10:35:10 -0800
-Subject: [PATCH 10/16] Revert "fix action history feedback with deploy-time
- accel clamp"
-
-This reverts commit 9b7aef15e5414d7b21032874fbbae3c7a6884ab4.
----
- robojudo/policy/protomotions_bm_tracker_policy.py | 9 ++-------
- 1 file changed, 2 insertions(+), 7 deletions(-)
-
-diff --git a/robojudo/policy/protomotions_bm_tracker_policy.py b/robojudo/policy/protomotions_bm_tracker_policy.py
-index 92e99f9..9004237 100644
---- a/robojudo/policy/protomotions_bm_tracker_policy.py
-+++ b/robojudo/policy/protomotions_bm_tracker_policy.py
-@@ -226,13 +226,7 @@ class ProtoMotionsBMTrackerPolicy(Policy):
-         ort_out = self._session.run(self._onnx_out_names, onnx_inputs)
-         pd_targets = ort_out[1].squeeze().copy()
- 
--        # Store the raw ONNX output as the action history feedback.
--        # This is what the model saw as "processed_actions" during training,
--        # so it must NOT include any deploy-time post-processing (accel
--        # clamp, EMA) that wasn't present during training.
--        self._prev_actions = pd_targets.copy()
--
--        # -- PD target acceleration clamp (deploy-time smoothing) --
-+        # -- PD target acceleration clamp --
-         if (
-             self._pd_target_max_accel is not None
-             and self._prev_pd is not None
-@@ -257,6 +251,7 @@ class ProtoMotionsBMTrackerPolicy(Policy):
-             self._ema_prev = pd_targets.copy()
- 
-         self._stashed_pd_targets = pd_targets
-+        self._prev_actions = pd_targets.copy()
-         extras = {}
-         dummy_obs = np.zeros(1, dtype=np.float32)
-         return dummy_obs, extras
--- 
-2.43.0
-
-
-From cd06da7acb9f348fc916fd6ad5042d09e3802956 Mon Sep 17 00:00:00 2001
-From: Chen Tessler <ctessler@nvidia.com>
-Date: Fri, 27 Feb 2026 10:37:14 -0800
-Subject: [PATCH 11/16] Revert "add --pd-accel-limit and --action-ema CLI
- overrides"
-
-This reverts commit 0299a9e18562fdf835f64756335d28ac615d7e11.
----
- .../policy/g1_protomotions_bm_tracker_cfg.py  |  6 ------
- .../policy/protomotions_bm_tracker_policy.py  | 20 +++----------------
- scripts/run_pipeline.py                       | 16 ---------------
- 3 files changed, 3 insertions(+), 39 deletions(-)
-
-diff --git a/robojudo/config/g1/policy/g1_protomotions_bm_tracker_cfg.py b/robojudo/config/g1/policy/g1_protomotions_bm_tracker_cfg.py
-index a24a8ae..978b5a7 100644
---- a/robojudo/config/g1/policy/g1_protomotions_bm_tracker_cfg.py
-+++ b/robojudo/config/g1/policy/g1_protomotions_bm_tracker_cfg.py
-@@ -30,12 +30,6 @@ class ProtoMotionsBMTrackerPolicyCfg(PolicyCfg):
-     motion_index: int = 0
-     """Index of the motion clip within a multi-motion .pt library."""
- 
--    pd_accel_limit: float | None = None
--    """PD target acceleration clamp. None = use YAML value (or disabled)."""
--
--    action_ema: float | None = None
--    """Action EMA alpha override. None = use YAML value."""
--
-     @property
-     def policy_file(self) -> str:
-         if self.onnx_path is not None:
-diff --git a/robojudo/policy/protomotions_bm_tracker_policy.py b/robojudo/policy/protomotions_bm_tracker_policy.py
-index 9004237..aafcbc4 100644
---- a/robojudo/policy/protomotions_bm_tracker_policy.py
-+++ b/robojudo/policy/protomotions_bm_tracker_policy.py
-@@ -131,23 +131,9 @@ class ProtoMotionsBMTrackerPolicy(Policy):
-             f"{self._anchor_body_name or 'pelvis'} (idx={self._anchor_idx})"
-         )
- 
--        # Action post-processing config (CLI/config overrides take precedence)
--        pd_accel_override = getattr(cfg_policy, "pd_accel_limit", None)
--        ema_override = getattr(cfg_policy, "action_ema", None)
--        self._pd_target_max_accel = (
--            pd_accel_override
--            if pd_accel_override is not None
--            else control_meta.get("pd_target_max_accel")
--        )
--        self._action_ema_alpha = (
--            ema_override
--            if ema_override is not None
--            else control_meta.get("action_ema_alpha", 0.8)
--        )
--        logger.info(
--            f"[BMTrackerPolicy] pd_accel_limit={self._pd_target_max_accel}, "
--            f"action_ema={self._action_ema_alpha}"
--        )
-+        # Action post-processing config
-+        self._pd_target_max_accel = control_meta.get("pd_target_max_accel")
-+        self._action_ema_alpha = control_meta.get("action_ema_alpha", 0.8)
- 
-         logger.info(
-             f"[BMTrackerPolicy] {num_dofs} DOFs, "
-diff --git a/scripts/run_pipeline.py b/scripts/run_pipeline.py
-index a058473..7959c29 100644
---- a/scripts/run_pipeline.py
-+++ b/scripts/run_pipeline.py
-@@ -44,18 +44,6 @@ def parse_args():
-         default=None,
-         help="Index of motion clip within a multi-motion .pt library",
-     )
--    parser.add_argument(
--        "--pd-accel-limit",
--        type=float,
--        default=None,
--        help="PD target acceleration clamp (e.g. 0.5). Overrides YAML value.",
--    )
--    parser.add_argument(
--        "--action-ema",
--        type=float,
--        default=None,
--        help="Action EMA alpha (e.g. 0.8). Overrides YAML value.",
--    )
-     args = parser.parse_args()
-     return args
- 
-@@ -74,10 +62,6 @@ def main():
-         cfg.policy.motion_path = args.motion_path
-     if args.motion_index is not None and hasattr(cfg, "policy"):
-         cfg.policy.motion_index = args.motion_index
--    if args.pd_accel_limit is not None and hasattr(cfg, "policy"):
--        cfg.policy.pd_accel_limit = args.pd_accel_limit
--    if args.action_ema is not None and hasattr(cfg, "policy"):
--        cfg.policy.action_ema = args.action_ema
- 
-     pipeline_type = cfg.pipeline_type
- 
--- 
-2.43.0
-
-
-From c40a30e48d0c2bab8ff1bc046c6c4a0ff0e4eb9d Mon Sep 17 00:00:00 2001
-From: Chen Tessler <ctessler@nvidia.com>
-Date: Fri, 27 Feb 2026 14:57:00 -0800
-Subject: [PATCH 12/16] add real G1 config and heading alignment improvements
- for BM tracker
-
-- Add g1_protomotions_bm_tracker_real config for real G1 deployment
-- Add random_heading to MujocoEnvCfg; enable it in g1_protomotions_bm_tracker
-  so sim spawn heading is randomized on each reborn, matching real-world conditions
-- Add Policy.reset_alignment() base hook (no-op default); override in both
-  ProtoMotions tracker policies to clear only _heading_offset (not _frame)
-- Call reset_alignment() on [SIM_REBORN] and fall-recovery reborn so the
-  policy re-aligns to the new heading without restarting the motion
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
----
- robojudo/config/g1/g1_cfg.py                  | 25 +++++++++++++++++++
- robojudo/environment/env_cfgs.py              |  3 +++
- robojudo/environment/mujoco_env.py            | 16 ++++++++++++
- robojudo/pipeline/rl_pipeline.py              |  2 ++
- robojudo/policy/base_policy.py                |  7 ++++++
- .../policy/protomotions_bm_tracker_policy.py  |  3 +++
- .../policy/protomotions_tracker_policy.py     |  3 +++
- 7 files changed, 59 insertions(+)
-
-diff --git a/robojudo/config/g1/g1_cfg.py b/robojudo/config/g1/g1_cfg.py
-index 5340efb..da86025 100644
---- a/robojudo/config/g1/g1_cfg.py
-+++ b/robojudo/config/g1/g1_cfg.py
-@@ -384,6 +384,7 @@ class g1_protomotions_bm_tracker(RlPipelineCfg):
-     robot: str = "g1"
-     env: G1MujocoEnvCfg = G1MujocoEnvCfg(
-         born_place_align=False,
-+        random_heading=True,
-     )
-     ctrl: list[KeyboardCtrlCfg] = [
-         KeyboardCtrlCfg(
-@@ -394,4 +395,28 @@ class g1_protomotions_bm_tracker(RlPipelineCfg):
-     policy: ProtoMotionsBMTrackerPolicyCfg = ProtoMotionsBMTrackerPolicyCfg()
- 
- 
-+@cfg_registry.register
-+class g1_protomotions_bm_tracker_real(g1_protomotions_bm_tracker):
-+    """ProtoMotions BeyondMimic tracker on real G1 hardware.
-+
-+    Usage::
-+
-+        cd robojudo && python scripts/run_pipeline.py -c g1_protomotions_bm_tracker_real \\
-+            --onnx-path /path/to/unified_pipeline.onnx \\
-+            --motion-path /path/to/motion.motion
-+    """
-+
-+    env: G1RealEnvCfg = G1RealEnvCfg(
-+        env_type="UnitreeCppEnv",
-+        unitree=G1UnitreeCfg(
-+            net_if="eth0",  # note: change to your network interface
-+        ),
-+        born_place_align=False,
-+    )
-+    ctrl: list[UnitreeCtrlCfg] = [
-+        UnitreeCtrlCfg(),
-+    ]
-+    do_safety_check: bool = True
-+
-+
- # TIPS: check g1_loco_mimic_cfg.py for more complex examples
 diff --git a/robojudo/environment/env_cfgs.py b/robojudo/environment/env_cfgs.py
 index 62f305d..889b9e8 100644
 --- a/robojudo/environment/env_cfgs.py
@@ -1266,16 +205,55 @@ index 62f305d..889b9e8 100644
  class RobotEnvCfg(EnvCfg):
      env_type: str = "DummyEnv"
 diff --git a/robojudo/environment/mujoco_env.py b/robojudo/environment/mujoco_env.py
-index 87b003d..c107829 100644
+index 87b003d..0442581 100644
 --- a/robojudo/environment/mujoco_env.py
 +++ b/robojudo/environment/mujoco_env.py
-@@ -50,9 +50,24 @@ class MujocoEnv(Environment):
+@@ -50,9 +50,117 @@ class MujocoEnv(Environment):
              self.visualizer = None
  
          self.last_time = time.time()
 +        self.random_heading = cfg_env.random_heading
- 
++
 +        self._apply_random_heading()
++
++        # Virtual gantry: spring-damper harness.
++        # Displacement is computed from the ROOT body (pelvis / free joint).
++        # Force is applied at the attachment bodies (shoulders preferred).
++        # A rest length provides slack so the spring only engages on large drops.
++        self._gantry_enabled = False
++        self._gantry_anchor = None  # target position (from root body) [3]
++        self._gantry_stiffness = 2000.0  # N/m
++        self._gantry_damping = 400.0  # Ns/m
++        self._gantry_rest_length = 0.05  # meters of slack before spring engages
++
++        # Root body (pelvis) — used for displacement computation.
++        self._gantry_root_id = mujoco.mj_name2id(  # pyright: ignore[reportAttributeAccessIssue]
++            self.model, mujoco.mjtObj.mjOBJ_BODY, "pelvis"
++        )
++
++        # Attachment bodies — where force is applied.
++        _gantry_body_sets = [
++            ["left_shoulder_pitch_link", "right_shoulder_pitch_link"],
++            ["torso_link"],
++            ["pelvis"],
++        ]
++        self._gantry_body_ids = []
++        self._gantry_body_names = []
++        for body_set in _gantry_body_sets:
++            bids = []
++            for name in body_set:
++                bid = mujoco.mj_name2id(  # pyright: ignore[reportAttributeAccessIssue]
++                    self.model, mujoco.mjtObj.mjOBJ_BODY, name
++                )
++                if bid >= 0:
++                    bids.append(bid)
++            if len(bids) == len(body_set):
++                self._gantry_body_ids = bids
++                self._gantry_body_names = body_set
++                break
++        if not self._gantry_body_ids:
++            logger.warning("Virtual gantry: no suitable bodies found, gantry disabled")
+ 
          self.update()  # get initial state
  
 +    def _apply_random_heading(self):
@@ -1291,10 +269,64 @@ index 87b003d..c107829 100644
 +        self.data.qpos[5] = c * q[2] + s * q[1]
 +        self.data.qpos[6] = c * q[3] + s * q[0]
 +
++    def enable_gantry(self):
++        """Attach gantry at the root body's current position."""
++        if not self._gantry_body_ids:
++            logger.warning("No gantry bodies — skipping enable")
++            return
++        # Anchor is the root body (pelvis) position — displacement computed from here.
++        self._gantry_anchor = self.data.xpos[self._gantry_root_id].copy()
++        self._gantry_enabled = True
++        logger.info(
++            f"Virtual gantry enabled: root=pelvis, apply={self._gantry_body_names}, "
++            f"anchor={self._gantry_anchor.round(3).tolist()}, "
++            f"k={self._gantry_stiffness}, c={self._gantry_damping}, "
++            f"rest_len={self._gantry_rest_length}"
++        )
++
++    def disable_gantry(self):
++        """Release all gantry bodies to free dynamics."""
++        self._gantry_enabled = False
++        for bid in self._gantry_body_ids:
++            self.data.xfrc_applied[bid, :] = 0.0
++        logger.info("Virtual gantry disabled")
++
++    def _apply_gantry_force(self):
++        """Compute spring-damper force from ROOT displacement, apply at attachment bodies.
++
++        Like holosoma: displacement and velocity are read from the root body (pelvis).
++        The resulting force is split equally across the attachment bodies (shoulders).
++        A rest length provides slack — the spring only engages beyond that distance.
++        """
++        # Compute displacement from root body to anchor.
++        root_pos = self.data.xpos[self._gantry_root_id]
++        root_vel = self.data.cvel[self._gantry_root_id, 3:]  # linear velocity
++
++        dx = self._gantry_anchor - root_pos
++        distance = np.linalg.norm(dx)
++
++        if distance < 1e-8:
++            force = -self._gantry_damping * root_vel
++        else:
++            direction = dx / distance
++            v_radial = np.dot(root_vel, direction)
++            # Spring only engages beyond rest length (slack).
++            stretch = max(distance - self._gantry_rest_length, 0.0)
++            force = (
++                self._gantry_stiffness * stretch - self._gantry_damping * v_radial
++            ) * direction
++
++        # Split force equally across attachment bodies.
++        n = len(self._gantry_body_ids)
++        per_body_force = force / n
++        for bid in self._gantry_body_ids:
++            self.data.xfrc_applied[bid, :3] = per_body_force
++            self.data.xfrc_applied[bid, 3:] = 0.0
++
      def reborn(self, init_qpos=None):
          if init_qpos is not None:
              self.data.qpos[0:7] = init_qpos
-@@ -60,6 +75,7 @@ class MujocoEnv(Environment):
+@@ -60,6 +168,7 @@ class MujocoEnv(Environment):
              self.data.ctrl[:] = 0.0
          else:
              mujoco.mj_resetDataKeyframe(self.model, self.data, 0)  # pyright: ignore[reportAttributeAccessIssue]
@@ -1302,332 +334,7 @@ index 87b003d..c107829 100644
          mujoco.mj_forward(self.model, self.data)  # pyright: ignore[reportAttributeAccessIssue]
  
      def reset(self):
-diff --git a/robojudo/pipeline/rl_pipeline.py b/robojudo/pipeline/rl_pipeline.py
-index 8293e94..eab049d 100644
---- a/robojudo/pipeline/rl_pipeline.py
-+++ b/robojudo/pipeline/rl_pipeline.py
-@@ -111,6 +111,7 @@ class RlPipeline(Pipeline):
-             logger.error("Robot fallen! Shutdown for safety.")
-             if hasattr(self.env, "reborn"):
-                 self.env.reborn()  # pyright: ignore[reportAttributeAccessIssue]
-+                self.policy.reset_alignment()
-             else:
-                 self.env.shutdown()
- 
-@@ -126,6 +127,7 @@ class RlPipeline(Pipeline):
-                     if hasattr(self.env, "reborn"):
-                         logger.warning("Simulation Env reborn!")
-                         self.env.reborn()  # pyright: ignore[reportAttributeAccessIssue]
-+                        self.policy.reset_alignment()
- 
-         self.ctrl_manager.post_step_callback(ctrl_data)
- 
-diff --git a/robojudo/policy/base_policy.py b/robojudo/policy/base_policy.py
-index e1e8614..9059e79 100644
---- a/robojudo/policy/base_policy.py
-+++ b/robojudo/policy/base_policy.py
-@@ -58,6 +58,13 @@ class Policy(ABC):
-         # self.last_action = np.zeros(self.num_actions) # TODO
-         raise NotImplementedError
- 
-+    def reset_alignment(self):
-+        """Reset heading/spatial alignment without resetting motion playback state.
-+
-+        Override in policies that compute a heading offset at runtime (e.g. ProtoMotions
-+        trackers). The default no-op is correct for policies that don't have alignment state.
-+        """
-+
-     @abstractmethod
-     def post_step_callback(self, commands: list[str] | None = None):
-         raise NotImplementedError
-diff --git a/robojudo/policy/protomotions_bm_tracker_policy.py b/robojudo/policy/protomotions_bm_tracker_policy.py
-index aafcbc4..9b50dff 100644
---- a/robojudo/policy/protomotions_bm_tracker_policy.py
-+++ b/robojudo/policy/protomotions_bm_tracker_policy.py
-@@ -152,6 +152,9 @@ class ProtoMotionsBMTrackerPolicy(Policy):
-         self._stashed_pd_targets = np.zeros(self.num_actions, dtype=np.float32)
-         self._prev_actions = np.zeros(self.num_actions, dtype=np.float32)
- 
-+    def reset_alignment(self):
-+        self._heading_offset = None
-+
-     def post_step_callback(self, commands=None):
-         self._frame += 1
-         if self._frame >= self._player.total_frames:
-diff --git a/robojudo/policy/protomotions_tracker_policy.py b/robojudo/policy/protomotions_tracker_policy.py
-index 35db1e9..80e659e 100644
---- a/robojudo/policy/protomotions_tracker_policy.py
-+++ b/robojudo/policy/protomotions_tracker_policy.py
-@@ -145,6 +145,9 @@ class ProtoMotionsTrackerPolicy(Policy):
-         self._ema_prev = None
-         self._stashed_pd_targets = np.zeros(self.num_actions, dtype=np.float32)
- 
-+    def reset_alignment(self):
-+        self._heading_offset = None
-+
-     def post_step_callback(self, commands=None):
-         self._frame += 1
-         if self._frame >= self._player.total_frames:
--- 
-2.43.0
-
-
-From b89a7a4aade41ca489e1c8bb2ab3278463735cde Mon Sep 17 00:00:00 2001
-From: Chen Tessler <ctessler@nvidia.com>
-Date: Tue, 3 Mar 2026 09:28:58 -0800
-Subject: [PATCH 13/16] update net_if to enx0c379668f5fe for real G1 configs
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
----
- robojudo/config/g1/g1_cfg.py | 4 ++--
- 1 file changed, 2 insertions(+), 2 deletions(-)
-
-diff --git a/robojudo/config/g1/g1_cfg.py b/robojudo/config/g1/g1_cfg.py
-index da86025..73ea7ea 100644
---- a/robojudo/config/g1/g1_cfg.py
-+++ b/robojudo/config/g1/g1_cfg.py
-@@ -70,7 +70,7 @@ class g1_real(g1):
-         # env_type="UnitreeEnv",  # For unitree_sdk2py
-         env_type="UnitreeCppEnv",  # For unitree_cpp, check README for more details
-         unitree=G1UnitreeCfg(
--            net_if="eth0",  # note: change to your network interface
-+            net_if="enx0c379668f5fe",
-         ),
-     )
- 
-@@ -409,7 +409,7 @@ class g1_protomotions_bm_tracker_real(g1_protomotions_bm_tracker):
-     env: G1RealEnvCfg = G1RealEnvCfg(
-         env_type="UnitreeCppEnv",
-         unitree=G1UnitreeCfg(
--            net_if="eth0",  # note: change to your network interface
-+            net_if="enx0c379668f5fe",
-         ),
-         born_place_align=False,
-     )
--- 
-2.43.0
-
-
-From 3117198028955201af98ffc8ee7ab49c1f77f70f Mon Sep 17 00:00:00 2001
-From: Chen Tessler <ctessler@nvidia.com>
-Date: Tue, 3 Mar 2026 11:31:58 -0800
-Subject: [PATCH 14/16] add g1_beyondmimic_real config and clamp future motion
- steps at end-of-motion
-
-- Add g1_beyondmimic_real config for BeyondMimic policy on real G1 hardware
-- In ProtoMotionsBMTrackerPolicy, clamp future step indices so they never
-  exceed the last valid motion frame, preventing out-of-distribution
-  references when the motion reaches its end
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
----
- robojudo/config/g1/g1_cfg.py                     | 16 ++++++++++++++++
- .../policy/protomotions_bm_tracker_policy.py     | 10 +++++++++-
- 2 files changed, 25 insertions(+), 1 deletion(-)
-
-diff --git a/robojudo/config/g1/g1_cfg.py b/robojudo/config/g1/g1_cfg.py
-index 73ea7ea..5dd4851 100644
---- a/robojudo/config/g1/g1_cfg.py
-+++ b/robojudo/config/g1/g1_cfg.py
-@@ -182,6 +182,22 @@ class g1_beyondmimic(RlPipelineCfg):
-     )
- 
- 
-+@cfg_registry.register
-+class g1_beyondmimic_real(g1_beyondmimic):
-+    """BeyondMimic Policy on real G1 hardware."""
-+
-+    env: G1RealEnvCfg = G1RealEnvCfg(
-+        env_type="UnitreeCppEnv",
-+        unitree=G1UnitreeCfg(
-+            net_if="enx0c379668f5fe",
-+        ),
-+    )
-+    ctrl: list[UnitreeCtrlCfg] = [
-+        UnitreeCtrlCfg(),
-+    ]
-+    do_safety_check: bool = True
-+
-+
- @cfg_registry.register
- class g1_beyondmimic_with_ctrl(RlPipelineCfg):
-     """
-diff --git a/robojudo/policy/protomotions_bm_tracker_policy.py b/robojudo/policy/protomotions_bm_tracker_policy.py
-index 9b50dff..743363a 100644
---- a/robojudo/policy/protomotions_bm_tracker_policy.py
-+++ b/robojudo/policy/protomotions_bm_tracker_policy.py
-@@ -185,8 +185,16 @@ class ProtoMotionsBMTrackerPolicy(Policy):
-         root_local_ang_vel = np.asarray(env_data.base_ang_vel, dtype=np.float32)
- 
-         # -- Future motion references with heading alignment --
-+        # Clamp each future step so it never exceeds the last valid frame.
-+        # This repeats the last frame's references at end-of-motion instead
-+        # of going out of bounds.
-+        last_frame = self._player.total_frames - 1
-+        clamped_steps = [
-+            min(self._frame + step, last_frame) - self._frame
-+            for step in self._future_step_indices
-+        ]
-         future_refs = self._player.get_future_references(
--            self._frame, self._future_step_indices
-+            self._frame, clamped_steps
-         )
-         future_body_rot = apply_heading_offset_np(
-             self._heading_offset, future_refs["body_rot"]
--- 
-2.43.0
-
-
-From 404fea6d3c85011e97bc88007127b110dfd7863c Mon Sep 17 00:00:00 2001
-From: Chen Tessler <ctessler@nvidia.com>
-Date: Tue, 3 Mar 2026 13:37:52 -0800
-Subject: [PATCH 15/16] add deploy simulation: virtual gantry, prepare phases,
- fade in/out
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
-
-- Virtual gantry (spring-damper on torso_link) holds robot during warmup
-- Two-phase prepare: ramp joints under gantry, then blend in policy
-- Blend-out at motion end: policy → init pose with gantry ramp-up
-- MOTION_FADE_OUT/FADE_IN support for manual control
-- Auto-reset loop with --hold-seconds
-- --simulate-deploy and --prepare-seconds CLI args
-- Default EMA alpha changed to 1.0 (off) for BM tracker
-- MOTION_DONE callback emitted at end of motion
-- Policy pause support for frame freeze during fade-out
-
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
-Signed-off-by: Chen Tessler <ctessler@nvidia.com>
----
- robojudo/config/g1/g1_cfg.py                  |  16 +-
- robojudo/environment/mujoco_env.py            |  71 ++++++
- robojudo/pipeline/rl_pipeline.py              | 220 ++++++++++++++++--
- .../policy/protomotions_bm_tracker_policy.py  |  18 +-
- scripts/run_pipeline.py                       |  84 ++++++-
- 5 files changed, 379 insertions(+), 30 deletions(-)
-
-diff --git a/robojudo/config/g1/g1_cfg.py b/robojudo/config/g1/g1_cfg.py
-index 5dd4851..26667cf 100644
---- a/robojudo/config/g1/g1_cfg.py
-+++ b/robojudo/config/g1/g1_cfg.py
-@@ -376,7 +376,13 @@ class g1_protomotions_tracker(RlPipelineCfg):
-     )
-     ctrl: list[KeyboardCtrlCfg] = [
-         KeyboardCtrlCfg(
--            triggers={"r": "[MOTION_RESET]", "i": "[SIM_REBORN]", "o": "[SHUTDOWN]"},
-+            triggers={
-+                "r": "[MOTION_RESET]",
-+                "i": "[SIM_REBORN]",
-+                "o": "[SHUTDOWN]",
-+                "<": "[MOTION_FADE_IN]",
-+                ">": "[MOTION_FADE_OUT]",
-+            },
-         ),
-     ]
- 
-@@ -404,7 +410,13 @@ class g1_protomotions_bm_tracker(RlPipelineCfg):
-     )
-     ctrl: list[KeyboardCtrlCfg] = [
-         KeyboardCtrlCfg(
--            triggers={"r": "[MOTION_RESET]", "i": "[SIM_REBORN]", "o": "[SHUTDOWN]"},
-+            triggers={
-+                "r": "[MOTION_RESET]",
-+                "i": "[SIM_REBORN]",
-+                "o": "[SHUTDOWN]",
-+                "<": "[MOTION_FADE_IN]",
-+                ">": "[MOTION_FADE_OUT]",
-+            },
-         ),
-     ]
- 
-diff --git a/robojudo/environment/mujoco_env.py b/robojudo/environment/mujoco_env.py
-index c107829..0864981 100644
---- a/robojudo/environment/mujoco_env.py
-+++ b/robojudo/environment/mujoco_env.py
-@@ -53,6 +53,30 @@ class MujocoEnv(Environment):
-         self.random_heading = cfg_env.random_heading
- 
-         self._apply_random_heading()
-+
-+        # Virtual gantry: spring-damper that holds the robot near an anchor.
-+        # Attaches to the highest-priority body found (upper body preferred
-+        # so the robot hangs upright, like a real gantry).
-+        self._gantry_enabled = False
-+        self._gantry_anchor = None  # target position [3]
-+        self._gantry_stiffness = 10000.0  # N/m — stiff enough to support ~50 kg
-+        self._gantry_damping = 1000.0  # Ns/m — near-critical damping
-+        _gantry_body_priority = [
-+            "torso_link", "torso", "base_link", "pelvis", "Trunk", "Waist", "base",
-+        ]
-+        self._gantry_body_id = -1
-+        for name in _gantry_body_priority:
-+            bid = mujoco.mj_name2id(  # pyright: ignore[reportAttributeAccessIssue]
-+                self.model, mujoco.mjtObj.mjOBJ_BODY, name
-+            )
-+            if bid >= 0:
-+                self._gantry_body_id = bid
-+                self._gantry_body_name = name
-+                break
-+        if self._gantry_body_id < 0:
-+            logger.warning("Virtual gantry: no suitable body found, gantry disabled")
-+            self._gantry_body_name = None
-+
-         self.update()  # get initial state
- 
-     def _apply_random_heading(self):
-@@ -68,6 +92,50 @@ class MujocoEnv(Environment):
-         self.data.qpos[5] = c * q[2] + s * q[1]
-         self.data.qpos[6] = c * q[3] + s * q[0]
- 
-+    def enable_gantry(self):
-+        """Attach a spring-damper to the gantry body at its current position."""
-+        if self._gantry_body_id < 0:
-+            logger.warning("No gantry body — skipping enable")
-+            return
-+        # xpos holds world-frame positions for each body after mj_forward.
-+        self._gantry_anchor = self.data.xpos[self._gantry_body_id].copy()
-+        self._gantry_enabled = True
-+        logger.info(
-+            f"Virtual gantry enabled on '{self._gantry_body_name}' "
-+            f"at {self._gantry_anchor} "
-+            f"(k={self._gantry_stiffness}, c={self._gantry_damping})"
-+        )
-+
-+    def disable_gantry(self):
-+        """Release the root body to free dynamics."""
-+        self._gantry_enabled = False
-+        # Clear any residual applied force.
-+        self.data.xfrc_applied[self._gantry_body_id, :] = 0.0
-+        logger.info("Virtual gantry disabled")
-+
-+    def _apply_gantry_force(self):
-+        """Compute and apply spring-damper force on the gantry body."""
-+        bid = self._gantry_body_id
-+        pos = self.data.xpos[bid]  # world-frame position of the body
-+        # cvel is [ang(3), lin(3)] in world frame for each body.
-+        vel = self.data.cvel[bid, 3:]  # linear velocity
-+
-+        dx = self._gantry_anchor - pos
-+        distance = np.linalg.norm(dx)
-+        if distance < 1e-8:
-+            # Already at anchor — just apply damping.
-+            force = -self._gantry_damping * vel
-+        else:
-+            direction = dx / distance
-+            v_radial = np.dot(vel, direction)
-+            force = (
-+                self._gantry_stiffness * distance - self._gantry_damping * v_radial
-+            ) * direction
-+
-+        # xfrc_applied is [fx, fy, fz, tx, ty, tz] in world frame.
-+        self.data.xfrc_applied[bid, :3] = force
-+        self.data.xfrc_applied[bid, 3:] = 0.0
-+
-     def reborn(self, init_qpos=None):
-         if init_qpos is not None:
-             self.data.qpos[0:7] = init_qpos
-@@ -151,6 +219,9 @@ class MujocoEnv(Environment):
+@@ -135,6 +244,9 @@ class MujocoEnv(Environment):
  
              self.data.ctrl = torque
  
@@ -1638,7 +345,7 @@ index c107829..0864981 100644
              self.update(simple=True)
          self.update(simple=False)
 diff --git a/robojudo/pipeline/rl_pipeline.py b/robojudo/pipeline/rl_pipeline.py
-index eab049d..d880346 100644
+index 8293e94..d880346 100644
 --- a/robojudo/pipeline/rl_pipeline.py
 +++ b/robojudo/pipeline/rl_pipeline.py
 @@ -85,8 +85,8 @@ class RlPipeline(Pipeline):
@@ -1672,10 +379,19 @@ index eab049d..d880346 100644
      def safety_check(self):
          if not self.do_safety_check:
              return
-@@ -128,6 +142,31 @@ class RlPipeline(Pipeline):
+@@ -111,6 +125,7 @@ class RlPipeline(Pipeline):
+             logger.error("Robot fallen! Shutdown for safety.")
+             if hasattr(self.env, "reborn"):
+                 self.env.reborn()  # pyright: ignore[reportAttributeAccessIssue]
++                self.policy.reset_alignment()
+             else:
+                 self.env.shutdown()
+ 
+@@ -126,6 +141,32 @@ class RlPipeline(Pipeline):
+                     if hasattr(self.env, "reborn"):
                          logger.warning("Simulation Env reborn!")
                          self.env.reborn()  # pyright: ignore[reportAttributeAccessIssue]
-                         self.policy.reset_alignment()
++                        self.policy.reset_alignment()
 +                case "[MOTION_RESET]" | "[MOTION_FADE_IN]":
 +                    logger.info(f"{command} — re-entering blend-in phase")
 +                    self._blend_out_active = False
@@ -1704,7 +420,7 @@ index eab049d..d880346 100644
  
          self.ctrl_manager.post_step_callback(ctrl_data)
  
-@@ -158,34 +197,127 @@ class RlPipeline(Pipeline):
+@@ -156,34 +197,127 @@ class RlPipeline(Pipeline):
          obs, extras = self.policy.get_observation(env_data, ctrl_data)
          pd_target = self.policy.get_pd_target(obs)
  
@@ -1846,7 +562,7 @@ index eab049d..d880346 100644
  
              self.env.step(action)
  
-@@ -196,13 +328,63 @@ class RlPipeline(Pipeline):
+@@ -194,13 +328,63 @@ class RlPipeline(Pipeline):
                  logger.error("Warning: frame drop")
              last_step_time = time.time()
              pbar.update()
@@ -1914,57 +630,947 @@ index eab049d..d880346 100644
          logger.warning("prepare_done")
  
  
+diff --git a/robojudo/policy/__init__.py b/robojudo/policy/__init__.py
+index ec7a66c..afdb2a7 100644
+--- a/robojudo/policy/__init__.py
++++ b/robojudo/policy/__init__.py
+@@ -35,3 +35,4 @@ policy_registry.add("AsapPolicy", ".asap_policy")
+ policy_registry.add("AsapLocoPolicy", ".asap_policy")
+ policy_registry.add("KungfuBotGeneralPolicy", ".kungfubot_policy")
+ policy_registry.add("TwistPolicy", ".twist_policy")
++policy_registry.add("ProtoMotionsBMTrackerPolicy", ".protomotions_bm_tracker_policy")
+diff --git a/robojudo/policy/base_policy.py b/robojudo/policy/base_policy.py
+index e1e8614..9059e79 100644
+--- a/robojudo/policy/base_policy.py
++++ b/robojudo/policy/base_policy.py
+@@ -58,6 +58,13 @@ class Policy(ABC):
+         # self.last_action = np.zeros(self.num_actions) # TODO
+         raise NotImplementedError
+ 
++    def reset_alignment(self):
++        """Reset heading/spatial alignment without resetting motion playback state.
++
++        Override in policies that compute a heading offset at runtime (e.g. ProtoMotions
++        trackers). The default no-op is correct for policies that don't have alignment state.
++        """
++
+     @abstractmethod
+     def post_step_callback(self, commands: list[str] | None = None):
+         raise NotImplementedError
 diff --git a/robojudo/policy/protomotions_bm_tracker_policy.py b/robojudo/policy/protomotions_bm_tracker_policy.py
-index 743363a..4e8e491 100644
---- a/robojudo/policy/protomotions_bm_tracker_policy.py
+new file mode 100644
+index 0000000..cdb142e
+--- /dev/null
 +++ b/robojudo/policy/protomotions_bm_tracker_policy.py
-@@ -133,7 +133,7 @@ class ProtoMotionsBMTrackerPolicy(Policy):
- 
-         # Action post-processing config
-         self._pd_target_max_accel = control_meta.get("pd_target_max_accel")
--        self._action_ema_alpha = control_meta.get("action_ema_alpha", 0.8)
+@@ -0,0 +1,275 @@
++"""ProtoMotions BeyondMimic tracker policy for RoboJuDo.
++
++Runs a unified ONNX model exported by
++``deployment/export_bm_tracker_onnx.py`` with cached 50 fps motion from
++``deployment/motion_utils.MotionPlayer``.
++
++This policy handles BM-specific inputs compared to
++:class:`ProtoMotionsTrackerPolicy`:
++
++- ``historical.processed_actions`` — action history feedback (previous PD
++  targets are fed back as an ONNX input)
++- ``mimic.future_anchor_rot`` — anchor-body-only rotation references
++  (instead of full-body ``mimic.future_rot``)
++
++Heading alignment
++-----------------
++Same as :class:`ProtoMotionsTrackerPolicy`: yaw-only offset computed on
++first step to align motion heading with robot heading.
++
++Sensor requirements (real G1)
++-----------------------------
++- ``env_data.dof_pos`` / ``env_data.dof_vel`` -- joint encoders
++- ``env_data.base_quat`` (xyzw) -- pelvis IMU
++- ``env_data.base_ang_vel`` -- pelvis IMU gyro (body-local frame)
++- ``env_data.torso_quat`` (xyzw) -- FK-computed (requires ``update_with_fk=True``)
++"""
++
++import logging
++
++import numpy as np
++import onnxruntime as ort
++import yaml
++
++from robojudo.policy.protomotions_utils import (
++    MotionPlayer,
++    apply_heading_offset_np,
++    compute_yaw_offset_np,
++)
++from robojudo.policy import Policy, policy_registry
++from robojudo.policy.policy_cfgs import PolicyCfg
++from robojudo.tools.tool_cfgs import DoFConfig
++
++logger = logging.getLogger(__name__)
++
++
++@policy_registry.register
++class ProtoMotionsBMTrackerPolicy(Policy):
++    """Policy that drives a ProtoMotions BeyondMimic tracker via ONNX.
++
++    Compared to :class:`ProtoMotionsTrackerPolicy`, this policy:
++
++    - Feeds back previous PD targets as ``historical.processed_actions``
++    - Provides anchor-body-only rotation references
++      (``mimic.future_anchor_rot``) instead of full-body references
++    """
++
++    cfg_policy: PolicyCfg
++
++    def __init__(self, cfg_policy: PolicyCfg, device: str = "cpu"):
++        # Load YAML metadata BEFORE calling super().__init__ so we can
++        # build the DOF config from it.
++        onnx_path = cfg_policy.policy_file
++        yaml_path = onnx_path.replace(".onnx", ".yaml")
++
++        with open(yaml_path) as f:
++            self._meta = yaml.safe_load(f)
++
++        robot_meta = self._meta["robot"]
++        control_meta = self._meta["control"]
++        motion_meta = self._meta["motion"]
++        runtime = self._meta["_runtime"]
++
++        joint_names = robot_meta["joint_names"]
++        num_dofs = robot_meta["num_dofs"]
++        stiffness = control_meta["stiffness"]
++        damping = control_meta["damping"]
++        effort_limits = control_meta.get("effort_limits")
++
++        # Build DOF config from YAML metadata.
++        dof_cfg = DoFConfig(
++            joint_names=joint_names,
++            default_pos=[0.0] * num_dofs,
++            stiffness=stiffness,
++            damping=damping,
++            torque_limits=effort_limits,
++        )
++        cfg_policy_updated = cfg_policy.model_copy()
++        cfg_policy_updated.obs_dof = dof_cfg
++        cfg_policy_updated.action_dof = dof_cfg
++
++        super().__init__(cfg_policy=cfg_policy_updated, device="cpu")
++
++        # ONNX session
++        logger.info(f"[BMTrackerPolicy] Loading ONNX: {onnx_path}")
++        self._session = ort.InferenceSession(
++            onnx_path, providers=["CPUExecutionProvider"]
++        )
++        self._onnx_in_names = [inp.name for inp in self._session.get_inputs()]
++        self._onnx_out_names = [out.name for out in self._session.get_outputs()]
++        self._onnx_name_to_key = runtime["onnx_name_to_in_key"]
++
++        # Motion player (cached mode -- no protomotions import)
++        motion_path = getattr(cfg_policy, "motion_path", None)
++        if motion_path is None:
++            raise ValueError("ProtoMotionsBMTrackerPolicyCfg must set motion_path")
++        motion_index = getattr(cfg_policy, "motion_index", 0)
++        timing = self._meta["timing"]
++        self._player = MotionPlayer(
++            motion_path, motion_index=motion_index, control_dt=timing["control_dt"]
++        )
++
++        # ONNX input config
++        self._anchor_idx = robot_meta["anchor_body_index"]
++        self._root_idx = robot_meta["root_body_index"]
++        self._future_step_indices = motion_meta["future_step_indices"]
++
++        # Determine how to read the anchor body rotation from env_data.
++        # Use body name to look up in fk_info; pelvis uses base_quat directly.
++        self._anchor_body_name = robot_meta.get("anchor_body_name")
++        logger.info(
++            f"[BMTrackerPolicy] anchor body: "
++            f"{self._anchor_body_name or 'pelvis'} (idx={self._anchor_idx})"
++        )
++
++        # Action post-processing config
++        self._pd_target_max_accel = control_meta.get("pd_target_max_accel")
 +        self._action_ema_alpha = control_meta.get("action_ema_alpha", 1.0)
- 
-         logger.info(
-             f"[BMTrackerPolicy] {num_dofs} DOFs, "
-@@ -151,16 +151,20 @@ class ProtoMotionsBMTrackerPolicy(Policy):
-         self._ema_prev = None
-         self._stashed_pd_targets = np.zeros(self.num_actions, dtype=np.float32)
-         self._prev_actions = np.zeros(self.num_actions, dtype=np.float32)
++
++        logger.info(
++            f"[BMTrackerPolicy] {num_dofs} DOFs, "
++            f"{self._player.total_frames} motion frames, "
++            f"anchor_idx={self._anchor_idx}, root_idx={self._root_idx}"
++        )
++
++        self.reset()
++
++    def reset(self):
++        self._frame = 0
++        self._heading_offset = None
++        self._prev_pd = None
++        self._prev_prev_pd = None
++        self._ema_prev = None
++        self._stashed_pd_targets = np.zeros(self.num_actions, dtype=np.float32)
++        self._prev_actions = np.zeros(self.num_actions, dtype=np.float32)
 +        self._motion_done = False
 +        self._paused = False
- 
-     def reset_alignment(self):
-         self._heading_offset = None
- 
-     def post_step_callback(self, commands=None):
--        self._frame += 1
--        if self._frame >= self._player.total_frames:
--            self._frame = self._player.total_frames - 1
++
++    def reset_alignment(self):
++        self._heading_offset = None
++
++    def post_step_callback(self, commands=None):
 +        if not self._paused:
 +            self._frame += 1
 +            if self._frame >= self._player.total_frames:
 +                self._frame = self._player.total_frames - 1
 +                self._motion_done = True
-         for cmd in (commands or []):
--            if cmd == "[MOTION_RESET]":
++        for cmd in (commands or []):
 +            if cmd in ("[MOTION_RESET]", "[MOTION_FADE_IN]"):
-                 self.reset()
- 
-     def get_observation(self, env_data, ctrl_data):
-@@ -249,7 +253,9 @@ class ProtoMotionsBMTrackerPolicy(Policy):
- 
-         self._stashed_pd_targets = pd_targets
-         self._prev_actions = pd_targets.copy()
--        extras = {}
++                self.reset()
++
++    def get_observation(self, env_data, ctrl_data):
++        # -- Heading alignment (first step after reset) --
++        if self._heading_offset is None:
++            motion_anchor_rot = self._player.get_state_at_frame(0)["body_rot"][
++                self._anchor_idx
++            ]
++            robot_anchor_rot = self._get_anchor_quat(env_data)
++            self._heading_offset = compute_yaw_offset_np(
++                robot_anchor_rot, motion_anchor_rot
++            )
++
++        # -- State from env_data (already xyzw) --
++        anchor_rot = self._get_anchor_quat(env_data)
++        dof_pos = np.asarray(env_data.dof_pos, dtype=np.float32)
++        dof_vel = np.asarray(env_data.dof_vel, dtype=np.float32)
++        # env_data.base_ang_vel comes from MuJoCo qvel[3:6] which is ALREADY
++        # in the pelvis local frame (not world frame).  On the real G1, the
++        # IMU gyroscope also reads in body-local frame.  So we use it directly
++        # as root_local_ang_vel -- NO quat_rotate_inverse needed.
++        root_local_ang_vel = np.asarray(env_data.base_ang_vel, dtype=np.float32)
++
++        # -- Future motion references with heading alignment --
++        # Clamp each future step so it never exceeds the last valid frame.
++        # This repeats the last frame's references at end-of-motion instead
++        # of going out of bounds.
++        last_frame = self._player.total_frames - 1
++        clamped_steps = [
++            min(self._frame + step, last_frame) - self._frame
++            for step in self._future_step_indices
++        ]
++        future_refs = self._player.get_future_references(
++            self._frame, clamped_steps
++        )
++        future_body_rot = apply_heading_offset_np(
++            self._heading_offset, future_refs["body_rot"]
++        )
++        # Anchor-body-only rotation: [num_steps, 4]
++        future_anchor_rot = future_body_rot[:, self._anchor_idx, :]
++
++        # -- Build ONNX inputs --
++        key_to_array = {
++            "current.dof_pos": dof_pos[None],
++            "current.dof_vel": dof_vel[None],
++            "current.anchor_rot": anchor_rot[None],
++            "current.root_local_ang_vel": root_local_ang_vel[None],
++            "mimic.future_anchor_rot": future_anchor_rot[None],
++            "mimic.future_dof_pos": future_refs["dof_pos"][None],
++            "mimic.future_dof_vel": future_refs["dof_vel"][None],
++            "historical.processed_actions": self._prev_actions[None, None],
++        }
++        onnx_inputs = {}
++        for onnx_name in self._onnx_in_names:
++            sem_key = self._onnx_name_to_key.get(onnx_name)
++            if sem_key and sem_key in key_to_array:
++                onnx_inputs[onnx_name] = key_to_array[sem_key].astype(np.float32)
++
++        # -- ONNX inference --
++        ort_out = self._session.run(self._onnx_out_names, onnx_inputs)
++        pd_targets = ort_out[1].squeeze().copy()
++
++        # -- PD target acceleration clamp --
++        if (
++            self._pd_target_max_accel is not None
++            and self._prev_pd is not None
++            and self._prev_prev_pd is not None
++        ):
++            delta = pd_targets - self._prev_pd
++            prev_delta = self._prev_pd - self._prev_prev_pd
++            accel = delta - prev_delta
++            clamped_accel = np.clip(
++                accel, -self._pd_target_max_accel, self._pd_target_max_accel
++            )
++            pd_targets = self._prev_pd + prev_delta + clamped_accel
++        self._prev_prev_pd = self._prev_pd
++        self._prev_pd = pd_targets.copy()
++
++        # -- EMA action filter --
++        alpha = self._action_ema_alpha
++        if alpha < 1.0:
++            if self._ema_prev is None:
++                self._ema_prev = pd_targets.copy()
++            pd_targets = alpha * pd_targets + (1.0 - alpha) * self._ema_prev
++            self._ema_prev = pd_targets.copy()
++
++        self._stashed_pd_targets = pd_targets
++        self._prev_actions = pd_targets.copy()
 +        extras = {
 +            "CALLBACK": ["[MOTION_DONE]"] if self._motion_done else [],
 +        }
-         dummy_obs = np.zeros(1, dtype=np.float32)
-         return dummy_obs, extras
- 
++        dummy_obs = np.zeros(1, dtype=np.float32)
++        return dummy_obs, extras
++
++    def _get_anchor_quat(self, env_data) -> np.ndarray:
++        """Read the anchor body's quaternion from env_data.
++
++        Uses the body name from YAML metadata to look up in fk_info.
++        Falls back to base_quat for pelvis (root body).
++        """
++        name = self._anchor_body_name
++        if name is not None and name not in (None, "pelvis"):
++            # Named body -- look up in FK info
++            fk = env_data.fk_info
++            if fk is not None and name in fk:
++                return np.asarray(fk[name]["quat"], dtype=np.float32)
++            # Fallback: if the env exposes it as torso_quat and name matches
++            if name == "torso_link" and env_data.torso_quat is not None:
++                return np.asarray(env_data.torso_quat, dtype=np.float32)
++        # Pelvis / root body -- always available as base_quat
++        return np.asarray(env_data.base_quat, dtype=np.float32)
++
++    def get_action(self, obs):
++        return self._stashed_pd_targets
++
++    def get_init_dof_pos(self):
++        return self._player.get_state_at_frame(0)["dof_pos"].copy()
+diff --git a/robojudo/policy/protomotions_utils/__init__.py b/robojudo/policy/protomotions_utils/__init__.py
+new file mode 100644
+index 0000000..4d0e202
+--- /dev/null
++++ b/robojudo/policy/protomotions_utils/__init__.py
+@@ -0,0 +1,27 @@
++"""ProtoMotions deployment utilities bundled for standalone RoboJuDo use.
++
++These are self-contained copies of the motion playback and state derivation
++utilities from the ProtoMotions ``deployment/`` package.  They are included
++here so that RoboJuDo users can run the BeyondMimic tracker policy without
++installing ProtoMotions itself.
++
++Original source: https://github.com/NVlabs/ProtoMotions
++"""
++
++from robojudo.policy.protomotions_utils.motion_utils import MotionPlayer
++from robojudo.policy.protomotions_utils.state_utils import (
++    apply_heading_offset_np,
++    compute_anchor_rot_np,
++    compute_root_local_ang_vel_np,
++    compute_yaw_offset_np,
++    mujoco_wxyz_to_xyzw,
++)
++
++__all__ = [
++    "MotionPlayer",
++    "apply_heading_offset_np",
++    "compute_anchor_rot_np",
++    "compute_root_local_ang_vel_np",
++    "compute_yaw_offset_np",
++    "mujoco_wxyz_to_xyzw",
++]
+diff --git a/robojudo/policy/protomotions_utils/motion_utils.py b/robojudo/policy/protomotions_utils/motion_utils.py
+new file mode 100644
+index 0000000..204cba2
+--- /dev/null
++++ b/robojudo/policy/protomotions_utils/motion_utils.py
+@@ -0,0 +1,423 @@
++"""Motion playback utilities for deployment (bundled from ProtoMotions).
++
++:class:`MotionPlayer` loads **a single motion clip** and provides per-frame
++state (joint positions, velocities, body rotations, etc.) at a fixed control
++rate.  It accepts three input formats:
++
++- A single ``.motion`` file (RobotState dict with ``fps``, ``dof_pos``, ...).
++- A packaged ``.pt`` library (multi-motion file with ``length_starts``,
++  ``gts``, ``grs``, ...) -- requires an explicit ``motion_index`` to select
++  which clip to load.
++- A pre-resampled cache previously written by :meth:`cache_to_file`.
++
++Two runtime modes
++-----------------
++
++**Raw mode** (first run)
++    Loads one of the raw formats above and resamples to the control rate
++    using the same interpolation code as training (SLERP for quaternions,
++    linear for positions).  Call :meth:`cache_to_file` afterwards to write
++    a pre-resampled ``.pt`` so that future runs load faster.
++
++**Cached mode** (subsequent runs)
++    Loads a cache written by :meth:`cache_to_file`.  All queries become
++    plain NumPy array indexing.
++
++All interpolation code is bundled here -- no external dependencies beyond
++PyTorch and NumPy.
++
++Original source: https://github.com/NVlabs/ProtoMotions (deployment/motion_utils.py)
++"""
++
++from __future__ import annotations
++
++import enum
++import sys
++from typing import Dict, List
++
++import numpy as np
++
++__all__ = ["MotionPlayer"]
++
++# Keys present in every state/future-reference dict
++_STATE_KEYS = ("dof_pos", "dof_vel", "body_rot", "body_pos", "body_vel", "body_ang_vel")
++
++
++def _is_cache_file(data: dict) -> bool:
++    """Return True if *data* looks like a pre-resampled cache (not a raw motion)."""
++    return "control_dt" in data and "body_rot" in data
++
++
++# ---------------------------------------------------------------------------
++# Stub for torch.load unpickling
++# ---------------------------------------------------------------------------
++# ProtoMotions .motion files are pickled dicts that reference
++# ``protomotions.simulator.base_simulator.simulator_state.StateConversion``
++# (a simple Enum).  We register a stub so torch.load works without
++# installing protomotions.
++
++
++class _StateConversion(enum.Enum):
++    """Stub for protomotions.simulator.base_simulator.simulator_state.StateConversion."""
++    SIMULATOR = "simulator"
++    COMMON = "common"
++
++
++def _register_unpickle_stub():
++    """Make torch.load find StateConversion without protomotions installed."""
++    if "protomotions" not in sys.modules:
++        # Create the module hierarchy as simple namespace objects
++        import types
++        for name in [
++            "protomotions",
++            "protomotions.simulator",
++            "protomotions.simulator.base_simulator",
++            "protomotions.simulator.base_simulator.simulator_state",
++        ]:
++            if name not in sys.modules:
++                sys.modules[name] = types.ModuleType(name)
++        sys.modules[
++            "protomotions.simulator.base_simulator.simulator_state"
++        ].StateConversion = _StateConversion
++
++
++# ---------------------------------------------------------------------------
++# Bundled interpolation utilities (from protomotions)
++# ---------------------------------------------------------------------------
++
++
++def _slerp(q0, q1, t):
++    """Spherical linear interpolation between quaternions (PyTorch).
++
++    Args:
++        q0, q1: Quaternions [..., 4].
++        t: Blend factor [..., 1] where 0=q0, 1=q1.
++
++    Returns:
++        Interpolated quaternions, same shape.
++    """
++    import torch
++
++    cos_half_theta = torch.sum(q0 * q1, dim=-1)
++
++    neg_mask = cos_half_theta < 0
++    q1 = q1.clone()
++    q1[neg_mask] = -q1[neg_mask]
++    cos_half_theta = torch.abs(cos_half_theta)
++    cos_half_theta = torch.unsqueeze(cos_half_theta, dim=-1)
++
++    half_theta = torch.acos(cos_half_theta)
++    sin_half_theta = torch.sqrt(1.0 - cos_half_theta * cos_half_theta)
++
++    ratioA = torch.sin((1 - t) * half_theta) / sin_half_theta
++    ratioB = torch.sin(t * half_theta) / sin_half_theta
++
++    new_q = ratioA * q0 + ratioB * q1
++
++    new_q = torch.where(torch.abs(sin_half_theta) < 0.001, 0.5 * q0 + 0.5 * q1, new_q)
++    new_q = torch.where(torch.abs(cos_half_theta) >= 1, q0, new_q)
++
++    return new_q
++
++
++def _interpolate_pos(pos0, pos1, blend):
++    """Linear interpolation between position tensors."""
++    if pos1.dim() == 2:
++        blend = blend.unsqueeze(-1)
++    elif pos1.dim() == 3:
++        blend = blend.unsqueeze(-1).unsqueeze(-1)
++    else:
++        raise ValueError(f"pos1 has {pos1.dim()} dimensions, expected 2 or 3")
++    return (1.0 - blend) * pos0 + blend * pos1
++
++
++def _interpolate_quat(rot0, rot1, blend):
++    """SLERP between quaternion tensors."""
++    if rot1.dim() == 2:
++        blend = blend.unsqueeze(-1)
++    elif rot1.dim() == 3:
++        blend = blend.unsqueeze(-1).unsqueeze(-1)
++    else:
++        raise ValueError(f"rot1 has {rot1.dim()} dimensions, expected 2 or 3")
++    return _slerp(rot0, rot1, blend)
++
++
++def _calc_frame_blend(time, length, num_frames, dt):
++    """Calculate frame indices and blend factor for interpolation."""
++    import torch
++
++    phase = time / length
++    phase = torch.clip(phase, 0.0, 1.0)
++
++    frame_idx0 = (phase * (num_frames - 1)).long()
++    frame_idx1 = torch.min(frame_idx0 + 1, num_frames - 1)
++    blend = (time - frame_idx0 * dt) / dt
++
++    return frame_idx0, frame_idx1, blend
++
++
++# ---------------------------------------------------------------------------
++# MotionPlayer
++# ---------------------------------------------------------------------------
++
++
++class MotionPlayer:
++    """Lightweight player for a **single** motion clip at a fixed control rate.
++
++    Accepts three input formats (auto-detected):
++
++    1. **Single ``.motion`` file** -- a RobotState dict saved via
++       ``torch.save`` with keys ``fps``, ``dof_pos``, ``rigid_body_pos``, etc.
++    2. **Packaged ``.pt`` library** -- a multi-motion file with
++       ``length_starts``, ``gts``, ``grs``, ... keys.  You **must** pass
++       ``motion_index`` to select which clip to extract.
++    3. **Pre-resampled cache** -- written by :meth:`cache_to_file`, containing
++       NumPy arrays at the control rate.  Auto-detected by the presence of
++       a ``control_dt`` key.
++
++    Parameters
++    ----------
++    motion_file:
++        Path to any of the three formats above.
++    motion_index:
++        Index of the clip to extract from a packaged ``.pt`` library.
++        **Required** for packaged files, ignored for ``.motion`` and cache
++        files.
++    control_dt:
++        Control period in seconds (default 0.02 s = 50 Hz).  Determines the
++        resampling rate when loading raw motion data.  Ignored when loading
++        from a cache file (the cache stores its own dt).
++    """
++
++    def __init__(
++        self,
++        motion_file: str,
++        motion_index: int = 0,
++        control_dt: float = 0.02,
++    ):
++        import torch
++
++        _register_unpickle_stub()
++
++        self._torch = torch
++        motion_file = str(motion_file)
++        data = torch.load(motion_file, map_location="cpu", weights_only=False)
++
++        if _is_cache_file(data):
++            self._load_cache(data)
++        else:
++            self._load_raw(data, motion_index, control_dt)
++
++    # ------------------------------------------------------------------
++    # Public interface
++    # ------------------------------------------------------------------
++
++    @property
++    def total_frames(self) -> int:
++        """Total number of frames available at the control rate."""
++        return self._num_frames
++
++    @property
++    def num_bodies(self) -> int:
++        return self._body_rot.shape[1]
++
++    @property
++    def num_dofs(self) -> int:
++        return self._dof_pos.shape[1]
++
++    @property
++    def control_dt(self) -> float:
++        return self._control_dt
++
++    def get_state_at_frame(self, frame_idx: int) -> Dict[str, np.ndarray]:
++        """Return the motion state at *frame_idx*.
++
++        Frame index is clamped to ``[0, total_frames - 1]``.
++
++        Returns
++        -------
++        dict with keys ``dof_pos``, ``dof_vel``, ``body_rot``, ``body_pos``,
++        ``body_vel``, ``body_ang_vel``.  All arrays have no batch dimension.
++        """
++        idx = int(np.clip(frame_idx, 0, self._num_frames - 1))
++        return {
++            "dof_pos":      self._dof_pos[idx],
++            "dof_vel":      self._dof_vel[idx],
++            "body_rot":     self._body_rot[idx],
++            "body_pos":     self._body_pos[idx],
++            "body_vel":     self._body_vel[idx],
++            "body_ang_vel": self._body_ang_vel[idx],
++        }
++
++    def get_future_references(
++        self,
++        frame_idx: int,
++        step_indices: List[int],
++    ) -> Dict[str, np.ndarray]:
++        """Return stacked future motion states.
++
++        Each entry in *step_indices* is a positive 1-indexed offset (e.g.
++        ``step_indices=[1, 25]`` means ``frame_idx + 1`` and
++        ``frame_idx + 25``).  Future frames beyond the last available frame
++        are clamped to the last frame.
++
++        Returns
++        -------
++        dict with keys ``dof_pos``, ``dof_vel``, ``body_rot``, ``body_pos``,
++        ``body_vel``, ``body_ang_vel``.  Arrays have shape
++        ``[len(step_indices), ...]``.
++        """
++        future_states = [
++            self.get_state_at_frame(frame_idx + s) for s in step_indices
++        ]
++        return {
++            key: np.stack([s[key] for s in future_states], axis=0)
++            for key in _STATE_KEYS
++        }
++
++    def cache_to_file(self, output_path: str) -> None:
++        """Write a pre-resampled cache file at the current control rate.
++
++        The cache contains NumPy arrays (not tensors) so it can be loaded
++        without any PyTorch computation on subsequent runs.
++
++        Args:
++            output_path: Destination path, e.g. ``walk.50fps.pt``.
++        """
++        import torch
++
++        cache = {
++            "dof_pos":      self._dof_pos,
++            "dof_vel":      self._dof_vel,
++            "body_rot":     self._body_rot,
++            "body_pos":     self._body_pos,
++            "body_vel":     self._body_vel,
++            "body_ang_vel": self._body_ang_vel,
++            "control_dt":   self._control_dt,
++            "num_frames":   self._num_frames,
++        }
++        torch.save(cache, output_path)
++        print(
++            f"[MotionPlayer] Cached {self._num_frames} frames @ "
++            f"{1.0 / self._control_dt:.0f} Hz -> {output_path}"
++        )
++
++    # ------------------------------------------------------------------
++    # Private helpers
++    # ------------------------------------------------------------------
++
++    def _load_cache(self, data: dict) -> None:
++        """Load from a pre-resampled cache dict."""
++        self._dof_pos      = np.asarray(data["dof_pos"],      dtype=np.float32)
++        self._dof_vel      = np.asarray(data["dof_vel"],      dtype=np.float32)
++        self._body_rot     = np.asarray(data["body_rot"],     dtype=np.float32)
++        self._body_pos     = np.asarray(data["body_pos"],     dtype=np.float32)
++        self._body_vel     = np.asarray(data["body_vel"],     dtype=np.float32)
++        self._body_ang_vel = np.asarray(data["body_ang_vel"], dtype=np.float32)
++        self._control_dt   = float(data["control_dt"])
++        self._num_frames   = int(data["num_frames"])
++        self._cached = True
++        print(
++            f"[MotionPlayer] Loaded cache: {self._num_frames} frames "
++            f"@ {1.0 / self._control_dt:.0f} Hz"
++        )
++
++    def _load_raw(self, data: dict, motion_index: int, control_dt: float) -> None:
++        """Load from a raw ProtoMotions motion file and resample.
++
++        All interpolation code is bundled -- no protomotions install needed.
++        """
++        import torch
++
++        self._control_dt = control_dt
++        self._cached = False
++
++        if "length_starts" in data:
++            # ---- Multi-motion packaged library (.pt) ----
++            length_starts     = data["length_starts"]
++            motion_num_frames = data["motion_num_frames"]
++            motion_dt_all     = data["motion_dt"]
++
++            start  = int(length_starts[motion_index].item())
++            nf     = int(motion_num_frames[motion_index].item())
++            end    = start + nf
++            src_dt = float(motion_dt_all[motion_index].item())
++
++            gts  = data["gts"][start:end]
++            grs  = data["grs"][start:end]
++            gvs  = data["gvs"][start:end]
++            gavs = data["gavs"][start:end]
++            dps  = data["dps"][start:end]
++            dvs  = data["dvs"][start:end]
++            motion_length = src_dt * (nf - 1)
++
++        elif "rigid_body_pos" in data:
++            # ---- Single-motion file (.motion / .npy via torch.load) ----
++            fps    = float(data["fps"])
++            src_dt = 1.0 / fps
++
++            gts  = data["rigid_body_pos"]
++            grs  = data["rigid_body_rot"]
++            gvs  = data["rigid_body_vel"]
++            gavs = data["rigid_body_ang_vel"]
++            dps  = data["dof_pos"]
++            dvs  = data["dof_vel"]
++            nf   = gts.shape[0]
++            motion_length = src_dt * (nf - 1)
++        else:
++            raise ValueError(
++                "Unrecognised raw motion format.  Expected either:\n"
++                "  - packaged library: keys 'length_starts', 'gts', 'grs', ...\n"
++                "  - single-motion:   keys 'rigid_body_pos', 'fps', 'dof_pos', ..."
++            )
++
++        # ---- resample to control rate via training-identical interpolation ----
++        num_ctrl_frames = max(1, int(round(motion_length / control_dt)) + 1)
++        ctrl_times = torch.linspace(0.0, motion_length, num_ctrl_frames)
++
++        motion_len_t  = torch.tensor([motion_length])
++        num_frames_t  = torch.tensor([nf])
++        motion_dt_t   = torch.tensor([src_dt])
++
++        f0_list, f1_list, blend_list = [], [], []
++        for t in ctrl_times:
++            t_t = t.unsqueeze(0)
++            f0, f1, bl = _calc_frame_blend(t_t, motion_len_t, num_frames_t, motion_dt_t)
++            f0_list.append(f0)
++            f1_list.append(f1)
++            blend_list.append(bl)
++
++        f0    = torch.cat(f0_list)
++        f1    = torch.cat(f1_list)
++        blend = torch.cat(blend_list)
++
++        def _interp_pos(src):
++            s0 = src[f0]
++            s1 = src[f1]
++            return _interpolate_pos(s0, s1, blend)
++
++        def _interp_quat(src):
++            s0 = src[f0]
++            s1 = src[f1]
++            return _interpolate_quat(s0, s1, blend)
++
++        body_pos     = _interp_pos(gts)
++        body_rot     = _interp_quat(grs)
++        body_vel     = _interp_pos(gvs)
++        body_ang_vel = _interp_pos(gavs)
++        dof_pos      = _interp_pos(dps)
++        dof_vel      = _interp_pos(dvs)
++
++        self._dof_pos      = dof_pos.numpy().astype(np.float32)
++        self._dof_vel      = dof_vel.numpy().astype(np.float32)
++        self._body_rot     = body_rot.numpy().astype(np.float32)
++        self._body_pos     = body_pos.numpy().astype(np.float32)
++        self._body_vel     = body_vel.numpy().astype(np.float32)
++        self._body_ang_vel = body_ang_vel.numpy().astype(np.float32)
++        self._num_frames   = num_ctrl_frames
++
++        print(
++            f"[MotionPlayer] Loaded raw motion #{motion_index}: "
++            f"{nf} source frames @ {1.0 / src_dt:.1f} Hz -> "
++            f"{num_ctrl_frames} resampled frames @ {1.0 / control_dt:.0f} Hz"
++        )
+diff --git a/robojudo/policy/protomotions_utils/state_utils.py b/robojudo/policy/protomotions_utils/state_utils.py
+new file mode 100644
+index 0000000..bbd6347
+--- /dev/null
++++ b/robojudo/policy/protomotions_utils/state_utils.py
+@@ -0,0 +1,163 @@
++"""State derivation utilities for deployment (bundled from ProtoMotions).
++
++These functions bridge the gap between raw simulator state and the derived
++inputs the ONNX model expects.
++
++Quaternion convention: All functions use **xyzw** (ProtoMotions convention).
++MuJoCo provides quaternions in **wxyz** format; use ``mujoco_wxyz_to_xyzw``
++to convert at the read boundary.
++
++Original source: https://github.com/NVlabs/ProtoMotions (deployment/state_utils.py)
++"""
++
++from __future__ import annotations
++
++import numpy as np
++
++__all__ = [
++    "mujoco_wxyz_to_xyzw",
++    "compute_anchor_rot_np",
++    "compute_root_local_ang_vel_np",
++    "compute_yaw_offset_np",
++    "apply_heading_offset_np",
++]
++
++
++# ---------------------------------------------------------------------------
++# NumPy helpers (no PyTorch required)
++# ---------------------------------------------------------------------------
++
++
++def mujoco_wxyz_to_xyzw(wxyz: np.ndarray) -> np.ndarray:
++    """Convert a MuJoCo quaternion (wxyz) to ProtoMotions xyzw convention."""
++    return wxyz[..., [1, 2, 3, 0]]
++
++
++def compute_anchor_rot_np(
++    rigid_body_rot: np.ndarray,
++    anchor_body_index: int,
++) -> np.ndarray:
++    """Extract the anchor body's orientation from the full body-rotation array.
++
++    Args:
++        rigid_body_rot: Body orientations, shape ``[num_bodies, 4]`` (xyzw).
++        anchor_body_index: 0-based index of the anchor body.
++
++    Returns:
++        Anchor body orientation, shape ``[4,]`` (xyzw).
++    """
++    return rigid_body_rot[anchor_body_index]
++
++
++def compute_root_local_ang_vel_np(
++    rigid_body_rot: np.ndarray,
++    rigid_body_ang_vel: np.ndarray,
++    root_body_index: int = 0,
++) -> np.ndarray:
++    """Convert root angular velocity from WORLD frame to LOCAL frame (NumPy).
++
++    USE THIS ONLY when your source angular velocity is in WORLD frame
++    (e.g., MuJoCo ``data.cvel[body+1, 0:3]``).
++
++    DO NOT USE when your source is already in LOCAL frame:
++    - MuJoCo ``data.qvel[3:6]`` for a free joint is already local-frame.
++    - Real robot IMU gyroscope reads in body-local frame.
++
++    Args:
++        rigid_body_rot: Body orientations, shape ``[num_bodies, 4]`` (xyzw).
++        rigid_body_ang_vel: Body angular velocities, shape
++            ``[num_bodies, 3]`` (**world frame**).
++        root_body_index: 0-based index of the root body (default 0 = pelvis).
++
++    Returns:
++        Root angular velocity in local frame, shape ``[3,]``.
++    """
++    root_rot = rigid_body_rot[root_body_index]
++    root_ang_vel = rigid_body_ang_vel[root_body_index]
++    return _quat_rotate_inverse_np(root_rot, root_ang_vel)
++
++
++def _quat_rotate_inverse_np(q_xyzw: np.ndarray, v: np.ndarray) -> np.ndarray:
++    """Rotate vector ``v`` by the inverse of quaternion ``q`` (pure NumPy, xyzw)."""
++    q_w = q_xyzw[3]
++    q_vec = q_xyzw[:3]
++    a = v * (2.0 * q_w ** 2 - 1.0)
++    b = np.cross(q_vec, v) * q_w * 2.0
++    c = q_vec * np.dot(q_vec, v) * 2.0
++    return a - b + c
++
++
++# ---------------------------------------------------------------------------
++# Heading alignment (NumPy) -- for real-robot deployment
++# ---------------------------------------------------------------------------
++
++
++def _extract_yaw_quat_np(q_xyzw: np.ndarray) -> np.ndarray:
++    """Extract the yaw-only quaternion from a full orientation (xyzw)."""
++    x, y, z, w = q_xyzw[0], q_xyzw[1], q_xyzw[2], q_xyzw[3]
++    yaw = np.arctan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
++    half = yaw * 0.5
++    return np.array([0.0, 0.0, np.sin(half), np.cos(half)], dtype=np.float32)
++
++
++def _quat_mul_np(a_xyzw: np.ndarray, b_xyzw: np.ndarray) -> np.ndarray:
++    """Hamilton product of two xyzw quaternions (pure NumPy)."""
++    ax, ay, az, aw = a_xyzw[..., 0], a_xyzw[..., 1], a_xyzw[..., 2], a_xyzw[..., 3]
++    bx, by, bz, bw = b_xyzw[..., 0], b_xyzw[..., 1], b_xyzw[..., 2], b_xyzw[..., 3]
++    return np.stack([
++        aw * bx + ax * bw + ay * bz - az * by,
++        aw * by - ax * bz + ay * bw + az * bx,
++        aw * bz + ax * by - ay * bx + az * bw,
++        aw * bw - ax * bx - ay * by - az * bz,
++    ], axis=-1).astype(np.float32)
++
++
++def _quat_conjugate_np(q_xyzw: np.ndarray) -> np.ndarray:
++    """Conjugate (inverse for unit quats) of an xyzw quaternion."""
++    result = q_xyzw.copy()
++    result[..., :3] *= -1.0
++    return result
++
++
++def compute_yaw_offset_np(
++    robot_quat_xyzw: np.ndarray,
++    motion_quat_xyzw: np.ndarray,
++) -> np.ndarray:
++    """Compute a yaw-only heading offset between robot and motion frames.
++
++    Returns a quaternion ``R_offset`` such that::
++
++        R_offset * motion_body_rot ~ aligned_body_rot
++
++    where ``aligned_body_rot`` is in the robot's heading frame.
++
++    Args:
++        robot_quat_xyzw:  Robot anchor body orientation at t=0, ``[4,]`` (xyzw).
++        motion_quat_xyzw: Motion anchor body orientation at frame 0, ``[4,]`` (xyzw).
++
++    Returns:
++        Yaw-only offset quaternion ``[4,]`` (xyzw).
++    """
++    robot_yaw = _extract_yaw_quat_np(robot_quat_xyzw)
++    motion_yaw = _extract_yaw_quat_np(motion_quat_xyzw)
++    return _quat_mul_np(robot_yaw, _quat_conjugate_np(motion_yaw))
++
++
++def apply_heading_offset_np(
++    offset_quat_xyzw: np.ndarray,
++    body_rots_xyzw: np.ndarray,
++) -> np.ndarray:
++    """Apply a heading offset to an array of body rotations.
++
++    Args:
++        offset_quat_xyzw: Yaw-only offset ``[4,]`` (xyzw).
++        body_rots_xyzw: Body rotations, shape ``[..., 4]`` (xyzw).
++
++    Returns:
++        Aligned body rotations, same shape as input.
++    """
++    original_shape = body_rots_xyzw.shape
++    flat = body_rots_xyzw.reshape(-1, 4)
++    offset_broadcast = np.broadcast_to(offset_quat_xyzw, flat.shape)
++    aligned = _quat_mul_np(offset_broadcast, flat)
++    return aligned.reshape(original_shape)
 diff --git a/scripts/run_pipeline.py b/scripts/run_pipeline.py
-index 7959c29..b61e16b 100644
+index d0cfc3e..b61e16b 100644
 --- a/scripts/run_pipeline.py
 +++ b/scripts/run_pipeline.py
 @@ -13,6 +13,7 @@ import robojudo.pipeline
@@ -1975,10 +1581,28 @@ index 7959c29..b61e16b 100644
  
  logger = logging.getLogger("robojudo")
  
-@@ -44,6 +45,28 @@ def parse_args():
-         default=None,
-         help="Index of motion clip within a multi-motion .pt library",
+@@ -26,6 +27,46 @@ def parse_args():
+         default="g1",
+         help="Name of the config class to use",
      )
++    parser.add_argument(
++        "--onnx-path",
++        type=str,
++        default=None,
++        help="Path to the ONNX policy file (overrides config)",
++    )
++    parser.add_argument(
++        "--motion-path",
++        type=str,
++        default=None,
++        help="Path to the motion file (overrides config)",
++    )
++    parser.add_argument(
++        "--motion-index",
++        type=int,
++        default=None,
++        help="Index of motion clip within a multi-motion .pt library",
++    )
 +    parser.add_argument(
 +        "--simulate-deploy",
 +        action="store_true",
@@ -2004,7 +1628,22 @@ index 7959c29..b61e16b 100644
      args = parser.parse_args()
      return args
  
-@@ -70,12 +93,67 @@ def main():
+@@ -37,6 +78,14 @@ def main():
+ 
+     cfg: RlPipelineCfg = config_manager.get_cfg()
+ 
++    # Override policy paths from CLI arguments
++    if args.onnx_path is not None and hasattr(cfg, "policy"):
++        cfg.policy.onnx_path = args.onnx_path
++    if args.motion_path is not None and hasattr(cfg, "policy"):
++        cfg.policy.motion_path = args.motion_path
++    if args.motion_index is not None and hasattr(cfg, "policy"):
++        cfg.policy.motion_index = args.motion_index
++
+     pipeline_type = cfg.pipeline_type
+ 
+     pipeline_class: type[RlPipeline] = getattr(robojudo.pipeline, pipeline_type)
+@@ -44,12 +93,67 @@ def main():
  
      pipeline = pipeline_class(cfg=cfg)
  
@@ -2075,177 +1714,6 @@ index 7959c29..b61e16b 100644
          time_end = time.time()
          time_diff = time_end - time_start
  
--- 
-2.43.0
-
-
-From 13f193798e8c96c76894c617f805e9eb9280138b Mon Sep 17 00:00:00 2001
-From: Chen Tessler <ctessler@nvidia.com>
-Date: Mon, 9 Mar 2026 16:10:37 -0700
-Subject: [PATCH 16/16] fix virtual gantry: match holosoma approach with root
- displacement + rest length
-
-- Compute displacement from root body (pelvis), apply force at shoulders
-- Add rest length (5cm slack) so spring only engages on larger drops
-- Reduce gains (k=2000, c=400) to avoid extreme accelerations
-- Eliminates competing torques from independent shoulder anchors
-
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
-Signed-off-by: Chen Tessler <ctessler@nvidia.com>
----
- robojudo/environment/mujoco_env.py | 111 ++++++++++++++++++-----------
- 1 file changed, 68 insertions(+), 43 deletions(-)
-
-diff --git a/robojudo/environment/mujoco_env.py b/robojudo/environment/mujoco_env.py
-index 0864981..0442581 100644
---- a/robojudo/environment/mujoco_env.py
-+++ b/robojudo/environment/mujoco_env.py
-@@ -54,28 +54,43 @@ class MujocoEnv(Environment):
- 
-         self._apply_random_heading()
- 
--        # Virtual gantry: spring-damper that holds the robot near an anchor.
--        # Attaches to the highest-priority body found (upper body preferred
--        # so the robot hangs upright, like a real gantry).
-+        # Virtual gantry: spring-damper harness.
-+        # Displacement is computed from the ROOT body (pelvis / free joint).
-+        # Force is applied at the attachment bodies (shoulders preferred).
-+        # A rest length provides slack so the spring only engages on large drops.
-         self._gantry_enabled = False
--        self._gantry_anchor = None  # target position [3]
--        self._gantry_stiffness = 10000.0  # N/m — stiff enough to support ~50 kg
--        self._gantry_damping = 1000.0  # Ns/m — near-critical damping
--        _gantry_body_priority = [
--            "torso_link", "torso", "base_link", "pelvis", "Trunk", "Waist", "base",
-+        self._gantry_anchor = None  # target position (from root body) [3]
-+        self._gantry_stiffness = 2000.0  # N/m
-+        self._gantry_damping = 400.0  # Ns/m
-+        self._gantry_rest_length = 0.05  # meters of slack before spring engages
-+
-+        # Root body (pelvis) — used for displacement computation.
-+        self._gantry_root_id = mujoco.mj_name2id(  # pyright: ignore[reportAttributeAccessIssue]
-+            self.model, mujoco.mjtObj.mjOBJ_BODY, "pelvis"
-+        )
-+
-+        # Attachment bodies — where force is applied.
-+        _gantry_body_sets = [
-+            ["left_shoulder_pitch_link", "right_shoulder_pitch_link"],
-+            ["torso_link"],
-+            ["pelvis"],
-         ]
--        self._gantry_body_id = -1
--        for name in _gantry_body_priority:
--            bid = mujoco.mj_name2id(  # pyright: ignore[reportAttributeAccessIssue]
--                self.model, mujoco.mjtObj.mjOBJ_BODY, name
--            )
--            if bid >= 0:
--                self._gantry_body_id = bid
--                self._gantry_body_name = name
-+        self._gantry_body_ids = []
-+        self._gantry_body_names = []
-+        for body_set in _gantry_body_sets:
-+            bids = []
-+            for name in body_set:
-+                bid = mujoco.mj_name2id(  # pyright: ignore[reportAttributeAccessIssue]
-+                    self.model, mujoco.mjtObj.mjOBJ_BODY, name
-+                )
-+                if bid >= 0:
-+                    bids.append(bid)
-+            if len(bids) == len(body_set):
-+                self._gantry_body_ids = bids
-+                self._gantry_body_names = body_set
-                 break
--        if self._gantry_body_id < 0:
--            logger.warning("Virtual gantry: no suitable body found, gantry disabled")
--            self._gantry_body_name = None
-+        if not self._gantry_body_ids:
-+            logger.warning("Virtual gantry: no suitable bodies found, gantry disabled")
- 
-         self.update()  # get initial state
- 
-@@ -93,48 +108,58 @@ class MujocoEnv(Environment):
-         self.data.qpos[6] = c * q[3] + s * q[0]
- 
-     def enable_gantry(self):
--        """Attach a spring-damper to the gantry body at its current position."""
--        if self._gantry_body_id < 0:
--            logger.warning("No gantry body — skipping enable")
-+        """Attach gantry at the root body's current position."""
-+        if not self._gantry_body_ids:
-+            logger.warning("No gantry bodies — skipping enable")
-             return
--        # xpos holds world-frame positions for each body after mj_forward.
--        self._gantry_anchor = self.data.xpos[self._gantry_body_id].copy()
-+        # Anchor is the root body (pelvis) position — displacement computed from here.
-+        self._gantry_anchor = self.data.xpos[self._gantry_root_id].copy()
-         self._gantry_enabled = True
-         logger.info(
--            f"Virtual gantry enabled on '{self._gantry_body_name}' "
--            f"at {self._gantry_anchor} "
--            f"(k={self._gantry_stiffness}, c={self._gantry_damping})"
-+            f"Virtual gantry enabled: root=pelvis, apply={self._gantry_body_names}, "
-+            f"anchor={self._gantry_anchor.round(3).tolist()}, "
-+            f"k={self._gantry_stiffness}, c={self._gantry_damping}, "
-+            f"rest_len={self._gantry_rest_length}"
-         )
- 
-     def disable_gantry(self):
--        """Release the root body to free dynamics."""
-+        """Release all gantry bodies to free dynamics."""
-         self._gantry_enabled = False
--        # Clear any residual applied force.
--        self.data.xfrc_applied[self._gantry_body_id, :] = 0.0
-+        for bid in self._gantry_body_ids:
-+            self.data.xfrc_applied[bid, :] = 0.0
-         logger.info("Virtual gantry disabled")
- 
-     def _apply_gantry_force(self):
--        """Compute and apply spring-damper force on the gantry body."""
--        bid = self._gantry_body_id
--        pos = self.data.xpos[bid]  # world-frame position of the body
--        # cvel is [ang(3), lin(3)] in world frame for each body.
--        vel = self.data.cvel[bid, 3:]  # linear velocity
-+        """Compute spring-damper force from ROOT displacement, apply at attachment bodies.
- 
--        dx = self._gantry_anchor - pos
-+        Like holosoma: displacement and velocity are read from the root body (pelvis).
-+        The resulting force is split equally across the attachment bodies (shoulders).
-+        A rest length provides slack — the spring only engages beyond that distance.
-+        """
-+        # Compute displacement from root body to anchor.
-+        root_pos = self.data.xpos[self._gantry_root_id]
-+        root_vel = self.data.cvel[self._gantry_root_id, 3:]  # linear velocity
-+
-+        dx = self._gantry_anchor - root_pos
-         distance = np.linalg.norm(dx)
-+
-         if distance < 1e-8:
--            # Already at anchor — just apply damping.
--            force = -self._gantry_damping * vel
-+            force = -self._gantry_damping * root_vel
-         else:
-             direction = dx / distance
--            v_radial = np.dot(vel, direction)
-+            v_radial = np.dot(root_vel, direction)
-+            # Spring only engages beyond rest length (slack).
-+            stretch = max(distance - self._gantry_rest_length, 0.0)
-             force = (
--                self._gantry_stiffness * distance - self._gantry_damping * v_radial
-+                self._gantry_stiffness * stretch - self._gantry_damping * v_radial
-             ) * direction
- 
--        # xfrc_applied is [fx, fy, fz, tx, ty, tz] in world frame.
--        self.data.xfrc_applied[bid, :3] = force
--        self.data.xfrc_applied[bid, 3:] = 0.0
-+        # Split force equally across attachment bodies.
-+        n = len(self._gantry_body_ids)
-+        per_body_force = force / n
-+        for bid in self._gantry_body_ids:
-+            self.data.xfrc_applied[bid, :3] = per_body_force
-+            self.data.xfrc_applied[bid, 3:] = 0.0
- 
-     def reborn(self, init_qpos=None):
-         if init_qpos is not None:
 -- 
 2.43.0
 
