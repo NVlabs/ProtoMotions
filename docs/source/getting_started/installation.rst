@@ -1,7 +1,7 @@
 Installation
 ============
 
-ProtoMotions supports four simulation backends: IsaacGym, IsaacLab, Genesis, and Newton. 
+ProtoMotions supports five simulation backends: IsaacGym, IsaacLab, Genesis, Newton, and MuJoCo. 
 You can install the simulation of your choice, and the simulation backend is selected via the configuration file.
 
 **Tested Versions:**
@@ -9,16 +9,17 @@ You can install the simulation of your choice, and the simulation backend is sel
 .. raw:: html
 
    <p>
-     <a href="https://github.com/newton-physics/newton/commit/8a2abf2"><img src="https://img.shields.io/badge/Newton-8a2abf2-brightgreen.svg" alt="Newton"></a>
+     <a href="https://github.com/newton-physics/newton/commit/e7a737c"><img src="https://img.shields.io/badge/Newton-e7a737c-brightgreen.svg" alt="Newton"></a>
      <a href="https://github.com/isaac-sim/IsaacLab/releases/tag/v2.3.0"><img src="https://img.shields.io/badge/IsaacLab-2.3.0-blue.svg" alt="IsaacLab"></a>
      <a href="https://developer.nvidia.com/isaac-gym"><img src="https://img.shields.io/badge/IsaacGym-Preview_4-blue.svg" alt="IsaacGym"></a>
      <a href="https://github.com/Genesis-Embodied-AI/Genesis"><img src="https://img.shields.io/badge/Genesis-untested-lightgrey.svg" alt="Genesis"></a>
+     <a href="https://github.com/google-deepmind/mujoco"><img src="https://img.shields.io/badge/MuJoCo-3.0+-orange.svg" alt="MuJoCo"></a>
    </p>
 
 .. note::
 
    We recommend creating a **separate virtual environment** for each simulator to avoid dependency conflicts.
-   We recommend using **conda** or **venv** for IsaacGym and Genesis, and **uv** for IsaacLab and Newton.
+   We recommend using **conda** or **venv** for IsaacGym, Genesis, and MuJoCo, and **uv** for IsaacLab and Newton.
 
 Prerequisites
 -------------
@@ -145,6 +146,46 @@ For full installation details, see the `Newton Installation Guide <https://newto
 
       uv pip install -e /path/to/protomotions
       uv pip install -r /path/to/protomotions/requirements_newton.txt
+
+MuJoCo (CPU-only)
+~~~~~~~~~~~~~~~~~
+
+MuJoCo is a CPU-only backend for quick testing and debugging without GPU. It supports single environment only (``num_envs=1``).
+
+**Requirements**: Python 3.10+, No GPU required
+
+1. Create a conda environment:
+
+   .. code-block:: bash
+
+      conda create -n protomotions_mujoco python=3.10
+      conda activate protomotions_mujoco
+
+2. Install PyTorch CPU version (lighter, no CUDA needed):
+
+   .. code-block:: bash
+
+      pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+3. Install ProtoMotions and dependencies:
+
+   .. code-block:: bash
+
+      pip install -e /path/to/protomotions
+      pip install -r /path/to/protomotions/requirements_mujoco.txt
+
+4. Run inference with MuJoCo:
+
+   .. code-block:: bash
+
+      python protomotions/inference_agent.py \
+        --checkpoint results/experiment/last.ckpt \
+        --simulator mujoco \
+        --num-envs 1
+
+.. note::
+
+   MuJoCo backend is intended for quick policy validation and debugging. For training or large-scale evaluation, use GPU-accelerated backends (IsaacGym, IsaacLab, Newton, Genesis).
 
 Troubleshooting
 ---------------

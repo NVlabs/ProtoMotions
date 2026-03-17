@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,9 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+import logging
+
 import torch
 
 import isaaclab.sim as sim_utils
+
+log = logging.getLogger(__name__)
 from isaaclab.scene import InteractiveScene
 from isaaclab.sim import SimulationContext, PhysxCfg
 from isaaclab.markers import VisualizationMarkers as IsaacLabVisualizationMarkers
@@ -44,6 +48,7 @@ from protomotions.simulator.base_simulator.config import (
     MarkerState,
     VisualizationMarkerConfig,
     SimBodyOrdering,
+    ProjectileConfig,
 )
 from protomotions.simulator.base_simulator.simulator_state import (
     RobotState,
@@ -111,6 +116,9 @@ class IsaacLabSimulator(Simulator):
         self._sim = SimulationContext(sim_cfg)
         self._sim.set_camera_view([2.5, 0.0, 4.0], [0.0, 0.0, 2.0])
 
+        # Pre-create projectile config (needed before _init_projectiles runs)
+        self._proj_config = ProjectileConfig()
+
         scene_cfg = self._get_scene_cfg()
 
         self._scene = InteractiveScene(scene_cfg)
@@ -144,6 +152,11 @@ class IsaacLabSimulator(Simulator):
                     )
                 else:
                     self._object_contact_sensor.append(None)
+        # Retrieve projectile rigid objects from scene
+        self._projectile_objects = []
+        for proj_idx in range(self._proj_config.num_projectiles):
+            self._projectile_objects.append(self._scene[f"projectile_{proj_idx}"])
+
         if self._visualization_markers:
             self._build_markers(self._visualization_markers)
         self._sim.reset()
@@ -166,6 +179,7 @@ class IsaacLabSimulator(Simulator):
             env_spacing=2.0,
             scene_cfgs=scene_cfgs,
             terrain=self.terrain,
+            projectile_config=self._proj_config,
             replicate_physics=scene_cfgs
             is None,  # When there are objects, disable physics replication
         )
@@ -298,7 +312,7 @@ class IsaacLabSimulator(Simulator):
         self.keyboard_interface.add_callback(";", self._cancel_video_record)
         self.keyboard_interface.add_callback("Q", self.close)
         self.keyboard_interface.add_callback("O", self._toggle_camera_target)
-        self.keyboard_interface.add_callback("J", self._push_robot)
+        self.keyboard_interface.add_callback("J", self._throw_projectile)
         self.keyboard_interface.add_callback("M", self._toggle_markers)
 
         # Register custom key handlers for keys 1-0
@@ -789,6 +803,56 @@ class IsaacLabSimulator(Simulator):
         new_vel[:, :3] += linear_velocity
         new_vel[:, 3:6] += angular_velocity
         self._robot.write_root_velocity_to_sim(new_vel, env_ids=env_ids)
+
+    # =====================================================
+    # Projectile Implementation
+    # =====================================================
+    def _get_projectile_positions_rotations(self) -> tuple:
+        """Return projectile (positions, rotations_xyzw) from IsaacLab rigid objects."""
+        n_proj = self._proj_config.num_projectiles
+        pos_list = []
+        rot_list = []
+        for pid in range(n_proj):
+            state = self._projectile_objects[pid].data.root_state_w
+            pos_list.append(state[:, 0:3])
+            rot_wxyz = state[:, 3:7]
+            rot_xyzw = torch.cat([rot_wxyz[:, 1:4], rot_wxyz[:, 0:1]], dim=-1)
+            rot_list.append(rot_xyzw)
+        return torch.stack(pos_list, dim=1), torch.stack(rot_list, dim=1)
+
+    def _create_projectiles(self, config: ProjectileConfig) -> None:
+        """Projectile objects are created via SceneCfg during __init__."""
+        # Already created via SceneCfg -> projectile_{idx} RigidObjectCfg entries
+        pass
+
+    def _set_projectile_root_states(
+        self,
+        proj_indices: torch.Tensor,
+        positions: torch.Tensor,
+        rotations_xyzw: torch.Tensor,
+        velocities: torch.Tensor,
+        ang_velocities: torch.Tensor,
+        env_ids: torch.Tensor,
+    ) -> None:
+        """Set root state for specific projectiles via per-object write API."""
+        # IsaacLab uses wxyz quaternion format
+        rot_wxyz = rotations_xyzw[:, [3, 0, 1, 2]]
+
+        for pid in proj_indices.unique():
+            mask = proj_indices == pid
+            eids = env_ids[mask]
+            state = torch.cat(
+                [
+                    positions[mask],
+                    rot_wxyz[mask],
+                    velocities[mask],
+                    ang_velocities[mask],
+                ],
+                dim=-1,
+            )
+            self._projectile_objects[pid.item()].write_root_state_to_sim(
+                state, env_ids=eids
+            )
 
     # =====================================================
     # Group 6: Rendering & Visualization

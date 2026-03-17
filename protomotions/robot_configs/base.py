@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,14 +35,17 @@ Key Features:
 
 from dataclasses import dataclass, field
 from protomotions.components.pose_lib import ControlInfo, KinematicInfo
+from protomotions.simulator.base_simulator.config import RobotNoiseConfig
 from protomotions.simulator.isaacgym.config import IsaacGymSimParams
 from protomotions.simulator.isaaclab.config import IsaacLabSimParams
 from protomotions.simulator.genesis.config import GenesisSimParams
 from protomotions.simulator.newton.config import NewtonSimParams
+from protomotions.simulator.mujoco.config import MujocoSimParams
 
 from typing import List, Optional, Dict, Union
 from enum import Enum
 import os
+import re
 import torch
 
 
@@ -52,6 +55,7 @@ class SimulatorParams:
     isaaclab: IsaacLabSimParams = field(default_factory=IsaacLabSimParams)
     genesis: GenesisSimParams = field(default_factory=GenesisSimParams)
     newton: NewtonSimParams = field(default_factory=NewtonSimParams)
+    mujoco: MujocoSimParams = field(default_factory=MujocoSimParams)
 
 
 @dataclass
@@ -130,14 +134,6 @@ class ControlConfig:
 
     # Can be "built_in_pd" or "proportional"/"velocity"/"torque" for Proportional, Velocity, Torque control
     control_type: ControlType = ControlType.BUILT_IN_PD
-    # If control_type is proportional, this defines the scale beyond the pd-range.
-    # so that motor does not lose strength as it approaches the joint limits
-    # ref. build_pd_action_offset_scale()
-    action_scale: float = 1.0
-
-    # clamps the actions to be within [-clamp_actions, clamp_actions]
-    # the clamped actions are provided to the simulator
-    clamp_actions: float = 1.0
 
     # the positional limits used for rewards
     soft_pos_limit: float = 0.9
@@ -166,6 +162,7 @@ class ControlConfig:
                 mjcf_path=os.path.join(asset.asset_root, asset.asset_file_name),
                 override_control_info=self.override_control_info,
             )
+
 
 @dataclass
 class RobotConfig:
@@ -199,8 +196,11 @@ class RobotConfig:
     )
 
     default_root_height: float = 1
-    default_dof_pos: Optional[Union[List[float], torch.Tensor]] = (
-        None  # Default joint positions for resets (if None, uses zeros)
+    default_dof_pos: Optional[Union[List[float], torch.Tensor, Dict[str, float]]] = (
+        None  # Default joint positions for resets (if None, uses zeros).
+        # Can be a Dict[str, float] mapping regex patterns to values (e.g.,
+        # {".*_knee_joint": 0.669}). Patterns are resolved against dof_names
+        # in __post_init__. Unmatched DOFs default to 0.0.
     )
 
     contact_bodies: Optional[Union[List[str], str]] = (
@@ -210,6 +210,7 @@ class RobotConfig:
 
     non_termination_contact_bodies: Union[List[str], str] = "all"
     init_state: Optional[InitState] = None
+    reset_noise: Optional[RobotNoiseConfig] = None
     mimic_small_marker_bodies: Optional[List[str]] = None
 
     # Anchor body for observations/rewards (None defaults to root body at index 0)
@@ -261,6 +262,14 @@ class RobotConfig:
             self.default_dof_pos = torch.zeros(
                 self.kinematic_info.num_dofs, dtype=torch.float32
             )
+        elif isinstance(self.default_dof_pos, dict):
+            # Resolve regex pattern dict to tensor
+            dof_pos = torch.zeros(self.kinematic_info.num_dofs, dtype=torch.float32)
+            for pattern, value in self.default_dof_pos.items():
+                for i, name in enumerate(self.kinematic_info.dof_names):
+                    if re.fullmatch(pattern, name):
+                        dof_pos[i] = value
+            self.default_dof_pos = dof_pos
         else:
             # Convert to tensor if needed and validate
             if not isinstance(self.default_dof_pos, torch.Tensor):

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,7 +20,11 @@ import torch
 import numpy as np
 
 if TYPE_CHECKING:
-    from protomotions.components.terrains.config import TerrainSimConfig, TerrainConfig, CombineMode
+    from protomotions.components.terrains.config import (
+        TerrainSimConfig,
+        TerrainConfig,
+        CombineMode,
+    )
     from protomotions.simulator.base_simulator.config import (
         FrictionDomainRandomizationConfig,
         SimulatorConfig,
@@ -70,11 +74,8 @@ def build_motion_data(
     # Concatenate recorded frames for each field
     for field_name, frame_list in recorded_motion.items():
         if len(frame_list) > 0 and field_name in field_mapping:
-            # Concatenate along dim 0 (time dimension)
-            # Each frame has shape [num_envs, ...], we take only env 0
-            stacked = torch.stack(
-                [frame[0:1] for frame in frame_list], dim=0
-            ).squeeze(1)
+            # Each frame is already single-env: [num_bodies, 3] or [num_dofs]
+            stacked = torch.stack(frame_list, dim=0)
             motion_data[field_mapping[field_name]] = stacked
 
     num_frames = motion_data["rigid_body_pos"].shape[0]
@@ -108,59 +109,6 @@ def build_motion_data(
         motion_data["rigid_body_contacts"] = motion_data["rigid_body_contacts"].bool()
 
     return motion_data
-
-
-def build_pd_action_offset_scale(
-    hinge_axes_map, dof_limits_lower, dof_limits_upper, action_scale, device
-):
-    sorted_body_ids = list(hinge_axes_map.keys())
-    sorted_body_ids.sort()
-
-    lim_low = dof_limits_lower.cpu().numpy()
-    lim_high = dof_limits_upper.cpu().numpy()
-
-    dof_offset = 0
-
-    for body_id in sorted_body_ids:
-        dof_size = len(hinge_axes_map[body_id])
-
-        if dof_size == 3:
-            curr_low = lim_low[dof_offset : (dof_offset + dof_size)]
-            curr_high = lim_high[dof_offset : (dof_offset + dof_size)]
-            curr_low = np.max(np.abs(curr_low))
-            curr_high = np.max(np.abs(curr_high))
-            curr_scale = max([curr_low, curr_high])
-            curr_scale = 2 * action_scale * curr_scale
-            curr_scale = min([curr_scale, np.pi])
-
-            lim_low[dof_offset : (dof_offset + dof_size)] = -curr_scale
-            lim_high[dof_offset : (dof_offset + dof_size)] = curr_scale
-
-        elif dof_size == 1:
-            curr_low = lim_low[dof_offset]
-            curr_high = lim_high[dof_offset]
-            curr_mid = 0.5 * (curr_high + curr_low)
-
-            # extend the action range to be a bit beyond the joint limits so that the motors
-            # don't lose their strength as they approach the joint limits
-            curr_scale = action_scale * (curr_high - curr_low)
-            curr_low = curr_mid - curr_scale
-            curr_high = curr_mid + curr_scale
-
-            lim_low[dof_offset] = curr_low
-            lim_high[dof_offset] = curr_high
-
-        else:
-            raise ValueError(f"Invalid dof size: {dof_size}")
-
-        dof_offset += dof_size
-
-    pd_action_offset = 0.5 * (lim_high + lim_low)
-    pd_action_scale = 0.5 * (lim_high - lim_low)
-    pd_action_offset = torch.tensor(pd_action_offset, device=device)
-    pd_action_scale = torch.tensor(pd_action_scale, device=device)
-
-    return pd_action_offset, pd_action_scale
 
 
 def convert_friction_for_combine_mode(

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -57,16 +57,16 @@ AppLauncher = import_simulator_before_torch(args.simulator)
 # Now safe to import everything else including torch
 from protomotions.simulator.base_simulator.config import SimulatorConfig  # noqa: E402
 from protomotions.envs.base_env.env import BaseEnv  # noqa: E402
-from protomotions.envs.base_env.config import EnvConfig, RewardComponentConfig  # noqa: E402
+from protomotions.envs.base_env.config import EnvConfig  # noqa: E402
 from protomotions.envs.motion_manager.config import MimicMotionManagerConfig  # noqa: E402
-from protomotions.envs.obs.observation_component import ObservationComponentConfig  # noqa: E402
 from protomotions.envs.control.mimic_control import MimicControlConfig  # noqa: E402
-from protomotions.envs.obs import (  # noqa: E402
+from protomotions.envs.component_factories import (  # noqa: E402
     max_coords_obs_factory,
     previous_actions_factory,
     mimic_target_poses_max_coords_factory,
+    mimic_tracking_rewards_factory,
+    action_smoothness_factory,
 )
-from protomotions.envs.rewards import mean_squared_error_exp, rotation_error_exp, norm  # noqa: E402
 from protomotions.components.motion_lib import MotionLibConfig  # noqa: E402
 from protomotions.components.scene_lib import SceneLibConfig  # noqa: E402
 from protomotions.components.terrains.config import TerrainConfig  # noqa: E402
@@ -146,11 +146,10 @@ observation_components = {
     # Current robot state observation
     "max_coords_obs": max_coords_obs_factory(),
     # Previous actions for temporal awareness
-    "previous_actions": previous_actions_factory(),
+    "previous_actions": previous_actions_factory(history_steps=1),
     # Mimic target poses - reference motion for policy to track
     "mimic_target_poses": mimic_target_poses_max_coords_factory(
         with_velocities=True,
-        num_future_steps=1,
     ),
 }
 print("\nObservation Components:")
@@ -159,55 +158,28 @@ print("  - 'previous_actions': Action history for temporal awareness")
 print("  - 'mimic_target_poses': Reference poses from motion library")
 
 # Reward configuration - tracking rewards for imitation learning
+# Uses factory functions that return pre-configured MdpComponent instances
 reward_components = {
-    "action_smoothness": RewardComponentConfig(
-        function=norm,
-        variables={"x": "current_actions - previous_actions"},
-        weight=-0.02,
-    ),
-    "position_tracking": RewardComponentConfig(
-        function=mean_squared_error_exp,
-        variables={
-            "x": "current_state_rigid_body_pos",
-            "ref_x": "ref_state_rigid_body_pos",
-            "coefficient": -100.0,
-        },
-        weight=0.5,
-    ),
-    "rotation_tracking": RewardComponentConfig(
-        function=rotation_error_exp,
-        variables={
-            "q": "current_state_rigid_body_rot",
-            "ref_q": "ref_state_rigid_body_rot",
-            "coefficient": -5.0,
-        },
-        weight=0.3,
-    ),
-    "velocity_tracking": RewardComponentConfig(
-        function=mean_squared_error_exp,
-        variables={
-            "x": "current_state_rigid_body_vel",
-            "ref_x": "ref_state_rigid_body_vel",
-            "coefficient": -0.5,
-        },
-        weight=0.1,
-    ),
-    "angular_velocity_tracking": RewardComponentConfig(
-        function=mean_squared_error_exp,
-        variables={
-            "x": "current_state_rigid_body_ang_vel",
-            "ref_x": "ref_state_rigid_body_ang_vel",
-            "coefficient": -0.1,
-        },
-        weight=0.1,
+    "action_smoothness": action_smoothness_factory(weight=-0.02),
+    # Use the mimic_tracking_rewards_factory bundle for standard tracking rewards
+    **mimic_tracking_rewards_factory(
+        gt_weight=0.5,   # Position tracking
+        gr_weight=0.3,   # Rotation tracking
+        gv_weight=0.1,   # Velocity tracking
+        gav_weight=0.1,  # Angular velocity tracking
+        rh_weight=0.0,   # Root height (disabled)
+        gt_coef=-100.0,  # Position coefficient
+        gr_coef=-5.0,    # Rotation coefficient
+        gv_coef=-0.5,    # Velocity coefficient
+        gav_coef=-0.1,   # Angular velocity coefficient
     ),
 }
 print("\nReward Components:")
 print("  - 'action_smoothness': Penalize jerky actions")
-print("  - 'position_tracking': Match reference body positions")
-print("  - 'rotation_tracking': Match reference body rotations")
-print("  - 'velocity_tracking': Match reference velocities")
-print("  - 'angular_velocity_tracking': Match reference angular velocities")
+print("  - 'gt_rew': Match reference body positions")
+print("  - 'gr_rew': Match reference body rotations")
+print("  - 'gv_rew': Match reference velocities")
+print("  - 'gav_rew': Match reference angular velocities")
 
 
 # Motion sampling configuration - for kinematic playback, use demo mode
@@ -262,6 +234,7 @@ scene = Scene(objects=[chair], humanoid_motion_id=0)
 # Create environment configuration with modular components
 env_config = EnvConfig(
     max_episode_length=300,  # Shorter episodes for training
+    num_state_history_steps=2,  # Required for previous_actions and action_smoothness
     # Modular components replace old-style config classes
     control_components=control_components,
     observation_components=observation_components,
@@ -411,17 +384,14 @@ print("  ; - cancel recording")
 print("  O - toggle camera target")
 print("  Q - close simulator")
 
+actions = torch.empty(env.num_envs, robot_cfg.number_of_actions, device=device)
+
 try:
     step_count = 0
     done_indices = None
     while True:
-        # reset if Done
         _ = env.reset(done_indices)
-
-        # Generate random actions (in real training, these would come from a policy)
-        actions = torch.randn(env.num_envs, robot_cfg.number_of_actions, device=device)
-
-        # Step the environment
+        actions.normal_()
         obs, rewards, dones, terminated, infos = env.step(actions)
         done_indices = dones.nonzero(as_tuple=False).squeeze(-1)
 

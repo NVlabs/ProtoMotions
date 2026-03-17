@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -308,16 +308,11 @@ def main():
     print("  O - toggle camera target")
     print("  Q - close simulator")
 
+    actions = torch.zeros(env.num_envs, robot_config.number_of_actions, device=device)
+
     try:
         step_count = 0
         while env.is_simulation_running():
-            # In kinematic playback mode, actions are ignored
-            # The environment will automatically follow the reference motion
-            actions = torch.zeros(
-                env.num_envs, robot_config.number_of_actions, device=device
-            )
-
-            # Step the environment
             obs, rewards, dones, terminated, infos = env.step(actions)
 
             step_count += 1

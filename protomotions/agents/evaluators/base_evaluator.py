@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,145 +20,40 @@ metrics during training and evaluation. Evaluators run periodic assessments of
 agent performance and compute task-specific metrics.
 
 Key Classes:
-    - BaseEvaluator: Base class for all evaluators
-    - SmoothnessMetricPlugin: Plugin for computing motion smoothness metrics
+    - BaseEvaluator: Base class for all evaluators with hook-based customization
 
 Key Features:
     - Periodic evaluation during training
-    - Motion quality metrics computation
+    - Hook pattern for subclass customization (4 hooks: start, reset_kwargs, check, step)
+    - MdpComponent-based evaluation with threshold failure detection
+    - Aggregate metrics via plugin system (see aggregate_metrics.py)
     - Episode statistics aggregation
-    - Smoothness and jerk analysis
     - Distributed evaluation support
+    
+Note:
+    Aggregate metric plugins (SmoothnessAggregateMetric, ActionSmoothnessAggregateMetric)
+    are defined in aggregate_metrics.py and compute post-hoc statistics over
+    accumulated MotionMetrics trajectories.
 """
 
+import logging
+import numpy as np
 import torch
+from torch import Tensor
 from typing import Dict, Optional, Tuple, Any
 from lightning.fabric import Fabric
+
 from protomotions.agents.evaluators.metrics import MotionMetrics
-from protomotions.agents.evaluators.smoothness_evaluator import SmoothnessEvaluator
 from protomotions.envs.base_env.env import BaseEnv
+from protomotions.envs.component_manager import ComponentManager
+from protomotions.envs.base_env.utils import combine_evaluation
 from protomotions.agents.evaluators.config import EvaluatorConfig
+from protomotions.agents.evaluators.aggregate_metrics import (
+    SmoothnessAggregateMetric,
+    ActionSmoothnessAggregateMetric,
+)
 
-
-class SmoothnessMetricPlugin:
-    """Plugin for computing smoothness metrics from motion data."""
-
-    def __init__(
-        self, evaluator, window_sec: float = 0.4, high_jerk_threshold: float = 6500.0
-    ):
-        """
-        Initialize the smoothness metric plugin.
-
-        Args:
-            evaluator: The parent evaluator instance
-            window_sec: Window size in seconds for smoothness computation
-            high_jerk_threshold: Threshold for classifying high jerk frames
-        """
-        self.smoothness_evaluator = SmoothnessEvaluator(
-            device=evaluator.device,
-            dt=evaluator.env.dt,
-            window_sec=window_sec,
-            high_jerk_threshold=high_jerk_threshold,
-        )
-        self.num_bodies = evaluator.env.robot_config.kinematic_info.num_bodies
-
-    def compute(self, metrics: Dict[str, MotionMetrics]) -> Dict[str, float]:
-        """
-        Compute smoothness metrics from collected motion data.
-
-        Args:
-            metrics: Dictionary of MotionMetrics
-
-        Returns:
-            Dictionary of smoothness metrics with "eval/" prefix
-        """
-        smoothness_metrics = self.smoothness_evaluator.compute_smoothness_metrics(
-            metrics, self.num_bodies
-        )
-
-        # Add logging for each smoothness metric
-        result = {}
-        for k, v in smoothness_metrics.items():
-            print(f"Smoothness metric: {k}, value: {v}")
-            result[f"eval/{k}"] = v
-
-        return result
-
-
-class ActionSmoothnessMetricPlugin:
-    """Plugin for computing action smoothness metrics.
-    
-    Measures how much actions change between consecutive timesteps.
-    High action deltas indicate jerky/unstable control.
-    """
-
-    def __init__(self, evaluator, dt: float = None):
-        """
-        Initialize the action smoothness metric plugin.
-
-        Args:
-            evaluator: The parent evaluator instance
-            dt: Simulation timestep (defaults to env.dt)
-        """
-        self.dt = dt if dt is not None else evaluator.env.dt
-        self.device = evaluator.device
-
-    def compute(self, metrics: Dict[str, MotionMetrics]) -> Dict[str, float]:
-        """
-        Compute action smoothness metrics from collected action data.
-
-        Metrics computed:
-        - action_delta_mean: Mean absolute action change per step (rad)
-        - action_delta_max: Max absolute action change per step across all joints (rad)
-        - action_rate_mean: Mean action rate of change (rad/s)
-
-        Args:
-            metrics: Dictionary of MotionMetrics (must contain "actions")
-
-        Returns:
-            Dictionary of action smoothness metrics with "eval/" prefix
-        """
-        if "actions" not in metrics:
-            return {}
-
-        actions_data = metrics["actions"].data  # [num_motions, max_frames, num_dofs]
-        motion_lens = metrics["actions"].motion_lens  # [num_motions]
-        
-        result = {}
-        all_deltas = []
-        all_max_deltas = []
-        
-        num_motions = actions_data.shape[0]
-        for m in range(num_motions):
-            n_frames = int(motion_lens[m].item())
-            if n_frames < 2:
-                continue
-            
-            actions_m = actions_data[m, :n_frames]  # [n_frames, num_dofs]
-            # Compute action deltas between consecutive frames
-            deltas = (actions_m[1:] - actions_m[:-1]).abs()  # [n_frames-1, num_dofs]
-            
-            # Mean delta across all joints and frames
-            all_deltas.append(deltas.mean().item())
-            # Max delta per frame, then mean across frames
-            all_max_deltas.append(deltas.max(dim=-1)[0].mean().item())
-        
-        if all_deltas:
-            mean_delta = sum(all_deltas) / len(all_deltas)
-            mean_max_delta = sum(all_max_deltas) / len(all_max_deltas)
-            
-            result["eval/action_delta_mean_rad"] = mean_delta
-            result["eval/action_delta_max_rad"] = mean_max_delta
-            result["eval/action_rate_mean_rad_s"] = mean_delta / self.dt
-            
-            # Convert to degrees for readability
-            result["eval/action_delta_mean_deg"] = mean_delta * 180 / 3.14159
-            result["eval/action_delta_max_deg"] = mean_max_delta * 180 / 3.14159
-            
-            print(f"Action smoothness: mean_delta={mean_delta:.4f} rad ({mean_delta * 180 / 3.14159:.2f}°), "
-                  f"max_delta={mean_max_delta:.4f} rad ({mean_max_delta * 180 / 3.14159:.2f}°)")
-        
-        return result
+log = logging.getLogger(__name__)
 
 
 class BaseEvaluator:
@@ -190,12 +85,20 @@ class BaseEvaluator:
         self.fabric = fabric
         self.config = config
 
-        # Plugin system for additional metrics
         self.metric_plugins = []
         self._register_plugins()
-
-        # Counter for tracking evaluation calls
         self.eval_count = 0
+
+        self._component_manager: Optional[ComponentManager] = None
+        self._motion_failed: Optional[Tensor] = None
+        self._per_component_failures: Dict[str, Tensor] = {}
+        self._component_value_sum: Dict[str, Tensor] = {}
+        self._component_value_min: Dict[str, Tensor] = {}
+        self._component_value_max: Dict[str, Tensor] = {}
+        self._component_step_count: Dict[str, Tensor] = {}
+        
+        # Instance state for metrics collection during evaluation
+        self._metrics: Optional[Dict] = None
 
     @property
     def device(self) -> torch.device:
@@ -223,66 +126,217 @@ class BaseEvaluator:
                 - Dict of evaluation metrics for logging
                 - Optional score value for determining best model
         """
+        if not self.config.evaluation_components:
+            return {}, None
+
         self.agent.eval()
+        self._metrics = self.initialize_eval()
+        if self._metrics is None:
+            return {}, None
 
-        # Initialize metrics and prepare evaluation context
-        metrics = self.initialize_eval()
-        if not metrics:
-            return {}, 0
-
-        # Run evaluation
-        self.run_evaluation(metrics)
-
-        # Process evaluation results
-        evaluation_log, evaluated_score = self.process_eval_results(metrics)
-
-        # Cleanup after evaluation
+        self.run_evaluation()
+        evaluation_log, evaluated_score = self.process_eval_results()
         self.cleanup_after_evaluation()
-
-        # Increment eval counter
         self.eval_count += 1
 
         return evaluation_log, evaluated_score
 
-    def initialize_eval(self) -> Tuple[Dict, Dict]:
-        """
-        Initialize metrics dictionary with required keys.
-        Prepare the evaluation context.
+    @property
+    def num_envs(self) -> int:
+        """Number of environments (from agent)."""
+        return self.agent.num_envs
 
+    @property
+    def max_eval_steps(self) -> int:
+        """Maximum steps per evaluation episode."""
+        return self.config.max_eval_steps
+
+    def initialize_eval(self) -> Dict:
+        """Initialize evaluation tracking."""
+        self._init_eval_component_buffers(self.num_envs)
+        return {}
+
+    def run_evaluation(self) -> None:
+        """Run the evaluation process."""
+        env_ids = torch.arange(self.num_envs, device=self.device)
+        self.evaluate_episode(env_ids, self.max_eval_steps)
+
+    def evaluate_episode(self, env_ids: Tensor, max_steps: int) -> None:
+        """Run a single episode batch.
+        
+        Subclasses customize behavior via 4 hooks:
+        - _on_episode_start: pre-reset setup
+        - _get_reset_kwargs: customize env.reset() call
+        - _check_eval_components: per-step evaluation component checking
+        - _on_episode_step: per-step data collection
+        
+        Args:
+            env_ids: Environment IDs to evaluate [num_envs]
+            max_steps: Maximum steps for this episode
+        """
+        self._on_episode_start(env_ids)
+        
+        obs, _ = self.env.reset(env_ids, **self._get_reset_kwargs())
+        obs = self.agent.add_agent_info_to_obs(obs)
+        obs_td = self.agent.obs_dict_to_tensordict(obs)
+        
+        for step_idx in range(max_steps):
+            model_outs = self.agent.model(obs_td)
+            actions = model_outs.get("mean_action", model_outs.get("action"))
+            
+            obs, rewards, dones, terminated, extras = self.env.step(actions)
+            obs = self.agent.add_agent_info_to_obs(obs)
+            obs_td = self.agent.obs_dict_to_tensordict(obs)
+            
+            self._check_eval_components(env_ids, step_idx)
+            self._on_episode_step(env_ids, extras, actions)
+
+    def _on_episode_start(self, env_ids: Tensor) -> None:
+        """Hook called before episode reset. Override in subclasses for pre-reset setup.
+        
+        Args:
+            env_ids: Environment IDs about to be reset
+        """
+        pass
+
+    def _get_reset_kwargs(self) -> dict:
+        """Hook to provide extra kwargs for env.reset(). Override in subclasses.
+        
         Returns:
-            Tuple containing metrics dict and evaluation context dict
+            Dictionary of kwargs passed to env.reset()
         """
         return {}
 
-    def run_evaluation(self, metrics: Dict) -> None:
-        """
-        Run the evaluation process and collect metrics.
-
+    def _check_eval_components(self, env_ids: Tensor, step_idx: int) -> None:
+        """Hook for per-step evaluation component checking. Override in subclasses.
+        
+        Default behavior: check all env_ids, mapping env_ids to eval_ids 1:1.
+        Subclasses can filter env_ids (e.g., skip finished motion clips) and
+        provide custom env-to-eval-ID mapping.
+        
         Args:
-            metrics: Dictionary to collect evaluation metrics
+            env_ids: Environment IDs active this step
+            step_idx: Current step index in the episode
         """
-        raise NotImplementedError("Run evaluation not implemented for base evaluator.")
+        self._check_evaluation_failures(env_ids, env_ids)
 
-    def process_eval_results(
-        self, metrics: Dict, eval_context: Dict
-    ) -> Tuple[Dict, Optional[float]]:
-        """
-        Process collected metrics and prepare for logging.
-
+    def _on_episode_step(self, env_ids: Tensor, extras: Dict, actions: Tensor) -> None:
+        """Hook called after each step. Override in subclasses to collect metrics.
+        
         Args:
-            metrics: Dictionary of collected metrics
-            eval_context: Dictionary containing evaluation context
-
-        Returns:
-            Tuple containing:
-                - Dict of processed metrics for logging
-                - Optional score value for determining best model
+            env_ids: Environment IDs active this step
+            extras: Extra data from env.step()
+            actions: Actions taken this step
         """
-        return {}, None
+        pass
+
+    def process_eval_results(self) -> Tuple[Dict, Optional[float]]:
+        """Process collected metrics and prepare for logging."""
+        to_log = {}
+
+        if self._motion_failed is not None:
+            success_rate = 1.0 - self._motion_failed.float().mean().item()
+            to_log["eval/success_rate"] = success_rate
+
+            for name, component in self.config.evaluation_components.items():
+                threshold = component.static_params.get("threshold", None)
+                if threshold is not None:
+                    failure_rate = self._per_component_failures[name].float().mean().item()
+                    to_log[f"eval/{name}/failure_rate"] = failure_rate
+
+            for name in self._component_value_sum.keys():
+                step_count = self._component_step_count[name].float()
+                valid = step_count > 0
+
+                if valid.any():
+                    mean_per_motion = self._component_value_sum[name] / step_count.clamp(min=1)
+                    to_log[f"eval/{name}/mean"] = mean_per_motion[valid].mean().item()
+                    to_log[f"eval/{name}/max"] = self._component_value_max[name][valid].max().item()
+                    to_log[f"eval/{name}/min"] = self._component_value_min[name][valid].min().item()
+
+            return to_log, success_rate
+
+        return to_log, None
 
     def cleanup_after_evaluation(self) -> None:
-        """Clean up after evaluation (reset env state, etc.)"""
-        pass
+        """Clean up after evaluation."""
+        self._metrics = None
+        self._motion_failed = None
+        self._per_component_failures = {}
+        self._component_value_sum = {}
+        self._component_value_min = {}
+        self._component_value_max = {}
+        self._component_step_count = {}
+        self._component_manager = None
+
+    def _init_eval_component_buffers(self, num_eval_ids: int) -> None:
+        """Initialize per-component failure and value accumulators for this evaluation run."""
+        if not self.config.evaluation_components:
+            return
+
+        self._motion_failed = torch.zeros(num_eval_ids, dtype=torch.bool, device=self.device)
+        self._per_component_failures = {
+            name: torch.zeros(num_eval_ids, dtype=torch.bool, device=self.device)
+            for name in self.config.evaluation_components.keys()
+        }
+        self._component_value_sum = {
+            name: torch.zeros(num_eval_ids, device=self.device)
+            for name in self.config.evaluation_components.keys()
+        }
+        self._component_value_min = {
+            name: torch.full((num_eval_ids,), float('inf'), device=self.device)
+            for name in self.config.evaluation_components.keys()
+        }
+        self._component_value_max = {
+            name: torch.full((num_eval_ids,), float('-inf'), device=self.device)
+            for name in self.config.evaluation_components.keys()
+        }
+        self._component_step_count = {
+            name: torch.zeros(num_eval_ids, dtype=torch.long, device=self.device)
+            for name in self.config.evaluation_components.keys()
+        }
+
+        self._component_manager = ComponentManager(self.device)
+
+    def _check_evaluation_failures(
+        self,
+        active_env_ids: Tensor,
+        active_motion_ids: Tensor,
+    ) -> None:
+        """Check evaluation components and accumulate values/failures for active motions."""
+        if self._component_manager is None:
+            return
+
+        raw_values = self._component_manager.execute_all(
+            self.config.evaluation_components, self.env.context
+        )
+        failed_buf, component_values, component_failures = combine_evaluation(
+            raw_values=raw_values,
+            configs=self.config.evaluation_components,
+            num_envs=self.agent.num_envs,
+            device=self.device,
+        )
+
+        # Vectorized update of motion failures
+        active_failed = failed_buf[active_env_ids]
+        self._motion_failed[active_motion_ids] = self._motion_failed[active_motion_ids] | active_failed
+
+        for name, failures in component_failures.items():
+            active_failures = failures[active_env_ids]
+            self._per_component_failures[name][active_motion_ids] = (
+                self._per_component_failures[name][active_motion_ids] | active_failures
+            )
+
+        for name, values in component_values.items():
+            active_vals = values[active_env_ids]
+            self._component_value_sum[name][active_motion_ids] += active_vals
+            self._component_value_min[name][active_motion_ids] = torch.minimum(
+                self._component_value_min[name][active_motion_ids], active_vals
+            )
+            self._component_value_max[name][active_motion_ids] = torch.maximum(
+                self._component_value_max[name][active_motion_ids], active_vals
+            )
+            self._component_step_count[name][active_motion_ids] += 1
 
     def _create_base_metrics(
         self,
@@ -345,8 +399,8 @@ class BaseEvaluator:
                     num_sub_features=shape[0],
                     device=self.device,
                 )
-        except Exception as e:
-            print(f"Warning: Could not add robot state metrics: {e}")
+        except (AttributeError, KeyError, IndexError) as e:
+            log.warning("Could not add robot state metrics: %s", e)
 
     def _register_plugins(self) -> None:
         """Register metric computation plugins. Override in subclasses."""
@@ -356,7 +410,7 @@ class BaseEvaluator:
         self, window_sec: float = 0.4, high_jerk_threshold: float = 6500.0
     ) -> bool:
         """
-        Convenience method to register smoothness metric plugin.
+        Convenience method to register smoothness aggregate metric.
 
         Args:
             window_sec: Window size in seconds for smoothness computation
@@ -367,16 +421,16 @@ class BaseEvaluator:
         """
         try:
             self.metric_plugins.append(
-                SmoothnessMetricPlugin(self, window_sec, high_jerk_threshold)
+                SmoothnessAggregateMetric(self, window_sec, high_jerk_threshold)
             )
             return True
         except ValueError as e:
-            print(f"Skipping smoothness plugin: {e}")
+            log.warning("Skipping smoothness plugin: %s", e)
             return False
 
     def _register_action_smoothness_plugin(self) -> bool:
         """
-        Convenience method to register action smoothness metric plugin.
+        Convenience method to register action smoothness aggregate metric.
 
         Measures how much actions change between consecutive timesteps.
 
@@ -384,10 +438,10 @@ class BaseEvaluator:
             True if plugin was registered successfully, False otherwise
         """
         try:
-            self.metric_plugins.append(ActionSmoothnessMetricPlugin(self))
+            self.metric_plugins.append(ActionSmoothnessAggregateMetric(self))
             return True
-        except Exception as e:
-            print(f"Skipping action smoothness plugin: {e}")
+        except (ValueError, TypeError) as e:
+            log.warning("Skipping action smoothness plugin: %s", e)
             return False
 
     def _compute_additional_metrics(
@@ -408,7 +462,7 @@ class BaseEvaluator:
                 plugin_metrics = plugin.compute(metrics)
                 additional_metrics.update(plugin_metrics)
             except Exception as e:
-                print(f"Warning: Plugin {plugin.__class__.__name__} failed: {e}")
+                log.warning("Plugin %s failed: %s", plugin.__class__.__name__, e)
         return additional_metrics
 
     def _gen_metrics(
@@ -487,7 +541,6 @@ class BaseEvaluator:
         """
         try:
             import matplotlib.pyplot as plt
-            import numpy as np
         except ImportError:
             print("matplotlib not available, skipping plotting")
             return
@@ -563,38 +616,49 @@ class BaseEvaluator:
 
     def simple_test_policy(self, collect_metrics: bool = False) -> None:
         """
-        Simple evaluation loop for testing the policy.
+        Simple evaluation loop for interactive testing.
+
+        Runs policy indefinitely, collecting running average of metrics.
+        Press Ctrl+C to stop and print summary.
 
         Args:
-            collect_metrics: whether to collect metrics during evaluation
+            collect_metrics: If True, collect and print average metrics on exit.
         """
         self.agent.eval()
-        done_indices = None  # Force reset on first entry
+        done_indices = None
         step = 0
-        print("Evaluating policy...")
 
+        # Running averages for metrics
+        metric_sums: Dict[str, float] = {}
+        metric_counts: Dict[str, int] = {}
+
+        print("Evaluating policy... (Ctrl+C to stop)")
         try:
             while True:
                 obs, _ = self.env.reset(done_indices)
                 obs = self.agent.add_agent_info_to_obs(obs)
                 obs_td = self.agent.obs_dict_to_tensordict(obs)
 
-                # Obtain actor predictions
                 model_outs = self.agent.model(obs_td)
+                action = model_outs.get("mean_action", model_outs["action"])
 
-                if "mean_action" in model_outs:
-                    actions = model_outs["mean_action"]
-                else:
-                    actions = model_outs["action"]
-
-                # Step the environment
-                obs, rewards, dones, terminated, extras = self.env.step(actions)
+                obs, rewards, dones, terminated, extras = self.env.step(action)
                 obs = self.agent.add_agent_info_to_obs(obs)
                 obs_td = self.agent.obs_dict_to_tensordict(obs)
+
+                # Accumulate metrics
+                if collect_metrics and "eval_values" in extras:
+                    for k, v in extras["eval_values"].items():
+                        val = v.mean().item()
+                        metric_sums[k] = metric_sums.get(k, 0.0) + val
+                        metric_counts[k] = metric_counts.get(k, 0) + 1
 
                 done_indices = dones.nonzero(as_tuple=False).squeeze(-1)
                 step += 1
         except KeyboardInterrupt:
-            print("\nEvaluation interrupted by Ctrl+C, exiting...")
-
-        return None
+            print(f"\nStopped after {step} steps.")
+            if collect_metrics and metric_counts:
+                print("Average metrics:")
+                for k in sorted(metric_counts.keys()):
+                    avg = metric_sums[k] / metric_counts[k]
+                    print(f"  {k}: {avg:.4f}")

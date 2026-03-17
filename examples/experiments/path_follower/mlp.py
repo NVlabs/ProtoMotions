@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -55,11 +55,24 @@ def motion_lib_config(args: argparse.Namespace):
 def env_config(
     robot_cfg: RobotConfig, args: argparse.Namespace
 ) -> EnvConfig:
-    """Build environment configuration (training defaults)."""
+    """Build environment configuration (training defaults).
+    
+    Uses MdpComponent-based component configuration with explicit context bindings:
+        MdpComponent(compute_func=compute_fn, dynamic_vars={...}, static_params={...})
+    """
     from protomotions.envs.utils.path_generator import PathGeneratorConfig
-    from protomotions.envs.obs import max_coords_obs_factory, historical_max_coords_obs_factory, path_obs_factory
     from protomotions.envs.control.path_follower_control import PathFollowerControlConfig
-    from protomotions.envs.rewards import path_following_reward_factory
+    from protomotions.envs.context_views import EnvContext
+    from protomotions.envs.mdp_component import MdpComponent
+    from protomotions.envs.component_factories import (
+        max_coords_obs_factory,
+        historical_max_coords_obs_factory,
+    )
+    
+    # Import compute kernels for path-specific components
+    from protomotions.envs.obs import compute_path_obs
+    from protomotions.envs.rewards import compute_path_following_rew
+    from protomotions.envs.action import make_pd_action_config
 
     # Control components - path follower manages path generation
     control_components = {
@@ -77,17 +90,41 @@ def env_config(
     # Observation components configuration
     observation_components = {
         # Humanoid self-observations (current state)
-        "max_coords_obs": max_coords_obs_factory(),
+        "max_coords_obs": max_coords_obs_factory(
+            local_obs=True,
+            root_height_obs=True,
+            observe_contacts=False,
+        ),
         # Historical observations for AMP discriminator (from StateHistoryBuffer)
-        "historical_max_coords_obs": historical_max_coords_obs_factory(),
-        # Path observation (from control component context)
-        "path": path_obs_factory(),
+        "historical_max_coords_obs": historical_max_coords_obs_factory(
+            local_obs=True,
+            root_height_obs=True,
+            observe_contacts=False,
+        ),
+        # Path observation (from control component context) - path-specific, kept as MdpComponent
+        "path": MdpComponent(
+            compute_func=compute_path_obs,
+            dynamic_vars={
+                "root_rot": EnvContext.current.root_rot,
+                "head_pos": EnvContext.path.head_pos,
+                "traj_samples": EnvContext.path.traj_samples,
+                "height_conditioned": EnvContext.path.height_conditioned,
+            },
+        ),
     }
 
     # Reward configuration using the reward component system
     reward_components = {
-        # Primary path following reward - distance to target
-        "path_rew": path_following_reward_factory(weight=1.0),
+        # Primary path following reward - distance to target (path-specific, kept as MdpComponent)
+        "path_rew": MdpComponent(
+            compute_func=compute_path_following_rew,
+            dynamic_vars={
+                "head_pos": EnvContext.path.head_pos,
+                "tar_pos": EnvContext.path.tar_pos,
+                "height_conditioned": EnvContext.path.height_conditioned,
+            },
+            static_params={"weight": 1.0, "pos_err_scale": 2.0, "height_err_scale": 10.0},
+        ),
     }
 
     env_cfg = EnvConfig(
@@ -96,6 +133,7 @@ def env_config(
         control_components=control_components,
         observation_components=observation_components,
         reward_components=reward_components,
+        action_config=make_pd_action_config(robot_cfg),
     )
 
     return env_cfg
@@ -114,7 +152,9 @@ def agent_config(
         DiscriminatorConfig,
         AMPParametersConfig,
     )
-    from protomotions.envs.obs import historical_max_coords_ref_obs_factory
+    from protomotions.envs.obs import compute_historical_max_coords_from_motion_lib
+    from protomotions.agents.evaluators.config import EvaluatorConfig
+    from protomotions.envs.component_factories import path_distance_error_factory
 
     # For path following with AMP: actor/critic get path obs, discriminator uses historical body state
     actor_config = PPOActorConfig(
@@ -132,7 +172,6 @@ def agent_config(
                 MLPLayerConfig(units=1024, activation="relu"),
                 MLPLayerConfig(units=512, activation="relu"),
             ],
-            output_activation="tanh",
         ),
     )
 
@@ -187,8 +226,22 @@ def agent_config(
     )
 
     # Reference observation components for discriminator expert data
+    # Agent injects motion_lib/motion_ids/motion_times/dt at runtime (not in EnvContext)
+    from protomotions.envs.mdp_component import MdpComponent
+    
     reference_obs_components = {
-        "historical_max_coords_obs": historical_max_coords_ref_obs_factory(),
+        "historical_max_coords_obs": MdpComponent(
+            compute_func=compute_historical_max_coords_from_motion_lib,
+            dynamic_vars={},  # All parameters injected by agent
+            static_params={"history_steps": 8},  # Matches num_state_history_steps
+        ),
+    }
+
+    evaluation_components = {
+        "path_distance": path_distance_error_factory(
+            threshold=0.5,
+            min_progress=10,
+        ),
     }
 
     agent_cfg = AMPAgentConfig(
@@ -214,6 +267,10 @@ def agent_config(
         amp_parameters=AMPParametersConfig(
             discriminator_reward_threshold=0.02,
             discriminator_reward_w=0.5,
+        ),
+        evaluator=EvaluatorConfig(
+            evaluation_components=evaluation_components,
+            max_eval_steps=300,
         ),
     )
     return agent_cfg

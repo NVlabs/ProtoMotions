@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,6 +25,7 @@ from protomotions.simulator.base_simulator.config import (
     VisualizationMarkerConfig,
     SimBodyOrdering,
     SimulatorConfig,
+    ProjectileConfig,
 )
 from protomotions.simulator.base_simulator.simulator_state import (
     RobotState,
@@ -36,9 +37,13 @@ from protomotions.simulator.base_simulator.simulator_state import (
 from protomotions.components.scene_lib import SceneLib
 from protomotions.components.terrains.terrain import Terrain
 
+import logging
+
 import genesis as gs
 import numpy as np
 import matplotlib.pyplot as plt
+
+log = logging.getLogger(__name__)
 
 
 class GenesisSimulator(Simulator):
@@ -412,8 +417,37 @@ class GenesisSimulator(Simulator):
         current_ang_vel = self._robot.get_dofs_velocity([3, 4, 5])[env_ids]
         new_lin_vel = current_lin_vel + linear_velocity
         new_ang_vel = current_ang_vel + angular_velocity
-        self._robot.set_dofs_velocity(new_lin_vel, dofs_idx_local=[0, 1, 2], envs_idx=env_ids)
-        self._robot.set_dofs_velocity(new_ang_vel, dofs_idx_local=[3, 4, 5], envs_idx=env_ids)
+        self._robot.set_dofs_velocity(
+            new_lin_vel, dofs_idx_local=[0, 1, 2], envs_idx=env_ids
+        )
+        self._robot.set_dofs_velocity(
+            new_ang_vel, dofs_idx_local=[3, 4, 5], envs_idx=env_ids
+        )
+
+    # ===== Group 5b: Projectile Methods =====
+    def _get_projectile_positions_rotations(self) -> tuple:
+        """No-op: projectiles not supported in Genesis. Returns zeros."""
+        n_proj = self._proj_config.num_projectiles
+        pos = torch.zeros(self.num_envs, n_proj, 3, device=self.device)
+        rot = torch.zeros(self.num_envs, n_proj, 4, device=self.device)
+        rot[..., 3] = 1.0  # identity quaternion xyzw
+        return pos, rot
+
+    def _create_projectiles(self, config: ProjectileConfig) -> None:
+        """Projectiles not implemented for Genesis simulator."""
+        log.warning("Projectiles not implemented for Genesis simulator")
+
+    def _set_projectile_root_states(
+        self,
+        proj_indices: torch.Tensor,
+        positions: torch.Tensor,
+        rotations_xyzw: torch.Tensor,
+        velocities: torch.Tensor,
+        ang_velocities: torch.Tensor,
+        env_ids: torch.Tensor,
+    ) -> None:
+        """No-op: projectiles not supported in Genesis."""
+        pass
 
     # ===== Group 6: Rendering & Visualization =====
     def _init_camera(self) -> None:

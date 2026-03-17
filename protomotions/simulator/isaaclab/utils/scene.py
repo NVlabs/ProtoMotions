@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,6 +26,7 @@ from isaaclab.terrains.terrain_importer_cfg import TerrainImporterCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from protomotions.simulator.isaaclab.utils.usd_utils import TrimeshTerrainImporter
 from protomotions.simulator.isaaclab.config import IsaacLabSimulatorConfig
+from protomotions.simulator.base_simulator.config import ProjectileConfig
 from protomotions.robot_configs.base import ControlType
 
 
@@ -48,6 +49,7 @@ class SceneCfg(InteractiveSceneCfg):
         robot_config: RobotConfig,
         terrain: Optional[Terrain] = None,
         scene_cfgs=None,
+        projectile_config: Optional[ProjectileConfig] = None,
         pretty=False,
         *args,
         **kwargs,
@@ -104,6 +106,36 @@ class SceneCfg(InteractiveSceneCfg):
                         history_length=config.sim.decimation,
                     )
                     setattr(self, f"object_{obj_idx}_contact_sensor", object_sensor_cfg)
+
+        # Projectile rigid objects (always created, independent of scene objects)
+        if projectile_config is not None:
+            proj_sizes = projectile_config.get_sizes()
+            for proj_idx in range(projectile_config.num_projectiles):
+                s = proj_sizes[proj_idx]
+                proj_cfg = RigidObjectCfg(
+                    prim_path=f"/World/envs/env_.*/Projectile_{proj_idx}",
+                    spawn=sim_utils.CuboidCfg(
+                        size=(s * 2, s * 2, s * 2),
+                        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                            kinematic_enabled=False,
+                            enable_gyroscopic_forces=True,
+                        ),
+                        mass_props=sim_utils.MassPropertiesCfg(
+                            density=projectile_config.density
+                        ),
+                        collision_props=sim_utils.CollisionPropertiesCfg(
+                            contact_offset=0.02,
+                            rest_offset=0.0,
+                        ),
+                        visual_material=sim_utils.PreviewSurfaceCfg(
+                            diffuse_color=(0.8, 0.1, 0.1)
+                        ),
+                    ),
+                    init_state=RigidObjectCfg.InitialStateCfg(
+                        pos=(0.0, 0.0, projectile_config.hide_z)
+                    ),
+                )
+                setattr(self, f"projectile_{proj_idx}", proj_cfg)
 
         actuators = {}
         ActuatorConfig = (

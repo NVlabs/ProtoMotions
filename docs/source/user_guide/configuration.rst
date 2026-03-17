@@ -214,40 +214,49 @@ For simple code changes which breaks old models,
 you can also add to backward compatibility fixes in 
 ``apply_backward_compatibility_fixes()`` in ``protomotions.utils.inference_utils.py``.
 
-Reward Configuration
---------------------
+Component Configuration (Observations, Rewards, Terminations)
+--------------------------------------------------------------
 
-Rewards are configured as a dictionary of ``RewardComponentConfig``:
+All components use ``ContextRouter`` to bind pure tensor kernels to context paths:
 
 .. code-block:: python
 
-   from protomotions.envs.base_env.config import RewardComponentConfig
-   from protomotions.envs.utils.rewards import mean_squared_error_exp
+   from protomotions.envs.context_views import EnvContext
+   from protomotions.envs.context_router import ContextRouter
+   from protomotions.envs.rewards import compute_gt_rew, compute_action_smoothness
 
-   reward_config = {
-       "gt_rew": RewardComponentConfig(
-           function=mean_squared_error_exp,
-           variables={
-               "x": "current_state.rigid_body_pos",
-               "ref_x": "ref_state.rigid_body_pos",
-               "coefficient": "-100.0",
+   reward_components = {
+       "gt_rew": ContextRouter(
+           kernel=compute_gt_rew,                      # Pure tensor function
+           dynamic_bindings={                                  # Map params to context paths
+               "current_rigid_body_pos": EnvContext.current.rigid_body_pos,
+               "ref_rigid_body_pos": EnvContext.mimic.ref_state.rigid_body_pos,
            },
-           weight=0.5,
+           static_params={"weight": 0.5, "coefficient": -100.0},  # Static parameters
        ),
-       "action_smoothness": RewardComponentConfig(
-           function=norm,
-           variables={"x": "current_actions - previous_actions"},
-           weight=-0.02,
+       "action_smoothness": ContextRouter(
+           kernel=compute_action_smoothness,
+           dynamic_bindings={
+               "current_processed_action": EnvContext.current_processed_action,
+               "previous_processed_action": EnvContext.previous_processed_action,
+           },
+           static_params={"weight": -0.02},
        ),
    }
 
-**Variable references** use string expressions evaluated at runtime:
+**Key features:**
 
-* ``current_state.rigid_body_pos`` - Current robot state
-* ``ref_state.rigid_body_pos`` - Reference motion state
-* ``current_actions - previous_actions`` - Action difference
+* **Type-safe bindings**: IDE autocomplete for context paths (``EnvContext.current.rigid_body_pos``)
+* **Explicit dependencies**: Bindings show exactly what data each kernel needs
+* **Pure kernels**: Functions take tensors, return tensors - easy to test
+* **ONNX-ready**: Bindings map directly to ONNX inputs
 
-This design lets you add new reward terms without modifying core code.
+**Context paths** provide dual access:
+
+* **Class access** (for config): ``EnvContext.current.rigid_body_pos`` → FieldPath object
+* **Instance access** (at runtime): ``ctx.current.rigid_body_pos`` → Tensor value
+
+This design provides type safety, IDE autocomplete, and makes dependencies explicit.
 
 
 Agent/Model Configuration

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -344,6 +344,13 @@ def main(
         f.path.split("/")[-1] for f in os.scandir(amass_root_dir) if f.is_dir()
     ]
 
+    # Check if there are npz/pkl files directly in the root directory (flat structure)
+    root_files = list(Path(amass_root_dir).glob("*.[np][pk][lz]"))
+    root_files = [f for f in root_files if f.name != "shape.npz" and "stagei.npz" not in f.name]
+    if root_files:
+        # Add empty string to indicate processing files in root directory
+        folder_names.append("")
+
     kinematic_info = extract_kinematic_info(
         f"protomotions/data/assets/mjcf/{humanoid_type}_humanoid.xml"
     )
@@ -438,8 +445,26 @@ def main(
                 motion_data = np.load(filename)
 
                 # gender = "neutral"      # assume neutral gender with beta = 0
-                pose_aa = motion_data["poses"]
                 amass_trans = motion_data["trans"]
+                
+                # Handle both combined "poses" format and separate keys format
+                if "poses" in motion_data:
+                    pose_aa = motion_data["poses"]
+                elif "root_orient" in motion_data and "pose_body" in motion_data:
+                    # Reconstruct poses from separate arrays (SMPL-X format)
+                    # Combined format: root(3) + body(63) + jaw(3) + eyes(6) + hands(90) = 165
+                    root_orient = motion_data["root_orient"]  # (T, 3)
+                    pose_body = motion_data["pose_body"]  # (T, 63)
+                    pose_jaw = motion_data.get("pose_jaw", np.zeros((root_orient.shape[0], 3)))  # (T, 3)
+                    pose_eye = motion_data.get("pose_eye", np.zeros((root_orient.shape[0], 6)))  # (T, 6)
+                    pose_hand = motion_data.get("pose_hand", np.zeros((root_orient.shape[0], 90)))  # (T, 90)
+                    
+                    pose_aa = np.concatenate(
+                        [root_orient, pose_body, pose_jaw, pose_eye, pose_hand],
+                        axis=-1,
+                    )
+                else:
+                    raise KeyError(f"Cannot find pose data in {filename}. Available keys: {list(motion_data.keys())}")
                 if humanoid_type == "smplx":
                     # Load the fps from the yaml file
                     fps_yaml_path = Path("data/yaml_files/motion_fps_amassx.yaml")

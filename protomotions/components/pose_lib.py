@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -73,7 +73,6 @@ from protomotions.utils.rotations import (
     quat_conjugate,
     quat_mul_norm,
     quat_angle_axis,
-    quat_identity_like,
     get_euler_xyz,
     exp_map_to_quat,
     quat_to_exp_map,
@@ -119,7 +118,9 @@ class KinematicInfo:
         self.local_rot_ref_mat = self.local_rot_ref_mat.to(**kwargs)
         self.dof_limits_lower = self.dof_limits_lower.to(**kwargs)
         self.dof_limits_upper = self.dof_limits_upper.to(**kwargs)
-        self.hinge_axes_map = {k: v.to(**kwargs) for k, v in self.hinge_axes_map.items()}
+        self.hinge_axes_map = {
+            k: v.to(**kwargs) for k, v in self.hinge_axes_map.items()
+        }
         return self
 
 
@@ -145,24 +146,24 @@ def compute_joint_loss_weights(
     min_weight: float = 0.01,
 ) -> torch.Tensor:
     """Compute per-joint loss weights based on kinematic chain importance.
-    
+
     Joints near the root get higher weights because their angular errors propagate
     to all descendant bodies, causing large positional errors at extremities.
     Based on "Total Descendants Length" heuristic from:
     https://theorangeduck.com/page/joint-error-propagation
-    
+
     Args:
         kinematic_info: KinematicInfo with parent_indices, local_pos, hinge_axes_map
         discount: Decay factor for descendant contributions (0.9 typical).
                   Lower values bias toward uniform weighting.
         min_weight: Minimum weight for leaf joints (end effectors).
-    
+
     Returns:
         Tensor of shape [num_joints] with normalized weights summing to num_joints.
         Caller should expand based on their representation:
         - For 6D rotation: weights.repeat_interleave(6)
         - For raw DOF: weights.repeat_interleave(dofs_per_joint)
-    
+
     Example:
         >>> weights = compute_joint_loss_weights(robot_config.kinematic_info)
         >>> weights_6d = weights.repeat_interleave(6)  # For 6D representation
@@ -172,31 +173,31 @@ def compute_joint_loss_weights(
     local_pos = kinematic_info.local_pos  # [num_bodies, 3]
     hinge_axes_map = kinematic_info.hinge_axes_map
     num_bodies = kinematic_info.num_bodies
-    
+
     # Compute bone lengths: ||local_pos|| for each body
     bone_lengths = local_pos.norm(dim=-1).cpu()  # [num_bodies]
-    
+
     # Compute total descendant length for each body using dynamic programming
     # Iterate backwards through hierarchy (children before parents)
     body_weights = torch.full((num_bodies,), min_weight)
-    
+
     for i in range(num_bodies - 1, -1, -1):
         parent_idx = parent_indices[i]
         if parent_idx != -1:
             # Add this body's contribution to parent (discounted)
             body_weights[parent_idx] += discount * (bone_lengths[i] + body_weights[i])
-    
+
     # Extract weights for bodies that have DOFs (joints)
     joint_weights = []
     for body_idx in range(num_bodies):
         if body_idx in hinge_axes_map:
             joint_weights.append(body_weights[body_idx].item())
-    
+
     weights = torch.tensor(joint_weights, dtype=torch.float32)
-    
+
     # Normalize so weights sum to num_joints (mean weighted loss ≈ mean uniform loss)
     weights = weights / weights.sum() * len(weights)
-    
+
     return weights
 
 
@@ -205,31 +206,31 @@ def compute_body_density_weights(
     discount: float = 0.9,
 ) -> torch.Tensor:
     """Compute per-body weights based on kinematic chain density.
-    
+
     Bodies surrounded by many nearby bodies (in kinematic chain distance) get
     lower weights. This prevents clustered bodies (e.g., finger chains) from
     over-representing their region in mean reward calculations.
-    
+
     Algorithm:
     1. Compute pairwise chain distances (sum of bone lengths along tree path)
     2. For each body i: density_i = sum_{j != i}(discount^chain_distance_ij)
     3. weight_i = 1 / density_i
     4. Normalize so weights sum to num_bodies
-    
+
     Args:
         kinematic_info: KinematicInfo with parent_indices and local_pos
         discount: Per-unit-length discount factor (0.9 typical).
                   Lower values make distant bodies contribute less to density.
-    
+
     Returns:
         Tensor of shape [num_bodies] with normalized weights summing to num_bodies.
     """
     parent_indices = kinematic_info.parent_indices
     local_pos = kinematic_info.local_pos
     num_bodies = kinematic_info.num_bodies
-    
+
     bone_lengths = local_pos.norm(dim=-1).cpu()
-    
+
     # Build path-to-root for each body for LCA computation
     paths_to_root = []
     for i in range(num_bodies):
@@ -243,18 +244,18 @@ def compute_body_density_weights(
                 cumulative_dist += bone_lengths[current].item()
             current = parent
         paths_to_root.append(path)
-    
+
     ancestor_dists = []
     for path in paths_to_root:
         ancestor_dists.append({body_idx: dist for body_idx, dist in path})
-    
+
     # Compute pairwise chain distances: dist(i,j) = dist(i,LCA) + dist(j,LCA)
     chain_distances = torch.zeros(num_bodies, num_bodies)
     for i in range(num_bodies):
         for j in range(i + 1, num_bodies):
             i_ancestors = ancestor_dists[i]
             j_ancestors = ancestor_dists[j]
-            
+
             # Find LCA
             lca = -1
             lca_dist_i = 0.0
@@ -263,29 +264,116 @@ def compute_body_density_weights(
                     lca = ancestor
                     lca_dist_i = dist_i
                     break
-            
+
             if lca != -1:
                 lca_dist_j = j_ancestors[lca]
                 chain_dist = lca_dist_i + lca_dist_j
             else:
                 # Should not happen in a connected tree
-                chain_dist = float('inf')
-            
+                chain_dist = float("inf")
+
             chain_distances[i, j] = chain_dist
             chain_distances[j, i] = chain_dist
-    
+
     # Compute density for each body (excluding self)
     # density_i = sum_{j != i}(discount^chain_distance_ij)
     discounted = torch.pow(discount, chain_distances)
     discounted.fill_diagonal_(0.0)  # Exclude self-contribution
     densities = discounted.sum(dim=1)
-    
+
     # Weight = 1 / density
     weights = 1.0 / densities
-    
+
     # Normalize so weights sum to num_bodies
     weights = weights / weights.sum() * num_bodies
-    
+
+    return weights
+
+
+def compute_region_uniform_weights(
+    kinematic_info: KinematicInfo,
+) -> torch.Tensor:
+    """Compute per-body weights by discovering regions from kinematic tree.
+
+    Automatically discovers anatomical regions by analyzing the kinematic tree
+    structure, without relying on body naming conventions.
+
+    Algorithm:
+    1. Build children mapping from parent_indices
+    2. Find all leaf bodies (no children) - these are end effectors
+    3. For each leaf, trace path back to root - this defines a limb/region
+    4. Bodies on paths to multiple leaves form the "core" region
+    5. Each region gets equal total weight, shared among its bodies
+
+    For a standard humanoid, this discovers ~5-6 regions:
+    - Head (1 leaf)
+    - Left hand, Right hand (2 leaves)
+    - Left foot, Right foot (2 leaves)
+    - Core (pelvis, spine - shared by multiple paths)
+
+    Args:
+        kinematic_info: KinematicInfo with parent_indices
+
+    Returns:
+        Tensor of shape [num_bodies] with normalized weights summing to num_bodies.
+    """
+    parent_indices = kinematic_info.parent_indices
+    num_bodies = kinematic_info.num_bodies
+
+    # Build children mapping
+    children = {i: [] for i in range(num_bodies)}
+    for i, parent in enumerate(parent_indices):
+        if parent != -1:
+            children[parent].append(i)
+
+    # Find leaves (bodies with no children) - these are end effectors
+    leaves = [i for i in range(num_bodies) if len(children[i]) == 0]
+
+    # Trace path from each leaf to root
+    leaf_paths = {}
+    for leaf in leaves:
+        path = set()
+        current = leaf
+        while current != -1:
+            path.add(current)
+            current = parent_indices[current]
+        leaf_paths[leaf] = path
+
+    # Assign each body to a region
+    # A body belongs to a leaf's region if it's only on that leaf's path
+    # Bodies on multiple paths belong to "core"
+    body_to_region = {}
+    for i in range(num_bodies):
+        # Find which leaves this body is on the path to
+        belonging_leaves = [leaf for leaf, path in leaf_paths.items() if i in path]
+
+        if len(belonging_leaves) == 1:
+            # Unique limb - assign to that leaf's region
+            body_to_region[i] = belonging_leaves[0]
+        else:
+            # Shared by multiple limbs (spine/pelvis) or root
+            body_to_region[i] = "core"
+
+    # Count bodies per region
+    region_counts = {}
+    for region in set(body_to_region.values()):
+        region_counts[region] = sum(1 for r in body_to_region.values() if r == region)
+
+    # Compute weights: each region gets equal total weight
+    num_regions = len(region_counts)
+    weight_per_region = num_bodies / num_regions
+
+    weights = torch.zeros(num_bodies)
+    for i in range(num_bodies):
+        region = body_to_region[i]
+        count = region_counts[region]
+        if count > 0:
+            weights[i] = weight_per_region / count
+
+    # Normalize to ensure sum equals num_bodies
+    if weights.sum() > 0:
+        weights = weights / weights.sum() * num_bodies
+
     return weights
 
 
@@ -402,18 +490,25 @@ def extract_kinematic_info(mjcf_path: str) -> KinematicInfo:
                     len(joints) == 1 or len(joints) == 3
                 ), f"Body {body_name} has {len(joints)} joints, expected 1 or 3"
                 for joint in joints:
+                    # Resolve attributes: direct or inherited from default class
+                    # (dm_control doesn't auto-resolve class-inherited attributes)
+                    axis = joint.axis
+                    if axis is None and joint.dclass is not None:
+                        axis = joint.dclass.joint.axis
                     assert (
-                        joint.axis is not None
+                        axis is not None
                     ), f"Hinge joint '{joint.name}' for body '{body_name}' has no axis defined."
-                    axis_val = np.array(joint.axis, dtype=np.float32)
+                    axis_val = np.array(axis, dtype=np.float32)
                     current_hinge_axes.append(axis_val)
                     non_root_dof_names.append(joint.name)
 
                     # Extract joint limits (convert to radians if needed)
-                    if joint.range is not None:
-                        # joint.range is [lower, upper]
-                        dof_limits_lower_list.append(joint.range[0] * angle_to_radians)
-                        dof_limits_upper_list.append(joint.range[1] * angle_to_radians)
+                    joint_range = joint.range
+                    if joint_range is None and joint.dclass is not None:
+                        joint_range = joint.dclass.joint.range
+                    if joint_range is not None:
+                        dof_limits_lower_list.append(joint_range[0] * angle_to_radians)
+                        dof_limits_upper_list.append(joint_range[1] * angle_to_radians)
                     else:
                         # No limits specified, use large values
                         dof_limits_lower_list.append(-1e10)
@@ -527,7 +622,7 @@ def extract_control_info(
             try:
                 _, max_val = map(float, effort_limit.split())
                 effort_limit = max_val
-            except Exception:
+            except ValueError:
                 effort_limit = DEFAULT_EFFORT_LIMIT
         if isinstance(effort_limit, list):
             effort_limit = effort_limit[1]
@@ -613,6 +708,18 @@ def extract_transforms_from_qpos_non_root_ignore_fixed_helper(
     joint_start = 0
     num_movable_bodies = len(hinge_axes_map.keys())
     assert num_movable_bodies > 0, "No movable bodies found"
+
+    total_expected_dofs = sum(len(v) for v in hinge_axes_map.values())
+    actual_dofs = qpos_non_root.shape[1]
+    if actual_dofs != total_expected_dofs:
+        raise ValueError(
+            f"DOF count mismatch: input has {actual_dofs} DOFs but robot "
+            f"kinematic model expects {total_expected_dofs} DOFs "
+            f"({num_movable_bodies} movable bodies). "
+            f"This usually means the motion file was generated for a different "
+            f"robot than the one being used. Check that --motion-file matches "
+            f"the robot in your checkpoint/config."
+        )
 
     joint_rot_mats = (
         torch.eye(3, device=device, dtype=dtype)
@@ -1080,7 +1187,9 @@ def compute_cartesian_velocity(
 
         if T > horizon:
             # Forward difference for frames that have enough lookahead
-            vel[:-horizon] = (batched_robot_pos[horizon:] - batched_robot_pos[:-horizon]) / dt
+            vel[:-horizon] = (
+                batched_robot_pos[horizon:] - batched_robot_pos[:-horizon]
+            ) / dt
             # For last 'horizon' frames, use the last valid velocity
             vel[-horizon:] = vel[-horizon - 1].unsqueeze(0).expand(horizon, -1, -1)
         else:
@@ -1110,7 +1219,9 @@ def compute_cartesian_velocity(
     velocities_for_gather = velocities_stacked.permute(1, 2, 3, 0)
 
     # Gather minimum velocity for each component
-    result = torch.gather(velocities_for_gather, dim=-1, index=min_indices_expanded.unsqueeze(-1))
+    result = torch.gather(
+        velocities_for_gather, dim=-1, index=min_indices_expanded.unsqueeze(-1)
+    )
     result = result.squeeze(-1)  # (T, Nb, 3)
 
     return result
@@ -1183,7 +1294,9 @@ def compute_angular_velocity(
             ang_vel[1 : T - horizon + 1] = ang_vel_valid
             # For last 'horizon-1' frames (if horizon > 1), repeat last valid
             if horizon > 1 and T > horizon:
-                ang_vel[T - horizon + 1 :] = ang_vel_valid[-1:].expand(horizon - 1, -1, -1)
+                ang_vel[T - horizon + 1 :] = ang_vel_valid[-1:].expand(
+                    horizon - 1, -1, -1
+                )
 
         angular_velocities.append(ang_vel)
 
@@ -1207,7 +1320,9 @@ def compute_angular_velocity(
     ang_vel_for_gather = angular_velocities_stacked.permute(1, 2, 3, 0)
 
     # Gather minimum angular velocity for each component
-    result = torch.gather(ang_vel_for_gather, dim=-1, index=min_indices_expanded.unsqueeze(-1))
+    result = torch.gather(
+        ang_vel_for_gather, dim=-1, index=min_indices_expanded.unsqueeze(-1)
+    )
     result = result.squeeze(-1)  # (T, Nb, 3)
 
     return result
@@ -1237,7 +1352,9 @@ def compute_kinematics_velocities(
         Tuple[torch.Tensor, torch.Tensor]: Linear and angular velocities.
     """
     lin_vel = compute_cartesian_velocity(batched_robot_pos, fps, velocity_max_horizon)
-    ang_vel = compute_angular_velocity(batched_robot_rot_mats, fps, velocity_max_horizon)
+    ang_vel = compute_angular_velocity(
+        batched_robot_rot_mats, fps, velocity_max_horizon
+    )
 
     return lin_vel, ang_vel
 
@@ -1276,7 +1393,12 @@ def fk_batch_mjcf_with_velocities(
     root_pos, joint_rot_mats = extract_transforms_from_qpos(kinematic_info, qpos)
 
     return fk_from_transforms_with_velocities(
-        kinematic_info, root_pos, joint_rot_mats, fps, compute_velocities, velocity_max_horizon
+        kinematic_info,
+        root_pos,
+        joint_rot_mats,
+        fps,
+        compute_velocities,
+        velocity_max_horizon,
     )
 
 

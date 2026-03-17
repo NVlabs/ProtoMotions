@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -282,6 +282,14 @@ html_static_path = ["_static"]
 html_theme_options = {
     "collapse_navigation": False,
     "navigation_depth": 4,
+    "icon_links": [
+        {
+            "name": "GitHub",
+            "url": "https://github.com/NVlabs/ProtoMotions",
+            "icon": "fa-brands fa-github",
+            "type": "fontawesome",
+        },
+    ],
 }
 
 # Global TOC depth - show all levels in navigation

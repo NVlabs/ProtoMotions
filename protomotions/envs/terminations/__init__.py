@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,13 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""Termination functions for environments.
+"""Termination compute kernels for environments.
+
+Pure tensor functions (kernels) for computing terminations.
+Use MdpComponent in experiment configs to bind kernels to context paths.
 
 Organized into:
 - base: Core termination functions (fall, height, contact, episode length)
 - tracking: Motion tracking terminations (tracking error, BeyondMimic style)
 - task: Task-specific terminations (path following)
 """
+
+# Typed context views
+from protomotions.envs.context_views import EnvContext
 
 # Base terminations
 from protomotions.envs.terminations.base import (
@@ -33,26 +39,34 @@ from protomotions.envs.terminations.base import (
     contact_termination,
 )
 
-# Tracking terminations
+# Tracking termination kernels
 from protomotions.envs.terminations.tracking import (
-    max_joint_err,
-    tracking_error_factory,
+    compute_tracking_error,
+    compute_anchor_pos_error_term,
+    compute_anchor_ori_error_term,
+    compute_relative_body_pos_error_term,
+    compute_anchor_height_error_term,
     motion_clip_done,
-    anchor_pos_error,
-    anchor_pos_error_factory,
-    anchor_ori_error,
-    anchor_ori_error_factory,
-    relative_body_pos_error,
-    relative_body_pos_error_factory,
+    # Value functions (for evaluation metrics)
+    mean_body_pos_error,
+    max_body_pos_error,
+    mean_body_rot_error,
+    anchor_pos_error_value,
+    anchor_ori_error_value,
+    anchor_height_error_value,
+    relative_body_pos_max_error,
 )
 
 # Task terminations
 from protomotions.envs.terminations.task import (
     check_path_distance_term,
     check_path_height_term,
+    check_steering_velocity_error,
 )
 
 __all__ = [
+    # Typed context
+    "EnvContext",
     # Base functions
     "check_fall_contact_term",
     "check_height_term",
@@ -62,19 +76,23 @@ __all__ = [
     "fall_termination",
     "height_termination",
     "contact_termination",
-    # Tracking functions
-    "max_joint_err",
+    # Tracking termination kernels
+    "compute_tracking_error",
+    "compute_anchor_pos_error_term",
+    "compute_anchor_ori_error_term",
+    "compute_relative_body_pos_error_term",
+    "compute_anchor_height_error_term",
     "motion_clip_done",
-    "anchor_pos_error",
-    "anchor_ori_error",
-    "relative_body_pos_error",
-    # Tracking factories
-    "tracking_error_factory",
-    "anchor_pos_error_factory",
-    "anchor_ori_error_factory",
-    "relative_body_pos_error_factory",
+    # Value functions
+    "mean_body_pos_error",
+    "max_body_pos_error",
+    "mean_body_rot_error",
+    "anchor_pos_error_value",
+    "anchor_ori_error_value",
+    "anchor_height_error_value",
+    "relative_body_pos_max_error",
     # Task functions
     "check_path_distance_term",
     "check_path_height_term",
+    "check_steering_velocity_error",
 ]
-

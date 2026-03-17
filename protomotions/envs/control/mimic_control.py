@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,11 +23,12 @@ This component manages reference motion tracking, including:
 """
 
 from dataclasses import dataclass
-from typing import Dict, Tuple, TYPE_CHECKING
+from typing import Dict, List, Tuple, Union, TYPE_CHECKING
 
 import torch
 from torch import Tensor
 
+from protomotions.envs.context_views import EnvContext, MimicContext
 from protomotions.envs.control.base import ControlComponent, ControlComponentConfig
 from protomotions.envs.obs.humanoid import dof_to_local
 from protomotions.simulator.base_simulator.config import (
@@ -46,13 +47,14 @@ class MimicControlConfig(ControlComponentConfig):
     
     Attributes:
         bootstrap_on_episode_end: If True, don't terminate when motion clip ends.
-        num_future_steps: Number of future reference poses to provide in context.
-            Used by observation functions that need multi-step goal trajectories.
+        future_steps: Future reference poses to provide in context. If int N,
+            provides N consecutive steps (1 to N). If list, provides specific step
+            indices (e.g., [1, 3, 5, 9, 15] for non-uniform sampling).
     """
     _target_: str = "protomotions.envs.control.mimic_control.MimicControl"
     
     bootstrap_on_episode_end: bool = True
-    num_future_steps: int = 1
+    future_steps: Union[int, List[int]] = 1
 
 
 class MimicControl(ControlComponent):
@@ -99,23 +101,15 @@ class MimicControl(ControlComponent):
         
         return reset_buf, terminate_buf
     
-    def get_context(self) -> Dict[str, any]:
-        """Get mimic-specific context for observations and rewards.
+    def populate_context(self, ctx: EnvContext) -> None:
+        """Populate mimic-specific view in the EnvContext.
         
-        Returns:
-            Dictionary with reference state and tracking variables.
-            
-            Key context variables:
-            - ref_state: Single-step reference state at current time [batch, ...] (for rewards)
-            - mimic_ref_pos: Future body positions [envs, future_steps, bodies, 3]
-            - mimic_ref_rot: Future body rotations [envs, future_steps, bodies, 4]
-            - mimic_ref_anchor_rot: Future anchor rotations [envs, future_steps, 4]
-            - mimic_ref_vel: Future body velocities [envs, future_steps, bodies, 3]
-            - mimic_ref_anchor_vel: Future anchor velocities [envs, future_steps, 3]
-            - mimic_ref_ang_vel: Future body angular velocities [envs, future_steps, bodies, 3]
-            - mimic_ref_anchor_ang_vel: Future anchor angular velocities [envs, future_steps, 3]
-            - mimic_ref_dof_pos: Future DOF positions [envs, future_steps, dofs]
-            - mimic_ref_dof_vel: Future DOF velocities [envs, future_steps, dofs]
+        Creates a MimicContext with:
+        - ref_state: Single-step reference state at current time (for rewards)
+        - future_*: Multi-step future reference poses [envs, future_steps, ...]
+        
+        Args:
+            ctx: The EnvContext to populate with ctx.mimic.
         """
         num_envs = self.env.num_envs
         device = self.env.device
@@ -133,22 +127,21 @@ class MimicControl(ControlComponent):
         ref_state.rigid_body_pos = ref_gt
         
         # Build multi-step reference for observations
-        # Times: t+dt, t+2*dt, ..., t+N*dt
-        num_future_steps = self.config.num_future_steps
         dt = self.env.dt
+        if isinstance(self.config.future_steps, int):
+            step_indices = list(range(1, self.config.future_steps + 1))
+        else:
+            step_indices = self.config.future_steps
+        future_steps = len(step_indices)
         
-        time_offsets = dt * torch.arange(
-            1, num_future_steps + 1, device=device
-        )
+        time_offsets = dt * torch.tensor(step_indices, device=device, dtype=torch.float32)
         future_times = motion_times.unsqueeze(-1) + time_offsets  # [envs, N]
         
-        # Clamp to motion length
         motion_lengths = self.env.motion_lib.get_motion_length(motion_ids)
         future_times = torch.minimum(future_times, motion_lengths.unsqueeze(-1))
         
-        # Flatten for motion_lib query: [envs*N]
         flat_motion_ids = motion_ids.unsqueeze(-1).expand(
-            num_envs, num_future_steps
+            num_envs, future_steps
         ).reshape(-1)
         flat_future_times = future_times.reshape(-1)
         
@@ -162,83 +155,52 @@ class MimicControl(ControlComponent):
         num_dofs = future_state.dof_pos.shape[1]
         
         # Body positions with terrain correction
-        mimic_ref_pos = future_state.rigid_body_pos.view(
-            num_envs, num_future_steps, num_bodies, 3
+        future_pos = future_state.rigid_body_pos.view(
+            num_envs, future_steps, num_bodies, 3
         ).clone()
         offset = self.env.get_spawn_to_ref_pose_offset_with_terrain_height_correction(
-            mimic_ref_pos[:, 0, :, :]  # Use first step for offset
+            future_pos[:, 0, :, :]  # Use first step for offset
         )
-        mimic_ref_pos += offset.unsqueeze(1)
+        future_pos += offset.unsqueeze(1)
         
         # Body rotations
-        mimic_ref_rot = future_state.rigid_body_rot.view(
-            num_envs, num_future_steps, num_bodies, 4
+        future_rot = future_state.rigid_body_rot.view(
+            num_envs, future_steps, num_bodies, 4
         )
         
         # Body velocities
-        mimic_ref_vel = future_state.rigid_body_vel.view(
-            num_envs, num_future_steps, num_bodies, 3
+        future_vel = future_state.rigid_body_vel.view(
+            num_envs, future_steps, num_bodies, 3
         )
         
         # Body angular velocities
-        mimic_ref_ang_vel = future_state.rigid_body_ang_vel.view(
-            num_envs, num_future_steps, num_bodies, 3
+        future_ang_vel = future_state.rigid_body_ang_vel.view(
+            num_envs, future_steps, num_bodies, 3
         )
         
         # DOF positions and velocities
-        mimic_ref_dof_pos = future_state.dof_pos.view(
-            num_envs, num_future_steps, num_dofs
+        future_dof_pos = future_state.dof_pos.view(
+            num_envs, future_steps, num_dofs
         )
-        mimic_ref_dof_vel = future_state.dof_vel.view(
-            num_envs, num_future_steps, num_dofs
+        future_dof_vel = future_state.dof_vel.view(
+            num_envs, future_steps, num_dofs
         )
         
         hinge_axes_map = self.env.robot_config.kinematic_info.hinge_axes_map
         ref_lr = dof_to_local(ref_state.dof_pos, hinge_axes_map, True)
         
-        return {
-            "ref_state_rigid_body_pos": ref_state.rigid_body_pos,
-            "ref_state_rigid_body_rot": ref_state.rigid_body_rot,
-            "ref_state_rigid_body_vel": ref_state.rigid_body_vel,
-            "ref_state_rigid_body_ang_vel": ref_state.rigid_body_ang_vel,
-            "ref_state_rigid_body_contacts": ref_state.rigid_body_contacts,
-            "ref_state_dof_pos": ref_state.dof_pos,
-            "ref_state_dof_vel": ref_state.dof_vel,
-            "ref_state_root_height": ref_state.rigid_body_pos[:, 0, 2],
-            
-            # Root values
-            "ref_state_root_pos": ref_state.rigid_body_pos[:, 0, :],
-            "ref_state_root_rot": ref_state.rigid_body_rot[:, 0, :],
-            "ref_state_root_vel": ref_state.rigid_body_vel[:, 0, :],
-            "ref_state_root_ang_vel": ref_state.rigid_body_ang_vel[:, 0, :],
-            
-            # Anchor values
-            "ref_state_anchor_pos": ref_state.rigid_body_pos[:, self.env.robot_config.anchor_body_index, :],
-            "ref_state_anchor_rot": ref_state.rigid_body_rot[:, self.env.robot_config.anchor_body_index, :],
-            "ref_state_anchor_vel": ref_state.rigid_body_vel[:, self.env.robot_config.anchor_body_index, :],
-            "ref_state_anchor_ang_vel": ref_state.rigid_body_ang_vel[:, self.env.robot_config.anchor_body_index, :],
-
-            "ref_lr": ref_lr,
-
-            "mimic_ref_pos": mimic_ref_pos,
-            "mimic_ref_rot": mimic_ref_rot,
-            "mimic_ref_vel": mimic_ref_vel,
-            "mimic_ref_ang_vel": mimic_ref_ang_vel,
-            "mimic_ref_dof_pos": mimic_ref_dof_pos,
-            "mimic_ref_dof_vel": mimic_ref_dof_vel,
-
-            # Root values
-            "mimic_ref_root_pos": mimic_ref_pos[:, :, 0, :],
-            "mimic_ref_root_rot": mimic_ref_rot[:, :, 0, :],
-            "mimic_ref_root_vel": mimic_ref_vel[:, :, 0, :],
-            "mimic_ref_root_ang_vel": mimic_ref_ang_vel[:, :, 0, :],
-
-            # Anchor values
-            "mimic_ref_anchor_pos": mimic_ref_pos[:, :, self.env.robot_config.anchor_body_index, :],
-            "mimic_ref_anchor_rot": mimic_ref_rot[:, :, self.env.robot_config.anchor_body_index, :],
-            "mimic_ref_anchor_vel": mimic_ref_vel[:, :, self.env.robot_config.anchor_body_index, :],
-            "mimic_ref_anchor_ang_vel": mimic_ref_ang_vel[:, :, self.env.robot_config.anchor_body_index, :],
-        }
+        # Populate the mimic view
+        ctx.mimic = MimicContext(
+            ref_state=ref_state,
+            future_pos=future_pos,
+            future_rot=future_rot,
+            future_vel=future_vel,
+            future_ang_vel=future_ang_vel,
+            future_dof_pos=future_dof_pos,
+            future_dof_vel=future_dof_vel,
+            anchor_idx=self.env.robot_config.anchor_body_index,
+            ref_lr=ref_lr,
+        )
     
     def create_visualization_markers(self, headless: bool) -> Dict[str, VisualizationMarkerConfig]:
         """Create visualization markers for reference poses.

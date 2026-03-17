@@ -16,4 +16,4 @@ Submodules
    protomotions.agents.evaluators.config
    protomotions.agents.evaluators.metrics
    protomotions.agents.evaluators.mimic_evaluator
-   protomotions.agents.evaluators.smoothness_evaluator
+   protomotions.agents.evaluators.smoothness_calculator

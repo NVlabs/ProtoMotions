@@ -10,8 +10,7 @@ We provide pre-trained checkpoints for various robots and tasks. Download them a
 
 **Available Pre-trained Models:**
 
-The first four models below are **General Motion Trackers** - DeepMimic-style policies trained on the entire AMASS dataset, capable of tracking a wide variety of human motions.
-All trained with 4 A100 GPUs for around 24h.
+The first four models below are **General Motion Trackers** - DeepMimic-style policies capable of tracking a wide variety of human motions, trained on large motion datasets (AMASS or BONES-SEED).
 
 .. list-table::
    :header-rows: 1
@@ -26,9 +25,12 @@ All trained with 4 A100 GPUs for around 24h.
    * - SMPL AMASS (terrain)
      - General motion tracker: SMPL humanoid on complex terrain
      - ``data/pretrained_models/motion_tracker/smpl-terrains/last.ckpt``
-   * - G1 AMASS
-     - General motion tracker: Unitree G1 on retargeted AMASS
-     - ``data/pretrained_models/motion_tracker/g1-amass/last.ckpt``
+   * - G1 BONES-SEED
+     - General motion tracker: Unitree G1 on BONES-SEED retargeted motions
+     - ``data/pretrained_models/motion_tracker/g1-bones-deploy/last.ckpt``
+   * - SOMA BONES-SEED
+     - General motion tracker: SOMA 23-body humanoid on BONES-SEED motions
+     - ``data/pretrained_models/motion_tracker/soma-bones/last.ckpt``
    * - Vaulting
      - DeepMimic policy for a vaulting motion
      - *Coming soon*
@@ -37,39 +39,63 @@ All trained with 4 A100 GPUs for around 24h.
      - ``data/pretrained_models/masked_mimic/smpl/last.ckpt``
    * - MaskedMimic G1
      - MaskedMimic policy for G1 trained on AMASS
-     - ``data/pretrained_models/masked_mimic/g1-amass/last.ckpt``
+     - ``data/pretrained_models/masked_mimic/g1/last.ckpt``
 
 **Example Motion Data:**
 
 We provide small example motion files for testing with robot models:
 
-* ``data/motions/g1_random_subset_tiny.pt`` - Small subset of retargeted AMASS for G1
+* ``data/motion_for_trackers/g1_random_subset_tiny.pt`` - Small subset of retargeted AMASS for G1
+* ``data/motion_for_trackers/g1_bones_seed_mini.pt`` - Small subset of BONES-SEED retargeted motions for G1
+* ``data/motion_for_trackers/soma23_bones_seed_mini.pt`` - Small subset of BONES-SEED motions for SOMA 23-body humanoid
+* ``data/motion_for_trackers/h1_2_random_subset_tiny.pt`` - Small subset of retargeted AMASS for H1-2
 
 For SMPL motion data, see :doc:`amass_preparation` to generate your own MotionLib from AMASS.
-There is a simple script subset_motion_lib.py to subset the motion lib into a smaller size,
+There is a simple script ``scripts/subset_motion_lib.py`` to subset the motion lib into a smaller size,
 if your local GPU memory is not enough to load the entire motion lib of AMASS.
 
 **Run Inference:**
 
 .. code-block:: bash
 
-   # Run G1 on retargeted AMASS subset
+   # Run G1 on BONES-SEED motions
    python protomotions/inference_agent.py \
-       --checkpoint data/pretrained_models/motion_tracker/g1-amass/last.ckpt \
-       --motion-file data/motions/g1_random_subset_tiny.pt \
+       --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/last.ckpt \
+       --motion-file data/motion_for_trackers/g1_bones_seed_mini.pt \
        --simulator isaacgym
 
-   # Run SMPL (requires AMASS MotionLib, see amass_preparation)
+   # Run SOMA 23-body humanoid on BONES-SEED motions
+   python protomotions/inference_agent.py \
+       --checkpoint data/pretrained_models/motion_tracker/soma-bones/last.ckpt \
+       --motion-file data/motion_for_trackers/soma23_bones_seed_mini.pt \
+       --simulator isaacgym
+
+   # Run SMPL on flat terrain (requires AMASS MotionLib, see amass_preparation)
    python protomotions/inference_agent.py \
        --checkpoint data/pretrained_models/motion_tracker/smpl/last.ckpt \
        --motion-file path/to/your/amass_motionlib.pt \
        --simulator isaacgym
 
-   # Test sim2sim transfer - run IsaacGym-trained policy in Newton
+   # Run SMPL on complex terrain
    python protomotions/inference_agent.py \
-       --checkpoint data/pretrained_models/motion_tracker/g1-amass/last.ckpt \
-       --motion-file data/motions/g1_random_subset_tiny.pt \
-       --simulator newton
+       --checkpoint data/pretrained_models/motion_tracker/smpl-terrains/last.ckpt \
+       --motion-file path/to/your/amass_motionlib.pt \
+       --simulator isaacgym
+
+   # Test sim2sim transfer - run IsaacLab-trained policy in MuJoco
+   # CPU-only testing (no GPU needed, single env)
+   python protomotions/inference_agent.py \
+       --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/last.ckpt \
+       --motion-file data/motion_for_trackers/g1_bones_seed_mini.pt \
+       --simulator mujoco \
+       --num-envs 1
+
+.. note::
+
+   Sim2sim transfer works for robots with hinge (revolute) joints (G1, H1, etc.)
+   but not yet for robots with spherical joints (SMPL, SMPL-X) due to differing
+   spherical joint representations across simulators.  See
+   :doc:`../tutorials/workflows/domain_randomization` for details.
 
 Train Your First Agent
 ----------------------
@@ -105,6 +131,7 @@ Use the ``--simulator`` argument:
 * ``isaaclab`` - NVIDIA IsaacLab/IsaacSim
 * ``newton`` - NVIDIA Newton (built on MuJoCo Warp, currently beta)
 * ``genesis`` - Genesis simulator
+* ``mujoco`` - MuJoCo CPU-only (single env, for quick testing/debugging)
 
 Robot Selection
 ~~~~~~~~~~~~~~~
@@ -127,6 +154,8 @@ Use the ``--robot-name`` argument:
      - Unitree H1 humanoid robot (version 2)
    * - ``amp``
      - AMP humanoid
+   * - ``soma23``
+     - SOMA 23-body humanoid (digital human)
    * - ``rigv1``
      - Custom rigged character
 
@@ -242,16 +271,34 @@ Evaluate a trained agent:
 
 .. code-block:: bash
 
-   # Evaluate a pretrained model
+   # Evaluate G1 pretrained model
    python protomotions/inference_agent.py \
-       --checkpoint data/pretrained_models/motion_tracker/g1-amass/last.ckpt \
-       --motion-file data/motions/g1_random_subset_tiny.pt \
+       --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/last.ckpt \
+       --motion-file data/motion_for_trackers/g1_bones_seed_mini.pt \
+       --simulator isaacgym
+
+   # Evaluate SOMA pretrained model
+   python protomotions/inference_agent.py \
+       --checkpoint data/pretrained_models/motion_tracker/soma-bones/last.ckpt \
+       --motion-file data/motion_for_trackers/soma23_bones_seed_mini.pt \
+       --simulator isaacgym
+
+   # Evaluate SMPL pretrained model (flat terrain)
+   python protomotions/inference_agent.py \
+       --checkpoint data/pretrained_models/motion_tracker/smpl/last.ckpt \
+       --motion-file path/to/your/amass_motionlib.pt \
+       --simulator isaacgym
+
+   # Evaluate SMPL pretrained model (complex terrain)
+   python protomotions/inference_agent.py \
+       --checkpoint data/pretrained_models/motion_tracker/smpl-terrains/last.ckpt \
+       --motion-file path/to/your/amass_motionlib.pt \
        --simulator isaacgym
 
    # Or evaluate your own trained model
    python protomotions/inference_agent.py \
        --checkpoint results/my_experiment/last.ckpt \
-       --motion-file data/motions/g1_random_subset_tiny.pt \
+       --motion-file data/motion_for_trackers/g1_random_subset_tiny.pt \
        --simulator isaacgym
 
 Keyboard Controls

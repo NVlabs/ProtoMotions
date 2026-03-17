@@ -157,7 +157,7 @@ The simulator abstraction wraps different physics backends.
        def set_state(self, state: SimulatorState) -> None: ...
        def reset_envs(self, env_ids: Tensor) -> None: ...
 
-All backends (IsaacGym, IsaacLab, Newton, Genesis) implement this interface,
+All backends (IsaacGym, IsaacLab, Newton, Genesis, MuJoCo) implement this interface,
 allowing environment code to be simulator-agnostic.
 
 **SimulatorState:**

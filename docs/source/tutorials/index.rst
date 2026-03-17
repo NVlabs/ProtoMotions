@@ -3,11 +3,16 @@ Tutorials
 
 These tutorials walk through complete end-to-end workflows for common tasks.
 
+Deployment Workflows
+--------------------
+
+* :doc:`workflows/g1_deployment` - G1 whole-body tracker: from data to real robot (full pipeline)
+
 Training Workflows
 ------------------
 
 * :doc:`workflows/amass_smpl` - Train SMPL humanoid on AMASS motion data
-* :doc:`workflows/retargeting_pyroki` - Retarget motions to different robots
+* :doc:`workflows/retargeting_pyroki` - Retarget AMASS/SMPL motions to robots
 * :doc:`workflows/vaulting` - Scene interaction with vaulting motions
 * :doc:`workflows/domain_randomization` - Sim2sim transfer techniques
 
@@ -33,12 +38,15 @@ Quick Reference
    * - Workflow
      - Description
      - Prerequisites
+   * - :doc:`workflows/g1_deployment`
+     - Full pipeline: data to real robot (G1 tracker)
+     - Pre-trained model or BONES-SEED data
    * - :doc:`workflows/amass_smpl`
      - Train SMPL on AMASS motions
      - AMASS data prepared
    * - :doc:`workflows/retargeting_pyroki`
-     - Retarget motions to robots
-     - Keypoints extracted
+     - Retarget AMASS/SMPL to robots
+     - Packaged AMASS .pt
    * - :doc:`workflows/vaulting`
      - Full scene interaction workflow
      - Motion + scene data

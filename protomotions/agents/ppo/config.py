@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,7 +26,7 @@ Key Classes:
     - AdvantageNormalizationConfig: Advantage normalization settings
 """
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 from protomotions.agents.common.config import (
     ModuleContainerConfig,
@@ -55,6 +55,10 @@ class PPOActorConfig:
     )
     num_out: int = field(default=None, metadata={"help": "Number of actions. Set from robot config."})
     actor_logstd: float = field(default=-2.9, metadata={"help": "Initial log std for action distribution."})
+    learnable_std: bool = field(
+        default=False,
+        metadata={"help": "Make action log std learnable (requires_grad=True)."},
+    )
 
 
 @dataclass
@@ -98,6 +102,32 @@ class AdvantageNormalizationConfig:
 
 
 @dataclass
+class AdaptiveLRConfig:
+    """Configuration for adaptive learning rate based on KL divergence."""
+
+    enabled: bool = field(default=False, metadata={"help": "Enable adaptive learning rate based on KL divergence."})
+    desired_kl: float = field(default=0.01, metadata={"help": "Target KL divergence for adaptive learning rate."})
+    min_lr: float = field(default=1e-5, metadata={"help": "Minimum learning rate for both actor and critic."})
+    max_lr: float = field(default=1e-2, metadata={"help": "Maximum learning rate for both actor and critic."})
+
+
+@dataclass
+class L2C2Config:
+    """L2C2 (Lipschitz-ratio) actor regularization (Kobayashi 2022).
+
+    Penalizes the ratio  ||mu(noisy) - mu(clean)||^2 / ||noisy - clean||^2
+    so the actor's Lipschitz constant stays bounded.
+    """
+
+    enabled: bool = field(default=False, metadata={"help": "Enable L2C2 regularization."})
+    lambda_l2c2: float = field(default=0.1, metadata={"help": "L2C2 loss coefficient."})
+    obs_pairs: Dict[str, str] = field(
+        default_factory=dict,
+        metadata={"help": "Map from noisy actor obs key to clean counterpart key."},
+    )
+
+
+@dataclass
 class PPOAgentConfig(BaseAgentConfig):
     """Main configuration class for PPO Agent."""
 
@@ -114,6 +144,22 @@ class PPOAgentConfig(BaseAgentConfig):
     # Actor update control
     actor_clip_frac_threshold: Optional[float] = field(
         default=0.6, metadata={"help": "Skip actor update if clip_frac > threshold (e.g., 0.5)."}
+    )
+
+    # Entropy regularization (used when actor has learnable_std)
+    entropy_coef: float = field(
+        default=0.005,
+        metadata={"help": "Entropy bonus coefficient for learnable std exploration."},
+    )
+
+    # L2C2 regularization
+    l2c2: L2C2Config = field(
+        default_factory=L2C2Config, metadata={"help": "L2C2 settings."}
+    )
+
+    # Adaptive learning rate
+    adaptive_lr: AdaptiveLRConfig = field(
+        default_factory=AdaptiveLRConfig, metadata={"help": "Adaptive learning rate settings."}
     )
 
     # Value normalization

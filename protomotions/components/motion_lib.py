@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,14 +30,15 @@ Key Features:
     - Distributed training support
 """
 
+import logging
 import os
+import re
 from typing import Optional, Tuple
 from easydict import EasyDict
 from pathlib import Path
 
 import torch
 import yaml
-from lightning_fabric.utilities.rank_zero import _get_rank
 
 from protomotions.simulator.base_simulator.simulator_state import (
     RobotState,
@@ -52,6 +53,8 @@ from protomotions.utils.motion_interpolation_utils import (
     calc_frame_blend,
 )
 
+log = logging.getLogger(__name__)
+
 # Mapping from MotionLib (packaged motion) field names to RobotState (single motion/sim state) field names
 _motion_field_mapping = {
     "gts": "rigid_body_pos",
@@ -60,7 +63,6 @@ _motion_field_mapping = {
     "gvs": "rigid_body_vel",
     "dvs": "dof_vel",
     "dps": "dof_pos",
-    "contacts": "rigid_body_contacts",
 }
 
 
@@ -71,15 +73,15 @@ class MotionLibConfig:
     _target_: str = "protomotions.components.motion_lib.MotionLib"
     motion_file: Optional[str] = field(
         default=None,
-        metadata={"help": "Path to motion file (.pt, .yaml, or .motion). None for empty library."}
-    )
-    world_size: int = field(
-        default=1,
-        metadata={"help": "World size for distributed training (sharded loading).", "min": 1}
+        metadata={
+            "help": "Path to motion file (.pt, .yaml, or .motion). None for empty library."
+        },
     )
     get_motion_state_use_blend: bool = field(
         default=True,
-        metadata={"help": "Use interpolation for smooth motion queries between frames."}
+        metadata={
+            "help": "Use interpolation for smooth motion queries between frames."
+        },
     )
 
 
@@ -160,13 +162,10 @@ class MotionLib:
         self.different_motion_files_across_ranks = False
 
         motion_file = config.motion_file
-        world_size = config.world_size
 
         if str(motion_file).split(".")[-1] == "pt":
             print("Loading motions from packaged file which is faster")
-            motion_file = self.process_packaged_motion_file_name_multi_gpu(
-                motion_file, world_size
-            )
+            motion_file = self.process_packaged_motion_file_name_multi_gpu(motion_file)
             self.load_from_file(motion_file)
         else:
             print(
@@ -260,24 +259,39 @@ class MotionLib:
         else:
             return self.motion_num_frames[motion_ids]
 
-    def process_packaged_motion_file_name_multi_gpu(self, motion_file, world_size):
-        # technically, this should be in a "TaskManager" class
-        # so different files are different "Tasks"
-        # putting it here for now since we don't have other tasks justifying creating TaskManager class
+    def process_packaged_motion_file_name_multi_gpu(self, motion_file):
+        if "slurmrank" not in motion_file:
+            return motion_file
 
-        motion_path = Path(motion_file)
-        if "slurmrank.pt" in motion_path.name:
-            # Get the current rank
-            rank = _get_rank()
-            if rank is None:
-                rank = 0
+        assert torch.distributed.is_initialized(), (
+            "slurmrank motion files require distributed training "
+            "(torch.distributed must be initialized)"
+        )
+        rank = torch.distributed.get_rank()
 
-            # Replace slurmrank with the actual rank number
-            # This maps rank 0 to xxx_0.pt, rank 1 to xxx_1.pt, etc.
-            motion_file = motion_file.replace("slurmrank.pt", f"{rank}.pt")
+        # Discover matching files: replace "slurmrank" with a regex wildcard
+        # e.g. "chunk_slurmrank.pt" -> "chunk_.*.pt" matches chunk_00.pt, chunk_1.pt, etc.
+        folder = Path(motion_file).parent
+        pattern = re.compile(
+            "^" + re.escape(Path(motion_file).name).replace("slurmrank", "(.+)") + "$"
+        )
+        matches = sorted(
+            (f.name for f in folder.iterdir() if pattern.match(f.name)),
+            key=lambda name: int(pattern.match(name).group(1)),
+        )
+        assert matches, (
+            f"No files matching slurmrank pattern in {folder}. "
+            f"Expected files like: {Path(motion_file).name.replace('slurmrank', '*')}"
+        )
 
-            self.different_motion_files_across_ranks = True
-            print(f"Rank {rank} loading motion file: {motion_file}")
+        selected = matches[rank % len(matches)]
+        motion_file = str(folder / selected)
+
+        self.different_motion_files_across_ranks = True
+        print(
+            f"Rank {rank} loading motion file: {selected} "
+            f"({len(matches)} files found, rank % {len(matches)} = {rank % len(matches)})"
+        )
 
         return motion_file
 
@@ -359,15 +373,17 @@ class MotionLib:
             )
 
         # Blend contacts: use OR for boolean, average for float (smoothed contacts)
-        if motion_state_0.rigid_body_contacts.dtype == torch.bool:
-            motion_state_0.rigid_body_contacts = (
-                motion_state_0.rigid_body_contacts | motion_state_1.rigid_body_contacts
-            )
-        else:
-            # For smoothed (float) contacts, take the average between frames
-            motion_state_0.rigid_body_contacts = (
-                motion_state_0.rigid_body_contacts + motion_state_1.rigid_body_contacts
-            ) / 2.0
+        if motion_state_0.rigid_body_contacts is not None:
+            if motion_state_0.rigid_body_contacts.dtype == torch.bool:
+                motion_state_0.rigid_body_contacts = (
+                    motion_state_0.rigid_body_contacts
+                    | motion_state_1.rigid_body_contacts
+                )
+            else:
+                motion_state_0.rigid_body_contacts = (
+                    motion_state_0.rigid_body_contacts
+                    + motion_state_1.rigid_body_contacts
+                ) / 2.0
 
         return motion_state_0
 
@@ -393,7 +409,9 @@ class MotionLib:
         # Create a dict with keys from motion_field_mapping values
         motion_data = {}
         for lib_field, motion_attr in _motion_field_mapping.items():
-            motion_data[motion_attr] = getattr(self, lib_field)[fl].clone()
+            field_data = getattr(self, lib_field)
+            if field_data is not None:
+                motion_data[motion_attr] = field_data[fl].clone()
 
         if self.lrs is not None:
             local_rigid_body_rot = self.lrs[fl].clone()
@@ -405,7 +423,8 @@ class MotionLib:
             motion_data, state_conversion=StateConversion.COMMON
         )
         motion_state.local_rigid_body_rot = local_rigid_body_rot
-        motion_state.rigid_body_contacts = self.contacts[fl].clone()
+        if self.contacts is not None:
+            motion_state.rigid_body_contacts = self.contacts[fl].clone()
 
         return motion_state
 
@@ -452,6 +471,34 @@ class MotionLib:
                     dtype=tp, device=self.device
                 ),
             )
+
+        # Optionally pack contacts if present in motion data
+        if motions[0].rigid_body_contacts is not None:
+            tp = (
+                torch.bool
+                if motions[0].rigid_body_contacts.dtype == torch.bool
+                else torch.float32
+            )
+            self.contacts = torch.cat(
+                [m.rigid_body_contacts for m in motions], dim=0
+            ).to(dtype=tp, device=self.device)
+        else:
+            self.contacts = None
+
+        # If all contact labels are zero, discard them so downstream consumers
+        # fail loudly instead of silently training on meaningless data.
+        if (
+            self.contacts is not None
+            and self.contacts.numel() > 0
+            and not self.contacts.any()
+        ):
+            log.warning(
+                "All contact labels in motion library are zero. "
+                "Discarding contacts — any reward/component that reads ref contact labels "
+                "will raise an error. Re-run motion conversion with contact detection enabled, "
+                "or remove contact-based rewards from the experiment config."
+            )
+            self.contacts = None
 
         # optionally pack local_rigid_body_rot if exists
         if motions[0].local_rigid_body_rot is not None:
@@ -517,7 +564,7 @@ class MotionLib:
                 motion_path.is_dir()
             ), "Motion file must be yaml, npz, motion, or a directory"
 
-            motion_files = [str(path) for path in motion_path.glob("*.motion")]
+            motion_files = [str(path) for path in motion_path.rglob("*.motion")]
             assert len(motion_files) > 0, "No motion files found in directory"
             motion_weights = [1.0] * len(motion_files)
 
@@ -560,18 +607,24 @@ class MotionLib:
             file_path: Path to the motion library file
         """
         print(f"Loading motion library from {file_path}")
-        try:
-            loaded_data = torch.load(
-                file_path, map_location=self.device, weights_only=False
+        loaded_data = torch.load(
+            file_path, map_location=self.device, weights_only=False
+        )
+
+        for field in loaded_data:
+            assert loaded_data[field] is not None, f"Field {field} is None"
+            setattr(self, field, loaded_data[field])
+
+        if (
+            self.contacts is not None
+            and self.contacts.numel() > 0
+            and not self.contacts.any()
+        ):
+            log.warning(
+                "All contact labels in packaged motion library are zero. "
+                "Discarding contacts — any component reading ref contacts will error."
             )
-
-            for field in loaded_data:
-                assert loaded_data[field] is not None, f"Field {field} is None"
-                setattr(self, field, loaded_data[field])
-
-        except Exception as e:
-            print(f"Error loading motion library: {e}")
-            raise
+            self.contacts = None
 
     def smooth_contacts(self, window_size: int):
         """
@@ -598,8 +651,10 @@ class MotionLib:
                 f"window_size must be odd for symmetric smoothing, got {window_size}"
             )
 
-        if not hasattr(self, "contacts") or self.contacts is None:
-            print("Warning: No contacts to smooth (contacts field is None)")
+        if self.contacts is None:
+            print(
+                "Warning: No contacts to smooth (contacts are None, likely all-zero at load time)"
+            )
             return
 
         # Validate that contacts are binary (0/1 or boolean)
@@ -712,7 +767,10 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Motion Library utilities")
     parser.add_argument(
-        "--motion-path", type=str, default="", help="Path to motion file (.yaml, .motion, .pt) or directory"
+        "--motion-path",
+        type=str,
+        default="",
+        help="Path to motion file (.yaml, .motion, .pt) or directory",
     )
     parser.add_argument(
         "--output-file",
@@ -736,7 +794,7 @@ if __name__ == "__main__":
         yaml_dir = Path(motion_file).parent.resolve()
         with open(motion_file, "r") as f:
             motion_config = yaml.load(f, Loader=yaml.SafeLoader)
-        
+
         motions = motion_config.get("motions", [])
         if motions and "file" in motions[0]:
             first_motion_path = yaml_dir / motions[0]["file"]

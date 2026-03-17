@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -236,6 +236,9 @@ def parse_cli_overrides(override_strings: list) -> Dict[str, Any]:
     Returns:
         Dictionary of parsed overrides
 
+    Raises:
+        ValueError: If any override string is not in "key=value" format or key is empty.
+
     Example:
         parse_cli_overrides(["env.max_episode_length=1000", "simulator.num_envs=4096"])
         # Returns: {"env.max_episode_length": 1000, "simulator.num_envs": 4096}
@@ -244,12 +247,20 @@ def parse_cli_overrides(override_strings: list) -> Dict[str, Any]:
 
     for override_str in override_strings:
         if "=" not in override_str:
-            log.warning(f"Invalid override format (missing '='): {override_str}")
-            continue
+            raise ValueError(
+                f"Invalid override format (required key=value): {override_str!r}. "
+                "Use e.g. robot.asset.usd_asset_file_name=usd/g1_holo_compat/g1_holo_compat.usda"
+            )
 
         key, value_str = override_str.split("=", 1)
         key = key.strip()
         value_str = value_str.strip()
+
+        if not key:
+            raise ValueError(
+                f"Invalid override: key is empty in {override_str!r}. "
+                "Use format key=value (e.g. robot.asset.usd_asset_file_name=path.usda)."
+            )
 
         try:
             import ast
@@ -265,8 +276,12 @@ def parse_cli_overrides(override_strings: list) -> Dict[str, Any]:
 
 def clean_dict_for_storage(d):
     """Recursively cleans a dictionary from asdict() to make all values primitives."""
+    from protomotions.envs.mdp_component import MdpComponent
+    
     for key, value in d.items():
-        if isinstance(value, dict):
+        if isinstance(value, MdpComponent):
+            d[key] = clean_dict_for_storage(value.to_dict())
+        elif isinstance(value, dict):
             clean_dict_for_storage(value)
         elif isinstance(value, list):
             for item in value:

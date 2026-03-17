@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -233,6 +233,9 @@ def main():
     # # Temporary: Enable domain randomization for testing (uncomment to use)
     # tmp_enable_domain_randomization(robot_config, simulator_config, env_config)
 
+    # from protomotions.robot_configs.base import ControlType
+    # robot_config.control.control_type = ControlType.PROPORTIONAL
+
     # Apply CLI runtime overrides
     if args.num_envs is not None:
         log.info(f"CLI override: num_envs = {args.num_envs}")
@@ -271,7 +274,10 @@ def main():
         )
 
     # Create fabric config for inference (simplified)
+    # MuJoCo is CPU-only, so force CPU accelerator
+    accelerator = "cpu" if args.simulator == "mujoco" else "gpu"
     fabric_config = FabricConfig(
+        accelerator=accelerator,
         devices=1,
         num_nodes=1,
         loggers=[],  # No loggers needed for inference
@@ -357,22 +363,27 @@ def main():
     agent.setup()
     agent.load(args.checkpoint, load_env=False)
 
-    if args.full_eval:
-        agent.evaluator.eval_count = 0
-        evaluation_log, evaluated_score = agent.evaluator.evaluate()
-        
-        # Print evaluation metrics
-        print("\n" + "=" * 60)
-        print("EVALUATION RESULTS")
-        print("=" * 60)
-        for key, value in sorted(evaluation_log.items()):
-            print(f"  {key}: {value:.6f}")
-        print("=" * 60)
-        if evaluated_score is not None:
-            print(f"  Overall Score: {evaluated_score:.6f}")
-        print("=" * 60 + "\n")
-    else:
-        agent.evaluator.simple_test_policy(collect_metrics=True)
+    try:
+        if args.full_eval:
+            agent.evaluator.eval_count = 0
+            evaluation_log, evaluated_score = agent.evaluator.evaluate()
+            
+            # Print evaluation metrics
+            print("\n" + "=" * 60)
+            print("EVALUATION RESULTS")
+            print("=" * 60)
+            for key, value in sorted(evaluation_log.items()):
+                print(f"  {key}: {value:.6f}")
+            print("=" * 60)
+            if evaluated_score is not None:
+                print(f"  Overall Score: {evaluated_score:.6f}")
+            print("=" * 60 + "\n")
+        else:
+            agent.evaluator.simple_test_policy(collect_metrics=True)
+    finally:
+        # Ensure simulator viewer is properly closed (prevents hangs)
+        if hasattr(env.simulator, "shutdown"):
+            env.simulator.shutdown()
 
 
 if __name__ == "__main__":

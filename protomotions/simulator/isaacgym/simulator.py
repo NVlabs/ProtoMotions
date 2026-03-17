@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,10 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+import logging
 import sys
 from dataclasses import asdict
 from isaacgym import gymapi, gymtorch, gymutil  # type: ignore[misc]
 import torch
+
+log = logging.getLogger(__name__)
 from torch import Tensor
 import numpy as np
 from rich.progress import Progress
@@ -47,6 +50,7 @@ from protomotions.simulator.base_simulator.config import (
     VisualizationMarkerConfig,
     SimBodyOrdering,
     SimulatorConfig,
+    ProjectileConfig,
 )
 import tempfile
 
@@ -102,12 +106,19 @@ class IsaacGymSimulator(Simulator):
         # Texture cache: maps texture file paths to gymapi texture handles
         self._texture_handles = {}
 
+        # Projectile storage (populated during env creation)
+        self._projectile_handles: list = [[] for _ in range(self.num_envs)]
+        self._projectile_sim_indices: list = []
+
     def _create_simulation(self) -> None:
         """Create the IsaacGym simulation environment.
 
         Called by base class _initialize_with_markers() after visualization markers
         are set. Creates simulation, viewer, and acquires tensors.
         """
+        # Pre-create projectile config (needed before _init_projectiles runs)
+        self._proj_config = ProjectileConfig()
+
         # Update marker names ordering from visualization markers
         self._marker_names_ordering = (
             list(self._visualization_markers.keys())
@@ -132,7 +143,7 @@ class IsaacGymSimulator(Simulator):
                 self._viewer, gymapi.KEY_V, "toggle_viewer_sync"
             )
             self._gym.subscribe_viewer_keyboard_event(
-                self._viewer, gymapi.KEY_J, "push_robot"
+                self._viewer, gymapi.KEY_J, "throw_projectile"
             )
             self._gym.subscribe_viewer_keyboard_event(
                 self._viewer, gymapi.KEY_L, "toggle_video_record"
@@ -202,6 +213,16 @@ class IsaacGymSimulator(Simulator):
         self._object_indices = torch_utils.to_torch(
             self._object_indices, dtype=torch.int32, device=self.device
         ).view(self.num_envs, self.scene_lib.num_objects_per_scene)
+
+        # Projectile root states — separate tensor slice from objects and markers
+        num_obj = self.scene_lib.num_objects_per_scene
+        num_proj = self._proj_config.num_projectiles
+        self._projectile_root_states = self._root_states.view(
+            self.num_envs, num_actors, actor_root_state.shape[-1]
+        )[..., 1 + num_obj : 1 + num_obj + num_proj, :]
+        self._projectile_sim_indices_tensor = torch_utils.to_torch(
+            self._projectile_sim_indices, dtype=torch.int32, device=self.device
+        ).view(self.num_envs, num_proj)
 
         self._humanoid_actor_ids = num_actors * torch.arange(
             self.num_envs, device=self.device, dtype=torch.int32
@@ -767,6 +788,8 @@ class IsaacGymSimulator(Simulator):
         if self.scene_lib.num_objects_per_scene > 0:
             self._build_object_playground(env_id, env_ptr)
 
+        self._build_projectile_actors(env_id, env_ptr)
+
         self._build_markers(env_id, env_ptr, visualization_markers)
 
     def _build_object_playground(self, env_id: int, env_ptr) -> None:
@@ -822,6 +845,52 @@ class IsaacGymSimulator(Simulator):
                 texture_path = obj.options.to_dict().get("texture_path")
                 if texture_path and not self.headless:
                     self._apply_texture_to_object(env_ptr, object_handle, texture_path)
+
+    def _build_projectile_actors(self, env_id: int, env_ptr) -> None:
+        """Create projectile box actors for one environment.
+
+        Projectiles are separate from scene objects — they don't affect
+        _get_simulator_object_root_state or scene observations.
+        """
+        if not hasattr(self, "_projectile_assets"):
+            # Create one box asset per pool index (different sizes)
+            proj_sizes = self._proj_config.get_sizes()
+            self._projectile_assets = []
+            for s in proj_sizes:
+                asset_options = gymapi.AssetOptions()
+                asset_options.density = self._proj_config.density
+                asset_options.fix_base_link = False
+                asset_options.default_dof_drive_mode = gymapi.DOF_MODE_NONE
+                asset = self._gym.create_box(
+                    self._sim, s * 2, s * 2, s * 2, asset_options
+                )
+                self._projectile_assets.append(asset)
+
+        col_group = env_id
+        col_filter = 0  # collide with everything
+        segmentation_id = 0
+
+        for proj_idx in range(self._proj_config.num_projectiles):
+            start_pose = gymapi.Transform()
+            start_pose.p = gymapi.Vec3(0.0, 0.0, self._proj_config.hide_z)
+            start_pose.r = gymapi.Quat(0.0, 0.0, 0.0, 1.0)
+
+            handle = self._gym.create_actor(
+                env_ptr,
+                self._projectile_assets[proj_idx],
+                start_pose,
+                f"projectile_{proj_idx}",
+                col_group,
+                col_filter,
+                segmentation_id,
+            )
+            # Set color to red
+            self._gym.set_rigid_body_color(
+                env_ptr, handle, 0, gymapi.MESH_VISUAL, gymapi.Vec3(0.8, 0.1, 0.1)
+            )
+            self._projectile_handles[env_id].append(handle)
+            sim_idx = self._gym.get_actor_index(env_ptr, handle, gymapi.DOMAIN_SIM)
+            self._projectile_sim_indices.append(sim_idx)
 
     def _apply_texture_to_object(
         self, env_ptr, object_handle, texture_path: str
@@ -925,14 +994,13 @@ class IsaacGymSimulator(Simulator):
 
     def _build_marker_state_tensors(self):
         num_actors = self._get_num_actors_per_env()
-        if self.scene_lib.num_objects_per_scene > 0:
-            self._marker_states = self._root_states.view(
-                self.num_envs, num_actors, self._root_states.shape[-1]
-            )[..., 1 + self.scene_lib.num_objects_per_scene :, :]
-        else:
-            self._marker_states = self._root_states.view(
-                self.num_envs, num_actors, self._root_states.shape[-1]
-            )[..., 1:, :]
+        num_obj = self.scene_lib.num_objects_per_scene
+        num_proj = self._proj_config.num_projectiles
+        # Actor ordering: [robot, objects..., projectiles..., markers...]
+        marker_start = 1 + num_obj + num_proj
+        self._marker_states = self._root_states.view(
+            self.num_envs, num_actors, self._root_states.shape[-1]
+        )[..., marker_start:, :]
         self._marker_pos = self._marker_states[..., :3]
         self._marker_rot = self._marker_states[..., 3:7]
 
@@ -1187,13 +1255,52 @@ class IsaacGymSimulator(Simulator):
         self._gym.refresh_actor_root_state_tensor(self._sim)
         self._humanoid_root_states[env_ids, 7:10] += linear_velocity
         self._humanoid_root_states[env_ids, 10:13] += angular_velocity
-        
+
         actor_ids = self._humanoid_actor_ids[env_ids]
         self._gym.set_actor_root_state_tensor_indexed(
             self._sim,
             gymtorch.unwrap_tensor(self._root_states),
             gymtorch.unwrap_tensor(actor_ids),
             len(actor_ids),
+        )
+
+    # ===== Projectile Implementation =====
+    def _get_projectile_positions_rotations(self) -> tuple:
+        """Return projectile (positions, rotations_xyzw) from IsaacGym root states."""
+        pos = self._projectile_root_states[..., 0:3]
+        rot_wxyz = self._projectile_root_states[..., 3:7]
+        rot_xyzw = torch.cat([rot_wxyz[..., 1:4], rot_wxyz[..., 0:1]], dim=-1)
+        return pos, rot_xyzw
+
+    def _create_projectiles(self, config: ProjectileConfig) -> None:
+        """Projectile actors are created in _build_projectile_actors during env setup."""
+        # Already created during _create_envs -> _build_env -> _build_projectile_actors
+        pass
+
+    def _set_projectile_root_states(
+        self,
+        proj_indices: torch.Tensor,
+        positions: torch.Tensor,
+        rotations_xyzw: torch.Tensor,
+        velocities: torch.Tensor,
+        ang_velocities: torch.Tensor,
+        env_ids: torch.Tensor,
+    ) -> None:
+        """Set root state for specific projectiles via indexed tensor API."""
+        # IsaacGym uses wxyz quaternion format
+        rot_wxyz = rotations_xyzw[:, [3, 0, 1, 2]]
+
+        self._projectile_root_states[env_ids, proj_indices, 0:3] = positions
+        self._projectile_root_states[env_ids, proj_indices, 3:7] = rot_wxyz
+        self._projectile_root_states[env_ids, proj_indices, 7:10] = velocities
+        self._projectile_root_states[env_ids, proj_indices, 10:13] = ang_velocities
+
+        sim_ids = self._projectile_sim_indices_tensor[env_ids, proj_indices]
+        self._gym.set_actor_root_state_tensor_indexed(
+            self._sim,
+            gymtorch.unwrap_tensor(self._root_states),
+            gymtorch.unwrap_tensor(sim_ids),
+            len(sim_ids),
         )
 
     # ===== Group 6: Domain Randomization =====
@@ -1421,8 +1528,8 @@ class IsaacGymSimulator(Simulator):
                     sys.exit()
                 elif evt.action == "toggle_viewer_sync" and evt.value > 0:
                     self._enable_viewer_sync = not self._enable_viewer_sync
-                elif evt.action == "push_robot" and evt.value > 0:
-                    self._push_robot()
+                elif evt.action == "throw_projectile" and evt.value > 0:
+                    self._throw_projectile()
                 elif evt.action == "toggle_video_record" and evt.value > 0:
                     self._toggle_video_record()
                 elif evt.action == "cancel_video_record" and evt.value > 0:

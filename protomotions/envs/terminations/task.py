@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@
 
 Provides termination conditions for specific tasks:
 - Path following terminations
+- Steering terminations
 """
 
 import torch
@@ -83,3 +84,45 @@ def check_path_height_term(
 
     return tar_height_fail
 
+
+# ==============================================================================
+# Steering Terminations / Evaluations
+# ==============================================================================
+
+
+@torch.jit.script
+def check_steering_velocity_error(
+    root_pos: Tensor,
+    prev_root_pos: Tensor,
+    tar_dir: Tensor,
+    tar_speed: Tensor,
+    dt: float,
+    speed_tolerance: float,
+    direction_tolerance: float,
+) -> Tensor:
+    """Check if agent velocity deviates from target direction/speed.
+
+    Args:
+        root_pos: Current root positions [num_envs, 3].
+        prev_root_pos: Previous root positions [num_envs, 3].
+        tar_dir: Target direction (unit vector) [num_envs, 2].
+        tar_speed: Target speed [num_envs].
+        dt: Simulation timestep.
+        speed_tolerance: Acceptable speed difference (m/s).
+        direction_tolerance: Acceptable direction difference (dot product, 1.0 = perfect).
+
+    Returns:
+        Boolean tensor [num_envs] indicating which agents have unacceptable velocity.
+    """
+    delta_pos = root_pos - prev_root_pos
+    vel_xy = delta_pos[:, :2] / dt
+    speed = torch.norm(vel_xy, dim=-1)
+
+    speed_err = torch.abs(speed - tar_speed)
+    speed_fail = speed_err > speed_tolerance
+
+    vel_dir = vel_xy / (speed.unsqueeze(-1) + 1e-6)
+    dir_dot = (vel_dir * tar_dir).sum(dim=-1)
+    dir_fail = (dir_dot < direction_tolerance) & (speed > 0.1)
+
+    return speed_fail | dir_fail

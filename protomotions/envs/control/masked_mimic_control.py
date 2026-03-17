@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +28,7 @@ from typing import Dict, List, Optional, TYPE_CHECKING
 import torch
 from torch import Tensor
 
+from protomotions.envs.context_views import EnvContext, MaskedMimicContext
 from protomotions.envs.control.mimic_control import MimicControl, MimicControlConfig
 from protomotions.simulator.base_simulator.config import (
     MarkerConfig,
@@ -423,24 +424,16 @@ class MaskedMimicControl(MimicControl):
         
         return new_mask.view(num_envs, -1)
     
-    def get_context(self) -> Dict[str, any]:
-        """Get masked mimic-specific context for observations and rewards.
+    def populate_context(self, ctx: EnvContext) -> None:
+        """Populate masked mimic-specific view in the EnvContext.
         
-        Extends parent context with masked mimic state variables.
+        First calls parent to populate ctx.mimic, then adds ctx.masked_mimic.
         
-        Returns:
-            Dictionary with reference state, motion times, tracking variables,
-            and masked mimic state.
-            
-            Key masked mimic context variables:
-            - masked_mimic_ref_pos: Target body positions [envs, future_steps, bodies, 3]
-            - masked_mimic_ref_rot: Target body rotations [envs, future_steps, bodies, 4]
-            - masked_mimic_target_poses_masks: Which poses are visible [envs, future_steps]
-            - masked_mimic_target_bodies_masks: Which bodies are visible [envs, future_steps * bodies * 2]
-            - masked_mimic_target_times: Target times [envs, future_steps]
+        Args:
+            ctx: The EnvContext to populate with ctx.mimic and ctx.masked_mimic.
         """
-        # Get parent context (ref_state, mimic_ref_*, etc.)
-        context = super().get_context()
+        # Populate parent mimic view first
+        super().populate_context(ctx)
         
         # Query motion library for poses at target times
         num_envs = self.env.num_envs
@@ -478,20 +471,16 @@ class MaskedMimicControl(MimicControl):
         # Compute time offsets from current time
         masked_mimic_time_offsets = self.target_times - motion_times.unsqueeze(-1)
         
-        # Add masked mimic specific context
-        context.update({
-            # Reference poses at target times [envs, future_steps, bodies, dim]
-            "masked_mimic_ref_pos": masked_mimic_ref_pos,
-            "masked_mimic_ref_rot": masked_mimic_ref_rot,
-            # Time information
-            "masked_mimic_target_times": self.target_times,
-            "masked_mimic_time_offsets": masked_mimic_time_offsets,
-            # Masks
-            "masked_mimic_target_poses_masks": self.masked_mimic_target_poses_masks,
-            "masked_mimic_target_bodies_masks": self.masked_mimic_target_bodies_masks,
-        })
-        
-        return context
+        # Populate the masked_mimic view
+        ctx.masked_mimic = MaskedMimicContext(
+            mimic=ctx.mimic,
+            ref_pos=masked_mimic_ref_pos,
+            ref_rot=masked_mimic_ref_rot,
+            target_times=self.target_times,
+            time_offsets=masked_mimic_time_offsets,
+            target_poses_masks=self.masked_mimic_target_poses_masks,
+            target_bodies_masks=self.masked_mimic_target_bodies_masks,
+        )
     
     def create_visualization_markers(self, headless: bool) -> Dict[str, VisualizationMarkerConfig]:
         """Create visualization markers for masked mimic targets.

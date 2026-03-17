@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -151,6 +151,11 @@ class PPO(BaseAgent):
             model._critic, critic_optimizer
         )
 
+        # Store initial learning rates for adaptive KL scheduling
+        if self.config.adaptive_lr.enabled:
+            self.actor_lr = self.config.model.actor_optimizer.lr
+            self.critic_lr = self.config.model.critic_optimizer.lr
+
     def load_parameters(self, state_dict):
         """Load PPO-specific parameters from checkpoint.
 
@@ -160,23 +165,37 @@ class PPO(BaseAgent):
         Args:
             state_dict: Checkpoint state dictionary containing model and optimizer states.
         """
-        # Save current logstd value to preserve config overrides
+        # Save current logstd value to preserve config overrides.
+        # Only override the checkpoint's logstd when std is NOT learnable
+        # (i.e., a fixed hyperparameter that may have been changed via CLI).
+        # When learnable_std=True, the checkpoint contains the trained value
+        # and must not be overwritten.
         current_logstd = self.actor.logstd.data.clone()
         current_actor_logstd_config = self.config.model.actor.actor_logstd
 
         super().load_parameters(state_dict)
 
-        # Restore logstd if it was overridden in config (different from checkpoint)
         checkpoint_logstd = self.actor.logstd.data
-        if not torch.allclose(current_logstd, checkpoint_logstd, atol=1e-6):
-            print(
-                f"Preserving overridden actor_logstd: {current_actor_logstd_config} "
-                f"(checkpoint had: {checkpoint_logstd[0].item():.3f})"
-            )
-            self.actor.logstd.data = current_logstd
+        if not self.config.model.actor.learnable_std:
+            # Fixed std: preserve config override if it differs from checkpoint
+            if not torch.allclose(current_logstd, checkpoint_logstd, atol=1e-6):
+                print(
+                    f"Preserving overridden actor_logstd: {current_actor_logstd_config} "
+                    f"(checkpoint had: {checkpoint_logstd[0].item():.3f})"
+                )
+                self.actor.logstd.data = current_logstd
 
         self.actor_optimizer.load_state_dict(state_dict["actor_optimizer"])
         self.critic_optimizer.load_state_dict(state_dict["critic_optimizer"])
+
+        # Restore adaptive LR state
+        if self.config.adaptive_lr.enabled and "adaptive_lr" in state_dict:
+            self.actor_lr = state_dict["adaptive_lr"]["actor_lr"]
+            self.critic_lr = state_dict["adaptive_lr"]["critic_lr"]
+            for param_group in self.actor_optimizer.param_groups:
+                param_group["lr"] = self.actor_lr
+            for param_group in self.critic_optimizer.param_groups:
+                param_group["lr"] = self.critic_lr
 
         # Load EMA state if available
         if (
@@ -207,6 +226,13 @@ class PPO(BaseAgent):
         ):
             extra_state_dict["adv_mean_ema"] = self.adv_mean_ema
             extra_state_dict["adv_std_ema"] = self.adv_std_ema
+
+        # Save adaptive LR state
+        if self.config.adaptive_lr.enabled:
+            extra_state_dict["adaptive_lr"] = {
+                "actor_lr": self.actor_lr,
+                "critic_lr": self.critic_lr,
+            }
 
         state_dict.update(extra_state_dict)
         return state_dict
@@ -297,6 +323,16 @@ class PPO(BaseAgent):
         actor_loss, actor_loss_dict = self.actor_step(batch_dict)
         iter_log_dict.update(actor_loss_dict)
 
+        # Adaptive learning rate based on KL divergence
+        if self.config.adaptive_lr.enabled and "actor/kl" in actor_loss_dict:
+            self._update_learning_rate(actor_loss_dict["actor/kl"])
+            iter_log_dict["info/actor_lr"] = torch.tensor(
+                self.actor_lr, device=self.device
+            )
+            iter_log_dict["info/critic_lr"] = torch.tensor(
+                self.critic_lr, device=self.device
+            )
+
         # Check if we should skip actor update for this epoch
         # Once triggered, skip all remaining batches (same distribution)
         if (
@@ -381,7 +417,7 @@ class PPO(BaseAgent):
         # We need the current policy's evaluation, not the sampled action's neglogp
         mu = mean_action  # Already tanh-bounded
         std = torch.exp(self.actor.logstd)
-        dist = torch.distributions.Normal(mu, std)
+        dist = torch.distributions.Normal(mu, mu * 0 + std)
         current_neglogp = -dist.log_prob(batch_dict["action"]).sum(dim=-1)
 
         # Compute probability ratio between new and old policy
@@ -405,14 +441,33 @@ class PPO(BaseAgent):
 
         actor_loss = actor_ppo_loss + b_loss + extra_loss
 
+        # Entropy bonus for learnable std exploration noise
+        if self.config.model.actor.learnable_std:
+            entropy_loss = dist.entropy().sum(dim=-1).mean()
+            actor_loss = actor_loss - self.config.entropy_coef * entropy_loss
+        else:
+            entropy_loss = torch.tensor(0.0, device=self.device)
+
         log_dict = {
             "actor/ppo_loss": actor_ppo_loss.detach(),
             "actor/bounds_loss": b_loss.detach(),
             "actor/extra_loss": extra_loss.detach(),
+            "actor/entropy_loss": entropy_loss.detach(),
             "actor/clip_frac": clipped.detach(),
             "losses/actor_loss": actor_loss.detach(),
         }
+        if self.config.model.actor.learnable_std:
+            log_dict["actor/std_mean"] = std.mean().detach()
         log_dict.update(extra_actor_log_dict)
+
+        # Compute KL divergence for adaptive learning rate
+        if self.config.adaptive_lr.enabled:
+            kl_mean = self._compute_kl(
+                batch_dict["mean_action"].detach(),
+                mu.detach(),
+                std.detach(),
+            )
+            log_dict["actor/kl"] = kl_mean
 
         # Memory optimization: Detach intermediate tensors that won't be used for gradients
         # This prevents unnecessary gradient graph retention
@@ -426,16 +481,57 @@ class PPO(BaseAgent):
     def calculate_extra_actor_loss(self, batch_td) -> Tuple[Tensor, Dict]:
         """Calculate additional actor losses beyond PPO objective.
 
-        Subclasses can override to add custom actor losses (e.g., entropy bonus,
-        auxiliary losses). Default implementation returns zero loss.
+        Supports L2C2 regularization: penalizes Lipschitz ratio between actor
+        outputs on noisy vs clean observations (Kobayashi 2022).
 
         Args:
-            batch_td: Minibatch data.
+            batch_td: Minibatch data (post actor forward, contains mean_action).
 
         Returns:
             Tuple of (extra_loss, log_dict) with additional loss and metrics.
         """
-        return torch.tensor(0.0, device=self.device), {}
+        extra_loss = torch.tensor(0.0, device=self.device)
+        log_dict = {}
+
+        # --- L2C2 ---
+        if self.config.l2c2.enabled:
+            mu_noisy = batch_td["mean_action"]
+
+            # Build clean TensorDict and accumulate input perturbation
+            input_ss = torch.tensor(0.0, device=self.device)
+            input_n = 0
+            clean_td_dict = {}
+            for key in self.actor.in_keys:
+                if key in self.config.l2c2.obs_pairs:
+                    clean_key = self.config.l2c2.obs_pairs[key]
+                    clean_td_dict[key] = batch_td[clean_key]
+                    diff = batch_td[key] - batch_td[clean_key]
+                    input_ss = input_ss + diff.pow(2).sum()
+                    input_n += diff.numel()
+                else:
+                    clean_td_dict[key] = batch_td[key]
+            clean_td = TensorDict(clean_td_dict, batch_size=mu_noisy.shape[0])
+
+            input_dist = (input_ss / input_n).detach()
+
+            clean_td = self.actor(clean_td)
+            mu_clean = clean_td["mean_action"]
+
+            output_dist = (mu_noisy - mu_clean).pow(2).mean()
+            l2c2_loss = output_dist / (input_dist + 1e-8)
+            l2c2_weighted = self.config.l2c2.lambda_l2c2 * l2c2_loss
+
+            extra_loss = extra_loss + l2c2_weighted
+            log_dict.update(
+                {
+                    "actor/l2c2_loss": l2c2_loss.detach(),
+                    "actor/l2c2_weighted": l2c2_weighted.detach(),
+                    "actor/l2c2_input_dist": input_dist.detach(),
+                    "actor/l2c2_output_dist": output_dist.detach(),
+                }
+            )
+
+        return extra_loss, log_dict
 
     def critic_step(self, batch_dict) -> Tuple[Tensor, Dict]:
         # Convert to TensorDict for model processing
@@ -490,6 +586,60 @@ class PPO(BaseAgent):
     # Helper Functions
     # -----------------------------
     @torch.no_grad()
+    def _compute_kl(self, old_mu, new_mu, std):
+        """Compute mean KL divergence between old and new policy distributions.
+
+        Uses the current std for both distributions (exact when learnable_std=False,
+        close approximation when learnable_std=True since std changes slowly).
+
+        Args:
+            old_mu: Mean actions from rollout (experience buffer).
+            new_mu: Mean actions from current policy.
+            std: Current policy standard deviation.
+
+        Returns:
+            Scalar tensor with mean KL divergence (summed over action dims, averaged over batch).
+        """
+        old_dist = torch.distributions.Normal(old_mu, std)
+        new_dist = torch.distributions.Normal(new_mu, std)
+        kl = torch.distributions.kl_divergence(old_dist, new_dist).sum(-1)
+        kl_mean = kl.mean()
+        if self.fabric.world_size > 1 and torch.distributed.is_initialized():
+            torch.distributed.all_reduce(kl_mean, op=torch.distributed.ReduceOp.SUM)
+            kl_mean /= self.fabric.world_size
+        return kl_mean
+
+    def _update_learning_rate(self, kl_mean):
+        """Adjust actor and critic learning rates based on KL divergence.
+
+        If KL exceeds 2x the target, learning rates are decreased by 1.5x.
+        If KL is below 0.5x the target, learning rates are increased by 1.5x.
+        Learning rates are clamped to config min/max bounds.
+
+        Args:
+            kl_mean: Mean KL divergence from _compute_kl.
+        """
+        if kl_mean > self.config.adaptive_lr.desired_kl * 2.0:
+            self.actor_lr = max(
+                self.config.adaptive_lr.min_lr, self.actor_lr / 1.5
+            )
+            self.critic_lr = max(
+                self.config.adaptive_lr.min_lr, self.critic_lr / 1.5
+            )
+        elif kl_mean < self.config.adaptive_lr.desired_kl / 2.0 and kl_mean > 0.0:
+            self.actor_lr = min(
+                self.config.adaptive_lr.max_lr, self.actor_lr * 1.5
+            )
+            self.critic_lr = min(
+                self.config.adaptive_lr.max_lr, self.critic_lr * 1.5
+            )
+
+        for param_group in self.actor_optimizer.param_groups:
+            param_group["lr"] = self.actor_lr
+        for param_group in self.critic_optimizer.param_groups:
+            param_group["lr"] = self.critic_lr
+
+    @torch.no_grad()
     def compute_advantages(self):
         """Compute GAE advantages and returns, storing them in experience buffer."""
         dones = self.experience_buffer.dones
@@ -512,7 +662,7 @@ class PPO(BaseAgent):
             returns = self.running_reward_norm.normalize(returns)
 
         assert torch.all(torch.isfinite(returns)), f"Returns are not finite: {returns}"
-        
+
         return {
             "returns": returns,
             "advantages": advantages * self.config.task_reward_w,
@@ -524,7 +674,7 @@ class PPO(BaseAgent):
         advantages_dict = self.compute_advantages()
         for key, value in advantages_dict.items():
             self.experience_buffer.batch_update_data(key, value)
-        
+
         advantages = self.experience_buffer.advantages
 
         adv_norm_log = {}

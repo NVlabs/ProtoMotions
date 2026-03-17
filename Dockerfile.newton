@@ -1,0 +1,74 @@
+FROM nvidia/cuda:12.4.0-devel-ubuntu22.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    git-lfs \
+    vim \
+    wget \
+    curl \
+    cmake \
+    libglu1-mesa-dev \
+    libgl1-mesa-dev \
+    libosmesa6-dev \
+    xvfb \
+    patchelf \
+    ffmpeg \
+    python3.10 \
+    python3.10-dev \
+    python3.10-venv \
+    build-essential \
+    # X11 dev packages required for glfw/imgui-bundle
+    libxrandr-dev \
+    libxinerama-dev \
+    libxcursor-dev \
+    libxi-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv to system-wide location (not user-local, for SLURM compatibility)
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+
+# Set working directory
+WORKDIR /workspace
+
+# Create virtual environment with uv
+RUN uv venv --python 3.10 .venv
+ENV VIRTUAL_ENV=/workspace/.venv
+ENV PATH="/workspace/.venv/bin:$PATH"
+
+# Install pip into the venv (so python -m pip works as fallback)
+RUN uv pip install pip
+
+# Install PyTorch with CUDA 12.4
+RUN uv pip install torch>=2.2 --index-url https://download.pytorch.org/whl/cu124
+
+# Install Newton dependencies (pinned versions matching local dev env)
+RUN uv pip install warp-lang==1.11.1
+RUN uv pip install mujoco==3.5.0.dev868321921 --extra-index-url https://py.mujoco.org/
+RUN uv pip install mujoco-warp==0.0.2
+
+# Clone and install Newton at tested commit (e7a737c)
+RUN git clone https://github.com/newton-physics/newton.git /workspace/newton \
+    && cd /workspace/newton \
+    && git checkout e7a737cc \
+    && uv pip install -e .[examples]
+
+# Copy protomotions requirements
+WORKDIR /workspace/protomotions
+COPY requirements_newton.txt .
+
+# Install remaining Python dependencies
+RUN uv pip install --no-cache -r requirements_newton.txt
+
+# Don't copy or install protomotions here - it will be synced and installed from 
+# the experiment folder in train_slurm.py. This ensures we always use fresh code
+# and avoids conflicts between old Docker code and newly synced code.
+
+# Set up virtual display for headless rendering (pyglet/OpenGL)
+ENV DISPLAY=:99
+
+# Default command - starts Xvfb virtual display then drops into bash
+CMD Xvfb :99 -screen 0 1024x768x24 & exec /bin/bash

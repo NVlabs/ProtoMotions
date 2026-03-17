@@ -345,12 +345,19 @@ Learn to train a complete motion tracking agent with PPO.
 
 .. code-block:: python
 
-   # Reward configuration for motion tracking
-   reward_config = {
-       "gt_rew": RewardComponentConfig(
-           function=mean_squared_error_exp,
-           variables={"x": "current_state.rigid_body_pos", "ref_x": "ref_state.rigid_body_pos", "coefficient": -100.0},
-           weight=0.5,
+   # Reward configuration for motion tracking (using ContextRouter)
+   from protomotions.envs.context_views import EnvContext
+   from protomotions.envs.context_router import ContextRouter
+   from protomotions.envs.rewards import compute_gt_rew
+   
+   reward_components = {
+       "gt_rew": ContextRouter(
+           kernel=compute_gt_rew,
+           dynamic_bindings={
+               "current_rigid_body_pos": EnvContext.current.rigid_body_pos,
+               "ref_rigid_body_pos": EnvContext.mimic.ref_state.rigid_body_pos,
+           },
+           static_params={"weight": 0.5, "coefficient": -100.0},
        ),
        ...
    }

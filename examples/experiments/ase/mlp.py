@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +18,9 @@ from protomotions.simulator.base_simulator.config import SimulatorConfig
 from protomotions.envs.base_env.config import EnvConfig
 from protomotions.agents.ase.config import ASEAgentConfig
 import argparse
+
+# Historical steps for discriminator reference observations
+HISTORY_STEPS = 8
 
 
 def terrain_config(args: argparse.Namespace):
@@ -43,21 +46,38 @@ def motion_lib_config(args: argparse.Namespace):
 
 
 def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
-    from protomotions.envs.obs import max_coords_obs_factory, historical_max_coords_obs_factory
+    """Build environment configuration (training defaults).
+    
+    Uses factory functions from protomotions.envs.component_factories for common components.
+    """
     from protomotions.envs.motion_manager.config import MotionManagerConfig
+    from protomotions.envs.action import make_pd_action_config
+    from protomotions.envs.component_factories import (
+        max_coords_obs_factory,
+        historical_max_coords_obs_factory,
+    )
 
     # Observation components configuration
     observation_components = {
         # Humanoid self-observations (current state)
-        "max_coords_obs": max_coords_obs_factory(),
+        "max_coords_obs": max_coords_obs_factory(
+            local_obs=True,
+            root_height_obs=True,
+            observe_contacts=False,
+        ),
         # Historical observations for AMP/ASE discriminator (from StateHistoryBuffer)
-        "historical_max_coords_obs": historical_max_coords_obs_factory(),
+        "historical_max_coords_obs": historical_max_coords_obs_factory(
+            local_obs=True,
+            root_height_obs=True,
+            observe_contacts=False,
+        ),
     }
 
     env_config: EnvConfig = EnvConfig(
         max_episode_length=300,  # Training default (eval override applied automatically)
-        num_state_history_steps=8,  # Historical obs for AMP/ASE discriminator
+        num_state_history_steps=HISTORY_STEPS,  # Historical obs for AMP/ASE discriminator
         observation_components=observation_components,
+        action_config=make_pd_action_config(robot_cfg),
         motion_manager=MotionManagerConfig(
             init_start_prob=0.5  # Bias agent to start at the beginning of the motion to prevent getting stuck in a local-minima (standing still).
         ),
@@ -85,7 +105,8 @@ def agent_config(
     )
     from protomotions.agents.amp.config import AMPParametersConfig
     from protomotions.agents.ase.config import ASEModelConfig
-    from protomotions.envs.obs import historical_max_coords_ref_obs_factory
+    from protomotions.envs.obs import compute_historical_max_coords_from_motion_lib
+    from protomotions.envs.mdp_component import MdpComponent
 
     conditional_discriminator = False
 
@@ -98,10 +119,10 @@ def agent_config(
     )
 
     actor_config = PPOActorConfig(
+        mu_key="actor_trunk_out",
         num_out=robot_config.kinematic_info.num_dofs,
         actor_logstd=-2.9,
         in_keys=["max_coords_obs", "latents"],
-        mu_key="actor_trunk_out",
         mu_model=ModuleContainerConfig(
             in_keys=["max_coords_obs", "latents"],
             out_keys=["actor_trunk_out"],
@@ -121,7 +142,6 @@ def agent_config(
                             in_keys=["latents"],
                             out_keys=["latents_processed"],
                             num_out=ase_parameters.latent_dim,
-                            output_activation="tanh",
                             layers=[
                                 MLPLayerConfig(units=512, activation="relu"),
                                 MLPLayerConfig(units=256, activation="relu"),
@@ -138,7 +158,6 @@ def agent_config(
                         MLPLayerConfig(units=1024, activation="relu"),
                         MLPLayerConfig(units=512, activation="relu"),
                     ],
-                    output_activation="tanh",
                 ),
             ],
         ),
@@ -182,7 +201,7 @@ def agent_config(
             + (["latents"] if not conditional_discriminator else []),
             out_keys=["disc_logits", "mi_enc_output"],
             models=[  # Models in the sequential module
-                # Trunk: process historical_max_coords_obs to features
+                # Trunk: process historical_max_coords_obs_factory to features
                 MLPWithConcatConfig(
                     in_keys=["historical_max_coords_obs"],
                     normalize_obs=True,
@@ -262,8 +281,18 @@ def agent_config(
         ],
     )
 
+    # Reference observation components for discriminator expert samples
+    # Agent injects motion_lib/motion_ids/motion_times/dt at runtime (not in EnvContext)
     reference_obs_components = {
-        "historical_max_coords_obs": historical_max_coords_ref_obs_factory(),
+        "historical_max_coords_obs": MdpComponent(
+            compute_func=compute_historical_max_coords_from_motion_lib,
+            dynamic_vars={},  # All parameters injected by agent
+            static_params={
+                "history_steps": HISTORY_STEPS,
+                "local_obs": True,
+                "root_height_obs": True,
+            },
+        ),
     }
 
     agent_config: ASEAgentConfig = ASEAgentConfig(

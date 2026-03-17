@@ -1,5 +1,5 @@
-Retargeting with PyRoki
-=======================
+Retargeting SMPL motions with PyRoki
+====================================
 
 This workflow covers retargeting SMPL humanoid motions from AMASS to robot morphologies 
 (G1 and H1_2) using PyRoki, a trajectory optimization-based retargeting tool.
@@ -94,14 +94,13 @@ Python interpreters:
 
 .. code-block:: bash
 
-   ./scripts/retarget_amass_to_robot.sh <proto_python> <pyroki_python> <amass_pt_file> <output_dir> <robot_type> [skip_freq]
+   ./scripts/retarget_amass_to_robot.sh <proto_python> <pyroki_python> <amass_pt_file> <robot_type> [skip_freq]
 
 **Arguments:**
 
 * ``proto_python``: Path to Python interpreter with ProtoMotions installed
 * ``pyroki_python``: Path to Python interpreter with PyRoki installed
-* ``amass_pt_file``: Path to packaged AMASS MotionLib .pt file
-* ``output_dir``: Directory for all outputs
+* ``amass_pt_file``: Path to packaged AMASS MotionLib .pt file (outputs saved in same directory)
 * ``robot_type``: Target robot (``g1`` or ``h1_2``)
 * ``skip_freq``: (Optional) Skip every N motions (default: 1 = all motions)
 
@@ -114,7 +113,6 @@ Python interpreters:
        ~/miniconda3/envs/protomotions/bin/python \
        ~/miniconda3/envs/pyroki/bin/python \
        /path/to/amass_train.pt \
-       /path/to/output \
        g1 50
    
    # Retarget all motions to H1_2
@@ -122,10 +120,20 @@ Python interpreters:
        ~/miniconda3/envs/protomotions/bin/python \
        ~/miniconda3/envs/pyroki/bin/python \
        /path/to/amass_train.pt \
-       /path/to/output \
        h1_2 1
 
 The script runs all steps automatically and outputs the final MotionLib ``.pt`` file.
+
+**Output folder structure** (outputs saved alongside input .pt file):
+
+.. code-block:: text
+
+   output_dir/
+   ├── keypoints-for-retarget/   # Keypoints extracted from SMPL
+   ├── pyroki-retargeted-g1/     # Retargeted robot motions
+   ├── contacts/                 # Foot contact labels from source
+   ├── proto-g1/                 # Robot proto format motions
+   └── proto-g1.pt               # Packaged robot MotionLib
 
 Retargeting a Single Motion File
 --------------------------------
@@ -168,12 +176,10 @@ To visualize the result:
 
 .. code-block:: bash
 
-   python examples/env_kinematic_playback.py \
-       --experiment-path=examples/experiments/mimic/mlp.py \
-       --motion-file /path/to/output/retargeted_g1_proto/walk.motion \
-       --robot-name g1 \
-       --simulator isaacgym \
-       --num-envs 1
+   python examples/motion_libs_visualizer.py \
+       --motion_files /path/to/output/proto-g1.pt \
+       --robot g1 \
+       --simulator isaacgym
 
 Step-by-Step Guide
 ------------------
@@ -188,7 +194,7 @@ ankles, feet, plus auxiliary points) from the packaged SMPL motions:
 
    python data/scripts/extract_retargeting_input_keypoints_from_packaged_motionlib.py \
        /path/to/amass_train.pt \
-       --output-path /path/to/keypoints/ \
+       --output-path /path/to/output/keypoints-for-retarget/ \
        --skeleton-format smpl \
        --start-idx 0 \
        --skip-freq 15
@@ -218,8 +224,8 @@ Activate the PyRoki environment (separate from ProtoMotions) and run batch retar
    conda activate pyroki  # Switch to PyRoki environment
    
    python pyroki/batch_retarget_to_g1_from_keypoints.py \
-       --keypoints-folder-path /path/to/keypoints/ \
-       --output-dir /path/to/retargeted_g1/ \
+       --keypoints-folder-path /path/to/output/keypoints-for-retarget/ \
+       --output-dir /path/to/output/pyroki-retargeted-g1/ \
        --source-type smpl \
        --subsample-factor 1 \
        --no-visualize \
@@ -230,8 +236,8 @@ Activate the PyRoki environment (separate from ProtoMotions) and run batch retar
 .. code-block:: bash
 
    python pyroki/batch_retarget_to_h1_2_from_keypoints.py \
-       --keypoints-folder-path /path/to/keypoints/ \
-       --output-dir /path/to/retargeted_h1_2/ \
+       --keypoints-folder-path /path/to/output/keypoints-for-retarget/ \
+       --output-dir /path/to/output/pyroki-retargeted-g1/ \
        --source-type smpl \
        --subsample-factor 1 \
        --no-visualize \
@@ -256,11 +262,11 @@ imperfect, and source motion contacts are more reliable.
 .. code-block:: bash
 
    python pyroki/batch_retarget_to_g1_from_keypoints.py \
-       --keypoints-folder-path /path/to/keypoints/ \
+       --keypoints-folder-path /path/to/output/keypoints-for-retarget/ \
        --source-type smpl \
        --subsample-factor 1 \
        --save-contacts-only \
-       --contacts-dir /path/to/contacts/ \
+       --contacts-dir /path/to/output/contacts/ \
        --skip-existing
 
 The ``--save-contacts-only`` flag skips retargeting and only extracts processed 
@@ -274,10 +280,10 @@ Convert retargeted motions to ProtoMotions format, incorporating the source cont
 .. code-block:: bash
 
    python data/scripts/convert_pyroki_retargeted_robot_motions_to_proto.py \
-       --retargeted-motion-dir /path/to/retargeted_g1/ \
-       --output-dir /path/to/retargeted_g1_proto/ \
+       --retargeted-motion-dir /path/to/output/pyroki-retargeted-g1/ \
+       --output-dir /path/to/output/proto-g1/ \
        --robot-type g1 \
-       --contact-labels-dir /path/to/contacts/ \
+       --contact-labels-dir /path/to/output/contacts/ \
        --apply-motion-filter \
        --force-remake
 
@@ -303,8 +309,8 @@ Package the converted motions into a single ``.pt`` file:
 .. code-block:: bash
 
    python protomotions/components/motion_lib.py \
-       --motion-path /path/to/retargeted_g1_proto/ \
-       --output-file /path/to/retargeted_g1.pt
+       --motion-path /path/to/output/proto-g1/ \
+       --output-file /path/to/output/proto-g1.pt
 
 Step 6: Verify with Motion Visualizer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -315,7 +321,7 @@ visualizer:
 .. code-block:: bash
 
    python examples/motion_libs_visualizer.py \
-       --motion_files /path/to/retargeted_g1.pt \
+       --motion_files /path/to/output/proto-g1.pt \
        --robot g1 \
        --simulator isaacgym
 
@@ -324,7 +330,7 @@ The visualizer supports comparing multiple MotionLibs side-by-side:
 .. code-block:: bash
 
    python examples/motion_libs_visualizer.py \
-       --motion_files /path/to/retargeted_g1.pt /path/to/reference.pt \
+       --motion_files /path/to/output/proto-g1.pt /path/to/reference.pt \
        --robot g1 \
        --simulator isaacgym
 

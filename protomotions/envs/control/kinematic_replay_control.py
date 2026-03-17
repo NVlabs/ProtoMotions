@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +21,7 @@ from typing import Dict, TYPE_CHECKING
 import torch
 from torch import Tensor
 
+from protomotions.envs.context_views import EnvContext
 from protomotions.envs.control.base import ControlComponent, ControlComponentConfig
 from protomotions.simulator.base_simulator.simulator_state import ResetState
 
@@ -95,5 +96,6 @@ class KinematicReplayControl(ControlComponent):
         self.env.reset_buf[env_ids] = 0
         self.env.terminate_buf[env_ids] = 0
     
-    def get_context(self) -> Dict[str, any]:
-        return {}
+    def populate_context(self, ctx: EnvContext) -> None:
+        """Kinematic replay doesn't add any context variables."""
+        pass

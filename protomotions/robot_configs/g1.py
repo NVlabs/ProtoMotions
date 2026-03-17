@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -54,6 +54,19 @@ DAMPING_7520_14 = 2.0 * DAMPING_RATIO * ARMATURE_7520_14 * NATURAL_FREQ
 DAMPING_7520_22 = 2.0 * DAMPING_RATIO * ARMATURE_7520_22 * NATURAL_FREQ
 DAMPING_4010 = 2.0 * DAMPING_RATIO * ARMATURE_4010 * NATURAL_FREQ
 
+# Default standing pose (radians), from BeyondMimic.
+# Regex patterns resolved against DOF names in RobotConfig.__post_init__.
+DEFAULT_JOINT_POS = {
+    ".*_hip_pitch_joint": -0.312,
+    ".*_knee_joint": 0.669,
+    ".*_ankle_pitch_joint": -0.363,
+    ".*_elbow_joint": 0.6,
+    "left_shoulder_roll_joint": 0.2,
+    "left_shoulder_pitch_joint": 0.2,
+    "right_shoulder_roll_joint": -0.2,
+    "right_shoulder_pitch_joint": 0.2,
+}
+
 
 @dataclass
 class G1RobotConfig(RobotConfig):
@@ -80,12 +93,13 @@ class G1RobotConfig(RobotConfig):
     )
 
     default_root_height: float = 0.8
+    default_dof_pos: Dict[str, float] = field(default_factory=lambda: DEFAULT_JOINT_POS)
     anchor_body_name: str = "torso_link"
 
     asset: RobotAssetConfig = field(
         default_factory=lambda: RobotAssetConfig(
-            asset_file_name="mjcf/g1_bm_box_feet.xml",
-            usd_asset_file_name="usd/g1_bm_box_feet/g1_bm_box_feet.usda",
+            asset_file_name="mjcf/g1_holo_compat.xml",
+            usd_asset_file_name="usd/g1_holo_compat/g1_holo_compat.usda",
             usd_bodies_root_prim_path="/World/envs/env_.*/Robot/pelvis/",
             replace_cylinder_with_capsule=True,
             thickness=0.01,

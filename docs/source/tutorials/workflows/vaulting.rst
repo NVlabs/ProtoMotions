@@ -28,12 +28,12 @@ The vaulting example shows a character vaulting over obstacles. This requires:
    
    **Provided files:**
    
-   * ``generated_vault_over_small_obstacle.pkl`` - Source motion
+   * ``generated_vault_over_small_obstacle.npz`` - Source motion
    * ``proto/`` - Step 1 output (proto format motion)
    * ``proto.pt`` - Step 1 output (packaged MotionLib)
    * ``keypoints-for-retarget/`` - Step 1 output (keypoints for retargeting)
    * ``rigv1-obstacle.pt`` - Step 2 output (rigv1 scene)
-   * ``pyroki-retargeted/`` - Step 5a output (retargeted motion)
+   * ``pyroki-retargeted-g1/`` - Step 5a output (retargeted motion)
    * ``proto-g1/`` - Step 5b output (G1 proto format)
    * ``proto-g1.pt`` - Step 5c output (G1 MotionLib)
    * ``g1-obstacle.pt`` - Step 5d output (G1 scene)
@@ -48,7 +48,7 @@ Convert source motion to ProtoMotions format:
 
 .. code-block:: bash
 
-   python data/scripts/convert_rigv1_pkl_to_proto.py \
+   python data/scripts/convert_rigv1_npz_to_proto.py \
        examples/data/rigv1-vaulting/ \
        examples/data/rigv1-vaulting/proto \
        --input-fps 30 --output-fps 30 \
@@ -170,7 +170,7 @@ To transfer the vaulting skill to a robot like G1:
    
    python pyroki/batch_retarget_to_g1_from_keypoints.py \
        --keypoints-folder-path examples/data/rigv1-vaulting/keypoints-for-retarget \
-       --output-dir examples/data/rigv1-vaulting/pyroki-retargeted \
+       --output-dir examples/data/rigv1-vaulting/pyroki-retargeted-g1 \
        --no-visualize \
        --skip-existing \
        --subsample-factor 1
@@ -180,7 +180,7 @@ To transfer the vaulting skill to a robot like G1:
 .. code-block:: bash
 
    python data/scripts/convert_pyroki_retargeted_robot_motions_to_proto.py \
-       --retargeted-motion-dir examples/data/rigv1-vaulting/pyroki-retargeted/ \
+       --retargeted-motion-dir examples/data/rigv1-vaulting/pyroki-retargeted-g1/ \
        --output-dir examples/data/rigv1-vaulting/proto-g1 \
        --robot-type g1 \
        --input-fps 30 --output-fps 30 \

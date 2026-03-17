@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""Reward functions for environments.
+"""Reward compute kernels for environments.
+
+Pure tensor functions (kernels) for computing rewards.
+Use MdpComponent in experiment configs to bind kernels to context paths.
 
 Organized into:
 - base: Primitive functions (MSE, norm, rotation error, power consumption)
@@ -22,6 +25,9 @@ Organized into:
 - regularization: Regularization penalties (action smoothness, limits, contacts)
 """
 
+# Typed context views
+from protomotions.envs.context_views import EnvContext
+
 # Base primitives
 from protomotions.envs.rewards.base import (
     mean_squared_error_exp,
@@ -29,105 +35,95 @@ from protomotions.envs.rewards.base import (
     power_consumption_exp,
     mean_squared_error,
     norm,
+    delta_norm,
+    delta_logmeanexp,
     rotation_error,
     absolute_difference_sum,
     power_consumption_sum,
     velocity_squared_sum,
 )
 
-# Tracking rewards
+# Tracking reward kernels
 from protomotions.envs.rewards.tracking import (
-    # Standard tracking factories
-    gt_rew_factory,
-    gr_rew_factory,
-    gv_rew_factory,
-    gav_rew_factory,
-    rh_rew_factory,
-    # BeyondMimic-style
-    global_position_error_exp,
-    global_orientation_error_exp,
-    relative_body_position_error_exp,
-    relative_body_orientation_error_exp,
-    global_velocity_error_exp,
-    global_anchor_pos_rew_factory,
-    global_anchor_ori_rew_factory,
-    relative_body_pos_rew_factory,
-    relative_body_ori_rew_factory,
-    global_body_lin_vel_rew_factory,
-    global_body_ang_vel_rew_factory,
+    # Standard tracking kernels
+    compute_gt_rew,
+    compute_gr_rew,
+    compute_gv_rew,
+    compute_gav_rew,
+    compute_rh_rew,
+    # BeyondMimic-style kernels
+    compute_global_position_error_exp,
+    compute_global_anchor_pos_rew,
+    compute_global_orientation_error_exp,
+    compute_global_anchor_ori_rew,
+    compute_relative_body_pos_rew,
+    compute_relative_body_ori_rew,
+    compute_global_body_lin_vel_rew,
+    compute_global_body_ang_vel_rew,
 )
 
-# Task rewards
+# Task reward kernels
 from protomotions.envs.rewards.task import (
-    heading_velocity_reward,
-    heading_velocity_reward_factory,
-    path_following_reward,
-    path_following_reward_factory,
+    compute_heading_velocity_rew,
+    compute_path_following_rew,
 )
 
-# Regularization rewards
+# Regularization reward kernels
 from protomotions.envs.rewards.regularization import (
-    physical_action_rate,
-    action_smoothness_factory,
-    action_smoothness_physical_factory,
-    pow_rew_factory,
+    compute_action_smoothness,
+    compute_action_smoothness_logmeanexp,
+    compute_pow_rew,
+    compute_soft_pos_limit_rew,
+    compute_contact_match_rew,
+    compute_contact_force_change_rew,
+    # Helper functions
     joint_limit_violation,
-    soft_pos_limit_reward,
-    soft_pos_limit_rew_factory,
     contact_mismatch_sum,
-    contact_match_rew_factory,
     impact_force_penalty,
-    contact_force_change_rew_factory,
 )
 
 __all__ = [
+    # Typed context
+    "EnvContext",
     # Base primitives
     "mean_squared_error_exp",
     "rotation_error_exp",
     "power_consumption_exp",
     "mean_squared_error",
     "norm",
+    "delta_norm",
+    "delta_logmeanexp",
     "rotation_error",
     "absolute_difference_sum",
     "power_consumption_sum",
     "velocity_squared_sum",
-    # Tracking factories
-    "gt_rew_factory",
-    "gr_rew_factory",
-    "gv_rew_factory",
-    "gav_rew_factory",
-    "rh_rew_factory",
-    # BeyondMimic functions
-    "global_position_error_exp",
-    "global_orientation_error_exp",
-    "relative_body_position_error_exp",
-    "relative_body_orientation_error_exp",
-    "global_velocity_error_exp",
-    # BeyondMimic factories
-    "global_anchor_pos_rew_factory",
-    "global_anchor_ori_rew_factory",
-    "relative_body_pos_rew_factory",
-    "relative_body_ori_rew_factory",
-    "global_body_lin_vel_rew_factory",
-    "global_body_ang_vel_rew_factory",
-    # Task functions
-    "heading_velocity_reward",
-    "path_following_reward",
-    # Task factories
-    "heading_velocity_reward_factory",
-    "path_following_reward_factory",
-    # Regularization functions
-    "physical_action_rate",
+    # Tracking reward kernels
+    "compute_gt_rew",
+    "compute_gr_rew",
+    "compute_gv_rew",
+    "compute_gav_rew",
+    "compute_rh_rew",
+    # BeyondMimic-style kernels
+    "compute_global_position_error_exp",
+    "compute_global_anchor_pos_rew",
+    "compute_global_orientation_error_exp",
+    "compute_global_anchor_ori_rew",
+    "compute_relative_body_pos_rew",
+    "compute_relative_body_ori_rew",
+    "compute_global_body_lin_vel_rew",
+    "compute_global_body_ang_vel_rew",
+    # Task reward kernels
+    "compute_heading_velocity_rew",
+    "compute_path_following_rew",
+    # Regularization reward kernels
+    "compute_action_smoothness",
+    "compute_action_smoothness_logmeanexp",
+    "compute_pow_rew",
+    "compute_soft_pos_limit_rew",
+    "compute_contact_match_rew",
+    "compute_contact_force_change_rew",
+    # Regularization helper functions
     "joint_limit_violation",
-    "soft_pos_limit_reward",
     "contact_mismatch_sum",
     "impact_force_penalty",
-    # Regularization factories
-    "action_smoothness_factory",
-    "action_smoothness_physical_factory",
-    "pow_rew_factory",
-    "soft_pos_limit_rew_factory",
-    "contact_match_rew_factory",
-    "contact_force_change_rew_factory",
 ]
-

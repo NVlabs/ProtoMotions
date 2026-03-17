@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,84 +19,15 @@ This module defines the configuration dataclasses for environment settings,
 rewards, terminations, and observation components.
 """
 
-from typing import Optional, List, Union, Dict, Callable, Any
+from typing import Optional, Dict, Any, TYPE_CHECKING
 from dataclasses import dataclass, field
 
 from protomotions.envs.obs.scene_obs import SceneObsConfig
-from protomotions.envs.obs.observation_component import ObservationComponentConfig
 from protomotions.envs.motion_manager.config import MotionManagerConfig
 from protomotions.envs.control.base import ControlComponentConfig
 
-
-@dataclass
-class RewardComponentConfig:
-    """Configuration for a single dynamic reward component.
-
-    Defines a reward function with variable bindings, optional subsetting,
-    and scaling parameters.
-    """
-
-    function: Callable[..., Any] = field(
-        default=None,
-        metadata={"help": "Callable reward function. Receives resolved variables and indices."}
-    )
-    variables: Dict[str, str] = field(
-        default_factory=dict,
-        metadata={"help": "Maps function argument names to context keys or constants."}
-    )
-    indices_subset: Optional[Union[List[int], List[str]]] = field(
-        default=None,
-        metadata={"help": "Body names or indices to subset tensors. Passed as 'indices' argument."}
-    )
-    weight: float = field(
-        default=0.0,
-        metadata={"help": "Scaling weight for the reward (applied after function call)."}
-    )
-    multiplicative: bool = field(
-        default=False,
-        metadata={"help": "If True, reward is multiplied into combined reward instead of added."}
-    )
-    min_value: Optional[float] = field(
-        default=None,
-        metadata={"help": "Lower bound cap for the reward (applied after weight scaling)."}
-    )
-    max_value: Optional[float] = field(
-        default=None,
-        metadata={"help": "Upper bound cap for the reward (applied after weight scaling)."}
-    )
-    zero_during_grace_period: bool = field(
-        default=False,
-        metadata={"help": "Zero reward during grace period after reset. For unreliable early rewards."}
-    )
-    use_density_weights: bool = field(
-        default=False,
-        metadata={"help": "Use automatic per-body density weights based on kinematic chain distances."}
-    )
-
-
-@dataclass
-class TerminationComponentConfig:
-    """Configuration for a single dynamic termination component.
-
-    Similar to RewardComponentConfig but for termination conditions.
-    """
-
-    function: Optional[Callable[..., Any]] = field(
-        default=None,
-        metadata={"help": "Termination function returning boolean tensor [num_envs]."}
-    )
-    variables: Dict[str, str] = field(
-        default_factory=dict,
-        metadata={"help": "Maps function argument names to eval strings."}
-    )
-    indices_subset: Optional[Union[List[int], List[str]]] = field(
-        default=None,
-        metadata={"help": "Body names or indices to subset tensors."}
-    )
-    terminate_on_true: bool = field(
-        default=True,
-        metadata={"help": "Terminate when function returns True. If False, terminate on False."}
-    )
+if TYPE_CHECKING:
+    from protomotions.envs.mdp_component import MdpComponent
 
 
 @dataclass
@@ -154,9 +85,9 @@ class EnvConfig:
         metadata={"help": "Directory for saving evaluation outputs."}
     )
 
-    reward_components: Dict[str, RewardComponentConfig] = field(
+    reward_components: Dict[str, "MdpComponent"] = field(
         default_factory=dict,
-        metadata={"help": "Dictionary of named reward components."}
+        metadata={"help": "Dictionary of named reward components. Each is a MdpComponent."}
     )
     
     control_components: Dict[str, ControlComponentConfig] = field(
@@ -164,12 +95,17 @@ class EnvConfig:
         metadata={"help": "Dictionary of stateful task/control managers."}
     )
     
-    termination_components: Dict[str, TerminationComponentConfig] = field(
+    termination_components: Dict[str, "MdpComponent"] = field(
         default_factory=dict,
-        metadata={"help": "Dictionary of stateless termination functions."}
+        metadata={"help": "Dictionary of termination functions. Each is a MdpComponent."}
     )
     
-    observation_components: Dict[str, ObservationComponentConfig] = field(
+    observation_components: Dict[str, "MdpComponent"] = field(
         default_factory=dict,
-        metadata={"help": "Dictionary of stateless observation functions."}
+        metadata={"help": "Dictionary of observation functions. Each is a MdpComponent."}
+    )
+
+    action_config: Optional[Dict[str, Any]] = field(
+        default=None,
+        metadata={"help": "Single action processing config dict with 'fn' key. Use make_pd_action_config() helper."}
     )

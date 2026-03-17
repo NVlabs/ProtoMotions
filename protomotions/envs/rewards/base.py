@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,6 +24,8 @@ Function naming convention:
 - Functions without `_exp` are linear (scaling done via weight in config)
 - All functions accept optional `indices` for body/joint subsetting
 """
+
+import math
 
 import torch
 from torch import Tensor
@@ -194,6 +196,45 @@ def norm(x: Tensor, indices: Optional[Tensor] = None) -> Tensor:
         x = x[:, indices]
 
     return torch.norm(x, dim=-1)
+
+
+def delta_norm(
+    a: Tensor, b: Tensor, indices: Optional[Tensor] = None
+) -> Tensor:
+    """L2 norm of difference between two tensors.
+
+    Computes ||a - b||_2.
+
+    Args:
+        a: First tensor [num_envs, dim] or [num_envs, num_bodies, dim]
+        b: Second tensor (same shape as a)
+        indices: Optional body indices to subset
+    """
+    diff = a - b
+    if indices is not None:
+        diff = diff[:, indices]
+    return torch.norm(diff, dim=-1)
+
+
+def delta_logmeanexp(
+    a: Tensor, b: Tensor, indices: Optional[Tensor] = None, beta: float = 3.0
+) -> Tensor:
+    """Log-Mean-Exp of absolute difference (soft L_infinity, normalized).
+
+    Provides a smooth interpolation between mean and max of absolute differences.
+    Normalized so magnitude is comparable to mean absolute difference.
+
+    Args:
+        a: First tensor [num_envs, dim]
+        b: Second tensor (same shape as a)
+        indices: Optional indices to subset
+        beta: Temperature parameter. Lower = more like mean, higher = more like max.
+    """
+    diff = (a - b).abs()
+    if indices is not None:
+        diff = diff[:, indices]
+    n = diff.shape[-1]
+    return (torch.logsumexp(beta * diff, dim=-1) - math.log(n)) / beta
 
 
 def rotation_error(

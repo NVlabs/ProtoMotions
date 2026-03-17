@@ -1,0 +1,237 @@
+<mujoco model="humanoid">
+  <compiler coordinate="local"/>
+  <default>
+    <joint damping="0.0" armature="0.01" stiffness="0.0" limited="true"/>
+    <geom conaffinity="1" condim="3" contype="7" margin="0.001" rgba="0.8 0.6 .4 1"/>
+  </default>
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1=".4 .5 .6" rgb2="0 0 0" width="100" height="100"/>
+    <texture builtin="flat" height="1278" mark="cross" markrgb="1 1 1" name="texgeom" random="0.01" rgb1="0.8 0.6 0.4" rgb2="0.8 0.6 0.4" type="cube" width="127"/>
+    <texture builtin="checker" height="100" name="texplane" rgb1="0 0 0" rgb2="0.8 0.8 0.8" type="2d" width="100"/>
+    <material name="MatPlane" reflectance="0.5" shininess="1" specular="1" texrepeat="60 60" texture="texplane"/>
+    <material name="geom" texture="texgeom" texuniform="true"/>
+  </asset>
+  <worldbody>
+    <light cutoff="100" diffuse="1 1 1" dir="-0 0 -1.3" directional="true" exponent="1" pos="0 0 1.3" specular=".1 .1 .1"/>
+    <body name='Hips' pos='0.0000 0.0000 0.0000'>
+      <freejoint name='Hips'/>
+      <geom type='sphere' size='0.08' pos='0 -0.03 0.00' density='1000' material='geom'/>
+        <body name='Spine1' pos='0.0000 0.0005 0.0500'>
+          <joint name='Spine1_x' type='hinge' pos='0 0 0' axis='1.0000 0.0000 0.0000' stiffness='800' damping='80' armature='0.02' range='-180.0000 180.0000'/>
+          <joint name='Spine1_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='800' damping='80' armature='0.02' range='-180.0000 180.0000'/>
+          <joint name='Spine1_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='800' damping='80' armature='0.02' range='-180.0000 180.0000'/>
+          <geom type='sphere' size='0.06' pos='0 -0.03 0.05' density='1000' material='geom'/>
+            <body name='Spine2' pos='0.0000 0.0003 0.0713'>
+              <joint name='Spine2_x' type='hinge' pos='0 0 0' axis='1.0000 0.0000 0.0000' stiffness='800' damping='80' armature='0.02' range='-180.0000 180.0000'/>
+              <joint name='Spine2_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='800' damping='80' armature='0.02' range='-180.0000 180.0000'/>
+              <joint name='Spine2_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='800' damping='80' armature='0.02' range='-180.0000 180.0000'/>
+              <geom type='sphere' size='0.07' pos='0 -0.04 0.06' density='1000' material='geom'/>
+                <body name='Chest' pos='0.0000 0.0082 0.0755'>
+                  <joint name='Chest_x' type='hinge' pos='0 0 0' axis='1.0000 0.0000 0.0000' stiffness='800' damping='80' armature='0.02' range='-180.0000 180.0000'/>
+                  <joint name='Chest_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='800' damping='80' armature='0.02' range='-180.0000 180.0000'/>
+                  <joint name='Chest_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='800' damping='80' armature='0.02' range='-180.0000 180.0000'/>
+                  <geom type='sphere' size='0.11' pos='0 -0.04 0.12' density='1000' material='geom'/>
+                    <body name='Neck1' pos='-0.0018 0.0055 0.2631'>
+                      <joint name='Neck1_x' type='hinge' pos='0 0 0' axis='1.0000 0.0000 0.0000' stiffness='200' damping='20' armature='0.02' range='-180.0000 180.0000'/>
+                      <joint name='Neck1_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='200' damping='20' armature='0.02' range='-180.0000 180.0000'/>
+                      <joint name='Neck1_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='200' damping='20' armature='0.02' range='-180.0000 180.0000'/>
+                      <geom type='capsule' size='0.04' contype='1' conaffinity='1' fromto='0.0000 -0.03 0.0 0.0000 -0.03 0.07' density='1000' material='geom'/>
+                        <body name='Neck2' pos='0.0000 -0.0230 0.0771'>
+                          <joint name='Neck2_x' type='hinge' pos='0 0 0' axis='1.0000 0.0000 0.0000' stiffness='200' damping='20' armature='0.02' range='-180.0000 180.0000'/>
+                          <joint name='Neck2_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='200' damping='20' armature='0.02' range='-180.0000 180.0000'/>
+                          <joint name='Neck2_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='200' damping='20' armature='0.02' range='-180.0000 180.0000'/>
+                          <geom type='capsule' size='0.04' contype='1' conaffinity='1' fromto='0.0000 0.0 0.0 0.0000 -0.01 0.05' density='1000' material='geom'/>
+                            <body name='Head' pos='0.0000 -0.0195 0.0613'>
+                              <joint name='Head_x' type='hinge' pos='0 0 0' axis='1.0000 0.0000 0.0000' stiffness='200' damping='20' armature='0.02' range='-180.0000 180.0000'/>
+                              <joint name='Head_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='200' damping='20' armature='0.02' range='-180.0000 180.0000'/>
+                              <joint name='Head_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='200' damping='20' armature='0.02' range='-180.0000 180.0000'/>
+                              <geom type='box' size='0.075 0.075 0.105' pos='0 0.02 0.07' quat='1 0 0 0' density='1000' material='geom'/>
+                            </body>
+                        </body>
+                    </body>
+                    <body name='RightShoulder' pos='-0.0138 -0.0521 0.2318'>
+                      <joint name='RightShoulder_x' type='hinge' pos='0 0 0' axis='1.0000 0.0000 0.0000' stiffness='400' damping='40' armature='0.02' range='-180.0000 180.0000'/>
+                      <joint name='RightShoulder_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='400' damping='40' armature='0.02' range='-180.0000 180.0000'/>
+                      <joint name='RightShoulder_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='400' damping='40' armature='0.02' range='-180.0000 180.0000'/>
+                      <geom type='capsule' size='0.045' contype='1' conaffinity='1' fromto='-0.045 0.0300 0.0000 -0.11 0.0300 0.0000' density='1000' material='geom'/>
+                        <body name='RightArm' pos='-0.1504 0.0555 0.0000'>
+                          <joint name='RightArm_x' type='hinge' pos='0 0 0' axis='1.0000 0.0000 0.0000' stiffness='400' damping='40' armature='0.02' range='-180.0000 180.0000'/>
+                          <joint name='RightArm_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='400' damping='40' armature='0.02' range='-180.0000 180.0000'/>
+                          <joint name='RightArm_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='400' damping='40' armature='0.02' range='-180.0000 180.0000'/>
+                          <geom type='capsule' size='0.045' contype='1' conaffinity='1' fromto='-0.045 0.0000 0.0000 -0.24 0.0000 0.0000' density='1000' material='geom'/>
+                            <body name='RightForeArm' pos='-0.2874 0.0000 0.0000'>
+                              <joint name='RightForeArm_x' type='hinge' pos='0 0 0' axis='1.0000 0.0000 0.0000' stiffness='300' damping='30' armature='0.02' range='-180.0000 180.0000'/>
+                              <joint name='RightForeArm_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='300' damping='80' armature='0.02' range='-180.0000 180.0000'/>
+                              <joint name='RightForeArm_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='300' damping='30' armature='0.02' range='-180.0000 180.0000'/>
+                              <geom type='capsule' size='0.035' contype='1' conaffinity='1' fromto='-0.04 0.0000 0.0000 -0.23 0.0000 0.0000' density='1000' material='geom'/>
+                                <body name='RightHand' pos='-0.2713 0.0000 0.0000'>
+                                  <joint name='RightHand_x' type='hinge' pos='0 0 0' axis='1.0000 0.0000 0.0000' stiffness='200' damping='20' armature='0.02' range='-180.0000 180.0000'/>
+                                  <joint name='RightHand_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='200' damping='20' armature='0.02' range='-180.0000 180.0000'/>
+                                  <joint name='RightHand_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='200' damping='20' armature='0.02' range='-180.0000 180.0000'/>
+                                  <geom type='capsule' size='0.05' contype='1' conaffinity='1' fromto='-0.02 0.0000 0.0000 -0.0807 -0.0215 -0.0158' density='1000' material='geom'/>
+                                </body>
+                            </body>
+                        </body>
+                    </body>
+                    <body name='LeftShoulder' pos='0.0162 -0.0511 0.2324'>
+                      <joint name='LeftShoulder_x' type='hinge' pos='0 0 0' axis='-1.0000 0.0000 0.0000' stiffness='400' damping='40' armature='0.02' range='-180.0000 180.0000'/>
+                      <joint name='LeftShoulder_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='400' damping='40' armature='0.02' range='-180.0000 180.0000'/>
+                      <joint name='LeftShoulder_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='400' damping='40' armature='0.02' range='-180.0000 180.0000'/>
+                      <geom type='capsule' size='0.045' contype='1' conaffinity='1' fromto='0.045 0.0300 0.0000 0.11 0.0300 0.0000' density='1000' material='geom'/>
+                        <body name='LeftArm' pos='0.1492 0.0550 0.0000'>
+                          <joint name='LeftArm_x' type='hinge' pos='0 0 0' axis='-1.0000 0.0000 0.0000' stiffness='400' damping='40' armature='0.02' range='-180.0000 180.0000'/>
+                          <joint name='LeftArm_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='400' damping='40' armature='0.02' range='-180.0000 180.0000'/>
+                          <joint name='LeftArm_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='400' damping='40' armature='0.02' range='-180.0000 180.0000'/>
+                          <geom type='capsule' size='0.045' contype='1' conaffinity='1' fromto='0.045 0.0000 0.0000 0.24 0.0000 0.0000' density='1000' material='geom'/>
+                            <body name='LeftForeArm' pos='0.2874 0.0000 0.0000'>
+                              <joint name='LeftForeArm_x' type='hinge' pos='0 0 0' axis='-1.0000 0.0000 0.0000' stiffness='300' damping='30' armature='0.02' range='-180.0000 180.0000'/>
+                              <joint name='LeftForeArm_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='300' damping='30' armature='0.02' range='-180.0000 180.0000'/>
+                              <joint name='LeftForeArm_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='300' damping='30' armature='0.02' range='-180.0000 180.0000'/>
+                              <geom type='capsule' size='0.035' contype='1' conaffinity='1' fromto='0.04 0.0000 0.0000 0.23 0.0000 0.0000' density='1000' material='geom'/>
+                                <body name='LeftHand' pos='0.2709 0.0000 0.0000'>
+                                  <joint name='LeftHand_x' type='hinge' pos='0 0 0' axis='-1.0000 0.0000 0.0000' stiffness='200' damping='20' armature='0.02' range='-180.0000 180.0000'/>
+                                  <joint name='LeftHand_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='200' damping='20' armature='0.02' range='-180.0000 180.0000'/>
+                                  <joint name='LeftHand_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='200' damping='20' armature='0.02' range='-180.0000 180.0000'/>
+                                  <geom type='capsule' size='0.05' contype='1' conaffinity='1' fromto='0.02 0.0000 0.0000 0.0808 -0.0216 -0.0159' density='1000' material='geom'/>
+                                </body>
+                            </body>
+                        </body>
+                    </body>
+                </body>
+            </body>
+        </body>
+        <body name='RightLeg' pos='-0.1005 -0.0262 -0.0830'>
+          <joint name='RightLeg_x' type='hinge' pos='0 0 0' axis='1.0000 0.0000 0.0000' stiffness='500' damping='50' armature='0.02' range='-180.0000 180.0000'/>
+          <joint name='RightLeg_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='500' damping='50' armature='0.02' range='-180.0000 180.0000'/>
+          <joint name='RightLeg_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='500' damping='50' armature='0.02' range='-180.0000 180.0000'/>
+          <geom type='capsule' size='0.06' contype='1' conaffinity='1' fromto='0.0000 0.0000 0.0000 0.0000 0.0000 -0.37' density='1000' material='geom'/>
+            <body name='RightShin' pos='0.0000 0.0081 -0.4336'>
+              <joint name='RightShin_x' type='hinge' pos='0 0 0' axis='1.0000 0.0000 0.0000' stiffness='500' damping='50' armature='0.02' range='-180.0000 180.0000'/>
+              <joint name='RightShin_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='500' damping='50' armature='0.02' range='-180.0000 180.0000'/>
+              <joint name='RightShin_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='500' damping='50' armature='0.02' range='-180.0000 180.0000'/>
+              <geom type='capsule' size='0.05' contype='1' conaffinity='1' fromto='0.0000 0.0000 -0.05 0.0000 0.0000 -0.37' density='1000' material='geom'/>
+                <body name='RightFoot' pos='0.0000 0.0348 -0.4212'>
+                  <joint name='RightFoot_x' type='hinge' pos='0 0 0' axis='1.0000 0.0000 0.0000' stiffness='100' damping='20' armature='0.02' range='-180.0000 180.0000'/>
+                  <joint name='RightFoot_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='100' damping='20' armature='0.02' range='-180.0000 180.0000'/>
+                  <joint name='RightFoot_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='100' damping='20' armature='0.02' range='-180.0000 180.0000'/>
+                  <geom type='box' size='0.075 0.045 0.028' pos='0.0000 -0.045 -0.017' quat='0.7071 0.0 0.0 0.7071' density='1000' material='geom'/>
+                    <body name='RightToeBase' pos='0.0000 -0.1328 -0.0508'>
+                      <joint name='RightToeBase_x' type='hinge' pos='0 0 0' axis='1.0000 0.0000 0.0000' stiffness='60' damping='12' armature='0.02' range='-180.0000 180.0000'/>
+                      <joint name='RightToeBase_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='60' damping='12' armature='0.02' range='-180.0000 180.0000'/>
+                      <joint name='RightToeBase_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='60' damping='12' armature='0.02' range='-180.0000 180.0000'/>
+                      <geom type='box' size='0.050 0.032 0.0215' pos='0 -0.012 0.027' quat='1 0 0 0' density='1000' material='geom'/>
+                    </body>
+                </body>
+            </body>
+        </body>
+        <body name='LeftLeg' pos='0.1004 -0.0260 -0.0843'>
+          <joint name='LeftLeg_x' type='hinge' pos='0 0 0' axis='-1.0000 0.0000 0.0000' stiffness='500' damping='50' armature='0.02' range='-180.0000 180.0000'/>
+          <joint name='LeftLeg_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='500' damping='50' armature='0.02' range='-180.0000 180.0000'/>
+          <joint name='LeftLeg_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='500' damping='50' armature='0.02' range='-180.0000 180.0000'/>
+          <geom type='capsule' size='0.06' contype='1' conaffinity='1' fromto='0.0000 0.0000 0.0000 0.0000 0.0000 -0.37' density='1000' material='geom'/>
+            <body name='LeftShin' pos='0.0000 0.0080 -0.4322'>
+              <joint name='LeftShin_x' type='hinge' pos='0 0 0' axis='-1.0000 0.0000 0.0000' stiffness='500' damping='50' armature='0.02' range='-180.0000 180.0000'/>
+              <joint name='LeftShin_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='500' damping='50' armature='0.02' range='-180.0000 180.0000'/>
+              <joint name='LeftShin_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='500' damping='50' armature='0.02' range='-180.0000 180.0000'/>
+              <geom type='capsule' size='0.05' contype='1' conaffinity='1' fromto='0.0000 0.0000 -0.05 0.0000 0.0000 -0.37' density='1000' material='geom'/>
+                <body name='LeftFoot' pos='0.0000 0.0348 -0.4216'>
+                  <joint name='LeftFoot_x' type='hinge' pos='0 0 0' axis='-1.0000 0.0000 0.0000' stiffness='100' damping='20' armature='0.02' range='-180.0000 180.0000'/>
+                  <joint name='LeftFoot_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='100' damping='20' armature='0.02' range='-180.0000 180.0000'/>
+                  <joint name='LeftFoot_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='100' damping='20' armature='0.02' range='-180.0000 180.0000'/>
+                  <geom type='box' size='0.075 0.045 0.028' pos='0.0000 -0.045 -0.017' quat='0.7071 0.0 0.0 0.7071' density='1000' material='geom'/>
+                    <body name='LeftToeBase' pos='0.0000 -0.1323 -0.0506'>
+                      <joint name='LeftToeBase_x' type='hinge' pos='0 0 0' axis='-1.0000 0.0000 0.0000' stiffness='60' damping='12' armature='0.02' range='-180.0000 180.0000'/>
+                      <joint name='LeftToeBase_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='60' damping='12' armature='0.02' range='-180.0000 180.0000'/>
+                      <joint name='LeftToeBase_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='60' damping='12' armature='0.02' range='-180.0000 180.0000'/>
+                      <geom type='box' size='0.050 0.032 0.0215' pos='0 -0.012 0.027' quat='1 0 0 0' density='1000' material='geom'/>
+                    </body>
+                </body>
+            </body>
+        </body>
+    </body>
+  </worldbody>
+  <actuator>
+      <motor name='Spine1_x' joint='Spine1_x' gear='200'/>
+      <motor name='Spine1_y' joint='Spine1_y' gear='200'/>
+      <motor name='Spine1_z' joint='Spine1_z' gear='200'/>
+      <motor name='Spine2_x' joint='Spine2_x' gear='200'/>
+      <motor name='Spine2_y' joint='Spine2_y' gear='200'/>
+      <motor name='Spine2_z' joint='Spine2_z' gear='200'/>
+      <motor name='Chest_x' joint='Chest_x' gear='200'/>
+      <motor name='Chest_y' joint='Chest_y' gear='200'/>
+      <motor name='Chest_z' joint='Chest_z' gear='200'/>
+      <motor name='Neck1_x' joint='Neck1_x' gear='100'/>
+      <motor name='Neck1_y' joint='Neck1_y' gear='100'/>
+      <motor name='Neck1_z' joint='Neck1_z' gear='100'/>
+      <motor name='Neck2_x' joint='Neck2_x' gear='100'/>
+      <motor name='Neck2_y' joint='Neck2_y' gear='100'/>
+      <motor name='Neck2_z' joint='Neck2_z' gear='100'/>
+      <motor name='Head_x' joint='Head_x' gear='100'/>
+      <motor name='Head_y' joint='Head_y' gear='100'/>
+      <motor name='Head_z' joint='Head_z' gear='100'/>
+      <motor name='RightShoulder_x' joint='RightShoulder_x' gear='200'/>
+      <motor name='RightShoulder_y' joint='RightShoulder_y' gear='200'/>
+      <motor name='RightShoulder_z' joint='RightShoulder_z' gear='200'/>
+      <motor name='RightArm_x' joint='RightArm_x' gear='200'/>
+      <motor name='RightArm_y' joint='RightArm_y' gear='200'/>
+      <motor name='RightArm_z' joint='RightArm_z' gear='200'/>
+      <motor name='RightForeArm_x' joint='RightForeArm_x' gear='100'/>
+      <motor name='RightForeArm_y' joint='RightForeArm_y' gear='100'/>
+      <motor name='RightForeArm_z' joint='RightForeArm_z' gear='100'/>
+      <motor name='RightHand_x' joint='RightHand_x' gear='70'/>
+      <motor name='RightHand_y' joint='RightHand_y' gear='70'/>
+      <motor name='RightHand_z' joint='RightHand_z' gear='70'/>
+      <motor name='LeftShoulder_x' joint='LeftShoulder_x' gear='200'/>
+      <motor name='LeftShoulder_y' joint='LeftShoulder_y' gear='200'/>
+      <motor name='LeftShoulder_z' joint='LeftShoulder_z' gear='200'/>
+      <motor name='LeftArm_x' joint='LeftArm_x' gear='200'/>
+      <motor name='LeftArm_y' joint='LeftArm_y' gear='200'/>
+      <motor name='LeftArm_z' joint='LeftArm_z' gear='200'/>
+      <motor name='LeftForeArm_x' joint='LeftForeArm_x' gear='100'/>
+      <motor name='LeftForeArm_y' joint='LeftForeArm_y' gear='100'/>
+      <motor name='LeftForeArm_z' joint='LeftForeArm_z' gear='100'/>
+      <motor name='LeftHand_x' joint='LeftHand_x' gear='70'/>
+      <motor name='LeftHand_y' joint='LeftHand_y' gear='70'/>
+      <motor name='LeftHand_z' joint='LeftHand_z' gear='70'/>
+      <motor name='RightLeg_x' joint='RightLeg_x' gear='250'/>
+      <motor name='RightLeg_y' joint='RightLeg_y' gear='250'/>
+      <motor name='RightLeg_z' joint='RightLeg_z' gear='250'/>
+      <motor name='RightShin_x' joint='RightShin_x' gear='200'/>
+      <motor name='RightShin_y' joint='RightShin_y' gear='200'/>
+      <motor name='RightShin_z' joint='RightShin_z' gear='200'/>
+      <motor name='RightFoot_x' joint='RightFoot_x' gear='100'/>
+      <motor name='RightFoot_y' joint='RightFoot_y' gear='100'/>
+      <motor name='RightFoot_z' joint='RightFoot_z' gear='100'/>
+      <motor name='RightToeBase_x' joint='RightToeBase_x' gear='50'/>
+      <motor name='RightToeBase_y' joint='RightToeBase_y' gear='50'/>
+      <motor name='RightToeBase_z' joint='RightToeBase_z' gear='50'/>
+      <motor name='LeftLeg_x' joint='LeftLeg_x' gear='250'/>
+      <motor name='LeftLeg_y' joint='LeftLeg_y' gear='250'/>
+      <motor name='LeftLeg_z' joint='LeftLeg_z' gear='250'/>
+      <motor name='LeftShin_x' joint='LeftShin_x' gear='200'/>
+      <motor name='LeftShin_y' joint='LeftShin_y' gear='200'/>
+      <motor name='LeftShin_z' joint='LeftShin_z' gear='200'/>
+      <motor name='LeftFoot_x' joint='LeftFoot_x' gear='100'/>
+      <motor name='LeftFoot_y' joint='LeftFoot_y' gear='100'/>
+      <motor name='LeftFoot_z' joint='LeftFoot_z' gear='100'/>
+      <motor name='LeftToeBase_x' joint='LeftToeBase_x' gear='50'/>
+      <motor name='LeftToeBase_y' joint='LeftToeBase_y' gear='50'/>
+      <motor name='LeftToeBase_z' joint='LeftToeBase_z' gear='50'/>
+  </actuator>
+  <contact>
+      <exclude body1='Hips' body2='Spine2'/>
+      <exclude body1='Spine1' body2='Chest'/>
+      <exclude body1='Spine2' body2='Neck1'/>
+      <exclude body1='Chest' body2='Neck2'/>
+      <exclude body1='Neck1' body2='Head'/>
+      <exclude body1='Spine1' body2='Neck1'/>
+      <exclude body1='Spine2' body2='Neck2'/>
+      <exclude body1='Chest' body2='Head'/>
+      <exclude body1='RightArm' body2='Chest'/>
+      <exclude body1='LeftArm' body2='Chest'/>
+      <exclude body1='RightArm' body2='Spine2'/>
+      <exclude body1='LeftArm' body2='Spine2'/>
+  </contact>
+  <sensor/>
+  <size njmax='700' nconmax='700'/>
+</mujoco>

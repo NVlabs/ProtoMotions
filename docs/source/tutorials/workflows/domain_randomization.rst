@@ -1,57 +1,59 @@
 Domain Randomization & Sim2Sim
 ==============================
 
-This workflow covers training with domain randomization for robust policies that 
+This workflow covers training with domain randomization for robust policies that
 transfer across simulators (sim2sim) or to real robots (sim2real).
+
+For a complete end-to-end pipeline from data to deployment, see
+:doc:`g1_deployment`.
 
 Why Domain Randomization?
 -------------------------
 
-Policies trained in simulation often fail when deployed to different physics engines 
+Policies trained in simulation often fail when deployed to different physics engines
 or real hardware due to the "reality gap". Domain randomization addresses this by:
 
 1. **Randomizing physics parameters** (friction, center of mass)
 2. **Adding action noise** (motor imprecision)
-3. **Adding observation noise** (sensor noise)
-4. **Applying external perturbations** (pushes, bumps)
+3. **Adding observation noise** (sensor noise for IMU, encoders)
+4. **Applying external perturbations** (pushes, velocity impulses)
 5. **Forcing the policy** to be robust to parameter variations
 
 Training with Domain Randomization
-----------------------------------
+-----------------------------------
 
-Use the ``mlp_domain_rand.py`` experiment config:
+The BeyondMimic L2C2 experiment config (``examples/experiments/mimic/mlp_bm_l2c2.py``)
+is a good starting point for DR training:
 
 .. code-block:: bash
 
    python protomotions/train_agent.py \
        --robot-name g1 \
-       --simulator isaacgym \
-       --experiment-path examples/experiments/mimic/mlp_domain_rand.py \
-       --experiment-name g1_amass_dr \
-       --motion-file /path/to/amass_g1.pt \
-       --num-envs 8192 \
-       --batch-size 8192 \
-       --ngpu 4
+       --simulator isaaclab \
+       --experiment-path examples/experiments/mimic/mlp_bm_l2c2.py \
+       --experiment-name g1_bm_dr \
+       --motion-file /path/to/bones_seed_g1_motions.pt \
+       --num-envs 4096 \
+       --batch-size 16384
 
-Domain Randomization Parameters
--------------------------------
+You can also create your own experiment configs with DR settings.  The randomization types
+described below are general and can be mixed into any experiment config.
 
-ProtoMotions supports several randomization types via ``DomainRandomizationConfig``:
 
-* **Action Noise** — Motor imprecision
-* **Friction** — Ground and body friction coefficients
-* **Center of Mass** — Body mass distribution shifts
-* **Observation Noise** — Sensor noise simulation
-* **Push Perturbations** — External disturbances
+Domain Randomization Types
+--------------------------
 
-The ``mlp_domain_rand.py`` example config demonstrates common settings:
+ProtoMotions supports several randomization types via ``DomainRandomizationConfig``.
+Below are the settings used in the pre-trained G1 BeyondMimic tracker
+(``data/pretrained_models/motion_tracker/g1-bones-deploy/experiment_config.py``).  You can
+adjust ranges to suit your robot and deployment conditions.
 
 **Action Noise:**
 
 .. code-block:: python
 
    ActionNoiseDomainRandomizationConfig(
-       action_noise_range=(-0.02, 0.02),  # ±2% noise on actions
+       action_noise_range=(-0.025, 0.025),  # +/-2.5% noise on PD targets
        dof_names=[".*"],  # Apply to all joints
    )
 
@@ -60,223 +62,194 @@ The ``mlp_domain_rand.py`` example config demonstrates common settings:
 .. code-block:: python
 
    FrictionDomainRandomizationConfig(
-      num_buckets=64,  # Number of friction groups
-      static_friction_range=(0.6, 3.0),
-      dynamic_friction_range=(0.6, 3.0),
-      restitution_range=(0.0, 1.0),
-      body_names=[".*"],  # Apply to all bodies
+       num_buckets=64,
+       static_friction_range=(0.3, 1.6),
+       dynamic_friction_range=(0.3, 1.2),
+       restitution_range=(0.0, 0.5),
+       body_names=[".*"],  # Apply to all bodies
    )
 
 .. note::
 
-   **Default Values:** ProtoMotions assumes a default friction of **1.0** and restitution of 
-   **0.0** for all entities (robot bodies and terrain) when values are not explicitly set. 
-   This ensures consistent behavior across simulators.
-
-.. note::
-
-   **Friction Combine Mode:** In physics simulators, friction between two surfaces is 
-   computed from both materials. The ``mlp_domain_rand.py`` config sets the floor friction 
-   to near-zero (0.01) with ``CombineMode.AVERAGE``. This means the effective friction 
-   is approximately half of the robot body's friction value.
-   
-   With robot friction randomized in the range (0.6, 3.0) and floor at 0.01:
-   
-   * **Effective friction range:** ~(0.3, 1.5)
-   
-   This approach lets you control the full friction range through robot body randomization 
-   while keeping the floor constant.
-
-Automatic Friction Combine Mode Conversion
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Different physics engines use different friction combine modes:
-
-* **IsaacGym (PhysX)**: Only supports ``AVERAGE`` — effective friction is the average 
-  of robot and terrain friction: ``(robot + terrain) / 2``
-* **Newton (MuJoCo)**: Only supports ``MAX`` — effective friction is the maximum of 
-  the two: ``max(robot, terrain)``
-
-ProtoMotions **automatically converts** friction settings when switching simulators. 
-You can configure friction using any combine mode, and the system ensures equivalent 
-effective friction behavior across simulators.
-
-**How it works:**
-
-When running on Newton with an ``AVERAGE`` mode config:
-
-1. Robot shape friction is set to a minimum value (0.01)
-2. Terrain friction is set to the computed effective value
-3. Result: ``max(0.01, effective) = effective`` — matching the intended behavior
-
-When domain randomization is configured:
-
-1. Terrain friction is set to minimum (0.01)
-2. Robot friction randomization range is converted to effective values
-3. Result: ``max(robot_dr_value, 0.01) = robot_dr_value`` — matching intended range
-
-This conversion is transparent — you don't need to change your config for different 
-simulators. The same ``mlp_domain_rand.py`` config works on both IsaacGym and Newton 
-with equivalent friction behavior.
+   **Default Values:** ProtoMotions assumes a default friction of **1.0** and
+   restitution of **0.0** for all entities (robot bodies and terrain) when
+   values are not explicitly set.  This ensures consistent behavior across
+   simulators.
 
 **Center of Mass Randomization:**
 
 .. code-block:: python
 
    CenterOfMassDomainRandomizationConfig(
-       com_range={"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.05, 0.05)},
+       com_range={"x": (-0.025, 0.025), "y": (-0.05, 0.05), "z": (-0.05, 0.05)},
        body_names=["torso_link"],  # Apply to torso
    )
 
 **Observation Noise:**
 
-Adds Gaussian noise to observations to simulate sensor noise for sim-to-real transfer.
-Noise is applied hierarchically to different state components:
+Adds Gaussian noise to observations to improve robustness to real-world sensor
+imperfections.  The noise levels are set empirically to make the policy robust
+-- they are not calibrated against specific sensor datasheets.
+
+The BM tracker config uses per-component noise via ``RobotNoiseConfig``:
 
 .. code-block:: python
 
-   ObservationNoiseDomainRandomizationConfig(
-       # DOF noise (joint encoders)
-       dof_pos_noise=0.01,       # Joint position noise (radians)
-       dof_vel_noise=0.05,       # Joint velocity noise (rad/s)
-       
-       # Root body noise (IMU)
-       root_rot_noise=0.02,      # Root orientation noise (radians)
-       root_ang_vel_noise=0.1,   # Root angular velocity noise (rad/s)
-       
-       # Anchor body noise (pelvis IMU if different from root)
-       anchor_rot_noise=0.02,
-       anchor_ang_vel_noise=0.1,
-       
-       # Whole-body noise (motion capture noise)
-       rigid_body_pos_noise=0.01,    # Position noise (meters)
-       rigid_body_rot_noise=0.02,    # Rotation noise (radians)
-       rigid_body_vel_noise=0.05,    # Linear velocity noise (m/s)
-       rigid_body_ang_vel_noise=0.1, # Angular velocity noise (rad/s)
-       
-       # Environment noise
-       ground_height_noise=0.02,     # Terrain height estimation noise
+   RobotNoiseConfig(
+       dof_pos_noise=0.01,         # Joint encoder noise (radians)
+       dof_vel_noise=0.5,          # Joint velocity noise (rad/s)
+       anchor_rot_noise=0.05,      # Torso IMU orientation noise (quat components)
+       anchor_ang_vel_noise=0.2,   # Pelvis IMU gyroscope noise (rad/s)
    )
 
-When observation noise is configured, the environment provides both clean and noisy 
-versions of state variables in the context. Observation components can request noisy 
-inputs (for actor) or clean inputs (for critic) via the ``observation_noise`` parameter:
+At inference time (and in the exported ONNX model), all noise is disabled --
+the policy sees clean sensor data but has learned to be robust to the noise
+levels encountered during training.
+
+When observation noise is configured, the environment provides both clean and
+noisy versions of state variables in the context.  Observation components can
+request noisy inputs (for actor) or clean inputs (for critic) via the
+``use_noisy`` parameter:
 
 .. code-block:: python
 
    # Noisy observations for actor (helps sim-to-real transfer)
-   "noisy_obs": reduced_coords_obs_factory(observation_noise=True),
-   
+   "noisy_obs": reduced_coords_obs_factory(use_noisy=True),
+
    # Clean observations for critic (asymmetric actor-critic)
-   "clean_obs": reduced_coords_obs_factory(observation_noise=False),
+   "clean_obs": reduced_coords_obs_factory(use_noisy=False),
 
 **Push/Perturbation Randomization:**
-
-Applies random velocity impulses to simulate external disturbances (bumps, pushes):
 
 .. code-block:: python
 
    PushDomainRandomizationConfig(
        push_interval_range=(1.0, 3.0),         # Seconds between pushes
-       max_linear_velocity=(0.5, 0.5, 0.0),    # Max push velocity (x, y, z) m/s
-       max_angular_velocity=(0.0, 0.0, 0.3),   # Max angular impulse (rad/s)
+       max_linear_velocity=(0.5, 0.5, 0.2),    # Max push velocity (x, y, z) m/s
+       max_angular_velocity=(0.52, 0.52, 0.78), # Max angular impulse (rad/s)
    )
 
-This helps policies learn to recover from unexpected perturbations, improving 
+This helps policies learn to recover from unexpected perturbations, improving
 robustness on real hardware where the robot may be bumped or jostled.
+
+**Reset Noise (initial state perturbation):**
+
+.. code-block:: python
+
+   RobotNoiseConfig(
+       dof_pos_noise=0.1,
+       root_pos_noise=[0.05, 0.05, 0.01],
+       root_rot_noise=[0.1, 0.1, 0.2],
+       root_vel_noise=[0.1, 0.1, 0.05],
+       root_ang_vel_noise=[0.1, 0.1, 0.1],
+   )
+
+At the start of each episode, the robot's initial state is perturbed around the
+reference motion's first frame.  This prevents the policy from relying on a
+perfect starting pose.
+
+
+Automatic Friction Combine Mode Conversion
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Different physics engines use different friction combine modes:
+
+* **IsaacGym / IsaacLab (PhysX)**: Uses ``AVERAGE`` -- effective friction is
+  the average of robot and terrain friction: ``(robot + terrain) / 2``
+* **MuJoCo**: Uses ``MAX`` -- effective friction is the maximum of the two:
+  ``max(robot, terrain)``
+
+ProtoMotions **automatically converts** friction settings when switching
+simulators via ``convert_friction_for_simulator()``.  You can configure friction
+using any combine mode, and the system ensures equivalent effective friction
+behavior across simulators.
+
+**How it works:**
+
+When running on MuJoCo with an ``AVERAGE`` mode config:
+
+1. Robot shape friction is set to a minimum value (0.01)
+2. Terrain friction is set to the computed effective value
+3. Result: ``max(0.01, effective) = effective`` -- matching the intended behavior
+
+When domain randomization is configured:
+
+1. Terrain friction is set to minimum (0.01)
+2. Robot friction randomization range is converted to effective values
+3. Result: ``max(robot_dr_value, 0.01) = robot_dr_value`` -- matching intended range
+
+This conversion is transparent -- you don't need to change your config for
+different simulators.  The same experiment config works on IsaacGym, IsaacLab,
+and MuJoCo with equivalent friction behavior.
+
+
+L2C2 Smoothness Regularization
+------------------------------
+
+The BM tracker config additionally uses **L2C2** (Locally Lipschitz Continuous
+Constraint, Kobayashi 2022) to encourage smooth policy outputs despite noisy
+observations:
+
+* Both noisy and clean versions of each actor observation are computed
+* The policy runs on both, producing ``mu_noisy`` and ``mu_clean``
+* An auxiliary loss penalizes ``MSE(mu_noisy, mu_clean)``
+* This encourages the policy to produce similar actions regardless of sensor noise
+
+At inference time, only the clean (noise-free) observations are used and the
+L2C2 components are removed.
+
 
 Sim2Sim Testing
 ---------------
 
-After training with DR, test on different simulators to verify transfer:
-
-**Test on Newton (MuJoCo-based):**
+After training with DR, test on MuJoCo to verify transfer before real-robot
+deployment:
 
 .. code-block:: bash
 
    python protomotions/inference_agent.py \
-       --checkpoint results/g1_amass_dr/last.ckpt \
-       --simulator newton
+       --checkpoint results/g1_bm_dr/last.ckpt \
+       --simulator mujoco \
+       --motion-file /path/to/motion.motion
 
-.. note::
+MuJoCo uses different contact dynamics, solver, and friction combine mode than
+the training simulator (IsaacLab).  A policy that works across both has learned
+robust dynamics rather than overfitting to one physics engine.
 
-   Newton is currently in beta. You may observe physics artifacts as we have not yet 
-   spent significant time tuning its solver parameters. Community contributions to 
-   improve Newton's physics fidelity are welcome!
+.. warning::
 
-If the policy works across simulators, it has learned robust dynamics rather than 
-overfitting to IsaacGym's specific physics.
+   **Spherical joint limitation:** Sim2sim transfer currently only works for
+   robots with hinge (revolute) joints, such as the G1 and H1.  Robots that
+   use spherical (ball) joints — like SMPL and SMPL-X — have different
+   spherical joint representations across simulators (IsaacGym/IsaacLab vs
+   Newton/MuJoCo), and cross-simulator transfer is not yet supported for
+   these morphologies.
 
-ONNX Export for Deployment
---------------------------
+For a more thorough deployment validation, see the standalone MuJoCo test script
+described in :doc:`g1_deployment` (Step 4), which runs the exported ONNX model
+independently of the ProtoMotions training framework.
 
-Export trained policy to ONNX for deployment:
-
-.. code-block:: bash
-
-   python scripts/export_model_to_onnx.py \
-       --checkpoint results/g1_amass_dr/last.ckpt \
-       --output-path g1_policy.onnx
-
-The ONNX model can be loaded in C++ or other frameworks for robot deployment.
 
 Training Tips
 -------------
 
-**Start without DR**: Train a baseline without domain randomization first. This 
-confirms your motion data and rewards are working. 
-We did not find training becomes harder with DR in our experiments though.
+**Start without DR**: Train a baseline without domain randomization first. This
+confirms your motion data and rewards are working.  In our experience, DR does
+not make training significantly harder.
 
-**Observation history**: DR configs often use observation history to help the 
-policy infer physics parameters:
+**Observation history**: Some configs use observation history to help the
+policy infer physics parameters from recent state transitions.  The BM tracker
+config uses previous processed actions as a form of single-step history.
 
-.. code-block:: python
+**Noise levels**: The noise values above are empirically set to produce robust
+policies.  If your real-robot sensors are particularly noisy or clean, adjust
+the noise ranges accordingly.  When in doubt, err on the side of more noise --
+it's better to over-regularize than to have a fragile policy.
 
-   max_coords_obs=MaxCoordsSelfObsConfig(
-       enabled=True,
-       num_historical_steps=3,  # 3 steps of history
-   )
-
-Full Pipeline: Train → DR → Sim2Sim
-------------------------------------
-
-1. **Baseline training** (no DR):
-
-   .. code-block:: bash
-   
-      python protomotions/train_agent.py \
-          --experiment-path examples/experiments/mimic/mlp.py \
-          --experiment-name g1_baseline \
-          ...
-
-2. **DR training**:
-
-   .. code-block:: bash
-   
-      python protomotions/train_agent.py \
-          --experiment-path examples/experiments/mimic/mlp_domain_rand.py \
-          --experiment-name g1_dr \
-          ...
-
-3. **Sim2sim test**:
-
-   .. code-block:: bash
-   
-      # Test both policies on Newton
-      python protomotions/inference_agent.py \
-          --checkpoint results/g1_baseline/last.ckpt \
-          --simulator newton
-      
-      python protomotions/inference_agent.py \
-          --checkpoint results/g1_dr/last.ckpt \
-          --simulator newton
-
-4. **Compare**: The DR policy should perform better on Newton than the baseline.
 
 Next Steps
 ----------
 
+* :doc:`g1_deployment` - Full pipeline from data to real robot deployment
 * :doc:`custom_robot` - Add your robot for DR training
-* :doc:`../../user_guide/configuration` - More on config overrides
 * :doc:`../../concepts/abstractions` - Understand simulator abstraction
-
