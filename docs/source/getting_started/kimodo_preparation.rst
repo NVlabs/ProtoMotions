@@ -10,7 +10,7 @@ Overview
 
 Kimodo can generate motions from text prompts in two skeleton formats:
 
-* **SOMA skeleton** (30 joints): output as ``.npz`` files at 30 fps
+* **SOMA skeleton** (77 joints): output as ``.npz`` files at 30 fps
 * **G1 skeleton**: Unitree G1 robot, output as ``.csv`` files at 30 fps
 
 Both formats can be converted to ProtoMotions ``.motion`` files and packaged into
@@ -35,12 +35,12 @@ SOMA Skeleton Motions (.npz)
 
 Kimodo generates SOMA-format motions as ``.npz`` files with the following fields:
 
-* ``local_rot_mats``: ``(T, 30, 3, 3)`` — local rotation matrices for 30 joints
-* ``root_positions``: ``(T, 3)`` — root translations in meters
+* ``local_rot_mats``: ``(T, 77, 3, 3)`` — local rotation matrices for the full SOMA skeleton
+* ``posed_joints``: ``(T, 77, 3)`` — global joint positions (root position at index 0)
 * ``foot_contacts``: ``(T, 4)`` — foot contact labels (optional)
 
-The converter subselects from 30 joints to the 23 actuated joints in
-``soma23_humanoid.xml``, dropping 7 leaf end-effectors (face and fingertip joints).
+The converter subselects from 77 joints to the 23 actuated joints in the MJCF,
+dropping hands, finger details, face joints, and toe ends.
 
 .. note::
 
@@ -193,7 +193,7 @@ Supported Skeleton Formats
      - ProtoMotions Robot
    * - Kimodo SOMA
      - ``.npz``
-     - 30
+     - 77
      - ``convert_soma23_npz_to_proto.py``
      - ``soma23``
    * - Kimodo G1

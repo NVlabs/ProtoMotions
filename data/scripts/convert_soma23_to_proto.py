@@ -21,12 +21,9 @@
         posed_joints/<session>/<motion>.npy   — (T, 77, 3) joint positions, y-up
         joint_rot_mats/<session>/<motion>.npy  — (T, 77, 3, 3) LOCAL rotation matrices
 
-    The 77-body SOMASkeleton77 is subselected down to the 23 bodies in
-    soma23_humanoid.xml. The 7 dropped bodies (from SOMASkeleton30's 30) are
-    leaf end-effectors without actuators:
-        Jaw, LeftEye, RightEye,
-        LeftHandThumbEnd, LeftHandMiddleEnd,
-        RightHandThumbEnd, RightHandMiddleEnd
+    The 77-body SOMA skeleton is subselected down to the 23 bodies in
+    soma23_humanoid.xml, dropping hands, finger details, face joints,
+    and toe ends (leaf end-effectors without actuators).
 
     Coordinate system is converted from y-up to z-up.
 """

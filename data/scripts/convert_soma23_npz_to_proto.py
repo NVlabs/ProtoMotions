@@ -14,17 +14,16 @@
 # limitations under the License.
 #
 """
-Convert SOMASkeleton30 NPZ motion files to ProtoMotions format for soma23.
+Convert SOMA NPZ motion files to ProtoMotions format for soma23.
 
-NPZ files contain data from the SOMA pipeline with 30-body SOMASkeleton30:
-    local_rot_mats  — (T, 30, 3, 3)  local rotation matrices
-    root_positions  — (T, 3)          root translation
+NPZ files contain the full 77-joint SOMA skeleton:
+    local_rot_mats  — (T, 77, 3, 3)  local rotation matrices
+    posed_joints    — (T, 77, 3)     global joint positions (root pos = index 0)
+    global_rot_mats — (T, 77, 3, 3)  global rotation matrices (unused by converter)
+    foot_contacts   — (T, 4)         foot contact labels (unused by converter)
 
-A legacy batch dimension (B=1) is also accepted and squeezed automatically.
-
-The 30 bodies are subselected to the 23 MJCF bodies by dropping 7 leaf
-end-effectors: Jaw, LeftEye, RightEye, LeftHandThumbEnd, LeftHandMiddleEnd,
-RightHandThumbEnd, RightHandMiddleEnd.
+The 77 joints are subselected to the 23 MJCF bodies using SOMASKEL77_TO_MJCF_INDICES
+(same mapping as the npy and BVH pipelines).
 
 Usage:
     python data/scripts/convert_soma23_npz_to_proto.py \
@@ -42,29 +41,12 @@ import typer
 from protomotions.components.pose_lib import extract_kinematic_info
 
 from convert_soma23_to_proto import (
-    MJCF_BODY_NAMES,
+    SOMASKEL77_TO_MJCF_INDICES,
     create_motion_from_soma23_data,
 )
-from contact_detection import compute_contact_labels_from_pos_and_vel
 from motion_filter import passes_exclude_motion_filter
 
 app = typer.Typer(pretty_exceptions_enable=False)
-
-# SOMASkeleton30 bone order (from SOMASkeleton30.bone_order_names_with_parents)
-SOMASKEL30_BONE_NAMES = [
-    "Hips", "Spine1", "Spine2", "Chest",
-    "Neck1", "Neck2", "Head", "Jaw", "LeftEye", "RightEye",
-    "LeftShoulder", "LeftArm", "LeftForeArm", "LeftHand",
-    "LeftHandThumbEnd", "LeftHandMiddleEnd",
-    "RightShoulder", "RightArm", "RightForeArm", "RightHand",
-    "RightHandThumbEnd", "RightHandMiddleEnd",
-    "LeftLeg", "LeftShin", "LeftFoot", "LeftToeBase",
-    "RightLeg", "RightShin", "RightFoot", "RightToeBase",
-]
-
-SOMASKEL30_TO_MJCF_INDICES = [
-    SOMASKEL30_BONE_NAMES.index(name) for name in MJCF_BODY_NAMES
-]
 
 
 @app.command()
@@ -82,7 +64,7 @@ def main(
     duration_height_seconds: float = typer.Option(0.6),
     yaml_output_name: Optional[str] = None,
 ):
-    """Convert SOMASkeleton30 NPZ motion files to ProtoMotions format."""
+    """Convert SOMA NPZ motion files (77 joints) to ProtoMotions format."""
     device = torch.device("cpu")
     dtype = torch.float32
 
@@ -119,24 +101,17 @@ def main(
         try:
             data = np.load(npz_file, allow_pickle=True)
 
-            if "local_rot_mats" not in data or "root_positions" not in data:
+            for required in ("local_rot_mats", "posed_joints"):
+                if required not in data:
+                    print(f"Skipping {npz_file}: missing '{required}'")
+                    continue
+
+            local_rot_mats = data["local_rot_mats"]  # (T, 77, 3, 3)
+            root_pos = data["posed_joints"][:, 0, :]  # (T, 3)
+
+            if local_rot_mats.shape[1] != 77:
                 print(
-                    f"Skipping {npz_file}: missing 'local_rot_mats' or 'root_positions'"
-                )
-                continue
-
-            local_rot_mats = data["local_rot_mats"]
-            root_pos = data["root_positions"]
-
-            # Squeeze leading batch dimension if present
-            if local_rot_mats.ndim == 5:
-                local_rot_mats = local_rot_mats[0]
-            if root_pos.ndim == 3:
-                root_pos = root_pos[0]
-
-            if local_rot_mats.shape[1] != 30:
-                print(
-                    f"Skipping {npz_file}: expected 30 bodies, "
+                    f"Skipping {npz_file}: expected 77 joints, "
                     f"got {local_rot_mats.shape[1]}"
                 )
                 continue
@@ -144,8 +119,8 @@ def main(
             print(f"  local_rot_mats: {local_rot_mats.shape}")
             print(f"  root_pos: {root_pos.shape}")
 
-            # Subselect 30→23 MJCF bodies
-            local_rot_mats = local_rot_mats[:, SOMASKEL30_TO_MJCF_INDICES, :, :]
+            # Subselect to 23 MJCF bodies
+            local_rot_mats = local_rot_mats[:, SOMASKEL77_TO_MJCF_INDICES, :, :]
 
             # Downsample
             local_rot_mats = local_rot_mats[::downsample_factor]
