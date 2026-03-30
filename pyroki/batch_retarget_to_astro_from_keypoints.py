@@ -20,6 +20,6 @@ from retarget_from_keypoints import main
 if __name__ == "__main__":
     main(
         default_robot_config=str(
-            (Path(__file__).resolve().parent / "robot_configs" / "h1_2.yaml").resolve()
+            (Path(__file__).resolve().parent / "robot_configs" / "astro.yaml").resolve()
         )
     )

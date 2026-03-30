@@ -1,0 +1,46 @@
+name: g1
+urdf_path: ../../protomotions/data/assets/urdf/for_retargeting/g1.urdf
+mesh_dir: ../../protomotions/data/assets/mesh/G1
+keypoint_mapping:
+  - [pelvis, pelvis_contour_link]
+  - [left_hip, left_hip_pitch_link]
+  - [right_hip, right_hip_pitch_link]
+  - [left_knee, left_knee_link]
+  - [right_knee, right_knee_link]
+  - [left_ankle, left_ankle_roll_link]
+  - [right_ankle, right_ankle_roll_link]
+  - [left_foot, left_foot_link]
+  - [right_foot, right_foot_link]
+  - [left_shoulder, left_shoulder_pitch_link]
+  - [right_shoulder, right_shoulder_pitch_link]
+  - [left_elbow, left_elbow_link]
+  - [right_elbow, right_elbow_link]
+  - [left_wrist, left_wrist_yaw_link]
+  - [right_wrist, right_wrist_yaw_link]
+scale_factors:
+  smpl:
+    root: [0.9, 0.9, 0.85]
+    lower_body: [0.9, 0.9, 0.85]
+    upper_body: [0.9, 0.9, 0.8]
+  rigv1:
+    root: [0.8, 0.8, 0.75]
+    lower_body: [0.8, 0.8, 0.75]
+    upper_body: [0.8, 0.8, 0.7]
+weights:
+  local_alignment: 1.0
+  global_alignment: 4.0
+  root_smoothness: 1.0
+  joint_smoothness: 4.0
+  self_collision: 0.0
+  joint_rest_penalty: 1.0
+  joint_vel_limit: 50.0
+  foot_contact: 30.0
+  foot_tilt: 1.0
+hand_aux_offset: [0.0, 0.0, 0.14]
+torso_link_name: torso_link
+torso_aux_offset: [0.15, 0.0, -0.1]
+downweight_hips: false
+joints_to_move_less:
+  - waist_roll_joint
+  - right_wrist_pitch_joint
+  - left_wrist_pitch_joint
