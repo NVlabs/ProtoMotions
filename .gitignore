@@ -14,6 +14,8 @@ exps/*
 wandb/*
 newton_source/*
 data/amass/*.pkl
+data/smpl/*.pkl
+data/smpl/*.pt
 .claude/*
 !.claude/commands/
 .cursor/
