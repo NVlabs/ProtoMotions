@@ -70,7 +70,8 @@ class ObjectOptions:
     angular_damping: float = None
     linear_damping: float = None
     max_angular_velocity: float = None
-    texture_path: str = None  # Path to texture file
+    texture_path: str = None
+    color: Tuple = None
 
     def to_dict(self) -> Dict:
         """Convert options to a dictionary, excluding None values.
