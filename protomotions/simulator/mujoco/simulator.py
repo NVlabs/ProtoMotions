@@ -681,9 +681,10 @@ class MujocoSimulator(Simulator):
         dof_pos = new_states.dof_pos[0].cpu().numpy()
         dof_vel = new_states.dof_vel[0].cpu().numpy()
 
-        # Force XY to origin for single env (keep Z height from motion)
-        root_pos[0] = 0.0
-        root_pos[1] = 0.0
+        # Optional viewer convenience: keep the robot near the world origin.
+        if getattr(self.config, "force_root_xy_to_origin_on_reset", True):
+            root_pos[0] = 0.0
+            root_pos[1] = 0.0
 
         if self._has_free_joint:
             self.data.qpos[0:3] = root_pos

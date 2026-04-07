@@ -43,6 +43,13 @@ class MujocoSimulatorConfig(SimulatorConfig):
     _target_: str = "protomotions.simulator.mujoco.simulator.MujocoSimulator"
     sim: MujocoSimParams = field(default_factory=MujocoSimParams)
     w_last: bool = False  # MuJoCo uses wxyz quaternions
+    force_root_xy_to_origin_on_reset: bool = field(
+        default=True,
+        metadata={
+            "help": "If True, clamp root XY to the world origin on reset for single-env viewing. "
+                    "Disable this when you need metrics to stay aligned with respawned reference motions."
+        },
+    )
     use_implicit_pd: bool = field(
         default=True,
         metadata={
