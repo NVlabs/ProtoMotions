@@ -71,6 +71,7 @@ class ObjectOptions:
     linear_damping: float = None
     max_angular_velocity: float = None
     texture_path: str = None  # Path to texture file
+    color: Optional[Tuple[float, float, float]] = None  # RGB color (0-1)
 
     def to_dict(self) -> Dict:
         """Convert options to a dictionary, excluding None values.

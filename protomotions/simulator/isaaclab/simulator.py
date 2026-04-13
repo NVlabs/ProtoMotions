@@ -219,6 +219,9 @@ class IsaacLabSimulator(Simulator):
                     rest_offset=0.0,
                 )
 
+                # Resolve color: use object option if set, else per-type default
+                obj_color = obj.options.color if obj.options.color is not None else None
+
                 # Handle different object types
                 if isinstance(obj, MeshSceneObject):
                     main_dir_path = (
@@ -233,14 +236,16 @@ class IsaacLabSimulator(Simulator):
                         rigid_props=rigid_props,
                         collision_props=collision_props,
                         visual_material=sim_utils.PreviewSurfaceCfg(
-                            diffuse_color=(0.2, 0.7, 0.3), metallic=0.2
+                            diffuse_color=obj_color or (0.2, 0.7, 0.3),
+                            metallic=0.2,
                         ),
                     )
                 elif isinstance(obj, BoxSceneObject):
                     spawn_cfg = sim_utils.CuboidCfg(
                         size=(obj.width, obj.depth, obj.height),
                         visual_material=sim_utils.PreviewSurfaceCfg(
-                            diffuse_color=(0.8, 0.3, 0.3), metallic=0.2
+                            diffuse_color=obj_color or (0.8, 0.3, 0.3),
+                            metallic=0.2,
                         ),
                         rigid_props=rigid_props,
                         mass_props=sim_utils.MassPropertiesCfg(mass=-1, density=100),
@@ -250,7 +255,8 @@ class IsaacLabSimulator(Simulator):
                     spawn_cfg = sim_utils.SphereCfg(
                         radius=obj.radius,
                         visual_material=sim_utils.PreviewSurfaceCfg(
-                            diffuse_color=(0.3, 0.3, 0.8), metallic=0.2
+                            diffuse_color=obj_color or (0.3, 0.3, 0.8),
+                            metallic=0.2,
                         ),
                         rigid_props=rigid_props,
                         mass_props=sim_utils.MassPropertiesCfg(
@@ -263,7 +269,8 @@ class IsaacLabSimulator(Simulator):
                         radius=obj.radius,
                         height=obj.height,
                         visual_material=sim_utils.PreviewSurfaceCfg(
-                            diffuse_color=(0.3, 0.8, 0.3), metallic=0.2
+                            diffuse_color=obj_color or (0.3, 0.8, 0.3),
+                            metallic=0.2,
                         ),
                         rigid_props=rigid_props,
                         mass_props=sim_utils.MassPropertiesCfg(

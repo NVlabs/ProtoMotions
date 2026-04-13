@@ -840,8 +840,21 @@ class IsaacGymSimulator(Simulator):
             )
             self._object_indices.append(object_idx)
 
-            # Apply texture if specified in object options
+            # Apply visual properties from object options
             if hasattr(obj, "options") and obj.options is not None:
+                if obj.options.color is not None:
+                    r, g, b = obj.options.color
+                    num_bodies = self._gym.get_actor_rigid_body_count(
+                        env_ptr, object_handle
+                    )
+                    for body_idx in range(num_bodies):
+                        self._gym.set_rigid_body_color(
+                            env_ptr,
+                            object_handle,
+                            body_idx,
+                            gymapi.MESH_VISUAL,
+                            gymapi.Vec3(r, g, b),
+                        )
                 texture_path = obj.options.to_dict().get("texture_path")
                 if texture_path and not self.headless:
                     self._apply_texture_to_object(env_ptr, object_handle, texture_path)
