@@ -615,6 +615,13 @@ class IsaacGymSimulator(Simulator):
         object_asset_options.default_dof_drive_mode = gymapi.DOF_MODE_NONE
         object_options_dict = obj.options.to_dict()
 
+        # Without override_inertia the URDF's placeholder <inertial>
+        # block takes precedence over AssetOptions.density.
+        if isinstance(obj, PrimitiveSceneObject) and obj.options.mass is None:
+            object_asset_options.override_inertia = True
+
+        object_options_dict.pop("mass", None)
+
         if object_options_dict.get("vhacd_enabled", False):
             object_asset_options.vhacd_params = gymapi.VhacdParams()
         for key, value in object_options_dict.items():
@@ -672,6 +679,8 @@ class IsaacGymSimulator(Simulator):
         else:
             raise ValueError(f"Unsupported primitive shape: {obj.object_identifier}")
 
+        mass_value = obj.options.mass if obj.options.mass is not None else 1.0
+
         # Create the URDF XML content
         urdf_content = f"""<?xml version="1.0"?>
 <robot name="{obj.object_identifier}">
@@ -687,7 +696,7 @@ class IsaacGymSimulator(Simulator):
       </geometry>
     </collision>
     <inertial>
-      <mass value="1.0"/>
+      <mass value="{mass_value}"/>
       <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
     </inertial>
   </link>

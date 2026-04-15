@@ -51,10 +51,17 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+DEFAULT_PRIMITIVE_DENSITY: float = 1000.0  # kg/m³, typical physics sim default
+
+
 @dataclass
 class ObjectOptions:
     """
     Contains options for configuring object properties in the simulator.
+
+    Mass properties can be specified as either ``density`` (kg/m³) or
+    ``mass`` (kg), but not both.  When neither is set, density defaults
+    to :data:`DEFAULT_PRIMITIVE_DENSITY`.
     """
 
     fix_base_link: bool = field(default=None)
@@ -67,10 +74,19 @@ class ObjectOptions:
         }
     )
     density: float = None
+    mass: float = None
     angular_damping: float = None
     linear_damping: float = None
     max_angular_velocity: float = None
     texture_path: str = None  # Path to texture file
+
+    def __post_init__(self):
+        if self.density is not None and self.mass is not None:
+            raise ValueError(
+                "ObjectOptions: specify either 'density' or 'mass', not both."
+            )
+        if self.density is None and self.mass is None:
+            self.density = DEFAULT_PRIMITIVE_DENSITY
 
     def to_dict(self) -> Dict:
         """Convert options to a dictionary, excluding None values.
@@ -939,23 +955,31 @@ class SceneLibConfig:
     _target_: str = "protomotions.components.scene_lib.SceneLib"
     scene_file: str = field(
         default=None,
-        metadata={"help": "Path to scene file (.pt) to load. None for programmatic scenes."}
+        metadata={
+            "help": "Path to scene file (.pt) to load. None for programmatic scenes."
+        },
     )
     subset_method: Union[SubsetMethod, List[int]] = field(
         default=SubsetMethod.FIRST,
-        metadata={"help": "Method for subsetting scenes: 'first', 'random', 'sequential', or list of indices."}
+        metadata={
+            "help": "Method for subsetting scenes: 'first', 'random', 'sequential', or list of indices."
+        },
     )
     replicate_method: ReplicationMethod = field(
         default=ReplicationMethod.WEIGHTED,
-        metadata={"help": "Method for replicating scenes: 'first', 'weighted', 'random', 'sequential'."}
+        metadata={
+            "help": "Method for replicating scenes: 'first', 'weighted', 'random', 'sequential'."
+        },
     )
     pointcloud_samples_per_object: Optional[int] = field(
         default=None,
-        metadata={"help": "Number of pointcloud samples per object for observations. None to disable."}
+        metadata={
+            "help": "Number of pointcloud samples per object for observations. None to disable."
+        },
     )
     num_objects_per_env: int = field(
         default=None,
-        metadata={"help": "Number of objects per environment. Must match scene data."}
+        metadata={"help": "Number of objects per environment. Must match scene data."},
     )
 
 
