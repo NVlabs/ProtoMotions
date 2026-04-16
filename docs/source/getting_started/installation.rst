@@ -9,7 +9,7 @@ You can install the simulation of your choice, and the simulation backend is sel
 .. raw:: html
 
    <p>
-     <a href="https://github.com/newton-physics/newton/commit/e7a737c"><img src="https://img.shields.io/badge/Newton-e7a737c-brightgreen.svg" alt="Newton"></a>
+     <a href="https://pypi.org/project/newton/1.0.0/"><img src="https://img.shields.io/badge/Newton-1.0.0-brightgreen.svg" alt="Newton"></a>
      <a href="https://github.com/isaac-sim/IsaacLab/releases/tag/v2.3.0"><img src="https://img.shields.io/badge/IsaacLab-2.3.0-blue.svg" alt="IsaacLab"></a>
      <a href="https://developer.nvidia.com/isaac-gym"><img src="https://img.shields.io/badge/IsaacGym-Preview_4-blue.svg" alt="IsaacGym"></a>
      <a href="https://github.com/Genesis-Embodied-AI/Genesis"><img src="https://img.shields.io/badge/Genesis-untested-lightgrey.svg" alt="Genesis"></a>
@@ -116,36 +116,39 @@ Genesis requires **Python 3.10**.
 Newton
 ~~~~~~~~~~~~~
 
-Newton (currently in beta) is a GPU-accelerated physics simulator built on NVIDIA Warp. We recommend using **uv** for installation.
-For full installation details, see the `Newton Installation Guide <https://newton-physics.github.io/newton/guide/installation.html>`__.
+Newton is a GPU-accelerated physics simulator built on NVIDIA Warp, now available on PyPI.
+For full installation details, see the `Newton Installation Guide <https://newton-physics.github.io/newton/1.0.0/guide/installation.html>`__.
 
-**Requirements**: Python 3.10+, NVIDIA GPU (compute capability >= 5.0), driver 545+
+**Requirements**: Python 3.10+ (3.11+ recommended), NVIDIA GPU (compute capability >= 5.0), driver 545+
 
-1. Clone Newton and create a virtual environment:
-
-   .. code-block:: bash
-
-      git clone git@github.com:newton-physics/newton.git
-      cd newton
-      git checkout 8a2abf2  # checkout last tested commit
-      uv venv
-      source .venv/bin/activate
-
-2. Install Newton dependencies:
+1. Create a virtual environment:
 
    .. code-block:: bash
 
-      uv pip install mujoco --pre -f https://py.mujoco.org/
-      uv pip install warp-lang --pre -U -f https://pypi.nvidia.com/warp-lang/
-      uv pip install git+https://github.com/google-deepmind/mujoco_warp.git@main
-      uv pip install -e .[examples]
+      python -m venv .venv_newton
+      source .venv_newton/bin/activate
+
+2. Install PyTorch and Newton:
+
+   .. code-block:: bash
+
+      pip install torch --index-url https://download.pytorch.org/whl/cu124
+      pip install "newton[examples]"
+
+   Use ``newton[sim]`` instead of ``newton[examples]`` if you only need headless mode (no viewer).
 
 3. Install ProtoMotions and dependencies:
 
    .. code-block:: bash
 
-      uv pip install -e /path/to/protomotions
-      uv pip install -r /path/to/protomotions/requirements_newton.txt
+      pip install -e /path/to/protomotions
+      pip install -r /path/to/protomotions/requirements_newton.txt
+
+.. note::
+
+   On Python 3.10, ``imgui-bundle`` (a dependency of ``newton[examples]``) has no prebuilt
+   wheel and compiles from source, which can take 10-20 minutes. Python 3.11+ has prebuilt
+   wheels and installs instantly.
 
 MuJoCo (CPU-only)
 ~~~~~~~~~~~~~~~~~

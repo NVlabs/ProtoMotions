@@ -17,7 +17,8 @@ import os
 import torch
 import numpy as np
 import sys
-from typing import Dict, Optional, Tuple
+from glob import has_magic
+from typing import Dict, List, Optional, Tuple
 
 from protomotions.simulator.base_simulator.simulator import Simulator
 from protomotions.simulator.base_simulator.config import (
@@ -37,9 +38,8 @@ from protomotions.simulator.base_simulator.simulator_state import (
 from protomotions.simulator.newton.config import NewtonSimulatorConfig
 import warp as wp
 import newton
-from newton import ActuatorMode
+from newton import JointTargetMode
 from newton.selection import ArticulationView
-from newton import Contacts
 from newton.sensors import SensorContact
 from newton.solvers import SolverNotifyFlags
 import copy
@@ -209,7 +209,7 @@ class NewtonSimulator(Simulator):
         # 3. Set per-DOF joint properties ON THE BUILDER (before finalize)
         self._configure_builder_joint_properties()
 
-        self.robot.articulation_key = ["robot"]
+        self.robot.articulation_label = ["robot"]
         self.robot.approximate_meshes("convex_hull")
 
         # 5. Add projectile free bodies to the builder (before replicate)
@@ -217,7 +217,6 @@ class NewtonSimulator(Simulator):
         proj_sizes = self._proj_config.get_sizes()
         shape_cfg = newton.ModelBuilder.ShapeConfig(
             density=self._proj_config.density,
-            thickness=1e-3,
         )
         for i in range(self._proj_config.num_projectiles):
             s = proj_sizes[i]
@@ -277,7 +276,7 @@ class NewtonSimulator(Simulator):
         are the actuated joint DOFs.
         """
         # Build mapping from our DOF names to builder DOF indices.
-        # The builder's joint_key list contains compound names like
+        # The builder's joint_label list contains compound names like
         # "L_Hip_x_L_Hip_y_L_Hip_z" for multi-DOF joints.
         common_dof_names = list(self._dof_names)  # copy
         is_floating = not self.robot_config.asset.fix_base_link
@@ -289,7 +288,7 @@ class NewtonSimulator(Simulator):
             common_dof_name = common_dof_names[0]
 
             # Check if it's a direct match
-            if common_dof_name in self.robot.joint_key:
+            if common_dof_name in self.robot.joint_label:
                 # Single-DOF joint
                 info = self.robot_config.control.control_info[common_dof_name]
                 self._set_builder_dof_properties(builder_dof_idx, info)
@@ -298,13 +297,13 @@ class NewtonSimulator(Simulator):
             else:
                 # Multi-DOF joint: find the compound key containing this name
                 multi_dof_key = None
-                for key in self.robot.joint_key:
+                for key in self.robot.joint_label:
                     if common_dof_name in key:
                         multi_dof_key = key
                         break
                 assert multi_dof_key is not None, (
-                    f"No joint key match found for {common_dof_name} "
-                    f"in {self.robot.joint_key}"
+                    f"No joint label match found for {common_dof_name} "
+                    f"in {self.robot.joint_label}"
                 )
 
                 # Consume all DOF names that belong to this compound joint
@@ -321,12 +320,12 @@ class NewtonSimulator(Simulator):
         if self.control_type == ControlType.BUILT_IN_PD:
             self.robot.joint_target_ke[dof_idx] = info.stiffness
             self.robot.joint_target_kd[dof_idx] = info.damping
-            self.robot.joint_act_mode[dof_idx] = int(ActuatorMode.POSITION)
+            self.robot.joint_target_mode[dof_idx] = int(JointTargetMode.POSITION)
         else:
             # PROPORTIONAL / TORQUE: we apply forces ourselves
             self.robot.joint_target_ke[dof_idx] = 0.0
             self.robot.joint_target_kd[dof_idx] = 0.0
-            self.robot.joint_act_mode[dof_idx] = int(ActuatorMode.NONE)
+            self.robot.joint_target_mode[dof_idx] = int(JointTargetMode.NONE)
 
         if info.armature is not None:
             self.robot.joint_armature[dof_idx] = info.armature
@@ -346,24 +345,29 @@ class NewtonSimulator(Simulator):
         common_dof_names = copy.deepcopy(self._dof_names)
         newton_dof_names = {}
 
+        # Newton 1.0 joint_label stores full paths (e.g. "robot/body/joint_name")
+        # but ArticulationView uses short names for matching. Extract short names.
+        short_labels = [label.split("/")[-1] for label in self.robot.joint_label]
+
         while len(common_dof_names) > 0:
             common_dof_name = common_dof_names[0]
-            if common_dof_name in self.robot.joint_key:
+            if common_dof_name in short_labels:
                 newton_dof_names[common_dof_name] = common_dof_name
                 common_dof_names.pop(0)
             else:
                 multi_dof_name = None
-                for newton_dof_name in self.robot.joint_key:
-                    if common_dof_name in newton_dof_name:
-                        multi_dof_name = newton_dof_name
+                for short_label in short_labels:
+                    if common_dof_name in short_label:
+                        multi_dof_name = short_label
                         break
                 assert (
                     multi_dof_name is not None
-                ), f"No joint key match found for {common_dof_name} in {self.robot.joint_key}"
+                ), f"No joint label match found for {common_dof_name} in {short_labels}"
 
                 newton_dof_names[multi_dof_name] = []
                 while (
-                    len(common_dof_names) > 0 and common_dof_names[0] in multi_dof_name
+                    len(common_dof_names) > 0
+                    and common_dof_names[0] in multi_dof_name
                 ):
                     newton_dof_names[multi_dof_name].append(common_dof_names[0])
                     common_dof_names.pop(0)
@@ -477,21 +481,13 @@ class NewtonSimulator(Simulator):
             ccd_iterations=sim_params.ccd_iterations,
         )
 
-        # Set geom_margin on MuJoCo model directly (not synced by update_geom_properties_kernel)
+        # Set geom_margin and geom_gap on the MuJoCo Warp model directly.
+        # Newton 1.0 removed geom_gap/geom_margin from model.mujoco namespace;
+        # set them on solver.mjw_model which is the MuJoCo Warp data.
         geom_margin = wp.to_torch(self.solver.mjw_model.geom_margin)
         geom_margin[:] = 0.01
         self.solver.mjw_model.geom_margin = wp.from_torch(geom_margin, dtype=wp.float32)
 
-        # Set geom_gap on the Newton model (source of truth).
-        # update_geom_properties_kernel reads from model.mujoco.geom_gap and writes
-        # to mjw_model.geom_gap on every notify_model_changed(SHAPE_PROPERTIES).
-        # Setting only mjw_model.geom_gap would be overwritten by subsequent notifies.
-        newton_geom_gap = wp.to_torch(self.model.mujoco.geom_gap)
-        newton_geom_gap[:] = 0.01
-        self.model.mujoco.geom_gap.assign(
-            wp.from_torch(newton_geom_gap, dtype=wp.float32)
-        )
-        # Also set on MuJoCo model for immediate effect
         mj_geom_gap = wp.to_torch(self.solver.mjw_model.geom_gap)
         mj_geom_gap[:] = 0.01
         self.solver.mjw_model.geom_gap = wp.from_torch(mj_geom_gap, dtype=wp.float32)
@@ -680,6 +676,43 @@ class NewtonSimulator(Simulator):
         """Setup visualization markers."""
         return
 
+    @staticmethod
+    def _get_contact_sensor_body_patterns(body_name: str) -> List[str]:
+        """Build Newton body-label patterns for a configured contact body.
+
+        ProtoMotions contact bodies use short MJCF body names like
+        ``left_ankle_roll_link``. Newton 1.0 stores ``model.body_label`` as full
+        paths like ``g1_29dof/worldbody/.../left_ankle_roll_link`` and
+        ``SensorContact`` matches against those labels via ``fnmatch``.
+
+        Match both the original short name and any full-path label that ends in
+        that body name, while preserving explicit glob patterns or full paths
+        unchanged.
+        """
+        if "/" in body_name or has_magic(body_name):
+            return [body_name]
+
+        return [body_name, f"*/{body_name}"]
+
+    @staticmethod
+    def _count_sensor_sensing_objects(sensor: SensorContact) -> int:
+        """Count matched sensing objects across all Newton worlds."""
+        return sum(len(world_objs) for world_objs in getattr(sensor, "sensing_objs", []))
+
+    @staticmethod
+    def _validate_contact_sensor_match(
+        body_name: str, sensor_body_patterns: List[str], matched_body_count: int
+    ) -> None:
+        """Fail fast when a configured contact body matches no Newton labels."""
+        if matched_body_count == 0:
+            raise ValueError(
+                "Newton contact sensor for "
+                f"'{body_name}' matched no body labels using "
+                f"{sensor_body_patterns}. "
+                "This usually means the configured ProtoMotions body name does not "
+                "match Newton's body_label format."
+            )
+
     def _setup_contact_sensors(self) -> None:
         """Setup contact sensors for each contact body."""
         if (
@@ -694,11 +727,18 @@ class NewtonSimulator(Simulator):
 
         # Create a contact sensor for each specified contact body
         for body_name in self.robot_config.contact_bodies:
+            sensor_body_patterns = self._get_contact_sensor_body_patterns(body_name)
             # Create sensor that detects contacts between this body and anything
             # The sensor will aggregate contacts across all environments
             sensor = SensorContact(
-                self.model, sensing_obj_bodies=body_name, verbose=False
+                self.model, sensing_obj_bodies=sensor_body_patterns, verbose=False
             )
+
+            matched_body_count = self._count_sensor_sensing_objects(sensor)
+            self._validate_contact_sensor_match(
+                body_name, sensor_body_patterns, matched_body_count
+            )
+
             self._contact_sensors[body_name] = sensor
 
             self._contact_forces[body_name] = torch.zeros(
@@ -710,12 +750,8 @@ class NewtonSimulator(Simulator):
         )
 
     def _create_contacts(self) -> None:
-        """Create Contacts object with correct capacity and requested attributes."""
-        self.contacts = Contacts(
-            self.solver.get_max_contact_count(),
-            0,
-            requested_attributes=self.model.get_requested_contact_attributes(),
-        )
+        """Create Contacts object via Model.contacts() (Newton 1.0+ API)."""
+        self.contacts = self.model.contacts()
 
     def _simulate(self) -> None:
         """Run physics simulation for one frame (decimation substeps)."""
@@ -740,14 +776,17 @@ class NewtonSimulator(Simulator):
         if len(self._contact_sensors) > 0:
             self.solver.update_contacts(self.contacts, self.state_0)
             for body_name, sensor in self._contact_sensors.items():
-                sensor.eval(self.contacts)
-                # Store the net contact force for this body (across all environments)
-                # sensor.net_force has shape [num_worlds, num_bodies, 3] where num_bodies=1
+                sensor.update(self.state_0, self.contacts)
                 if hasattr(sensor, "net_force") and sensor.net_force is not None:
                     net_force = wp.to_torch(sensor.net_force).clone()
-                    # Squeeze the body dimension if present (shape [N, 1, 3] -> [N, 3])
-                    if net_force.dim() == 3 and net_force.shape[1] == 1:
-                        net_force = net_force.squeeze(1)
+                    # net_force shape: (n_sensing_objs, max_readings, 3)
+                    # Sum over readings dimension and reshape to (num_envs, 3)
+                    if net_force.numel() == 0:
+                        net_force = torch.zeros(
+                            self.num_envs, 3, device=self.device
+                        )
+                    else:
+                        net_force = net_force.sum(dim=-2).view(self.num_envs, 3)
                     self._contact_forces[body_name] = net_force
 
     def _physics_step(self) -> None:

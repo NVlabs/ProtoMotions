@@ -94,7 +94,7 @@ python deployment/export_bm_tracker_onnx.py \
 
 torch, lightning (Fabric), tensordict, wandb
 
-**Newton simulator**: Tested against Newton repo commit `e7a737c`. Newton is installed from source (not PyPI) — see `requirements_newton.txt`.
+**Newton simulator**: Tested against Newton 1.0.0 from PyPI. Install via `pip install "newton[examples]"` — see `requirements_newton.txt`.
 
 **MuJoCo simulator**: CPU-only backend using the `mujoco` Python package (>=3.0). Supports single environment (`num_envs=1`) for lightweight testing and debugging. Useful for quick policy validation without GPU.
 

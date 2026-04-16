@@ -45,22 +45,14 @@ RUN uv pip install pip
 # Install PyTorch with CUDA 12.4
 RUN uv pip install torch>=2.2 --index-url https://download.pytorch.org/whl/cu124
 
-# Install Newton dependencies (pinned versions matching local dev env)
-RUN uv pip install warp-lang==1.11.1
-RUN uv pip install mujoco==3.5.0.dev868321921 --extra-index-url https://py.mujoco.org/
-RUN uv pip install mujoco-warp==0.0.2
-
-# Clone and install Newton at tested commit (e7a737c)
-RUN git clone https://github.com/newton-physics/newton.git /workspace/newton \
-    && cd /workspace/newton \
-    && git checkout e7a737cc \
-    && uv pip install -e .[examples]
+# Install Newton 1.0 from PyPI (includes warp-lang, mujoco, mujoco-warp, viewer deps)
+RUN uv pip install "newton[examples]"
 
 # Copy protomotions requirements
 WORKDIR /workspace/protomotions
 COPY requirements_newton.txt .
 
-# Install remaining Python dependencies
+# Install remaining Python dependencies (pins mujoco==3.5.0 to match Newton 1.0)
 RUN uv pip install --no-cache -r requirements_newton.txt
 
 # Don't copy or install protomotions here - it will be synced and installed from 

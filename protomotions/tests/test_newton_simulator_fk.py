@@ -116,7 +116,6 @@ class TestNewtonSimulatorFK:
 
         motion_lib_config = MotionLibConfig(
             motion_file=self.motion_file,
-            world_size=1,
             get_motion_state_use_blend=False,  # Use exact frames for testing
         )
 
