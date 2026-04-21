@@ -213,7 +213,7 @@ class NewtonSimulator(Simulator):
         self.robot.approximate_meshes("convex_hull")
 
         # 5. Add projectile free bodies to the builder (before replicate)
-        self._proj_config = ProjectileConfig()
+        self._resolve_proj_config()
         proj_sizes = self._proj_config.get_sizes()
         shape_cfg = newton.ModelBuilder.ShapeConfig(
             density=self._proj_config.density,
