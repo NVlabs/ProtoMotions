@@ -465,6 +465,15 @@ class SimulatorConfig:
             "help": "Domain randomization configuration for sim-to-real transfer."
         },
     )
+    projectile: ProjectileConfig = field(
+        default_factory=lambda: ProjectileConfig(),
+        metadata={
+            "help": (
+                "Projectile cube perturbation configuration (J-key throws). "
+                "Set num_projectiles=0 to disable projectiles."
+            )
+        },
+    )
     pd_target_max_accel: Optional[float] = field(
         default=None,
         metadata={

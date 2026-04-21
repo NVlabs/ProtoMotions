@@ -116,8 +116,8 @@ class IsaacLabSimulator(Simulator):
         self._sim = SimulationContext(sim_cfg)
         self._sim.set_camera_view([2.5, 0.0, 4.0], [0.0, 0.0, 2.0])
 
-        # Pre-create projectile config (needed before _init_projectiles runs)
-        self._proj_config = ProjectileConfig()
+        # Scene construction below needs _proj_config before _init_projectiles runs
+        self._resolve_proj_config()
 
         scene_cfg = self._get_scene_cfg()
 

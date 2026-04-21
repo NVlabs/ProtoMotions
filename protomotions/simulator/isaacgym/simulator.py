@@ -116,8 +116,8 @@ class IsaacGymSimulator(Simulator):
         Called by base class _initialize_with_markers() after visualization markers
         are set. Creates simulation, viewer, and acquires tensors.
         """
-        # Pre-create projectile config (needed before _init_projectiles runs)
-        self._proj_config = ProjectileConfig()
+        # Scene construction below needs _proj_config before _init_projectiles runs
+        self._resolve_proj_config()
 
         # Update marker names ordering from visualization markers
         self._marker_names_ordering = (

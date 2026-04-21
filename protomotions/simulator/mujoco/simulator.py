@@ -292,8 +292,8 @@ class MujocoSimulator(Simulator):
         asset_file = self.robot_config.asset.asset_file_name
         asset_path = os.path.join(asset_root, asset_file)
 
-        # Pre-create projectile config so we can inject bodies into MJCF
-        self._proj_config = ProjectileConfig()
+        # MJCF injection below needs _proj_config before _init_projectiles runs
+        self._resolve_proj_config()
 
         log.info("Loading MuJoCo model from: %s", asset_path)
         self.model = self._load_mjcf_stripped(asset_path, self._proj_config)

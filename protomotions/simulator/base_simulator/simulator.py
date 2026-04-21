@@ -408,9 +408,27 @@ class Simulator(RecordingMixin, ABC):
         """
         raise NotImplementedError
 
+    def _resolve_proj_config(self) -> "ProjectileConfig":
+        """Resolve and cache the active projectile config.
+
+        Reads ``self.config.projectile`` when present (fresh configs default
+        to a ``ProjectileConfig`` instance via ``SimulatorConfig``), falling
+        back to a default for legacy ``resolved_configs.pt`` pickles that
+        predate the field. Cached on ``self._proj_config`` so callers get
+        the same instance whether invoked from a backend ``__init__`` (which
+        needs the config before scene construction) or later from
+        ``_init_projectiles``. To disable projectiles, set
+        ``SimulatorConfig.projectile.num_projectiles = 0``.
+        """
+        if not hasattr(self, "_proj_config"):
+            self._proj_config = (
+                getattr(self.config, "projectile", None) or ProjectileConfig()
+            )
+        return self._proj_config
+
     def _init_projectiles(self) -> None:
         """Initialize projectile pool state and create physics bodies."""
-        self._proj_config = ProjectileConfig()
+        self._resolve_proj_config()
         N = self._proj_config.num_projectiles
 
         self._proj_next_idx = torch.zeros(
