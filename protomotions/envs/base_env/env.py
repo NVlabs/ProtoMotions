@@ -1482,6 +1482,8 @@ class BaseEnv:
             snapshot["_current_noisy_obs"] = NoisyObservations(
                 **{f.name: getattr(noisy, f.name).clone() for f in dc_fields(noisy)}
             )
+        if self.scene_lib.num_objects_per_scene > 0:
+            snapshot["object_state"] = self.simulator.get_object_root_state()
         return snapshot
 
     def restore_state(self, snapshot: dict) -> None:
@@ -1494,7 +1496,9 @@ class BaseEnv:
             snapshot: Dictionary from save_state() containing state tensors
         """
         env_ids = torch.arange(self.num_envs, device=self.device)
-        self.simulator.reset_envs(snapshot["robot_state"], None, env_ids)
+        self.simulator.reset_envs(
+            snapshot["robot_state"], snapshot.get("object_state"), env_ids
+        )
 
         if "state_history" in snapshot and self.state_history is not None:
             self.state_history.load_state(snapshot["state_history"])
