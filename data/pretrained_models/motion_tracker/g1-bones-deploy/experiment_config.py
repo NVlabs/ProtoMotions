@@ -13,14 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""BeyondMimic experiment with torso anchor + L2C2 regularization.
+"""BeyondMimic + L2C2 + AMP discriminator experiment.
 
-Extends mlp_bm_deploy_future_obs_norm_learned_std_torso_anchor.py with L2C2:
-- Adds clean (noise-free) observation counterparts alongside existing noisy actor obs
-- Penalizes MSE(mu_noisy, mu_clean) to encourage policy smoothness w.r.t. sensor noise
-- Anchor uses robot config default (torso_link for G1) instead of pelvis override
+Based on mlp_bm_deploy_future_obs_norm_learned_std_torso_anchor_l2c2.py with
+an AMP discriminator added as an auxiliary naturalness reward.
 
-Reference: Kobayashi 2022 — "L2C2: Locally Lipschitz Continuous Constraint"
+Reward weighting (unnormalized):
+- task_reward_w = 0.5 (BM tracking rewards, ~3-4 magnitude)
+- discriminator_reward_w = 2.0 (AMP disc reward, 0-1 magnitude)
+  -> roughly equalizes their contribution to advantages
+
+Discriminator sees clean (noise-free) historical observations, same as critic.
 """
 
 from protomotions.robot_configs.base import RobotConfig
@@ -39,10 +42,13 @@ from protomotions.components.terrains.config import (
     CombineMode,
 )
 from protomotions.envs.base_env.config import EnvConfig
-from protomotions.agents.ppo.config import PPOAgentConfig
 from protomotions.components.scene_lib import SceneLibConfig
 from protomotions.components.motion_lib import MotionLibConfig
 import argparse
+
+
+# History steps for discriminator temporal context
+DISC_HISTORY_STEPS = [1, 2, 3, 4, 8, 16, 32]
 
 
 def terrain_config(args: argparse.Namespace):
@@ -70,12 +76,13 @@ def motion_lib_config(args: argparse.Namespace):
 
 
 def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
-    """Build environment configuration with future target poses and L2C2 clean obs.
+    """Build environment configuration.
 
-    Actor sees reduced coords + multi-horizon target poses (no XY offset).
-    Additionally provides clean (noise-free) counterparts for L2C2 regularization.
-    Rewards use BeyondMimic-style heading-invariant relative body tracking
-    plus global anchor tracking (no motion realignment at training).
+    Actor sees noisy reduced coords + multi-horizon target poses.
+    Critic sees clean max coords + target poses.
+    Discriminator sees clean historical max coords.
+    L2C2 clean counterparts provided for actor regularization.
+    Rewards use BM-style tracking + AMP discriminator.
     """
     from protomotions.envs.motion_manager.config import MimicMotionManagerConfig
     from protomotions.envs.control.mimic_control import MimicControlConfig
@@ -85,6 +92,7 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
         mimic_target_poses_reduced_coords_factory,
         max_coords_obs_factory,
         mimic_target_poses_max_coords_factory,
+        historical_max_coords_obs_factory,
         previous_actions_factory,
         action_smoothness_factory,
         global_anchor_ori_rew_factory,
@@ -93,6 +101,7 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
         global_body_lin_vel_rew_factory,
         global_body_ang_vel_rew_factory,
         anchor_height_error_term_factory,
+        relative_body_pos_error_term_factory,
     )
     from protomotions.envs.rewards import compute_soft_pos_limit_rew
     from protomotions.envs.context_views import EnvContext
@@ -143,6 +152,14 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
             with_velocities=True,
             with_relative=True,
         ),
+        # Historical observations for AMP discriminator (clean)
+        "historical_max_coords_obs": historical_max_coords_obs_factory(
+            use_noisy=False,
+            local_obs=True,
+            root_height_obs=True,
+            observe_contacts=False,
+            history_steps=DISC_HISTORY_STEPS,
+        ),
         # Common observations (processed actions after tanh/clamp)
         "historical_previous_processed_actions": previous_actions_factory(
             history_steps=1, processed=True
@@ -152,9 +169,10 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
     # Termination components
     termination_components = {
         "fall": anchor_height_error_term_factory(threshold=0.25),
+        "bad_motion_body_pos": relative_body_pos_error_term_factory(threshold=0.25),
     }
 
-    # Reward components
+    # Reward components (BM tracking — task rewards)
     reward_components = {
         # Global anchor (root) orientation
         "global_anchor_ori": global_anchor_ori_rew_factory(weight=0.5, sigma=0.4),
@@ -197,7 +215,7 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
     return EnvConfig(
         ref_contact_smooth_window=7,
         max_episode_length=1000,
-        num_state_history_steps=1,
+        num_state_history_steps=max(DISC_HISTORY_STEPS),
         control_components=control_components,
         observation_components=observation_components,
         termination_components=termination_components,
@@ -213,15 +231,24 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
 
 def agent_config(
     robot_config: RobotConfig, env_config: EnvConfig, args: argparse.Namespace
-) -> PPOAgentConfig:
-    """Build agent configuration with L2C2 regularization."""
-    from protomotions.agents.common.config import MLPWithConcatConfig, MLPLayerConfig
+):
+    """Build AMP agent configuration with L2C2 regularization."""
+    from protomotions.agents.common.config import (
+        MLPWithConcatConfig,
+        MLPLayerConfig,
+        ModuleContainerConfig,
+    )
     from protomotions.agents.ppo.config import (
         PPOActorConfig,
-        PPOModelConfig,
         AdaptiveLRConfig,
         AdvantageNormalizationConfig,
         L2C2Config,
+    )
+    from protomotions.agents.amp.config import (
+        AMPAgentConfig,
+        AMPModelConfig,
+        DiscriminatorConfig,
+        AMPParametersConfig,
     )
     from protomotions.agents.base_agent.config import OptimizerConfig
     from protomotions.agents.evaluators.config import (
@@ -236,6 +263,8 @@ def agent_config(
         gr_error_factory,
         max_joint_error_factory,
     )
+    from protomotions.envs.obs import compute_historical_max_coords_from_motion_lib
+    from protomotions.envs.mdp_component import MdpComponent
 
     # Actor configuration — obs normalization ON, learnable std from -2.9
     actor_config = PPOActorConfig(
@@ -276,8 +305,59 @@ def agent_config(
         layers=[MLPLayerConfig(units=1024, activation="relu") for _ in range(4)],
     )
 
-    agent_config: PPOAgentConfig = PPOAgentConfig(
-        model=PPOModelConfig(
+    # Discriminator — sees clean historical max coords
+    discriminator_config = DiscriminatorConfig(
+        in_keys=["historical_max_coords_obs"],
+        out_keys=["disc_logits"],
+        models=[
+            MLPWithConcatConfig(
+                in_keys=["historical_max_coords_obs"],
+                out_keys=["disc_logits"],
+                normalize_obs=True,
+                norm_clamp_value=5,
+                num_out=1,
+                layers=[
+                    MLPLayerConfig(units=1024, activation="relu"),
+                    MLPLayerConfig(units=1024, activation="relu"),
+                    MLPLayerConfig(units=512, activation="relu"),
+                ],
+            )
+        ],
+    )
+
+    # Discriminator critic — same inputs as discriminator
+    disc_critic_config = ModuleContainerConfig(
+        in_keys=["max_coords_obs", "historical_max_coords_obs"],
+        out_keys=["disc_value"],
+        models=[
+            MLPWithConcatConfig(
+                in_keys=["max_coords_obs", "historical_max_coords_obs"],
+                out_keys=["disc_value"],
+                normalize_obs=True,
+                norm_clamp_value=5,
+                num_out=1,
+                layers=[
+                    MLPLayerConfig(units=512, activation="relu"),
+                    MLPLayerConfig(units=256, activation="relu"),
+                ],
+            )
+        ],
+    )
+
+    # Reference observation components for discriminator expert data
+    reference_obs_components = {
+        "historical_max_coords_obs": MdpComponent(
+            compute_func=compute_historical_max_coords_from_motion_lib,
+            dynamic_vars={},  # motion_lib, motion_ids, motion_times, dt injected by agent
+            static_params={
+                "num_state_history_steps": max(DISC_HISTORY_STEPS),
+                "history_steps": DISC_HISTORY_STEPS,
+            },
+        ),
+    }
+
+    agent_cfg = AMPAgentConfig(
+        model=AMPModelConfig(
             in_keys=[
                 # Noisy observations for actor
                 "noisy_reduced_coords_obs",
@@ -288,20 +368,40 @@ def agent_config(
                 # Clean observations for critic
                 "max_coords_obs",
                 "mimic_max_coords_target_poses",
-                # Shared observations (processed actions after tanh/clamp)
+                # Historical observations for discriminator (clean)
+                "historical_max_coords_obs",
+                # Shared observations
                 "historical_previous_processed_actions",
             ],
-            out_keys=["action", "mean_action", "neglogp", "value"],
+            out_keys=[
+                "action",
+                "mean_action",
+                "neglogp",
+                "value",
+                "disc_logits",
+                "disc_value",
+            ],
             actor=actor_config,
             critic=critic_config,
+            discriminator=discriminator_config,
+            disc_critic=disc_critic_config,
             actor_optimizer=OptimizerConfig(
                 _target_="torch.optim.Adam", lr=2e-5, betas=(0.95, 0.99)
             ),
             critic_optimizer=OptimizerConfig(
                 _target_="torch.optim.Adam", lr=1e-4, betas=(0.95, 0.99)
             ),
+            discriminator_optimizer=OptimizerConfig(
+                _target_="torch.optim.Adam", lr=1e-4
+            ),
         ),
+        reference_obs_components=reference_obs_components,
         normalize_rewards=False,
+        task_reward_w=0.5,
+        amp_parameters=AMPParametersConfig(
+            discriminator_reward_w=2.0,
+            discriminator_reward_threshold=0.02,
+        ),
         adaptive_lr=AdaptiveLRConfig(enabled=False),
         batch_size=args.batch_size,
         num_mini_epochs=2,
@@ -319,7 +419,7 @@ def agent_config(
         evaluator=MimicEvaluatorConfig(
             evaluation_components={
                 "anchor_ori": anchor_ori_metric_factory(),
-                "relative_body_pos": relative_body_pos_metric_factory(),
+                "relative_body_pos": relative_body_pos_metric_factory(threshold=0.5),
                 "anchor_height_error": anchor_height_error_metric_factory(
                     threshold=0.25
                 ),
@@ -336,16 +436,13 @@ def agent_config(
             enabled=True, shift_mean=True
         ),
     )
-    return agent_config
+    return agent_cfg
 
 
 def configure_robot_and_simulator(
     robot_cfg: RobotConfig, simulator_cfg: SimulatorConfig, args: argparse.Namespace
 ):
-    """Configure robot and simulator for this experiment.
-
-    Uses G1 default anchor (torso_link) — no pelvis override.
-    """
+    """Configure robot and simulator — same as the base L2C2 experiment."""
     robot_cfg.update_fields(
         contact_bodies=["all_left_foot_bodies", "all_right_foot_bodies"]
     )
@@ -401,9 +498,8 @@ def apply_inference_overrides(
 ):
     """Apply inference overrides.
 
-    Removes clean L2C2 obs (not needed at inference since noise is disabled).
-    No XY offset was used in training, so no special zeroing needed.
-    No motion realignment — same as training.
+    Removes clean L2C2 obs, disables noise, disables termination,
+    and disables discriminator reward threshold.
     """
     from protomotions.envs.component_factories import (
         reduced_coords_obs_factory,
@@ -426,7 +522,7 @@ def apply_inference_overrides(
     )
     simulator_cfg.domain_randomization = None
 
-    # Swap noisy observations for clean (no XY offset)
+    # Swap noisy observations for clean
     env_cfg.observation_components["noisy_reduced_coords_obs"] = (
         reduced_coords_obs_factory(
             use_noisy=False,
@@ -448,3 +544,7 @@ def apply_inference_overrides(
         "clean_mimic_reduced_coords_target_poses",
     ]:
         env_cfg.observation_components.pop(key, None)
+
+    # Disable discriminator reward threshold at inference
+    if hasattr(agent_cfg, "amp_parameters"):
+        agent_cfg.amp_parameters.discriminator_reward_threshold = 0.0
