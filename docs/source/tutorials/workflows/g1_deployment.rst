@@ -40,7 +40,7 @@ Pipeline Overview
         v  protomotions/train_agent.py (IsaacGym/IsaacLab, multi-GPU)
    Trained checkpoint (last.ckpt + resolved_configs_inference.pt)
         |
-        v  deployment/export_bm_tracker_onnx.py (CPU, no simulator)
+        v  deployment/export_tracker_onnx.py (CPU, no simulator)
    Unified ONNX model + YAML metadata
         |
         +---> deployment/test_tracker_mujoco.py  (reference MuJoCo test)
@@ -139,7 +139,7 @@ the ProtoMotions package -- no simulator or GPU needed.
 
 .. code-block:: bash
 
-   python deployment/export_bm_tracker_onnx.py \
+   python deployment/export_tracker_onnx.py \
        --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/last.ckpt
 
 This produces:
@@ -206,48 +206,28 @@ Step 5: Deploy via RoboJuDo (Simulation)
 
 `RoboJuDo <https://github.com/HansZ8/RoboJuDo>`_ provides a plug-and-play
 deploy framework for humanoid robots with MuJoCo simulation and Unitree real
-robot support.
-
-.. note::
-
-   We provide a git patch that adds ProtoMotions BM tracker support to
-   RoboJuDo.  This is a temporary solution -- we are working on integrating
-   these changes as a proper upstream PR.  The patch will be removed once
-   that PR is merged.
+robot support.  ProtoMotions BM tracker support is upstreamed -- no patch is
+required.
 
 **Setup**:
 
 .. code-block:: bash
 
-   # 1. Clone RoboJuDo at the compatible commit
-   git clone https://github.com/hansz8/robojudo.git
-   cd robojudo
-   git checkout 1199579188964bf82a90f0f320b4ff781907684b
-
-   # 2. Apply the ProtoMotions patch
-   git am /path/to/protomotions/g1_deploy/robojudo_patch/protomotions-bm-tracker.patch
-
-   # 3. Install RoboJuDo
+   git clone https://github.com/HansZ8/RoboJuDo.git
+   cd RoboJuDo
+   git checkout release   # contains the ProtoMotions tracker integration
    pip install -e .
-   git lfs pull   # download mesh assets
-
-If ``git am`` fails (e.g. due to commit signing), use ``git apply`` instead
-(applies changes without creating commits):
-
-.. code-block:: bash
-
-   git apply /path/to/protomotions/g1_deploy/robojudo_patch/protomotions-bm-tracker.patch
+   git lfs pull           # download mesh assets
 
 **Run the BM tracker in MuJoCo simulation**:
 
 .. code-block:: bash
 
-   cd robojudo
    python scripts/run_pipeline.py -c g1_protomotions_bm_tracker \
        --onnx-path /path/to/unified_pipeline.onnx \
        --motion-path /path/to/motion.motion
 
-The patch adds the following to RoboJuDo:
+The upstream RoboJuDo integration provides:
 
 * ``ProtoMotionsBMTrackerPolicy`` -- loads ONNX + cached 50fps motion,
   provides PD targets with action history feedback, heading alignment,
@@ -258,8 +238,6 @@ The patch adds the following to RoboJuDo:
   control.
 * CLI enhancements: ``--onnx-path``, ``--motion-path``, ``--motion-index``,
   ``--simulate-deploy``, ``--hold-seconds``.
-
-See ``g1_deploy/robojudo_patch/README.md`` for the full list of changes.
 
 **Bringing your own deployment framework**: The key contract is:
 
