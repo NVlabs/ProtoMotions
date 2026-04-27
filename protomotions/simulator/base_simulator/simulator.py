@@ -517,7 +517,18 @@ class Simulator(RecordingMixin, ABC):
         self._hide_projectiles_for_envs(all_env_ids)
 
     def _hide_projectiles_for_envs(self, env_ids: torch.Tensor) -> None:
-        """Move all projectiles for given envs underground."""
+        """Move all projectiles for given envs underground.
+
+        Each (env, proj_idx) slot is given a unique hide position
+        ``(env_id * N + proj_idx, 0, hide_z)`` rather than the same world
+        ``(0, 0, hide_z)``. With many environments and multiple projectiles,
+        colocating every projectile rigid body at one world point causes a
+        broadphase / actor-aliasing pathology in PhysX (issue #210) where the
+        projectile's hide pose ends up stamped onto unrelated scene-object
+        bodies on a subsequent physics step. Spreading by 1m per slot keeps
+        each cube actor in a distinct world cell, breaking the aliasing while
+        leaving projectiles equally hidden from active gameplay.
+        """
         N = self._proj_config.num_projectiles
         num_e = len(env_ids)
 
@@ -526,6 +537,7 @@ class Simulator(RecordingMixin, ABC):
         proj_expanded = torch.arange(N, device=self.device).repeat(num_e)
 
         hide_pos = torch.zeros(len(env_expanded), 3, device=self.device)
+        hide_pos[:, 0] = env_expanded.float() * float(N) + proj_expanded.float()
         hide_pos[:, 2] = self._proj_config.hide_z
         zero_rot = torch.zeros(len(env_expanded), 4, device=self.device)
         zero_rot[:, 3] = 1.0
