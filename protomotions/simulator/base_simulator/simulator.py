@@ -58,6 +58,7 @@ from protomotions.simulator.base_simulator.config import (
     SimBodyOrdering,
     ActionNoiseDomainRandomizationConfig,
     FrictionDomainRandomizationConfig,
+    ObjectAssetDomainRandomizationConfig,
     CenterOfMassDomainRandomizationConfig,
     ProjectileConfig,
     get_matching_indices,
@@ -1299,6 +1300,12 @@ class Simulator(RecordingMixin, ABC):
                     self.config.domain_randomization.center_of_mass
                 )
             )
+        if self.config.domain_randomization.object_assets is not None:
+            domain_randomization_dict["object_assets"] = (
+                self._process_object_asset_domain_randomization(
+                    self.config.domain_randomization.object_assets
+                )
+            )
 
         return domain_randomization_dict
 
@@ -1411,6 +1418,105 @@ class Simulator(RecordingMixin, ABC):
 
         com_dict = {"body_indices": body_indices, "com": com}
         return com_dict
+
+    def _process_object_asset_domain_randomization(
+        self, domain_randomization: ObjectAssetDomainRandomizationConfig
+    ) -> Dict[str, Any]:
+        """Sample absolute randomized properties for unique scene object assets."""
+        if self.scene_lib.num_scenes() == 0:
+            return None
+
+        asset_ids = sorted(
+            {
+                obj.first_instance_id
+                for scene in self.scene_lib.scenes
+                for obj in scene.objects
+            }
+        )
+        num_assets = len(asset_ids)
+        num_samples = min(self.num_envs, domain_randomization.num_buckets)
+        samples = domain_randomization.sample(num_samples, num_assets)
+
+        return {
+            "asset_ids": asset_ids,
+            "asset_id_to_column": {
+                asset_id: column for column, asset_id in enumerate(asset_ids)
+            },
+            "bucket_ids": torch.arange(self.num_envs, dtype=torch.long) % num_samples,
+            "num_buckets": num_samples,
+            **samples,
+        }
+
+    def _get_object_options_for_randomized_asset(
+        self,
+        obj,
+        env_id: Optional[int] = None,
+        bucket_id: Optional[int] = None,
+    ):
+        """Return object options with object-asset DR overrides applied."""
+        if self._domain_randomization is None:
+            return obj.options
+        object_dr = self._domain_randomization.get("object_assets")
+        if object_dr is None:
+            return obj.options
+
+        column = object_dr["asset_id_to_column"].get(obj.first_instance_id)
+        if column is None:
+            return obj.options
+
+        if bucket_id is None:
+            if env_id is None:
+                raise ValueError("env_id or bucket_id is required for object asset DR.")
+            bucket_id = int(object_dr["bucket_ids"][env_id].item())
+
+        overrides = {}
+        for field_name in (
+            "static_friction",
+            "dynamic_friction",
+            "restitution",
+            "mass",
+            "density",
+        ):
+            values = object_dr[field_name]
+            if values is not None:
+                overrides[field_name] = float(values[bucket_id, column].item())
+
+        if not overrides:
+            return obj.options
+        return obj.options.with_asset_property_overrides(overrides)
+
+    def _get_object_center_of_mass_for_randomized_asset(
+        self,
+        obj,
+        env_id: Optional[int] = None,
+        bucket_id: Optional[int] = None,
+    ) -> Optional[torch.Tensor]:
+        """Return absolute local CoM sampled for an object asset, if configured."""
+        if self._domain_randomization is None:
+            return None
+        object_dr = self._domain_randomization.get("object_assets")
+        if object_dr is None or object_dr.get("center_of_mass") is None:
+            return None
+
+        column = object_dr["asset_id_to_column"].get(obj.first_instance_id)
+        if column is None:
+            return None
+
+        if bucket_id is None:
+            if env_id is None:
+                raise ValueError("env_id or bucket_id is required for object asset DR.")
+            bucket_id = int(object_dr["bucket_ids"][env_id].item())
+
+        return object_dr["center_of_mass"][bucket_id, column]
+
+    def _num_object_asset_randomization_buckets(self) -> int:
+        """Return number of object asset DR buckets, or one when disabled."""
+        if self._domain_randomization is None:
+            return 1
+        object_dr = self._domain_randomization.get("object_assets")
+        if object_dr is None:
+            return 1
+        return object_dr["num_buckets"]
 
     # -------------------------
     # 🎨 Group 6: Rendering & Visualization (abstract methods only)

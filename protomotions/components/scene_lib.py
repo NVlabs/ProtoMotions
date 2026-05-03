@@ -51,7 +51,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_PRIMITIVE_DENSITY: float = 1000.0  # kg/m³, typical physics sim default
+DEFAULT_OBJECT_DENSITY: float = 1000.0  # kg/m³, typical physics sim default
+DEFAULT_PRIMITIVE_DENSITY: float = DEFAULT_OBJECT_DENSITY
 
 
 @dataclass
@@ -61,7 +62,7 @@ class ObjectOptions:
 
     Mass properties can be specified as either ``density`` (kg/m³) or
     ``mass`` (kg), but not both.  When neither is set, density defaults
-    to :data:`DEFAULT_PRIMITIVE_DENSITY`.
+    to :data:`DEFAULT_OBJECT_DENSITY`.
     """
 
     fix_base_link: bool = field(default=None)
@@ -78,6 +79,9 @@ class ObjectOptions:
     angular_damping: float = None
     linear_damping: float = None
     max_angular_velocity: float = None
+    static_friction: float = None
+    dynamic_friction: float = None
+    restitution: float = None
     texture_path: str = None  # Path to texture file
     color: Optional[Tuple[float, float, float]] = None  # RGB color (0-1)
 
@@ -87,7 +91,7 @@ class ObjectOptions:
                 "ObjectOptions: specify either 'density' or 'mass', not both."
             )
         if self.density is None and self.mass is None:
-            self.density = DEFAULT_PRIMITIVE_DENSITY
+            self.density = DEFAULT_OBJECT_DENSITY
 
     def to_dict(self) -> Dict:
         """Convert options to a dictionary, excluding None values.
@@ -108,6 +112,56 @@ class ObjectOptions:
             else:
                 options_dict[field_name] = field_value
         return options_dict
+
+    def physics_material_kwargs(self) -> Dict[str, float]:
+        """Return explicitly configured physics material properties."""
+        return {
+            field_name: getattr(self, field_name)
+            for field_name in ("static_friction", "dynamic_friction", "restitution")
+            if getattr(self, field_name) is not None
+        }
+
+    def single_friction(self) -> Optional[float]:
+        """Return one friction value for backends without static/dynamic split."""
+        if self.static_friction is not None:
+            return self.static_friction
+        return self.dynamic_friction
+
+    def single_friction_material_kwargs(
+        self, friction_key: str = "friction"
+    ) -> Dict[str, float]:
+        """Return material kwargs for backends with one friction coefficient."""
+        material_kwargs = {}
+        friction = self.single_friction()
+        if friction is not None:
+            material_kwargs[friction_key] = friction
+        if self.restitution is not None:
+            material_kwargs["restitution"] = self.restitution
+        return material_kwargs
+
+    def with_asset_property_overrides(self, overrides: Dict[str, float]):
+        """Return a copy with absolute object-asset DR overrides applied."""
+        allowed_fields = {
+            "mass",
+            "density",
+            "static_friction",
+            "dynamic_friction",
+            "restitution",
+        }
+        unknown_fields = set(overrides) - allowed_fields
+        if unknown_fields:
+            raise ValueError(f"Unknown object asset override fields: {unknown_fields}")
+        if "mass" in overrides and "density" in overrides:
+            raise ValueError("Object asset overrides cannot set both mass and density.")
+
+        options = copy.copy(self)
+        for field_name, value in overrides.items():
+            setattr(options, field_name, value)
+        if "mass" in overrides:
+            options.density = None
+        if "density" in overrides:
+            options.mass = None
+        return options
 
 
 @dataclass

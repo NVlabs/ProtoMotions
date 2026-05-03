@@ -165,6 +165,132 @@ class FrictionDomainRandomizationConfig:
 
 
 @dataclass
+class ObjectAssetDomainRandomizationConfig:
+    """Configuration for scene object asset domain randomization.
+
+    Ranges are absolute sampled values. When a range is set, it overrides the
+    matching base value from each scene object's ObjectOptions.
+    """
+
+    num_buckets: int = field(
+        default=10,
+        metadata={"help": "Number of object asset property buckets.", "min": 1},
+    )
+    static_friction_range: Optional[Tuple[float, float]] = field(
+        default=None,
+        metadata={"help": "Absolute range (min, max) for object static friction."},
+    )
+    dynamic_friction_range: Optional[Tuple[float, float]] = field(
+        default=None,
+        metadata={"help": "Absolute range (min, max) for object dynamic friction."},
+    )
+    restitution_range: Optional[Tuple[float, float]] = field(
+        default=None,
+        metadata={"help": "Absolute range (min, max) for object restitution."},
+    )
+    mass_range: Optional[Tuple[float, float]] = field(
+        default=None, metadata={"help": "Absolute range (min, max) for object mass."}
+    )
+    density_range: Optional[Tuple[float, float]] = field(
+        default=None,
+        metadata={"help": "Absolute range (min, max) for object density."},
+    )
+    center_of_mass_range: Optional[Dict[str, Tuple[float, float]]] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Absolute local center-of-mass range per axis, e.g. "
+                "{'x': (-0.05, 0.05), 'y': (0.0, 0.0), 'z': (0.0, 0.1)}."
+            )
+        },
+    )
+
+    def __post_init__(self):
+        if self.num_buckets < 1:
+            raise ValueError("num_buckets must be at least 1.")
+        if self.mass_range is not None and self.density_range is not None:
+            raise ValueError("Only one of mass_range or density_range may be set.")
+
+        range_fields = (
+            "static_friction_range",
+            "dynamic_friction_range",
+            "restitution_range",
+            "mass_range",
+            "density_range",
+            "center_of_mass_range",
+        )
+        if all(getattr(self, field_name) is None for field_name in range_fields):
+            raise ValueError(
+                "At least one object asset randomization range is required."
+            )
+        for field_name in range_fields:
+            value_range = getattr(self, field_name)
+            if value_range is None:
+                continue
+            if field_name == "center_of_mass_range":
+                self._validate_center_of_mass_range(value_range)
+                continue
+            if len(value_range) != 2 or value_range[0] >= value_range[1]:
+                raise ValueError(
+                    f"{field_name} must be a tuple of two values where min < max."
+                )
+
+    @staticmethod
+    def _validate_center_of_mass_range(
+        center_of_mass_range: Dict[str, Tuple[float, float]],
+    ) -> None:
+        if not center_of_mass_range:
+            raise ValueError("center_of_mass_range must define at least one axis.")
+        invalid_axes = set(center_of_mass_range) - {"x", "y", "z"}
+        if invalid_axes:
+            raise ValueError(
+                f"center_of_mass_range contains invalid axes: {invalid_axes}"
+            )
+        for axis, value_range in center_of_mass_range.items():
+            # Equal bounds let configs pin an axis while randomizing others.
+            if len(value_range) != 2 or value_range[0] > value_range[1]:
+                raise ValueError(
+                    f"center_of_mass_range['{axis}'] must be a tuple of two values where min <= max."
+                )
+
+    def sample(self, num_samples: int, num_assets: int, device=None) -> Dict[str, Any]:
+        """Sample absolute object asset properties for each bucket and asset."""
+
+        def sample_range(value_range):
+            if value_range is None:
+                return None
+            return (
+                torch.rand(num_samples, num_assets, device=device)
+                * (value_range[1] - value_range[0])
+                + value_range[0]
+            )
+
+        center_of_mass = None
+        if self.center_of_mass_range is not None:
+            center_of_mass = torch.zeros(
+                num_samples, num_assets, 3, device=device, dtype=torch.float
+            )
+            for axis_idx, axis in enumerate(("x", "y", "z")):
+                value_range = self.center_of_mass_range.get(axis)
+                if value_range is None:
+                    continue
+                center_of_mass[..., axis_idx] = (
+                    torch.rand(num_samples, num_assets, device=device)
+                    * (value_range[1] - value_range[0])
+                    + value_range[0]
+                )
+
+        return {
+            "static_friction": sample_range(self.static_friction_range),
+            "dynamic_friction": sample_range(self.dynamic_friction_range),
+            "restitution": sample_range(self.restitution_range),
+            "mass": sample_range(self.mass_range),
+            "density": sample_range(self.density_range),
+            "center_of_mass": center_of_mass,
+        }
+
+
+@dataclass
 class CenterOfMassDomainRandomizationConfig:
     """Configuration for center of mass domain randomization."""
 
@@ -402,6 +528,10 @@ class DomainRandomizationConfig:
     )
     center_of_mass: Optional[CenterOfMassDomainRandomizationConfig] = field(
         default=None, metadata={"help": "Center of mass randomization configuration."}
+    )
+    object_assets: Optional[ObjectAssetDomainRandomizationConfig] = field(
+        default=None,
+        metadata={"help": "Scene object asset property randomization configuration."},
     )
     observation_noise: Optional[RobotNoiseConfig] = field(
         default=None,

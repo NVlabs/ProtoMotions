@@ -163,7 +163,7 @@ Learn to add objects and create scenes for robot interaction.
 **What you'll learn**:
 
 * Create ``MeshSceneObject`` and ``BoxSceneObject`` with physics properties
-* Configure object options (density, damping, VHACD collision)
+* Configure object options (mass/density, damping, material, VHACD collision)
 * Compose scenes with multiple objects
 * Access object state during simulation
 
@@ -179,7 +179,14 @@ Learn to add objects and create scenes for robot interaction.
 
    elephant = MeshSceneObject(
        object_path="examples/data/elephant.urdf",
-       options=ObjectOptions(fix_base_link=False, density=1000, vhacd_enabled=True),
+       options=ObjectOptions(
+           fix_base_link=False,
+           density=1000,  # Use mass=... instead for explicit kg.
+           static_friction=0.8,
+           dynamic_friction=0.6,
+           restitution=0.0,
+           vhacd_enabled=True,
+       ),
        translation=(0.0, 0.0, 1.5),
    )
    table = BoxSceneObject(width=1.0, depth=1.0, height=0.1, ...)

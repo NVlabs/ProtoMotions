@@ -210,9 +210,12 @@ class IsaacLabSimulator(Simulator):
 
         for env_id, scene in enumerate(self.scene_lib.scenes):
             for obj_idx, obj in enumerate(scene.objects):
+                object_options = self._get_object_options_for_randomized_asset(
+                    obj, env_id=env_id
+                )
                 # Common properties based on object options
                 rigid_props = sim_utils.RigidBodyPropertiesCfg(
-                    kinematic_enabled=obj.options.fix_base_link,
+                    kinematic_enabled=object_options.fix_base_link,
                 )
                 collision_props = sim_utils.CollisionPropertiesCfg(
                     contact_offset=0.002,
@@ -220,7 +223,9 @@ class IsaacLabSimulator(Simulator):
                 )
 
                 # Resolve color: use object option if set, else per-type default
-                obj_color = obj.options.color if obj.options.color is not None else None
+                obj_color = (
+                    object_options.color if object_options.color is not None else None
+                )
 
                 # Handle different object types
                 if isinstance(obj, MeshSceneObject):
@@ -230,10 +235,12 @@ class IsaacLabSimulator(Simulator):
                     asset_path = Path(
                         os.path.join(main_dir_path, obj.object_path)
                     ).resolve()
+                    mass_props = self._mass_props_from_options(object_options)
 
                     spawn_cfg = sim_utils.UsdFileCfg(
                         usd_path=str(asset_path),
                         rigid_props=rigid_props,
+                        mass_props=mass_props,
                         collision_props=collision_props,
                         visual_material=sim_utils.PreviewSurfaceCfg(
                             diffuse_color=obj_color or (0.2, 0.7, 0.3),
@@ -241,7 +248,7 @@ class IsaacLabSimulator(Simulator):
                         ),
                     )
                 elif isinstance(obj, BoxSceneObject):
-                    mass_props = self._mass_props_from_options(obj.options)
+                    mass_props = self._mass_props_from_options(object_options)
                     spawn_cfg = sim_utils.CuboidCfg(
                         size=(obj.width, obj.depth, obj.height),
                         visual_material=sim_utils.PreviewSurfaceCfg(
@@ -253,7 +260,7 @@ class IsaacLabSimulator(Simulator):
                         collision_props=collision_props,
                     )
                 elif isinstance(obj, SphereSceneObject):
-                    mass_props = self._mass_props_from_options(obj.options)
+                    mass_props = self._mass_props_from_options(object_options)
                     spawn_cfg = sim_utils.SphereCfg(
                         radius=obj.radius,
                         visual_material=sim_utils.PreviewSurfaceCfg(
@@ -265,7 +272,7 @@ class IsaacLabSimulator(Simulator):
                         collision_props=collision_props,
                     )
                 elif isinstance(obj, CylinderSceneObject):
-                    mass_props = self._mass_props_from_options(obj.options)
+                    mass_props = self._mass_props_from_options(object_options)
                     spawn_cfg = sim_utils.CylinderCfg(
                         radius=obj.radius,
                         height=obj.height,
@@ -461,8 +468,76 @@ class IsaacLabSimulator(Simulator):
                 :, self._domain_randomization["center_of_mass"]["body_indices"], :3
             ] += self._domain_randomization["center_of_mass"]["com"].to(coms.device)
 
-            # Set the new comsfa
+            # Set the new COMs.
             self._robot.root_physx_view.set_coms(coms, all_env_ids)
+
+        self._apply_scene_object_properties_after_spawn(all_env_ids)
+
+    def _apply_scene_object_properties_after_spawn(
+        self, all_env_ids: torch.Tensor
+    ) -> None:
+        """Apply scene object properties that require live PhysX views.
+
+        IsaacLab USD spawners do not accept per-asset physics materials, so this
+        runtime path is the source of truth for scene object material overrides.
+        """
+        if self.scene_lib.num_scenes() == 0:
+            return
+        object_dr = (
+            self._domain_randomization.get("object_assets")
+            if self._domain_randomization is not None
+            else None
+        )
+        apply_center_of_mass = (
+            object_dr is not None and object_dr.get("center_of_mass") is not None
+        )
+
+        for obj_idx, object_view in enumerate(self._object):
+            materials = None
+            coms = (
+                object_view.root_physx_view.get_coms().clone()
+                if apply_center_of_mass
+                else None
+            )
+            for env_id, scene in enumerate(self.scene_lib.scenes):
+                object_options = self._get_object_options_for_randomized_asset(
+                    scene.objects[obj_idx], env_id=env_id
+                )
+                material_kwargs = object_options.physics_material_kwargs()
+                if material_kwargs:
+                    if materials is None:
+                        materials = (
+                            object_view.root_physx_view.get_material_properties()
+                            .clone()
+                            .to("cpu")
+                        )
+                    if "static_friction" in material_kwargs:
+                        materials[env_id, :, 0] = material_kwargs["static_friction"]
+                    if "dynamic_friction" in material_kwargs:
+                        materials[env_id, :, 1] = material_kwargs["dynamic_friction"]
+                    if "restitution" in material_kwargs:
+                        materials[env_id, :, 2] = material_kwargs["restitution"]
+
+                if not apply_center_of_mass:
+                    continue
+                center_of_mass = self._get_object_center_of_mass_for_randomized_asset(
+                    scene.objects[obj_idx], env_id=env_id
+                )
+                if center_of_mass is None:
+                    continue
+
+                center_of_mass = center_of_mass.to(coms.device)
+                if coms.ndim == 2:
+                    coms[env_id, :3] = center_of_mass
+                else:
+                    coms[env_id, 0, :3] = center_of_mass
+
+            if materials is not None:
+                object_view.root_physx_view.set_material_properties(
+                    materials, indices=all_env_ids
+                )
+            if apply_center_of_mass:
+                object_view.root_physx_view.set_coms(coms, all_env_ids)
 
     # =====================================================
     # Group 3: Simulation Steps & State Management
