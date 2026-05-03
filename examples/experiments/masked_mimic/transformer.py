@@ -521,8 +521,6 @@ def apply_inference_overrides(
     )
     apply_inference_overrides_fn(robot_cfg, simulator_cfg, env_cfg, agent_cfg, terrain_cfg, motion_lib_cfg, scene_lib_cfg, args)
 
-    from protomotions.agents.evaluators.config import EvaluatorConfig
-
     if agent_cfg is not None and hasattr(agent_cfg, "expert_model_path"):
         expert_model_path = agent_cfg.expert_model_path
         
@@ -540,4 +538,3 @@ def apply_inference_overrides(
                         del env_cfg.observation_components[key]
         
         agent_cfg.expert_model_path = None
-        agent_cfg.evaluator = EvaluatorConfig()
