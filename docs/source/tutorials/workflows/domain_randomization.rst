@@ -76,6 +76,41 @@ adjust ranges to suit your robot and deployment conditions.
    values are not explicitly set.  This ensures consistent behavior across
    simulators.
 
+**Scene Object Asset Randomization:**
+
+Scene objects can define deterministic base properties through
+``ObjectOptions``.  Mesh and primitive objects can set either ``mass`` or
+``density`` (not both), plus ``static_friction``, ``dynamic_friction``, and
+``restitution`` in the scene library.  ``ObjectAssetDomainRandomizationConfig``
+samples absolute override values for those properties; the sampled values
+replace the scene-lib base values for the selected asset bucket.  They are not
+additive or multiplicative offsets.  The ranges are global for all scene object
+assets; per-asset range configuration is not currently supported.
+
+.. code-block:: python
+
+   DomainRandomizationConfig(
+       object_assets=ObjectAssetDomainRandomizationConfig(
+           num_buckets=32,
+           static_friction_range=(0.4, 1.4),
+           dynamic_friction_range=(0.3, 1.0),
+           restitution_range=(0.0, 0.2),
+           mass_range=(0.5, 3.0),
+           center_of_mass_range={
+               "x": (-0.05, 0.05),
+               "y": (-0.02, 0.02),
+               "z": (0.00, 0.10),
+           },
+       )
+   )
+
+``mass_range`` and ``density_range`` are mutually exclusive, matching
+``ObjectOptions``.  ``center_of_mass_range`` is only available through domain
+randomization; it is an absolute local center-of-mass value, and omitted axes
+default to ``0.0``.  IsaacLab and IsaacGym apply these scene object asset
+properties to both primitive and mesh objects.  Newton currently does not spawn
+scene-lib objects, so object asset randomization has no effect there.
+
 **Center of Mass Randomization:**
 
 .. code-block:: python

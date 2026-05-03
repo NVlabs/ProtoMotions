@@ -536,11 +536,15 @@ class IsaacGymSimulator(Simulator):
     def _load_object_assets(self) -> None:
         if self.scene_lib.num_scenes() > 0:
             self._object_names = []
+            num_asset_buckets = self._num_object_asset_randomization_buckets()
 
             # Count assets
             asset_count = sum(
-                1 for scene in self.scene_lib.scenes for obj in scene.objects
-            )
+                1
+                for scene in self.scene_lib.scenes
+                for obj in scene.objects
+                if obj.is_first_instance
+            ) * num_asset_buckets
 
             with Progress() as progress:
                 task = progress.add_task(
@@ -553,55 +557,75 @@ class IsaacGymSimulator(Simulator):
                     for obj in scene.objects:
                         # Skip if we've already processed this object type
                         if not obj.is_first_instance:
-                            progress.update(task, advance=1)
                             continue
 
                         first_object_id = obj.first_instance_id
-                        if isinstance(obj, PrimitiveSceneObject):
-                            # Handle primitive shapes by creating temporary URDFs
-                            urdf_path = self._create_primitive_urdf(obj)
-                            object_name = os.path.splitext(os.path.basename(urdf_path))[
-                                0
-                            ]
-                            asset_path = urdf_path
-                        else:
-                            # Handle mesh objects
-                            assert isinstance(obj, MeshSceneObject)
-                            object_name = os.path.splitext(
-                                os.path.basename(obj.object_path)
-                            )[0]
-                            asset_path = obj.object_path
+                        for bucket_id in range(num_asset_buckets):
+                            object_options = (
+                                self._get_object_options_for_randomized_asset(
+                                    obj, bucket_id=bucket_id
+                                )
+                            )
+                            if isinstance(obj, PrimitiveSceneObject):
+                                # Handle primitive shapes by creating temporary URDFs
+                                urdf_path = self._create_primitive_urdf(
+                                    obj,
+                                    options=object_options,
+                                    variant_id=bucket_id
+                                    if num_asset_buckets > 1
+                                    else None,
+                                )
+                                object_name = os.path.splitext(
+                                    os.path.basename(urdf_path)
+                                )[0]
+                                asset_path = urdf_path
+                            else:
+                                # Handle mesh objects
+                                assert isinstance(obj, MeshSceneObject)
+                                object_name = os.path.splitext(
+                                    os.path.basename(obj.object_path)
+                                )[0]
+                                asset_path = obj.object_path
 
-                        asset_root = os.path.dirname(asset_path)
-                        asset_file = os.path.basename(asset_path)
+                            asset_root = os.path.dirname(asset_path)
+                            asset_file = os.path.basename(asset_path)
 
-                        # Create asset options
-                        object_asset_options = self._create_asset_options(obj)
+                            # Create asset options
+                            object_asset_options = self._create_asset_options(
+                                obj, options=object_options
+                            )
 
-                        # Load object asset and store in dictionary
-                        object_asset = self._gym.load_asset(
-                            self._sim, asset_root, asset_file, object_asset_options
-                        )
+                            # Load object asset and store in dictionary
+                            object_asset = self._gym.load_asset(
+                                self._sim, asset_root, asset_file, object_asset_options
+                            )
+                            self._apply_object_material_properties_to_asset(
+                                object_asset, object_options
+                            )
 
-                        # Add force sensor - common for both types
-                        sensor_pose = gymapi.Transform()
-                        sensor_options = gymapi.ForceSensorProperties()
-                        sensor_options.enable_forward_dynamics_forces = False
-                        sensor_options.enable_constraint_solver_forces = True
-                        sensor_options.use_world_frame = False
-                        self._gym.create_asset_force_sensor(
-                            object_asset, 0, sensor_pose, sensor_options
-                        )
-                        self._object_names.append(object_name)
-                        self._object_assets[first_object_id] = object_asset
+                            # Add force sensor - common for both types
+                            sensor_pose = gymapi.Transform()
+                            sensor_options = gymapi.ForceSensorProperties()
+                            sensor_options.enable_forward_dynamics_forces = False
+                            sensor_options.enable_constraint_solver_forces = True
+                            sensor_options.use_world_frame = False
+                            self._gym.create_asset_force_sensor(
+                                object_asset, 0, sensor_pose, sensor_options
+                            )
+                            self._object_names.append(object_name)
+                            self._object_assets[
+                                self._object_asset_key(first_object_id, bucket_id)
+                            ] = object_asset
 
-                        progress.update(task, advance=1)
+                            progress.update(task, advance=1)
 
             print(
-                f"=========== Total number of unique objects is {len(self._object_assets)}"
+                f"=========== Total number of object asset variants is {len(self._object_assets)}"
             )
 
-    def _create_asset_options(self, obj: SceneObject) -> gymapi.AssetOptions:
+    def _create_asset_options(
+        self, obj: SceneObject, options=None
+    ) -> gymapi.AssetOptions:
         """
         Create asset options for an object based on its configuration.
 
@@ -613,14 +637,17 @@ class IsaacGymSimulator(Simulator):
         """
         object_asset_options = gymapi.AssetOptions()
         object_asset_options.default_dof_drive_mode = gymapi.DOF_MODE_NONE
-        object_options_dict = obj.options.to_dict()
+        options = options or obj.options
+        object_options_dict = options.to_dict()
 
         # Without override_inertia the URDF's placeholder <inertial>
         # block takes precedence over AssetOptions.density.
-        if isinstance(obj, PrimitiveSceneObject) and obj.options.mass is None:
+        if isinstance(obj, PrimitiveSceneObject) and options.mass is None:
             object_asset_options.override_inertia = True
 
         object_options_dict.pop("mass", None)
+        for key in options.physics_material_kwargs():
+            object_options_dict.pop(key, None)
 
         if object_options_dict.get("vhacd_enabled", False):
             object_asset_options.vhacd_params = gymapi.VhacdParams()
@@ -644,7 +671,40 @@ class IsaacGymSimulator(Simulator):
                     print(f"Warning: {key} is not a valid option for object asset")
         return object_asset_options
 
-    def _create_primitive_urdf(self, obj: PrimitiveSceneObject) -> str:
+    def _apply_object_material_properties_to_asset(self, asset, options) -> None:
+        """Apply object material options to IsaacGym asset shape properties."""
+        material_kwargs = options.single_friction_material_kwargs()
+        if not material_kwargs:
+            return
+
+        shape_props = self._gym.get_asset_rigid_shape_properties(asset)
+        for shape_prop in shape_props:
+            if "friction" in material_kwargs:
+                shape_prop.friction = material_kwargs["friction"]
+            if "restitution" in material_kwargs:
+                shape_prop.restitution = material_kwargs["restitution"]
+        self._gym.set_asset_rigid_shape_properties(asset, shape_props)
+
+    def _object_asset_key(self, first_object_id: int, bucket_id: int):
+        if self._num_object_asset_randomization_buckets() == 1:
+            return first_object_id
+        return (first_object_id, bucket_id)
+
+    def _get_object_asset_for_env(self, env_id: int, obj: SceneObject):
+        bucket_id = 0
+        if self._domain_randomization is not None:
+            object_dr = self._domain_randomization.get("object_assets")
+            if object_dr is not None:
+                bucket_id = int(object_dr["bucket_ids"][env_id].item())
+        asset_key = self._object_asset_key(obj.first_instance_id, bucket_id)
+        return self._object_assets[asset_key]
+
+    def _create_primitive_urdf(
+        self,
+        obj: PrimitiveSceneObject,
+        options=None,
+        variant_id: Optional[int] = None,
+    ) -> str:
         """
         Create a URDF file for a primitive shape.
 
@@ -658,7 +718,9 @@ class IsaacGymSimulator(Simulator):
         temp_dir = self._temp_dir.name
 
         # Generate a unique filename based on the primitive ID
-        urdf_filename = f"{obj.object_identifier}.urdf"
+        options = options or obj.options
+        variant_suffix = "" if variant_id is None else f"_bucket_{variant_id}"
+        urdf_filename = f"{obj.object_identifier}{variant_suffix}.urdf"
         urdf_path = os.path.join(temp_dir, urdf_filename)
 
         # Skip if the file already exists
@@ -679,7 +741,7 @@ class IsaacGymSimulator(Simulator):
         else:
             raise ValueError(f"Unsupported primitive shape: {obj.object_identifier}")
 
-        mass_value = obj.options.mass if obj.options.mass is not None else 1.0
+        mass_value = options.mass if options.mass is not None else 1.0
 
         # Create the URDF XML content
         urdf_content = f"""<?xml version="1.0"?>
@@ -823,7 +885,7 @@ class IsaacGymSimulator(Simulator):
         # Objects spawned at scene offset (x,y) with z=0 - actual positions set via reset_envs()
         for obj_idx, obj in enumerate(scene.objects):
             # Get the asset directly using first_instance_id
-            object_asset = self._object_assets[obj.first_instance_id]
+            object_asset = self._get_object_asset_for_env(env_id, obj)
 
             # Spawn at scene offset to avoid collision, actual pose set via reset
             object_pose = gymapi.Transform()
@@ -840,6 +902,9 @@ class IsaacGymSimulator(Simulator):
                 col_group,
                 col_filter,
                 segmentation_id,
+            )
+            self._apply_object_body_properties_to_actor(
+                env_ptr, object_handle, obj, env_id
             )
 
             # Store handle and index for this object
@@ -867,6 +932,36 @@ class IsaacGymSimulator(Simulator):
                 texture_path = obj.options.to_dict().get("texture_path")
                 if texture_path and not self.headless:
                     self._apply_texture_to_object(env_ptr, object_handle, texture_path)
+
+    def _apply_object_body_properties_to_actor(
+        self, env_ptr, object_handle, obj: SceneObject, env_id: int
+    ) -> None:
+        """Apply object mass and COM properties that require an actor handle."""
+        options = self._get_object_options_for_randomized_asset(obj, env_id=env_id)
+        center_of_mass = self._get_object_center_of_mass_for_randomized_asset(
+            obj, env_id=env_id
+        )
+        if options.mass is None and center_of_mass is None:
+            return
+
+        body_props = self._gym.get_actor_rigid_body_properties(env_ptr, object_handle)
+        body_prop = body_props[0]
+
+        if options.mass is not None:
+            old_mass = body_prop.mass
+            if old_mass > 0:
+                self._scale_body_inertia(body_prop, options.mass / old_mass)
+            body_prop.mass = options.mass
+
+        if center_of_mass is not None:
+            new_com = center_of_mass.cpu().numpy().tolist()
+            current_com = [body_prop.com.x, body_prop.com.y, body_prop.com.z]
+            offset = [new_com[i] - current_com[i] for i in range(3)]
+            self._update_body_com_and_inertia(body_prop, offset)
+
+        self._gym.set_actor_rigid_body_properties(
+            env_ptr, object_handle, body_props, recomputeInertia=False
+        )
 
     def _build_projectile_actors(self, env_id: int, env_ptr) -> None:
         """Create projectile box actors for one environment.
@@ -1420,6 +1515,13 @@ class IsaacGymSimulator(Simulator):
         num_buckets = len(self._humanoid_assets_for_friction)
         bucket_id = env_id % num_buckets
         return self._humanoid_assets_for_friction[bucket_id]
+
+    def _scale_body_inertia(self, body_prop, scale: float) -> None:
+        """Scale a single rigid body's inertia matrix in place."""
+        for row in ("x", "y", "z"):
+            row_vec = getattr(body_prop.inertia, row)
+            for col in ("x", "y", "z"):
+                setattr(row_vec, col, getattr(row_vec, col) * scale)
 
     def _update_body_com_and_inertia(self, body_prop, offset: List[float]) -> None:
         """
