@@ -4,7 +4,11 @@
 """Configuration classes for IsaacGym simulator."""
 
 from dataclasses import dataclass, field
-from protomotions.simulator.base_simulator.config import SimParams, SimulatorConfig
+from protomotions.simulator.base_simulator.config import (
+    ProjectileConfig,
+    SimParams,
+    SimulatorConfig,
+)
 
 
 @dataclass
@@ -93,4 +97,13 @@ class IsaacGymSimulatorConfig(SimulatorConfig):
     sim: IsaacGymSimParams = field(
         default_factory=IsaacGymSimParams,
         metadata={"help": "IsaacGym-specific simulation parameters."}
+    )
+    projectile: ProjectileConfig = field(
+        # IsaacGym caps to a single projectile by default to stay under PhysX's
+        # ~80k maxRigidPatchCount budget against the wildcard-collidable
+        # add_triangle_mesh terrain. Override via
+        # --overrides simulator.projectile.num_projectiles=N to opt back into
+        # more cubes (e.g. for interactive viewer throws).
+        default_factory=lambda: ProjectileConfig(num_projectiles=1),
+        metadata={"help": "Projectile pool config (IsaacGym defaults to 1 cube)."},
     )
