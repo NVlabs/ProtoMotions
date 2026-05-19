@@ -506,6 +506,7 @@ class ProjectileConfig:
     direction_noise_std: float = 0.1  # std of Gaussian noise added to aim direction
     hide_delay: float = 2.0  # seconds before cube disappears
     hide_z: float = -2.0  # z-position when hidden
+    hide_spacing: float = 4.0  # z-spacing between hidden projectile slots
 
     def get_sizes(self) -> list:
         """Return per-pool-index half sizes, linearly interpolated."""
@@ -514,6 +515,10 @@ class ProjectileConfig:
         if n == 1:
             return [lo]
         return [lo + (hi - lo) * i / (n - 1) for i in range(n)]
+
+    def hidden_z_for_index(self, projectile_index: int) -> float:
+        """Return a hidden z-position that avoids projectile-projectile overlap."""
+        return self.hide_z - self.hide_spacing * projectile_index
 
 
 @dataclass

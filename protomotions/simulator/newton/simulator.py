@@ -221,7 +221,7 @@ class NewtonSimulator(Simulator):
         for i in range(self._proj_config.num_projectiles):
             s = proj_sizes[i]
             xform = wp.transform(
-                (0.0, 0.0, self._proj_config.hide_z),
+                (0.0, 0.0, self._proj_config.hidden_z_for_index(i)),
                 (0.0, 0.0, 0.0, 1.0),
             )
             body = self.robot.add_body(xform=xform)
@@ -1189,6 +1189,17 @@ class NewtonSimulator(Simulator):
 
         Newton uses xyzw quaternions natively — no conversion needed.
         """
+        # Match the IsaacGym backend: when a projectile is being "hidden" (its
+        # target z is at or below hide_z), spread it across the X/Y world plane
+        # by env_id so post-init projectile positions are consistent across
+        # simulators. Throws use z > hide_z and skip this branch.
+        positions = positions.clone()
+        hidden_mask = positions[:, 2] <= self._proj_config.hide_z
+        if hidden_mask.any():
+            hidden_env_offsets = env_ids[hidden_mask].to(positions.dtype)
+            positions[hidden_mask, 0] = hidden_env_offsets
+            positions[hidden_mask, 1] = hidden_env_offsets
+
         joint_q = wp.to_torch(self.state_0.joint_q)
         joint_qd = wp.to_torch(self.state_0.joint_qd)
 

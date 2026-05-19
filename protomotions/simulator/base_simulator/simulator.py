@@ -452,6 +452,8 @@ class Simulator(RecordingMixin, ABC):
         3. Lead the target by adding robot XY velocity to launch velocity
         """
         cfg = self._proj_config
+        if cfg.num_projectiles == 0:
+            return
         all_env_ids = torch.arange(self.num_envs, device=self.device)
         cube_idx = self._proj_next_idx.clone()
 
@@ -514,6 +516,9 @@ class Simulator(RecordingMixin, ABC):
         env_indices, proj_indices = torch.where(expired_mask)
         hide_pos = torch.zeros(len(env_indices), 3, device=self.device)
         hide_pos[:, 2] = self._proj_config.hide_z
+        hide_pos[:, 2] -= self._proj_config.hide_spacing * proj_indices.to(
+            hide_pos.dtype
+        )
         zero_rot = torch.zeros(len(env_indices), 4, device=self.device)
         zero_rot[:, 3] = 1.0
         zero_vel = torch.zeros(len(env_indices), 3, device=self.device)
@@ -558,6 +563,9 @@ class Simulator(RecordingMixin, ABC):
         hide_pos = torch.zeros(len(env_expanded), 3, device=self.device)
         hide_pos[:, 0] = env_expanded.float() * float(N) + proj_expanded.float()
         hide_pos[:, 2] = self._proj_config.hide_z
+        hide_pos[:, 2] -= self._proj_config.hide_spacing * proj_expanded.to(
+            hide_pos.dtype
+        )
         zero_rot = torch.zeros(len(env_expanded), 4, device=self.device)
         zero_rot[:, 3] = 1.0
         zero_vel = torch.zeros(len(env_expanded), 3, device=self.device)
