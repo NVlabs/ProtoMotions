@@ -100,6 +100,7 @@ from keypoint_utils import (
     get_keypoint_indices,
     get_mjcf_path,
 )
+from protomotions.utils.retargeting_fps import fps_from_motion_dt
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
@@ -204,6 +205,7 @@ def main(
 
         try:
             num_frames = motion_lib.motion_num_frames[motion_idx].item()
+            motion_fps = fps_from_motion_dt(motion_lib.motion_dt[motion_idx].item())
             start_frame = motion_lib.length_starts[motion_idx].item()
             end_frame = start_frame + num_frames
 
@@ -252,6 +254,7 @@ def main(
                 "orientations": keypoint_data["orientations"].cpu().numpy(),
                 "left_foot_contacts": keypoint_data["left_foot_contacts"],
                 "right_foot_contacts": keypoint_data["right_foot_contacts"],
+                "fps": motion_fps,
             }
             print(
                 f"keypoint_positions.shape: {keypoint_data_to_save['positions'].shape}"
