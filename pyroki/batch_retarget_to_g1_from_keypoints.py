@@ -19,6 +19,7 @@ import glob
 import os
 import argparse
 from pathlib import Path
+import sys
 
 import jax
 import jax.numpy as jnp
@@ -28,6 +29,12 @@ import jaxls
 import numpy as onp
 import pyroki as pk
 import yourdfpy
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from protomotions.utils.retargeting_fps import fps_from_mapping, subsampled_fps
 
 G1_LINK_NAMES = None
 N_retarget = 15
@@ -86,7 +93,13 @@ def get_humanoid_retarget_indices() -> jnp.ndarray:
 human_retarget_names, g1_joint_retarget_indices = None, None
 
 
-def load_motion_data(motion_path, source_type, subsample_factor, target_raw_frames):
+def load_motion_data(
+    motion_path,
+    source_type,
+    subsample_factor,
+    target_raw_frames,
+    fallback_input_fps=30.0,
+):
     """Load and process motion data from a keypoints file.
 
     Args:
@@ -94,12 +107,14 @@ def load_motion_data(motion_path, source_type, subsample_factor, target_raw_fram
         source_type: Source type ('smpl' or 'rigv1')
         subsample_factor: Subsampling factor
         target_raw_frames: Target number of raw frames before subsampling
+        fallback_input_fps: FPS to use for legacy keypoint files without metadata
 
     Returns:
-        Tuple of (simplified_keypoints, keypoint_orientations, left_foot_contact, right_foot_contact, num_timesteps)
+        Tuple of (simplified_keypoints, keypoint_orientations, left_foot_contact, right_foot_contact, num_timesteps, input_fps)
     """
     print(f"Loading motion from: {motion_path}")
     motion_data = onp.load(motion_path, allow_pickle=True).item()
+    input_fps = fps_from_mapping(motion_data, fallback_input_fps)
 
     # Compute target subsampled frames from raw frames and subsample factor
     target_subsampled_frames = len(list(range(0, target_raw_frames, subsample_factor)))
@@ -292,11 +307,18 @@ def load_motion_data(motion_path, source_type, subsample_factor, target_raw_fram
         left_foot_contact,
         right_foot_contact,
         num_timesteps,
+        input_fps,
     )
 
 
 def save_contact_labels(
-    output_path, left_foot_contact, right_foot_contact, num_timesteps
+    output_path,
+    left_foot_contact,
+    right_foot_contact,
+    num_timesteps,
+    fps,
+    source_fps,
+    subsample_factor,
 ):
     """Save processed foot contact labels to disk.
 
@@ -305,6 +327,9 @@ def save_contact_labels(
         left_foot_contact: Left foot contact array [T, 1]
         right_foot_contact: Right foot contact array [T, 1]
         num_timesteps: Number of actual timesteps (to trim padding)
+        fps: FPS of the saved contact labels after subsampling
+        source_fps: FPS of the source keypoint data before subsampling
+        subsample_factor: Frame stride used for retargeting input
     """
     # Extract contact labels (already smoothed from load_motion_data), trim to actual length
     left_contacts = left_foot_contact[:num_timesteps].squeeze(-1)  # [K]
@@ -314,7 +339,13 @@ def save_contact_labels(
     foot_contacts = onp.stack([left_contacts, right_contacts], axis=-1)  # [K, 2]
 
     # Save contact labels
-    onp.savez_compressed(output_path, foot_contacts=foot_contacts)
+    onp.savez_compressed(
+        output_path,
+        foot_contacts=foot_contacts,
+        fps=fps,
+        source_fps=source_fps,
+        subsample_factor=subsample_factor,
+    )
     print(f"Saved contact labels to {output_path} with shape {foot_contacts.shape}")
 
 
@@ -463,13 +494,23 @@ def main():
                 print(f"Output file {output_filename} already exists, skipping...")
                 continue
 
-            _, _, left_foot_contact, right_foot_contact, num_timesteps = (
+            _, _, left_foot_contact, right_foot_contact, num_timesteps, input_fps = (
                 load_motion_data(
-                    motion_path, args.source_type, subsample_factor, TARGET_RAW_FRAMES
+                    motion_path,
+                    args.source_type,
+                    subsample_factor,
+                    TARGET_RAW_FRAMES,
+                    args.input_fps,
                 )
             )
             save_contact_labels(
-                output_path, left_foot_contact, right_foot_contact, num_timesteps
+                output_path,
+                left_foot_contact,
+                right_foot_contact,
+                num_timesteps,
+                subsampled_fps(input_fps, subsample_factor),
+                input_fps,
+                subsample_factor,
             )
         return
 
@@ -529,11 +570,13 @@ def main():
             left_foot_contact,
             right_foot_contact,
             num_timesteps,
+            input_fps,
         ) = load_motion_data(
             test_keypoints_paths[current_motion_index],
             args.source_type,
             subsample_factor,
             TARGET_RAW_FRAMES,
+            args.input_fps,
         )
         server = viser.ViserServer()
         base_frame = server.scene.add_frame("/base", show_axes=False)
@@ -572,7 +615,7 @@ def main():
                 g1_retarget_mask=g1_retarget_mask,
                 weights=weights.get_weights(),  # type: ignore
                 subsample_factor=subsample_factor,
-                input_fps=args.input_fps,
+                input_fps=input_fps,
             )
             gen_button.disabled = False
             retarget_next_button.disabled = False  # Re-enable after generating
@@ -581,7 +624,8 @@ def main():
         gen_button.on_click(lambda _: generate_trajectory())
 
         def retarget_next_motion(_: viser.GuiEvent):
-            nonlocal current_motion_index, Ts_world_root, joints, num_timesteps
+            nonlocal current_motion_index, Ts_world_root, joints
+            nonlocal num_timesteps, input_fps
             nonlocal \
                 simplified_keypoints, \
                 keypoint_orientations, \
@@ -596,11 +640,13 @@ def main():
                 left_foot_contact,
                 right_foot_contact,
                 num_timesteps,
+                input_fps,
             ) = load_motion_data(
                 test_keypoints_paths[current_motion_index],
                 args.source_type,
                 subsample_factor,
                 TARGET_RAW_FRAMES,
+                args.input_fps,
             )
 
             # Update UI elements that depend on num_timesteps (displayable frames)
@@ -641,7 +687,7 @@ def main():
             except Exception as _:
                 pass
 
-            time.sleep(subsample_factor / args.input_fps)
+            time.sleep(subsample_factor / input_fps)
     else:
         print(
             "Running in non-visualize mode. Retargeting all motions and saving to disk."
@@ -670,8 +716,13 @@ def main():
                 left_foot_contact,
                 right_foot_contact,
                 num_timesteps,
+                input_fps,
             ) = load_motion_data(
-                motion_path, args.source_type, subsample_factor, TARGET_RAW_FRAMES
+                motion_path,
+                args.source_type,
+                subsample_factor,
+                TARGET_RAW_FRAMES,
+                args.input_fps,
             )
 
             Ts_world_root, joints = solve_retargeting(
@@ -685,7 +736,7 @@ def main():
                 g1_retarget_mask=g1_retarget_mask,
                 weights=weights_dict,
                 subsample_factor=subsample_factor,
-                input_fps=args.input_fps,
+                input_fps=input_fps,
             )
 
             # Save results, sliced to the actual motion length
@@ -695,6 +746,9 @@ def main():
                     Ts_world_root.wxyz_xyz[:num_timesteps, :4]
                 ),
                 "joint_angles": onp.array(joints[:num_timesteps]),
+                "fps": subsampled_fps(input_fps, subsample_factor),
+                "source_fps": input_fps,
+                "subsample_factor": subsample_factor,
             }
 
             onp.savez_compressed(output_path, **results_to_save)

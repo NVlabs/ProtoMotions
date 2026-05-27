@@ -31,6 +31,11 @@ from protomotions.components.pose_lib import (
 )
 from protomotions.robot_configs.factory import robot_config
 from motion_filter import passes_exclude_motion_filter
+from protomotions.utils.retargeting_fps import (
+    downsample_factor,
+    fps_from_mapping,
+    resolve_output_fps,
+)
 
 app = typer.Typer(pretty_exceptions_enable=False)
 
@@ -82,7 +87,9 @@ def process_csv_file(csv_path, input_fps, output_fps, device, dtype):
     # Extract joint angles (already in radians)
     joint_angles = data[:, 7:]
 
-    factor = input_fps // output_fps
+    actual_input_fps = float(input_fps)
+    actual_output_fps = resolve_output_fps(actual_input_fps, output_fps)
+    factor = downsample_factor(actual_input_fps, actual_output_fps)
     if factor > 1:
         joint_angles = joint_angles[::factor]
         root_pos = root_pos[::factor]
@@ -93,7 +100,7 @@ def process_csv_file(csv_path, input_fps, output_fps, device, dtype):
     root_rot_wxyz = torch.from_numpy(root_rot_wxyz).to(device, dtype)
     joint_angles = torch.from_numpy(joint_angles).to(device, dtype)
 
-    return root_pos, root_rot_wxyz, joint_angles
+    return root_pos, root_rot_wxyz, joint_angles, actual_output_fps
 
 
 def process_npz_file(npz_path, input_fps, output_fps, device, dtype):
@@ -109,8 +116,9 @@ def process_npz_file(npz_path, input_fps, output_fps, device, dtype):
         tuple: (root_pos, root_rot_wxyz, joint_angles)
     """
     data = np.load(npz_path, allow_pickle=True)
-
-    factor = input_fps // output_fps
+    actual_input_fps = fps_from_mapping(data, input_fps)
+    actual_output_fps = resolve_output_fps(actual_input_fps, output_fps)
+    factor = downsample_factor(actual_input_fps, actual_output_fps)
 
     # Extract and downsample the arrays (can't modify NpzFile in-place)
     base_frame_pos = data["base_frame_pos"][::factor]
@@ -121,7 +129,7 @@ def process_npz_file(npz_path, input_fps, output_fps, device, dtype):
     root_rot_wxyz = torch.from_numpy(base_frame_wxyz).to(device, dtype)
     joint_angles = torch.from_numpy(joint_angles).to(device, dtype)
 
-    return root_pos, root_rot_wxyz, joint_angles
+    return root_pos, root_rot_wxyz, joint_angles, actual_output_fps
 
 
 def apply_contact_labels_to_motion(
@@ -163,9 +171,10 @@ def apply_contact_labels_to_motion(
 
     # Load contact labels
     contact_data = np.load(contact_labels_path, allow_pickle=True)
+    contact_input_fps = fps_from_mapping(contact_data, input_fps)
     foot_contacts = contact_data["foot_contacts"]  # [K, 2] - left, right
 
-    factor = input_fps // output_fps
+    factor = downsample_factor(contact_input_fps, output_fps)
     if factor > 1:
         foot_contacts = foot_contacts[::factor]
 
@@ -200,7 +209,9 @@ def main(
         ..., help="Directory to save ProtoMotions motion files."
     ),
     input_fps: int = typer.Option(30, help="Input motion fps"),
-    output_fps: int = typer.Option(30, help="Output motion fps"),
+    output_fps: Optional[int] = typer.Option(
+        None, help="Output motion fps. Defaults to each retargeted motion's input fps."
+    ),
     force_remake: bool = False,
     ignore_first_n_frames: int = 0,  # ignore the first n frames of the motion
     # Motion filter options
@@ -265,11 +276,6 @@ def main(
     print(f"Left foot: {left_foot_name} (index {left_foot_idx})")
     print(f"Right foot: {right_foot_name} (index {right_foot_idx})")
 
-    if input_fps % output_fps != 0:
-        raise ValueError(
-            f"input_fps ({input_fps}) must be divisible by output_fps ({output_fps})"
-        )
-
     # Find both NPZ and CSV files
     npz_files = sorted(list(glob.glob(str(retargeted_motion_dir / "*.npz"))))
     csv_files = sorted(list(glob.glob(str(retargeted_motion_dir / "*.csv"))))
@@ -291,11 +297,11 @@ def main(
         try:
             # Determine file type and process accordingly
             if motion_file.suffix.lower() == ".csv":
-                root_pos, root_rot_wxyz, joint_angles = process_csv_file(
+                root_pos, root_rot_wxyz, joint_angles, motion_fps = process_csv_file(
                     motion_file_path, input_fps, output_fps, device, dtype
                 )
             elif motion_file.suffix.lower() == ".npz":
-                root_pos, root_rot_wxyz, joint_angles = process_npz_file(
+                root_pos, root_rot_wxyz, joint_angles, motion_fps = process_npz_file(
                     motion_file_path, input_fps, output_fps, device, dtype
                 )
             else:
@@ -317,7 +323,7 @@ def main(
                 kinematic_info=kinematic_info,
                 root_pos=root_pos_from_qpos,
                 joint_rot_mats=joint_rot_mats,
-                fps=output_fps,
+                fps=motion_fps,
                 compute_velocities=True,
                 velocity_max_horizon=3,  # Use multi-horizon minimum for noise-filtered velocities
             )
@@ -342,7 +348,7 @@ def main(
 
             dof_vel = compute_cartesian_velocity(
                 batched_robot_pos=joint_angles.unsqueeze(1),
-                fps=output_fps,
+                fps=motion_fps,
             )
             motion.dof_vel = dof_vel.squeeze(1)
 
@@ -368,7 +374,7 @@ def main(
                     contact_labels_dir=contact_labels_dir,
                     motion_filename=motion_file.name,
                     input_fps=input_fps,
-                    output_fps=output_fps,
+                    output_fps=motion_fps,
                     left_foot_idx=left_foot_idx,
                     right_foot_idx=right_foot_idx,
                     device=device,
