@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """
 Tutorial 6: Mimic Environment
 
@@ -45,6 +33,12 @@ parser.add_argument(
     action="store_true",
     default=False,
     help="Use CPU only for simulation (experimental, GPU is default)",
+)
+parser.add_argument(
+    "--headless",
+    action="store_true",
+    default=False,
+    help="Run without opening a simulator viewer",
 )
 args = parser.parse_args()
 
@@ -92,7 +86,7 @@ print(f"Contact bodies: {robot_cfg.contact_bodies}")
 # Extra simulator parameters
 extra_simulator_params = {}
 if args.simulator == "isaaclab":
-    app_launcher_flags = {"headless": False, "device": str(device)}
+    app_launcher_flags = {"headless": args.headless, "device": str(device)}
     app_launcher = AppLauncher(app_launcher_flags)
     simulation_app = app_launcher.app
     extra_simulator_params["simulation_app"] = simulation_app
@@ -101,8 +95,8 @@ if args.simulator == "isaaclab":
 simulator_cfg: SimulatorConfig = simulator_config(
     args.simulator,
     robot_cfg,
-    headless=False,
-    num_envs=4,
+    headless=args.headless,
+    num_envs=1 if args.simulator == "mujoco" else 4,
     experiment_name="mimic_environment_tutorial",
 )
 

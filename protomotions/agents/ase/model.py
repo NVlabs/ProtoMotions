@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 import torch
 from torch import nn
 from typing import List
@@ -61,17 +49,22 @@ class ASEDiscriminatorEncoder(Discriminator):
             torch.nn.init.zeros_(encoder.bias)
             self._encoder_initialized = True
 
-    def forward(self, tensordict: TensorDict) -> TensorDict:
+    def forward(
+        self,
+        tensordict: TensorDict,
+        log_internals: bool = False,
+    ) -> TensorDict:
         """Forward pass computing discriminator and MI encoder outputs.
 
         Args:
             tensordict: TensorDict containing observations and latents.
+            log_internals: Whether nested modules should record diagnostics.
 
         Returns:
             TensorDict with disc_logits and mi_enc_output added.
         """
         # Call parent (Discriminator forward) - adds disc_logits
-        tensordict = super().forward(tensordict)
+        tensordict = super().forward(tensordict, log_internals=log_internals)
 
         # Initialize encoder weights after materialization
         self._initialize_encoder_weights()
@@ -302,7 +295,11 @@ class ASEModel(AMPModel):
                 key in self.config.in_keys
             ), f"MI critic input key {key} not in in_keys {self.config.in_keys}"
 
-    def forward(self, tensordict: TensorDict) -> TensorDict:
+    def forward(
+        self,
+        tensordict: TensorDict,
+        log_internals: bool = False,
+    ) -> TensorDict:
         """Forward pass through AMP model and MI critic.
 
         Args:
@@ -311,6 +308,6 @@ class ASEModel(AMPModel):
         Returns:
             TensorDict with all model outputs added.
         """
-        tensordict = super().forward(tensordict)
-        tensordict = self._mi_critic(tensordict)
+        tensordict = super().forward(tensordict, log_internals=log_internals)
+        tensordict = self._mi_critic(tensordict, log_internals=log_internals)
         return tensordict

@@ -15,7 +15,7 @@ Each timestep, the environment builds an ``EnvContext`` instance containing:
 3. **Task context** - Task-specific variables from control components
 4. **Environment parameters** - dt, contact tracking, etc.
 
-Components bind their kernels to context paths using ``ContextRouter``:
+Components bind their kernels to context paths using ``MdpComponent``:
 
 .. code-block:: text
 
@@ -38,24 +38,24 @@ Components bind their kernels to context paths using ``ContextRouter``:
             ▼                        ▼                        ▼
    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
    │  Observations   │    │     Rewards     │    │  Terminations   │
-   │  (ContextRouter)│    │  (ContextRouter)│    │  (ContextRouter)│
+   │  (MdpComponent) │    │  (MdpComponent) │    │  (MdpComponent) │
    └─────────────────┘    └─────────────────┘    └─────────────────┘
 
-ContextRouter Pattern
+MdpComponent Pattern
 ---------------------
 
-Components use ``ContextRouter`` to bind pure tensor kernels to context paths:
+Components use ``MdpComponent`` to bind pure tensor kernels to context paths:
 
 .. code-block:: python
 
    from protomotions.envs.context_views import EnvContext
-   from protomotions.envs.context_router import ContextRouter
+   from protomotions.envs.mdp_component import MdpComponent
    from protomotions.envs.rewards import compute_gt_rew
    
    reward_components = {
-       "gt_rew": ContextRouter(
-           kernel=compute_gt_rew,                      # Pure tensor function
-           dynamic_bindings={                                  # Map params to context paths
+       "gt_rew": MdpComponent(
+           compute_func=compute_gt_rew,                      # Pure tensor function
+           dynamic_vars={                                  # Map params to context paths
                "current_rigid_body_pos": EnvContext.current.rigid_body_pos,
                "ref_rigid_body_pos": EnvContext.mimic.ref_state.rigid_body_pos,
            },
@@ -209,7 +209,7 @@ Direct fields on EnvContext:
    .current_contact_force_magnitudes  # [num_envs, num_bodies]
    .prev_contact_force_magnitudes     # [num_envs, num_bodies]
 
-Using Context in ContextRouter
+Using Context in MdpComponent
 -------------------------------
 
 **Class access** (for configuration):
@@ -235,13 +235,13 @@ Using Context in ContextRouter
 .. code-block:: python
 
    from protomotions.envs.context_views import EnvContext
-   from protomotions.envs.context_router import ContextRouter
+   from protomotions.envs.mdp_component import MdpComponent
    from protomotions.envs.obs import compute_humanoid_max_coords_observations
    
    observation_components = {
-       "max_coords_obs": ContextRouter(
-           kernel=compute_humanoid_max_coords_observations,
-           dynamic_bindings={
+       "max_coords_obs": MdpComponent(
+           compute_func=compute_humanoid_max_coords_observations,
+           dynamic_vars={
                "body_pos": EnvContext.current.rigid_body_pos,     # Type-safe!
                "body_rot": EnvContext.current.rigid_body_rot,
                "body_vel": EnvContext.current.rigid_body_vel,
@@ -282,14 +282,14 @@ populates the EnvContext with a custom view:
                target_vel=self._compute_target_vel(),
            )
 
-Then use it in ContextRouter bindings:
+Then use it in MdpComponent bindings:
 
 .. code-block:: python
 
    observation_components = {
-       "custom_obs": ContextRouter(
-           kernel=compute_custom_obs,
-           dynamic_bindings={
+       "custom_obs": MdpComponent(
+           compute_func=compute_custom_obs,
+           dynamic_vars={
                "target_pos": EnvContext.my_custom.target_pos,  # Type-safe!
            },
        ),

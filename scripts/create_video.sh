@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 
 # Video creation script for PNG sequence
 INPUT_DIR="output/renderings/path_to_png_sequence"
@@ -30,4 +32,4 @@ if [ $? -eq 0 ]; then
 else
     echo "Error creating video"
     exit 1
-fi 
+fi

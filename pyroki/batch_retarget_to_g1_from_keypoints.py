@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 import time
 from typing import Tuple, TypedDict
 import glob
@@ -1099,8 +1087,11 @@ def solve_retargeting(
         # we use torso here to prevent odd waist rotations
         # but then we need 0.07m height offset...
 
+        # x=0.18 matches source pelvis_aux (0.2 * 0.9x scaling = 0.18).
+        # z=0.03 to encourage forward torso tilt; note source
+        # pelvis_aux is at pelvis height which is even lower, also encourages forward torso tilt.
         torso_aux_pos = link_pos_torso + link_rot_mat_torso @ jnp.array(
-            [0.15, 0.0, -0.1]
+            [0.18, 0.0, 0.03]
         )
 
         link_pos_with_aux = jnp.concatenate(

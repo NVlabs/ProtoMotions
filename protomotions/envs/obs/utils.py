@@ -1,24 +1,33 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Utility functions for observation processing."""
 
 from typing import Union, List
 
 import torch
 from torch import Tensor
+
+from protomotions.utils import rotations
+
+
+def heading_local_xy_delta(
+    origin_pos: Tensor,
+    origin_rot: Tensor,
+    target_pos: Tensor,
+    w_last: bool = True,
+) -> Tensor:
+    """Return target XY displacement in the origin heading frame.
+
+    The vertical component is intentionally discarded before rotation so this
+    helper can be shared by target-reaching observations and odometer-style
+    target-pose offsets.
+    """
+    rel_pos = target_pos - origin_pos
+    rel_pos = rel_pos.clone()
+    rel_pos[..., 2] = 0.0
+    heading_inv = rotations.calc_heading_quat_inv(origin_rot, w_last)
+    return rotations.quat_rotate(heading_inv, rel_pos, w_last)[..., :2]
 
 
 def select_step_indices(

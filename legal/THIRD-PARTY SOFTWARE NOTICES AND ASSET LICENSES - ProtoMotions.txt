@@ -1,0 +1,117 @@
+THIRD-PARTY SOFTWARE NOTICES AND ASSET LICENSES
+------------------------------------------------
+
+This project incorporates or distributes the following third-party software,
+models, robot descriptions, and assets. The notices below are provided for
+attribution and license compliance. Review the applicable third-party license
+terms before use.
+
+1. Isaac Lab MJCF conversion utility
+
+   Applied to:
+   - usd_convert/convert_mjcf_to_usd.py
+
+   Copyright:
+   - Copyright (c) 2022-2025, The Isaac Lab Project Developers
+     (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+
+   License: BSD-3-Clause
+
+2. Unitree robot descriptions and mesh assets
+
+   Applied to:
+   - protomotions/data/assets/mesh/G1/
+   - protomotions/data/assets/mesh/H1_2/
+   - protomotions/data/assets/mjcf/g1_*.xml
+   - protomotions/data/assets/mjcf/h1_2*.xml
+   - protomotions/data/assets/urdf/for_retargeting/g1.urdf
+   - protomotions/data/assets/urdf/for_retargeting/h1_2.urdf
+   - protomotions/data/assets/usd/g1_*/
+   - protomotions/data/assets/usd/h1_2*/
+
+   Copyright:
+   - Copyright (c) 2016-2023 HangZhou YuShu TECHNOLOGY CO.,LTD.
+     ("Unitree Robotics")
+
+   License: BSD-3-Clause
+
+3. BeyondMimic
+
+   Applied to:
+   - BeyondMimic-style tracking/deployment configuration and documentation,
+     including examples/experiments/mimic/mlp_bm*.py,
+     deployment/export_bm_tracker_onnx.py, and related pretrained tracker
+     package metadata.
+
+   Copyright:
+   - Copyright (c) HybridRobotics
+
+   License: MIT
+
+4. SMPL and SMPL-H body model assets
+
+   Applied to:
+   - data/smpl/
+   - protomotions/data/assets/mesh/smpl/
+   - protomotions/data/assets/mjcf/smpl*.xml
+   - protomotions/data/assets/usd/smpl*.usda
+
+   Attribution:
+   - SMPL/SMPL-H body model assets are attributed to the Max Planck Institute
+     for Intelligent Systems / Max-Planck-Gesellschaft zur Foerderung der
+     Wissenschaften e.V. and their applicable model licenses.
+
+   These assets are not covered by the ProtoMotions Apache-2.0 license. Use is
+   subject to the applicable SMPL/SMPL-H model terms.
+
+
+FULL LICENSE TEXTS
+------------------
+
+BSD 3-Clause License
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+* Neither the name of the copyright holder nor the names of its
+  contributors may be used to endorse or promote products derived from
+  this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.

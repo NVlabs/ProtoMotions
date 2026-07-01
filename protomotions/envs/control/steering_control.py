@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Steering control component for locomotion tasks.
 
 Manages target direction and speed state for steering tasks.
@@ -186,9 +174,10 @@ class SteeringControl(ControlComponent):
         self._tar_dir_theta[env_ids] = dir_theta
         self._tar_dir[env_ids] = tar_dir
         self._tar_face_dir[env_ids] = tar_face_dir
-        self._heading_change_steps[env_ids] = (
-            self.env.progress_buf[env_ids] + change_steps
-        )
+        progress = self.env.progress_buf[env_ids]
+        is_env_reset = self.env.reset_buf[env_ids] | self.env.terminate_buf[env_ids]
+        progress = torch.where(is_env_reset, torch.zeros_like(progress), progress)
+        self._heading_change_steps[env_ids] = progress + change_steps
 
     def step(self):
         """Check if any environments need their heading task updated."""
@@ -222,7 +211,7 @@ class SteeringControl(ControlComponent):
         self, headless: bool
     ) -> Dict[str, VisualizationMarkerConfig]:
         """Create steering direction markers.
-        
+
         Creates two arrow markers:
         - Red arrow: movement direction (tar_dir)
         - Blue arrow: facing direction (tar_face_dir)
@@ -284,4 +273,3 @@ class SteeringControl(ControlComponent):
                 orientation=facing_rot.view(self.env.num_envs, -1, 4),
             ),
         }
-

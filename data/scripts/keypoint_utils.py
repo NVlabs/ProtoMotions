@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 import torch
 from protomotions.utils.rotations import quaternion_to_matrix
 from typing import List, Dict, Tuple
@@ -23,6 +11,24 @@ KEYPOINT_MAPPING_RIGV1 = {
     "right_hip": "RightUpLeg",
     "left_knee": "LeftLeg",
     "right_knee": "RightLeg",
+    "left_ankle": "LeftFoot",
+    "right_ankle": "RightFoot",
+    "left_foot": "LeftToeBase",
+    "right_foot": "RightToeBase",
+    "left_shoulder": "LeftArm",
+    "right_shoulder": "RightArm",
+    "left_elbow": "LeftForeArm",
+    "right_elbow": "RightForeArm",
+    "left_wrist": "LeftHand",
+    "right_wrist": "RightHand",
+}
+
+KEYPOINT_MAPPING_SOMA = {
+    "pelvis": "Hips",
+    "left_hip": "LeftLeg",
+    "right_hip": "RightLeg",
+    "left_knee": "LeftShin",
+    "right_knee": "RightShin",
     "left_ankle": "LeftFoot",
     "right_ankle": "RightFoot",
     "left_foot": "LeftToeBase",
@@ -64,14 +70,16 @@ def get_keypoint_indices(
         kinematic_info: Kinematic info object with body_names attribute
         skeleton_format: Either "rigv1" or "smpl" to specify the skeleton format
     """
-    if skeleton_format == "rigv1":
-        mapping = KEYPOINT_MAPPING_RIGV1
-    elif skeleton_format == "smpl":
-        mapping = KEYPOINT_MAPPING_SMPL
-    else:
+    mapping_lookup = {
+        "rigv1": KEYPOINT_MAPPING_RIGV1,
+        "smpl": KEYPOINT_MAPPING_SMPL,
+        "soma": KEYPOINT_MAPPING_SOMA,
+    }
+    if skeleton_format not in mapping_lookup:
         raise ValueError(
-            f"Unsupported skeleton format: {skeleton_format}. Must be 'rigv1' or 'smpl'"
+            f"Unsupported skeleton format: {skeleton_format}. Must be one of {list(mapping_lookup.keys())}"
         )
+    mapping = mapping_lookup[skeleton_format]
 
     conceptual_keypoint_names = list(mapping.keys())
     mjcf_target_body_names = [mapping[name] for name in conceptual_keypoint_names]
@@ -138,15 +146,15 @@ def extract_keypoints_from_motion_smpl_skel(
         keypoint_orientations_quat, w_last=True
     )
 
-    # surgery on the 1st key point
-    root_idx = conceptual_keypoint_names.index("pelvis")
-    root_offset = torch.tensor(
-        [-0.04, 0.0, 0.0], device=device, dtype=keypoint_positions.dtype
-    )
-    R_root = keypoint_orientations_mat[:, root_idx, :, :]
-    keypoint_positions[:, root_idx, :] += torch.einsum(
-        "...ij,j->...i", R_root, root_offset
-    )
+    # # surgery on the 1st key point
+    # root_idx = conceptual_keypoint_names.index("pelvis")
+    # root_offset = torch.tensor(
+    #     [0.0, 0.0, 0.0], device=device, dtype=keypoint_positions.dtype
+    # )
+    # R_root = keypoint_orientations_mat[:, root_idx, :, :]
+    # keypoint_positions[:, root_idx, :] += torch.einsum(
+    #     "...ij,j->...i", R_root, root_offset
+    # )
 
     # surgery on elbow keypoints
     p_local_elbow_mod = torch.tensor(
@@ -167,6 +175,21 @@ def extract_keypoints_from_motion_smpl_skel(
     )
     keypoint_positions[:, right_elbow_idx, :] = p_right_elbow_new
 
+    # Move shoulders forward a bit to discrouage back leaning
+    p_local_shoulder_mod = torch.tensor(
+        [0.02, 0.0, 0.0], device=device, dtype=keypoint_positions.dtype
+    )
+    left_shoulder_idx = conceptual_keypoint_names.index("left_shoulder")
+    right_shoulder_idx = conceptual_keypoint_names.index("right_shoulder")
+    R_left_shoulder = keypoint_orientations_mat[:, left_shoulder_idx, :, :]
+    keypoint_positions[:, left_shoulder_idx, :] += torch.einsum(
+        "...ij,j->...i", R_left_shoulder, p_local_shoulder_mod
+    )
+    R_right_shoulder = keypoint_orientations_mat[:, right_shoulder_idx, :, :]
+    keypoint_positions[:, right_shoulder_idx, :] += torch.einsum(
+        "...ij,j->...i", R_right_shoulder, p_local_shoulder_mod
+    )
+
     if flat_feet:
         # === Custom position calculation for ToeBase keypoints (Flat Feet) ===
         # Instead of using their global positions directly, we calculate them relative to the ankle.
@@ -178,10 +201,10 @@ def extract_keypoints_from_motion_smpl_skel(
         left_foot_idx = conceptual_keypoint_names.index("left_foot")
         right_foot_idx = conceptual_keypoint_names.index("right_foot")
 
-        # The modified local position offset for the toe base.
-        # Original from MJCF is 0.1193 0.0264 -0.0558, here we use a modified one (flat).
+        # Flat toebase offset = G1 foot_link distance (0.15m) + ankle surgery (0.05m).
+        # Keeps foot-to-shifted-ankle at 0.15m to match G1 foot_link_joint offset.
         p_local_mod = torch.tensor(
-            [0.15 + 0.03, 0.0, 0.0], device=device, dtype=keypoint_positions.dtype
+            [0.15 + 0.05, 0.0, 0.0], device=device, dtype=keypoint_positions.dtype
         )
 
         # Calculate and update position for RightToeBase ('right_foot')
@@ -201,9 +224,13 @@ def extract_keypoints_from_motion_smpl_skel(
         )
         keypoint_positions[:, left_foot_idx, :] = p_left_toe_base_new
 
-        # surgery on ankle keypoint also
+        # SMPL ankle is 5.5cm behind pelvis (chain x-offsets sum to -0.055).
+        # G1 ankle is at x≈0. Compromise between full joint match (+0.055) and
+        # foot-center match (+0.03, accounting for SMPL foot extending 3.2cm
+        # farther forward than G1). +0.05 leaves ankle at ~-0.004 from pelvis
+        # after 0.9x scaling, nearly eliminating the backward pelvis bias.
         p_local_ankle_mod = torch.tensor(
-            [0.03, 0.0, 0.0], device=device, dtype=keypoint_positions.dtype
+            [0.05, 0.0, 0.0], device=device, dtype=keypoint_positions.dtype
         )
         p_right_ankle_new = p_right_ankle + torch.einsum(
             "...ij,j->...i", R_right_ankle, p_local_ankle_mod
@@ -256,10 +283,9 @@ def extract_keypoints_from_motion_smpl_skel(
                 dim=1,
             )
 
-        # add pelvis aux, 0.04 ref to surgery on the 1st key point
         pelvis_idx = conceptual_keypoint_names.index("pelvis")
         p_local_pelvis = torch.tensor(
-            [0.2 - 0.04, 0.0, 0.0], device=device, dtype=keypoint_positions.dtype
+            [0.2, 0.0, 0.0], device=device, dtype=keypoint_positions.dtype
         )
         p_pelvis = keypoint_positions[:, pelvis_idx, :]
         R_pelvis = keypoint_orientations_mat[:, pelvis_idx, :, :]
@@ -479,7 +505,7 @@ def extract_keypoints_from_motion_rigv1_skel(
         # add pelvis aux
         pelvis_idx = conceptual_keypoint_names.index("pelvis")
         p_local_pelvis = torch.tensor(
-            [0.0, -0.30, 0.0], device=device, dtype=keypoint_positions.dtype
+            [0.0, -0.225, 0.0], device=device, dtype=keypoint_positions.dtype
         )
         p_pelvis = keypoint_positions[:, pelvis_idx, :]
         R_pelvis = keypoint_orientations_mat[:, pelvis_idx, :, :]
@@ -548,6 +574,179 @@ def extract_keypoints_from_motion_rigv1_skel(
     return result
 
 
+def extract_keypoints_from_motion_soma_skel(
+    all_body_positions: torch.Tensor,
+    all_body_rotations_quat: torch.Tensor,
+    keypoint_indices_in_mjcf: List[int],
+    conceptual_keypoint_names: List[str],
+    device: torch.device,
+    flat_feet: bool = True,
+    aux_points: bool = True,
+    contacts: torch.Tensor = None,
+    kinematic_info=None,
+) -> Dict[str, torch.Tensor]:
+    """
+    Extracts keypoints from soma23 skeleton motion data.
+    Soma23 uses the same coordinate convention as rigv1 (-y = forward, z = up).
+    Structurally similar to rigv1 with different body names and proportions.
+
+    Ankle y-offset from pelvis: +0.017 (1.7cm behind, close to rigv1's 0).
+    Shoulder y-offset from pelvis: -0.042 (4.2cm forward — no backward surgery needed).
+    """
+    keypoint_positions = all_body_positions[:, keypoint_indices_in_mjcf, :]
+
+    keypoint_orientations_quat = all_body_rotations_quat[:, keypoint_indices_in_mjcf, :]
+    keypoint_orientations_mat = quaternion_to_matrix(
+        keypoint_orientations_quat, w_last=True
+    )
+
+    # Pelvis offset: shift backward in local +y to create forward bias on all
+    # body keypoints relative to root (same approach as rigv1).
+    root_idx = conceptual_keypoint_names.index("pelvis")
+    root_offset = torch.tensor(
+        [0.0, 0.07, 0.0], device=device, dtype=keypoint_positions.dtype
+    )
+    R_root = keypoint_orientations_mat[:, root_idx, :, :]
+    keypoint_positions[:, root_idx, :] += torch.einsum(
+        "...ij,j->...i", R_root, root_offset
+    )
+
+    if flat_feet:
+        left_ankle_idx = conceptual_keypoint_names.index("left_ankle")
+        right_ankle_idx = conceptual_keypoint_names.index("right_ankle")
+        left_foot_idx = conceptual_keypoint_names.index("left_foot")
+        right_foot_idx = conceptual_keypoint_names.index("right_foot")
+
+        # Flat toebase: G1 foot_link (0.15m) + ankle surgery (0.05m) = 0.20m
+        # forward from original ankle in local -y.
+        # (Soma MJCF original: LeftToeBase pos 0 -0.1323 -0.0506)
+        p_local_mod = torch.tensor(
+            [0.0, -0.20, 0.0], device=device, dtype=keypoint_positions.dtype
+        )
+
+        p_right_ankle = keypoint_positions[:, right_ankle_idx, :]
+        R_right_ankle = keypoint_orientations_mat[:, right_ankle_idx, :, :]
+        p_right_toe_base_new = p_right_ankle + torch.einsum(
+            "...ij,j->...i", R_right_ankle, p_local_mod
+        )
+        keypoint_positions[:, right_foot_idx, :] = p_right_toe_base_new
+
+        p_left_ankle = keypoint_positions[:, left_ankle_idx, :]
+        R_left_ankle = keypoint_orientations_mat[:, left_ankle_idx, :, :]
+        p_left_toe_base_new = p_left_ankle + torch.einsum(
+            "...ij,j->...i", R_left_ankle, p_local_mod
+        )
+        keypoint_positions[:, left_foot_idx, :] = p_left_toe_base_new
+
+        # Ankle forward shift: -0.05 in local y (forward). Soma ankle is 1.7cm
+        # behind pelvis (chain y-offsets: LeftLeg -0.026 + LeftShin +0.008 +
+        # LeftFoot +0.035 = +0.017). Same surgery as rigv1 (whose ankle is at 0).
+        p_local_ankle_mod = torch.tensor(
+            [0.0, -0.05, 0.0], device=device, dtype=keypoint_positions.dtype
+        )
+        p_right_ankle_new = p_right_ankle + torch.einsum(
+            "...ij,j->...i", R_right_ankle, p_local_ankle_mod
+        )
+        p_left_ankle_new = p_left_ankle + torch.einsum(
+            "...ij,j->...i", R_left_ankle, p_local_ankle_mod
+        )
+        keypoint_positions[:, right_ankle_idx, :] = p_right_ankle_new
+        keypoint_positions[:, left_ankle_idx, :] = p_left_ankle_new
+
+    if aux_points:
+        left_wrist_idx = conceptual_keypoint_names.index("left_wrist")
+        right_wrist_idx = conceptual_keypoint_names.index("right_wrist")
+
+        p_local_hand_aux1 = torch.tensor(
+            [0.0, -0.20, 0.0], device=device, dtype=keypoint_positions.dtype
+        )
+
+        for p_local_hand in [p_local_hand_aux1]:
+            p_left_wrist = keypoint_positions[:, left_wrist_idx, :]
+            R_left_wrist = keypoint_orientations_mat[:, left_wrist_idx, :, :]
+            p_left_hand_aux = p_left_wrist + torch.einsum(
+                "...ij,j->...i", R_left_wrist, p_local_hand
+            )
+
+            p_right_wrist = keypoint_positions[:, right_wrist_idx, :]
+            R_right_wrist = keypoint_orientations_mat[:, right_wrist_idx, :, :]
+            p_right_hand_aux = p_right_wrist + torch.einsum(
+                "...ij,j->...i", R_right_wrist, p_local_hand
+            )
+
+            keypoint_positions = torch.cat(
+                [
+                    keypoint_positions,
+                    p_left_hand_aux[:, None, :],
+                    p_right_hand_aux[:, None, :],
+                ],
+                dim=1,
+            )
+            keypoint_orientations_mat = torch.cat(
+                [
+                    keypoint_orientations_mat,
+                    R_left_wrist[:, None, :, :],
+                    R_right_wrist[:, None, :, :],
+                ],
+                dim=1,
+            )
+
+        # 0.225 * 0.8 (rigv1 x-scaling) = 0.18m, matching retargeter torso_aux x.
+        # Rigv1 uses 0.30 here but that produces 0.24m after scaling, creating
+        # a 6cm x-mismatch with the torso_aux (0.18) that pushes pelvis backward.
+        pelvis_idx = conceptual_keypoint_names.index("pelvis")
+        p_local_pelvis = torch.tensor(
+            [0.0, -0.225, 0.0], device=device, dtype=keypoint_positions.dtype
+        )
+        p_pelvis = keypoint_positions[:, pelvis_idx, :]
+        R_pelvis = keypoint_orientations_mat[:, pelvis_idx, :, :]
+        p_pelvis_aux = p_pelvis + torch.einsum(
+            "...ij,j->...i", R_pelvis, p_local_pelvis
+        )
+        keypoint_positions = torch.cat(
+            [keypoint_positions, p_pelvis_aux[:, None, :]], dim=1
+        )
+        keypoint_orientations_mat = torch.cat(
+            [keypoint_orientations_mat, R_pelvis[:, None, :, :]], dim=1
+        )
+
+    result = {
+        "positions": keypoint_positions,
+        "orientations": keypoint_orientations_mat,
+    }
+
+    if contacts is not None and kinematic_info is not None:
+        body_name_left_ankle = KEYPOINT_MAPPING_SOMA["left_ankle"]
+        body_name_right_ankle = KEYPOINT_MAPPING_SOMA["right_ankle"]
+        body_name_left_toebase = KEYPOINT_MAPPING_SOMA["left_foot"]
+        body_name_right_toebase = KEYPOINT_MAPPING_SOMA["right_foot"]
+        left_ankle_idx = kinematic_info.body_names.index(body_name_left_ankle)
+        right_ankle_idx = kinematic_info.body_names.index(body_name_right_ankle)
+        left_toebase_idx = kinematic_info.body_names.index(body_name_left_toebase)
+        right_toebase_idx = kinematic_info.body_names.index(body_name_right_toebase)
+
+        left_foot_contacts = contacts[:, [left_ankle_idx, left_toebase_idx]]
+        right_foot_contacts = contacts[:, [right_ankle_idx, right_toebase_idx]]
+
+        left_foot_contacts = left_foot_contacts.float()
+        right_foot_contacts = right_foot_contacts.float()
+
+        left_foot_contacts_np = left_foot_contacts.cpu().numpy().astype(int)
+        right_foot_contacts_np = right_foot_contacts.cpu().numpy().astype(int)
+
+        assert torch.all(
+            torch.isin(torch.from_numpy(left_foot_contacts_np), torch.tensor([0, 1]))
+        ), f"Left foot contacts contain non-binary values: {torch.unique(torch.from_numpy(left_foot_contacts_np))}"
+        assert torch.all(
+            torch.isin(torch.from_numpy(right_foot_contacts_np), torch.tensor([0, 1]))
+        ), f"Right foot contacts contain non-binary values: {torch.unique(torch.from_numpy(right_foot_contacts_np))}"
+
+        result["left_foot_contacts"] = left_foot_contacts_np
+        result["right_foot_contacts"] = right_foot_contacts_np
+
+    return result
+
+
 def extract_keypoints_from_motion(
     all_body_positions: torch.Tensor,
     all_body_rotations_quat: torch.Tensor,
@@ -570,7 +769,7 @@ def extract_keypoints_from_motion(
         keypoint_indices_in_mjcf: List of indices for keypoints in MJCF body order
         conceptual_keypoint_names: List of conceptual keypoint names
         device: torch device
-        skeleton_format: Either "rigv1" or "smpl" to specify the skeleton format
+        skeleton_format: 'rigv1', 'smpl', or 'soma'
         flat_feet: Whether to apply flat feet correction
         aux_points: Whether to add auxiliary points
         contacts: Optional [T, N_bodies] - contact labels for all bodies
@@ -583,34 +782,26 @@ def extract_keypoints_from_motion(
         - 'left_foot_contacts': [T, 2] - left foot contact labels (ankle, toebase) if contacts provided
         - 'right_foot_contacts': [T, 2] - right foot contact labels (ankle, toebase) if contacts provided
     """
-    if skeleton_format == "rigv1":
-        return extract_keypoints_from_motion_rigv1_skel(
-            all_body_positions=all_body_positions,
-            all_body_rotations_quat=all_body_rotations_quat,
-            keypoint_indices_in_mjcf=keypoint_indices_in_mjcf,
-            conceptual_keypoint_names=conceptual_keypoint_names,
-            device=device,
-            flat_feet=flat_feet,
-            aux_points=aux_points,
-            contacts=contacts,
-            kinematic_info=kinematic_info,
-        )
-    elif skeleton_format == "smpl":
-        return extract_keypoints_from_motion_smpl_skel(
-            all_body_positions=all_body_positions,
-            all_body_rotations_quat=all_body_rotations_quat,
-            keypoint_indices_in_mjcf=keypoint_indices_in_mjcf,
-            conceptual_keypoint_names=conceptual_keypoint_names,
-            device=device,
-            flat_feet=flat_feet,
-            aux_points=aux_points,
-            contacts=contacts,
-            kinematic_info=kinematic_info,
-        )
-    else:
+    dispatch = {
+        "rigv1": extract_keypoints_from_motion_rigv1_skel,
+        "smpl": extract_keypoints_from_motion_smpl_skel,
+        "soma": extract_keypoints_from_motion_soma_skel,
+    }
+    if skeleton_format not in dispatch:
         raise ValueError(
-            f"Unsupported skeleton format: {skeleton_format}. Must be 'rigv1' or 'smpl'"
+            f"Unsupported skeleton format: {skeleton_format}. Must be one of {list(dispatch.keys())}"
         )
+    return dispatch[skeleton_format](
+        all_body_positions=all_body_positions,
+        all_body_rotations_quat=all_body_rotations_quat,
+        keypoint_indices_in_mjcf=keypoint_indices_in_mjcf,
+        conceptual_keypoint_names=conceptual_keypoint_names,
+        device=device,
+        flat_feet=flat_feet,
+        aux_points=aux_points,
+        contacts=contacts,
+        kinematic_info=kinematic_info,
+    )
 
 
 def get_mjcf_path(skeleton_format: str) -> str:
@@ -623,11 +814,13 @@ def get_mjcf_path(skeleton_format: str) -> str:
     Returns:
         Path to the appropriate MJCF file
     """
-    if skeleton_format == "rigv1":
-        return "protomotions/data/assets/mjcf/rigv1_humanoid.xml"
-    elif skeleton_format == "smpl":
-        return "protomotions/data/assets/mjcf/smpl_humanoid.xml"  # Update this path as needed
-    else:
+    paths = {
+        "rigv1": "protomotions/data/assets/mjcf/rigv1_humanoid.xml",
+        "smpl": "protomotions/data/assets/mjcf/smpl_humanoid.xml",
+        "soma": "protomotions/data/assets/mjcf/soma23_humanoid.xml",
+    }
+    if skeleton_format not in paths:
         raise ValueError(
-            f"Unsupported skeleton format: {skeleton_format}. Must be 'rigv1' or 'smpl'"
+            f"Unsupported skeleton format: {skeleton_format}. Must be one of {list(paths.keys())}"
         )
+    return paths[skeleton_format]

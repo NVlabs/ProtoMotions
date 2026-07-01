@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 import math
 import torch
 from torch import Tensor
@@ -104,7 +92,7 @@ def quat_identity_like(x, w_last: bool) -> Tensor:
     """
     Construct identity 3D rotation with the same shape
     """
-    return quat_identity(x.shape[:-1], w_last).to(x.device, x.dtype)
+    return quat_identity(list(x.shape[:-1]), w_last).to(x.device, x.dtype)
 
 
 @torch.jit.script
@@ -269,7 +257,7 @@ def vec_to_heading(h_vec):
 @torch.jit.script
 def heading_to_quat(h_theta, w_last: bool):
     axis = torch.zeros(
-        h_theta.shape
+        list(h_theta.shape)
         + [
             3,
         ],
@@ -379,7 +367,10 @@ def quat_diff_rad(a: Tensor, b: Tensor, w_last: bool) -> Tensor:
 @torch.jit.script
 def quat_apply_yaw(quat: Tensor, vec: Tensor, w_last: bool) -> Tensor:
     quat_yaw = quat.clone().reshape(-1, 4)
-    quat_yaw[:, :2] = 0.0
+    if w_last:
+        quat_yaw[:, :2] = 0.0
+    else:
+        quat_yaw[:, 1:3] = 0.0
     quat_yaw = normalize(quat_yaw)
     return quat_apply(quat_yaw, vec, w_last)
 
@@ -478,26 +469,27 @@ def quat_from_two_vectors(
     out = torch.cat([(1 + dot).unsqueeze(-1), cross], dim=-1)
     # handle v1 & v2 with same direction
     sind = dot > 1 - eps
-    out[sind] = torch.tensor([1.0, 0.0, 0.0, 0.0], device=v1.device)
+    out[sind] = torch.tensor([1.0, 0.0, 0.0, 0.0], device=v1.device, dtype=v1.dtype)
     # handle v1 & v2 with opposite direction
     nind = dot < -1 + eps
     if torch.any(nind):
-        vx = torch.tensor([1.0, 0.0, 0.0], device=v1.device)
+        vx = torch.tensor([1.0, 0.0, 0.0], device=v1.device, dtype=v1.dtype)
         vxdot = (v1 * vx).sum(-1).abs()
         nxind = nind & (vxdot < 1 - eps)
         if torch.any(nxind):
             out[nxind] = axis_angle_to_quaternion(
-                normalize(torch.cross(vx.expand_as(v1[nxind]), v1[nxind], dim=-1)),
-                w_last=w_last,
+                normalize(torch.cross(vx.expand_as(v1[nxind]), v1[nxind], dim=-1))
+                * math.pi,
+                w_last=False,
             )
         # handle v1 & v2 with opposite direction and they are parallel to x axis
         pind = nind & (vxdot >= 1 - eps)
         if torch.any(pind):
-            vy = torch.tensor([0.0, 1.0, 0.0], device=v1.device)
+            vy = torch.tensor([0.0, 1.0, 0.0], device=v1.device, dtype=v1.dtype)
             out[pind] = axis_angle_to_quaternion(
                 normalize(torch.cross(vy.expand_as(v1[pind]), v1[pind], dim=-1))
                 * math.pi,
-                w_last=w_last,
+                w_last=False,
             )
     # normalize and reshape
     out = normalize(out).reshape(orig_shape[:-1] + (4,))

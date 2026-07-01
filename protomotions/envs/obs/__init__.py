@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Observation utilities and compute kernels for environments.
 
 Contains pure tensor compute kernels for:
@@ -61,6 +49,7 @@ from protomotions.envs.obs.target_poses import (
     build_target_height,
     build_target_root_vel,
     build_target_root_ang_vel,
+    build_corrupted_xy_offset,
 )
 
 # Masked mimic observation compute kernels
@@ -75,6 +64,12 @@ from protomotions.envs.obs.steering import compute_steering_obs
 
 # Path observation compute kernel
 from protomotions.envs.obs.path import compute_path_obs
+
+# Target observation compute kernel
+from protomotions.envs.obs.target import compute_target_obs
+
+# Nearest surface observation compute kernel
+from protomotions.envs.obs.nearest_surface_obs import compute_nearest_surface_vectors
 
 # Observation noise utilities
 from protomotions.envs.obs.observation_noise import (
@@ -116,6 +111,7 @@ __all__ = [
     "build_target_height",
     "build_target_root_vel",
     "build_target_root_ang_vel",
+    "build_corrupted_xy_offset",
     # Masked mimic observation compute kernels
     "compute_target_poses_only",
     "compute_target_masks_only",
@@ -124,6 +120,10 @@ __all__ = [
     "compute_steering_obs",
     # Path observation compute kernel
     "compute_path_obs",
+    # Target observation compute kernel
+    "compute_target_obs",
+    # Nearest surface observation compute kernel
+    "compute_nearest_surface_vectors",
     # Observation noise utilities
     "NoisyObservations",
     "apply_observation_noise",

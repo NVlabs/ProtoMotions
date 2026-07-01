@@ -41,9 +41,9 @@ Key Features
 * **Multi-Backend**: Fast, scalable simulation with NVIDIA Newton (beta), IsaacGym, IsaacLab, Genesis (GPU), and MuJoCo (CPU) backends
 * **Modular Design**: Multiple simulation backends, robot morphologies, RL environments, and algorithms with built-in support. Add your own robot, task, or algorithm with ease
 * **Rich Toolkit**: Built-in procedural terrain generation, motion retargeting (PyRoki-based), scene and object spawning. All scalable to large training runs
-* **State-of-the-Art Algorithms**: MaskedMimic, AMP, ASE, PPO implementations
+* **State-of-the-Art Algorithms**: GPC/PEFT, MaskedMimic, AMP, ASE, PPO implementations
 * **Multiple Robots**: SMPL, SMPL-X, Unitree G1, H1, and custom morphologies
-* **Open Source**: Permissively licensed under Apache-2.0
+* **Open Source**: Code is Apache-2.0; bundled third-party assets are covered by the notices in ``legal/``
 
 Simulator Support
 -----------------
@@ -61,7 +61,7 @@ Simulator Support
 High-Level Architecture
 -----------------------
 
-.. image:: _static/arch.png
+.. image:: _static/arch.svg
    :alt: ProtoMotions Architecture
    :align: center
 
@@ -71,8 +71,10 @@ Quick Links
 * :doc:`getting_started/installation` - Install and set up
 * :doc:`getting_started/quickstart` - Run pre-trained models and start training
 * :doc:`tutorials/index` - Step-by-step tutorials and workflows
+* :doc:`user_guide/gpc` - Train a discrete GPC prior and adapt it with PEFT
 * :doc:`concepts/index` - Core abstractions and design
 * :doc:`api_reference/index` - Complete API reference
+* :doc:`changelog` - Release notes for the current release
 
 .. toctree::
    :maxdepth: 2
@@ -109,6 +111,7 @@ Quick Links
 
    user_guide/configuration
    user_guide/experiments
+   user_guide/gpc
    user_guide/slurm_training
    user_guide/developer_tips
 
@@ -136,4 +139,5 @@ Quick Links
    :caption: Community
    :hidden:
 
+   changelog
    contributing

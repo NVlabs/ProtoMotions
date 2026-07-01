@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """
 Environment Kinematic Playback Script
 
@@ -20,14 +8,25 @@ This script allows you to visualize reference motions in kinematic playback mode
 It uses the KinematicReplayControl component to directly set robot state to reference motion poses,
 bypassing physics simulation entirely.
 
-Usage:
+Usage (default — first num_envs motions/scenes from the file):
     python examples/env_kinematic_playback.py \
         --experiment-path=examples/experiments/mimic/mlp.py \
         --motion-file=xxx.pt \
         --robot-name=g1 \
         --simulator=isaacgym \
-        --num-envs=14 \
+        --num-envs=80 \
         --scenes-file=xxx.pt
+
+Usage (random motions):
+    python examples/env_kinematic_playback.py ... --motion-ids random --num-envs 80
+
+Usage (specific motion IDs — sequential range starting at 5):
+    python examples/env_kinematic_playback.py ... --motion-ids 5 --num-envs 80
+
+Usage (specific motion IDs — explicit list, must match --num-envs):
+    python examples/env_kinematic_playback.py ... --motion-ids 5,10,15,20 --num-envs 4
+
+When --scenes-file is given, matching scenes are automatically loaded alongside the motions.
 """
 
 
@@ -95,6 +94,20 @@ def create_parser():
     parser.add_argument(
         "--seed", type=int, default=0, help="Random seed for reproducibility"
     )
+    parser.add_argument(
+        "--motion-ids",
+        type=str,
+        default=None,
+        help=(
+            "Which motions to visualize. Three formats: "
+            "(1) 'random' — pick num_envs scenes/motions at random from the file; "
+            "(2) a single start index, e.g. '5', expanding to [5, 5+num_envs); "
+            "(3) an explicit comma-separated list, e.g. '5,10,15,20', whose length "
+            "must equal --num-envs. "
+            "When --scenes-file is provided the matching scenes are loaded automatically. "
+            "Omit this flag to use the default (first num_envs scenes)."
+        ),
+    )
 
     return parser
 
@@ -137,6 +150,24 @@ def main():
 
     args = parser.parse_args()
 
+    # Parse --motion-ids: 'random', single int (range), or comma-separated list.
+    specific_motion_ids: list = []
+    random_motions: bool = False
+    if args.motion_ids is not None:
+        raw = args.motion_ids.strip()
+        if raw.lower() == "random":
+            random_motions = True
+        elif "," in raw:
+            specific_motion_ids = [int(x.strip()) for x in raw.split(",")]
+            if len(specific_motion_ids) != args.num_envs:
+                raise ValueError(
+                    f"--motion-ids list has {len(specific_motion_ids)} entries "
+                    f"but --num-envs is {args.num_envs}. They must match."
+                )
+        else:
+            start = int(raw)
+            specific_motion_ids = list(range(start, start + args.num_envs))
+
     print("\n=== Environment Kinematic Playback Configuration ===")
     print(f"Experiment path: {args.experiment_path}")
     print(f"Robot: {args.robot_name}")
@@ -146,6 +177,14 @@ def main():
     print(f"Scenes file: {args.scenes_file}")
     print(f"Device: {device}")
     print(f"Headless: {args.headless}")
+    if random_motions:
+        print("Motion IDs: random")
+    elif specific_motion_ids:
+        preview = specific_motion_ids[:8]
+        suffix = "..." if len(specific_motion_ids) > 8 else ""
+        print(f"Motion IDs: {preview}{suffix} ({len(specific_motion_ids)} total)")
+    else:
+        print("Motion IDs: default (first num_envs scenes from the file)")
 
     # Extra simulator parameters
     extra_simulator_params = {}
@@ -230,6 +269,31 @@ def main():
     # Disable rewards - not needed for kinematic playback
     env_config.reward_components = {}
 
+    # Apply motion selection.
+    # For scenes: each scene carries humanoid_motion_id, so controlling which
+    # scenes load (scene_indices / subset_method) is sufficient —
+    # BaseEnv.create_motion_manager() reads those IDs and pins each env
+    # to its paired motion automatically.
+    # For no-scenes: motion_manager.subset_method drives selection directly.
+    from protomotions.components.scene_lib import SubsetMethod
+
+    if random_motions:
+        scene_lib_config.subset_method = SubsetMethod.RANDOM
+        print("Scene subset_method set to RANDOM")
+    elif specific_motion_ids:
+        if args.scenes_file is not None:
+            scene_lib_config.scene_indices = specific_motion_ids
+            print(
+                f"Scene indices set to motion IDs "
+                f"{specific_motion_ids[:4]}{'...' if len(specific_motion_ids) > 4 else ''}"
+            )
+        else:
+            env_config.motion_manager.subset_method = specific_motion_ids
+            print(
+                f"Motion manager subset_method set to "
+                f"{specific_motion_ids[:4]}{'...' if len(specific_motion_ids) > 4 else ''}"
+            )
+
     print("\n=== Creating Environment ===")
 
     # Convert friction settings for simulator compatibility
@@ -297,6 +361,35 @@ def main():
     if env.motion_manager is not None:
         print(f"Motion IDs assigned: {env.motion_manager.motion_ids}")
         print(f"Motion times initialized: {env.motion_manager.motion_times}")
+
+    # # Print per-env mapping: which motion and scene each env got
+    # import os as _dbg_os
+    # print("\n=== Per-Environment Motion & Scene Assignment ===")
+    # _sl = env.scene_lib
+    # _has_scenes = _sl is not None and len(_sl.scenes) > 0
+    # for env_idx in range(env.num_envs):
+    #     motion_id = env.motion_manager.motion_ids[env_idx].item() if env.motion_manager is not None else -1
+    #     motion_name = env.motion_lib.motion_files[motion_id] if motion_id >= 0 else "?"
+    #     motion_name_short = _dbg_os.path.basename(motion_name) if isinstance(motion_name, str) else str(motion_name)
+    #     nframes = env.motion_lib.motion_num_frames[motion_id].item() if motion_id >= 0 else 0
+    #     length_s = env.motion_lib.motion_lengths[motion_id].item() if motion_id >= 0 else 0
+
+    #     if _has_scenes and env_idx < len(_sl.scenes):
+    #         scene = _sl.scenes[env_idx]
+    #         orig_id = _sl._scene_to_original_scene_id[env_idx].item() if hasattr(_sl, '_scene_to_original_scene_id') else -1
+    #         if hasattr(scene, 'objects') and scene.objects:
+    #             obj = scene.objects[0]
+    #             obj_path = _dbg_os.path.basename(obj.object_path) if hasattr(obj, 'object_path') else "?"
+    #             obj_type = obj.object_path.split('/')[1] if hasattr(obj, 'object_path') and '/' in obj.object_path else "?"
+    #         else:
+    #             obj_path, obj_type = "no_obj", "?"
+    #     else:
+    #         orig_id, obj_path, obj_type = -1, "no_scene", "?"
+
+    #     print(f"  env[{env_idx:2d}]  motion_id={motion_id:4d}  {motion_name_short:<60s}  "
+    #           f"frames={nframes:4d}  len={length_s:.1f}s  "
+    #           f"orig_scene={orig_id:4d}  obj={obj_type}/{obj_path}")
+    # print("=" * 140)
 
     # Run simulation loop
     print("\n=== Starting Kinematic Playback ===")

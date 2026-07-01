@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """
 # Keypoint Extraction from Packaged MotionLib (.pt file) with Flat Feet and Auxiliary Points
 
@@ -137,9 +125,9 @@ def main(
         print(f"Error: Input must be a .pt file. Got: {packaged_motion_lib_file}")
         raise typer.Exit(code=1)
 
-    if skeleton_format not in ["rigv1", "smpl"]:
+    if skeleton_format not in ["rigv1", "smpl", "soma"]:
         print(
-            f"Error: skeleton_format must be 'rigv1' or 'smpl'. Got: {skeleton_format}"
+            f"Error: skeleton_format must be 'rigv1', 'smpl', or 'soma'. Got: {skeleton_format}"
         )
         raise typer.Exit(code=1)
 

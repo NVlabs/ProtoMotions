@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """PPO model implementation with actor-critic architecture.
 
 This module implements the neural network models for Proximal Policy Optimization.
@@ -27,13 +15,15 @@ import torch
 from torch import distributions, nn
 from protomotions.utils.hydra_replacement import get_class
 from tensordict import TensorDict
-from tensordict.nn import TensorDictModuleBase
 from protomotions.agents.common.common import ModuleContainer
 from protomotions.agents.ppo.config import PPOActorConfig, PPOModelConfig
-from protomotions.agents.base_agent.model import BaseModel
+from protomotions.agents.base_agent.model import (
+    BaseModel,
+    ProtoMotionsTensorDictModule,
+)
 
 
-class PPOActor(TensorDictModuleBase):
+class PPOActor(ProtoMotionsTensorDictModule):
     """PPO policy network (actor).
 
     Self-contained policy that computes distribution parameters, samples actions,
@@ -57,7 +47,7 @@ class PPOActor(TensorDictModuleBase):
             requires_grad=self.config.learnable_std,
         )
         MuClass = get_class(self.config.mu_model._target_)
-        self.mu: TensorDictModuleBase = MuClass(config=self.config.mu_model)
+        self.mu: nn.Module = MuClass(config=self.config.mu_model)
 
         self.in_keys = self.config.in_keys
         self.out_keys = self.config.out_keys
@@ -66,7 +56,11 @@ class PPOActor(TensorDictModuleBase):
                 key in self.out_keys
             ), f"PPOActor output key {key} not in out_keys {self.out_keys}"
 
-    def forward(self, tensordict: TensorDict) -> TensorDict:
+    def forward(
+        self,
+        tensordict: TensorDict,
+        log_internals: bool = False,
+    ) -> TensorDict:
         """Forward pass: compute mu/std, sample action, compute neglogp.
 
         Args:
@@ -76,7 +70,10 @@ class PPOActor(TensorDictModuleBase):
             TensorDict with action, mean_action, and neglogp added.
         """
         # Compute distribution parameters
-        tensordict = self.mu(tensordict)
+        if isinstance(self.mu, ProtoMotionsTensorDictModule):
+            tensordict = self.mu(tensordict, log_internals=log_internals)
+        else:
+            tensordict = self.mu(tensordict)
         mu = tensordict[self.config.mu_key]
         std = torch.exp(self.logstd)
 
@@ -95,7 +92,6 @@ class PPOActor(TensorDictModuleBase):
         tensordict["neglogp"] = neglogp
 
         return tensordict
-
 
 class PPOModel(BaseModel):
     """Complete PPO model with actor and critic networks.
@@ -138,7 +134,11 @@ class PPOModel(BaseModel):
         self.in_keys = self.config.in_keys
         self.out_keys = self.config.out_keys
 
-    def forward(self, tensordict: TensorDict) -> TensorDict:
+    def forward(
+        self,
+        tensordict: TensorDict,
+        log_internals: bool = False,
+    ) -> TensorDict:
         """Forward pass through actor and critic.
 
         Computes all outputs:
@@ -154,7 +154,7 @@ class PPOModel(BaseModel):
             TensorDict with all model outputs added.
         """
         # Actor forward: adds action, mean_action, neglogp
-        tensordict = self._actor(tensordict)
+        tensordict = self._actor(tensordict, log_internals=log_internals)
 
         # Critic forward: adds value estimate
         tensordict = self._critic(tensordict)

@@ -141,7 +141,7 @@ Procedurally generate many scenes for scalable **Synthetic Data Generation (SDG)
 
 ### 🎭 Generative Policies
 
-Train a generative policy (e.g., [**MaskedMimic**](https://research.nvidia.com/labs/par/maskedmimic/)) that can autonomously choose its "move" to finish the task.
+Train a generative policy (e.g., [**MaskedMimic**](https://research.nvidia.com/labs/par/maskedmimic/)) that can autonomously choose its "move" to finish the task. For reusable discrete latent priors and PEFT task adapters, see the [**GPC and PEFT guide**](https://protomotions.github.io/user_guide/gpc.html).
 
 <table align="center">
 <tr>
@@ -202,7 +202,7 @@ Refer to this community-contributed example:
 
 Want to add your own robot? Follow these steps:
 
-1. Add your `.xml` MuJoCo spec file to [`protomotions/data/robots/`](protomotions/data/robots/)
+1. Add your `.xml` MuJoCo spec file to [`protomotions/data/assets/mjcf/`](protomotions/data/assets/mjcf/)
 2. Fill in config fields (see examples like [`protomotions/robot_configs/g1.py`](protomotions/robot_configs/g1.py))
 3. Register in [`protomotions/robot_configs/factory.py`](protomotions/robot_configs/factory.py)
 
@@ -216,6 +216,7 @@ And you're good to go!
 
 - [Installation Guide](https://protomotions.github.io/getting_started/installation.html)
 - [Quick Start](https://protomotions.github.io/getting_started/quickstart.html)
+- [GPC and PEFT](https://protomotions.github.io/user_guide/gpc.html)
 - [AMASS Data Preparation](https://protomotions.github.io/getting_started/amass_preparation.html)
 - [PHUMA Data Preparation](https://protomotions.github.io/getting_started/phuma_preparation.html)
 - [SEED BVH Data Preparation](https://protomotions.github.io/getting_started/seed_bvh_preparation.html)
@@ -223,9 +224,6 @@ And you're good to go!
 - [Kimodo Data Preparation](https://protomotions.github.io/getting_started/kimodo_preparation.html)
 - [Tutorials](https://protomotions.github.io/tutorials/)
 - [API Reference](https://protomotions.github.io/api_reference/)
-
-
-
 - [G1 Deployment: Data to Real Robot](https://protomotions.github.io/tutorials/workflows/g1_deployment.html)
 
 ---
@@ -237,6 +235,8 @@ We welcome contributions! Please read our [**Contributing Guide**](CONTRIBUTING.
 ## License
 
 ProtoMotions3 is released under the [**Apache-2.0 License**](LICENSE.md).
+
+Third-party software and bundled asset notices are listed in [legal/](legal/), including Unitree, BeyondMimic, Isaac Lab, and SMPL/SMPL-H attribution and license notices.
 
 ---
 

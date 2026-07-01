@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Scene library for managing objects and scenes in environments.
 
 This module provides the SceneLib class which manages object spawning, placement,
@@ -25,6 +13,7 @@ motion-controlled objects, and complex multi-object scenes.
 import logging
 import random
 import copy
+from concurrent.futures import ProcessPoolExecutor
 from typing import List, Optional, Tuple, Dict, Union
 from protomotions.utils import rotations
 import torch
@@ -53,6 +42,65 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_OBJECT_DENSITY: float = 1000.0  # kg/m³, typical physics sim default
 DEFAULT_PRIMITIVE_DENSITY: float = DEFAULT_OBJECT_DENSITY
+
+
+def _sample_mesh_pointcloud(
+    object_path: str, num_samples: int
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Sample pointcloud from a mesh file (module-level for multiprocessing).
+
+    Loads the mesh, samples points evenly on the surface, and returns
+    points + normals as numpy arrays.
+
+    Args:
+        object_path: Path to the mesh asset (urdf/usda/usd — resolved to obj/stl/ply).
+        num_samples: Number of surface points to sample.
+
+    Returns:
+        Tuple of (points [N, 3], normals [N, 3]) as numpy arrays.
+    """
+    from protomotions.utils.mesh_utils import as_mesh
+
+    obj_path = (
+        object_path.replace(".urdf", ".obj")
+        .replace(".usda", ".obj")
+        .replace(".usd", ".obj")
+    )
+    stl_path = (
+        object_path.replace(".urdf", ".stl")
+        .replace(".usda", ".stl")
+        .replace(".usd", ".stl")
+    )
+    ply_path = (
+        object_path.replace(".urdf", ".ply")
+        .replace(".usda", ".ply")
+        .replace(".usd", ".ply")
+    )
+
+    if os.path.exists(obj_path):
+        mesh_path = obj_path
+    elif os.path.exists(stl_path):
+        mesh_path = stl_path
+    elif os.path.exists(ply_path):
+        mesh_path = ply_path
+    else:
+        raise FileNotFoundError(
+            f"Object file not found: {obj_path} / {stl_path} / {ply_path}"
+        )
+
+    mesh = as_mesh(trimesh.load_mesh(mesh_path))
+    point_cloud_np, face_indices = trimesh.sample.sample_surface_even(mesh, num_samples)
+
+    if point_cloud_np.shape[0] < num_samples:
+        missing_points = num_samples - point_cloud_np.shape[0]
+        extra_points_np, extra_face_indices = trimesh.sample.sample_surface(
+            mesh, missing_points
+        )
+        point_cloud_np = np.concatenate([point_cloud_np, extra_points_np], axis=0)
+        face_indices = np.concatenate([face_indices, extra_face_indices], axis=0)
+
+    face_normals = mesh.face_normals[face_indices]
+    return point_cloud_np, face_normals
 
 
 @dataclass
@@ -317,6 +365,7 @@ class MeshSceneObject(SceneObject):
     """
 
     object_path: str = None
+    scale: Tuple[float, float, float] = (1.0, 1.0, 1.0)
 
     def __post_init__(self):
         """Validate that object_path is specified, compute dimensions"""
@@ -376,62 +425,10 @@ class MeshSceneObject(SceneObject):
         return min_x, max_x, min_y, max_y, min_z, max_z
 
     def compute_pointcloud(self, pointcloud_samples_per_object: int):
-        """Compute the pointcloud for the object"""
-        obj_path = (
-            self.object_path.replace(".urdf", ".obj")
-            .replace(".usda", ".obj")
-            .replace(".usd", ".obj")
+        """Compute the pointcloud for the object."""
+        point_cloud_np, face_normals = _sample_mesh_pointcloud(
+            self.object_path, pointcloud_samples_per_object
         )
-        stl_path = (
-            self.object_path.replace(".urdf", ".stl")
-            .replace(".usda", ".stl")
-            .replace(".usd", ".stl")
-        )
-        ply_path = (
-            self.object_path.replace(".urdf", ".ply")
-            .replace(".usda", ".ply")
-            .replace(".usd", ".ply")
-        )
-
-        if (
-            os.path.exists(obj_path)
-            or os.path.exists(stl_path)
-            or os.path.exists(ply_path)
-        ):
-            if os.path.exists(obj_path):
-                mesh_path = obj_path
-            elif os.path.exists(stl_path):
-                mesh_path = stl_path
-            else:
-                mesh_path = ply_path
-            mesh = as_mesh(trimesh.load_mesh(mesh_path))
-            # Sample points evenly from the mesh surface and get face indices
-            point_cloud_np, face_indices = trimesh.sample.sample_surface_even(
-                mesh, pointcloud_samples_per_object
-            )
-
-            if point_cloud_np.shape[0] < pointcloud_samples_per_object:
-                # Even spacing uses rejection sampling, as a result it may return less points than requested
-                # we add the extra points by randomly sampling the mesh surface again
-                missing_points = pointcloud_samples_per_object - point_cloud_np.shape[0]
-                extra_points_np, extra_face_indices = trimesh.sample.sample_surface(
-                    mesh, missing_points
-                )
-                point_cloud_np = np.concatenate(
-                    [point_cloud_np, extra_points_np], axis=0
-                )
-                face_indices = np.concatenate(
-                    [face_indices, extra_face_indices], axis=0
-                )
-
-            # Get face normals corresponding to the sampled points
-            face_normals = mesh.face_normals[face_indices]
-
-        else:
-            raise FileNotFoundError(
-                f"Object file not found: {obj_path} / {stl_path} / {ply_path}"
-            )
-
         self.object_pointcloud = torch.tensor(point_cloud_np, dtype=torch.float)
         self.object_pointcloud_normals = torch.tensor(face_normals, dtype=torch.float)
 
@@ -567,6 +564,9 @@ class BoxSceneObject(PrimitiveSceneObject):
 
         # Helper function to generate grid points on a face
         def generate_face_points(num_points, fixed_dim, fixed_val, var_dim1, var_dim2):
+            if num_points <= 0:
+                return torch.empty((0, 3), dtype=torch.float)
+
             # Calculate aspect ratio of the face
             width = var_dim1[1] - var_dim1[0]
             height = var_dim2[1] - var_dim2[0]
@@ -909,7 +909,16 @@ class CylinderSceneObject(PrimitiveSceneObject):
 
         # Ensure the exact number of points if somehow undershot (unlikely with adjustments)
         current_points = point_cloud.shape[0]
-        if current_points < pointcloud_samples_per_object:
+        if current_points > pointcloud_samples_per_object:
+            indices = torch.linspace(
+                0,
+                current_points - 1,
+                pointcloud_samples_per_object,
+                dtype=torch.long,
+            )
+            point_cloud = point_cloud[indices]
+            point_cloud_normals = point_cloud_normals[indices]
+        elif current_points < pointcloud_samples_per_object:
             print(
                 f"Warning: Cylinder point cloud generated {current_points} points, requested {pointcloud_samples_per_object}. Duplicating points."
             )
@@ -980,6 +989,7 @@ class SubsetMethod(Enum):
     """Method for subsetting scenes."""
 
     FIRST = "first"
+    LAST = "last"
     RANDOM = "random"
     SEQUENTIAL = "sequential"
 
@@ -1014,6 +1024,12 @@ class SceneLibConfig:
             "help": "Path to scene file (.pt) to load. None for programmatic scenes."
         },
     )
+    asset_root: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Root directory for resolving relative mesh paths. Defaults to scene file's parent dir."
+        },
+    )
     subset_method: Union[SubsetMethod, List[int]] = field(
         default=SubsetMethod.FIRST,
         metadata={
@@ -1035,6 +1051,56 @@ class SceneLibConfig:
     num_objects_per_env: int = field(
         default=None,
         metadata={"help": "Number of objects per environment. Must match scene data."},
+    )
+    mesh_collision_approximation: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Override collision approximation for mesh objects in IsaacLab. "
+                "None keeps the USD default (often trimesh). "
+                "Options: 'convexDecomposition', 'convexHull', 'boundingCube', 'boundingSphere'."
+            ),
+        },
+    )
+    mesh_collision_max_convex_hulls: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "Max convex hulls for convexDecomposition. Typical: 10-32.",
+        },
+    )
+    mesh_collision_hull_vertex_limit: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "Max vertices per convex hull. Typical: 32-64.",
+        },
+    )
+    mesh_collision_voxel_resolution: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "Voxel resolution for convexDecomposition. Typical: 100000-400000.",
+        },
+    )
+    scene_indices: Optional[List[int]] = field(
+        default=None,
+        metadata={
+            "help": "Optional list of scene indices to load from the file. "
+            "When set, only these scenes are kept (pre-filter before "
+            "replication/subsetting). Useful for inspecting specific scenes."
+        },
+    )
+    inline_scenes: Optional[List] = field(
+        default=None,
+        metadata={
+            "help": "Programmatic Scene list. Mutually exclusive with scene_file."
+        },
+    )
+    asset_root: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Root directory for resolving relative object_paths in scenes. "
+            "When None, derived automatically as the grandparent of the scenes "
+            "file (i.e. parent of the scenes/ directory)."
+        },
     )
 
 
@@ -1158,7 +1224,28 @@ class SceneLib:
         self._motion_dts = None
         self._motion_num_frames = None
 
-        # Handle empty scene library (Null Object pattern)
+        # Bbox extents from scaled pointclouds (populated by _compute_bbox_extents)
+        self._object_bbox_extents = None  # (num_orig_scenes, objs_per_scene, 3)
+
+        # Per-object validity mask (True = real, False = padding)
+        self._per_object_valid_mask = None  # (num_orig_scenes, objs_per_scene)
+
+        # Per-object class IDs for voxel observations (populated by _build_object_class_ids)
+        self._object_class_ids = None  # (num_orig_scenes, objs_per_scene) int
+
+        # Resolve programmatic scene source from config before deciding whether
+        # this is the empty Null Object path.
+        if config.inline_scenes is not None:
+            if config.scene_file is not None:
+                raise ValueError(
+                    "Cannot provide both config.scene_file and config.inline_scenes"
+                )
+            if scenes is not None:
+                raise ValueError(
+                    "Cannot provide both config.inline_scenes and scenes parameter"
+                )
+            scenes = config.inline_scenes
+
         if config.scene_file is None and scenes is None:
             print("Creating empty SceneLib (no scenes)")
             self._create_empty()
@@ -1176,10 +1263,19 @@ class SceneLib:
                 raise ValueError(
                     "Cannot provide both config.scene_file and scenes parameter"
                 )
-            scenes = self._load_scenes_from_file(config.scene_file, device)
+            scenes = self._load_scenes_from_file(
+                config.scene_file, device, asset_root=config.asset_root
+            )
             logger.info(
                 f"Loaded {len(scenes)} original scenes from {config.scene_file}"
             )
+
+            if config.scene_indices is not None:
+                scenes = [scenes[i] for i in config.scene_indices]
+                logger.info(
+                    f"Pre-filtered to {len(scenes)} scenes via scene_indices "
+                    f"[{config.scene_indices[0]}..{config.scene_indices[-1]}]"
+                )
 
         # Validate scene weights match number of scenes
         if scene_weights is not None:
@@ -1191,9 +1287,9 @@ class SceneLib:
 
         # Process pointclouds and instance tracking BEFORE deepcopy
         if self.config.pointcloud_samples_per_object is not None:
-            for scene in scenes:
-                for obj in scene.objects:
-                    obj.compute_pointcloud(self.config.pointcloud_samples_per_object)
+            self._compute_pointclouds_parallel(
+                scenes, self.config.pointcloud_samples_per_object
+            )
 
         # Process objects to set is_first_instance flags BEFORE deepcopy
         self._process_scene_objects_for_asset_tracking(scenes)
@@ -1204,17 +1300,17 @@ class SceneLib:
         self._create_scenes(scenes, scene_weights)
 
     def _create_empty(self):
-        """Create an empty scene library with no scenes."""
+        """Create an empty scene library with no scenes (num_objects_per_scene=0)."""
         self._original_scenes = []
         self.scenes = []
-        self.num_objects_per_scene = 0
         self._scene_offsets = []
+
+        self.num_objects_per_scene = 0
         self._is_static_object = torch.empty(0, 0, dtype=torch.bool, device=self.device)
         self._scene_to_original_scene_id = torch.empty(
             0, dtype=torch.long, device=self.device
         )
 
-        # Empty motion data tensors
         self._object_translations = torch.empty(0, 3, device=self.device)
         self._object_rotations = torch.empty(0, 4, device=self.device)
         self._motion_lengths = torch.empty(0, device=self.device)
@@ -1222,9 +1318,15 @@ class SceneLib:
         self._motion_dts = torch.empty(0, device=self.device)
         self._motion_num_frames = torch.empty(0, dtype=torch.long, device=self.device)
 
-        # Empty pointcloud data
         self._object_pointclouds = torch.empty(0, 0, 0, 3, device=self.device)
         self._object_pointcloud_normals = torch.empty(0, 0, 0, 3, device=self.device)
+
+        self._object_bbox_extents = torch.empty(0, 0, 3, device=self.device)
+
+        self._per_object_valid_mask = torch.empty(
+            0, 0, dtype=torch.bool, device=self.device
+        )
+        self._object_class_ids = torch.empty(0, 0, dtype=torch.long, device=self.device)
 
     @classmethod
     def empty(cls, num_envs: int, device: str, terrain=None):
@@ -1250,12 +1352,16 @@ class SceneLib:
         )
 
     @staticmethod
-    def _load_scenes_from_file(file_path: str, device: str) -> List[Scene]:
+    def _load_scenes_from_file(
+        file_path: str, device: str, asset_root: Optional[str] = None
+    ) -> List[Scene]:
         """Load original scenes from saved SceneLib file.
 
         Args:
             file_path: Path to the SceneLib file
             device: Device for loading (used for map_location)
+            asset_root: Root directory for resolving relative mesh paths.
+                Defaults to the scene file's parent directory.
 
         Returns:
             List[Scene]: Original scenes from the file
@@ -1263,26 +1369,57 @@ class SceneLib:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"SceneLib file not found: {file_path}")
 
+        if asset_root is None:
+            asset_root = os.path.dirname(os.path.dirname(os.path.abspath(file_path)))
+
         loaded_data = torch.load(file_path, map_location=device, weights_only=False)
         return SceneLib._deserialize_scenes_from_storage_static(
-            loaded_data["original_scenes"]
+            loaded_data["original_scenes"], asset_root=asset_root
         )
 
     def get_humanoid_motion_ids(self):
-        humanoid_motion_ids = []
-        for scene in self.scenes:
-            humanoid_motion_ids.append(scene.humanoid_motion_id)
+        """Return per-env humanoid motion IDs from replicated scenes.
 
-        print(f"humanoid_motion_ids: {humanoid_motion_ids}")
+        Returns:
+            List[int] if any scene has a valid (>= 0) motion id, else None.
+            Entries of -1 mean "no fixed motion" (random sampling).
+        """
+        humanoid_motion_ids = [scene.humanoid_motion_id for scene in self.scenes]
 
-        if all(motion_id == -1 for motion_id in humanoid_motion_ids):
+        if all(mid == -1 for mid in humanoid_motion_ids):
             return None
-        elif all(motion_id >= 0 for motion_id in humanoid_motion_ids):
-            return humanoid_motion_ids
-        else:
-            raise ValueError(
-                "Humanoid motion ids must be either all -1 or all valid motion ids"
+        return humanoid_motion_ids
+
+    def get_per_env_humanoid_motion_ids_tensor(self) -> torch.Tensor:
+        """Return (num_envs,) int tensor of humanoid_motion_id per replicated scene.
+
+        -1 means "universal" (scene works with any motion).
+        Cached on first call since scene-to-motion mappings are static.
+        """
+        if not hasattr(self, "_per_env_motion_ids_cached"):
+            self._per_env_motion_ids_cached = torch.tensor(
+                [scene.humanoid_motion_id for scene in self.scenes],
+                dtype=torch.long,
+                device=self.device,
             )
+        return self._per_env_motion_ids_cached
+
+    def build_motion_to_original_scene_map(self, num_motions: int) -> torch.Tensor:
+        """Build reverse mapping from motion_id to original_scene_index.
+
+        Args:
+            num_motions: Total number of motions in the motion library.
+
+        Returns:
+            (num_motions,) tensor where map[motion_id] = original_scene_index,
+            or -1 if no scene is associated with that motion.
+        """
+        mapping = torch.full((num_motions,), -1, dtype=torch.long, device=self.device)
+        for scene_idx, scene in enumerate(self._original_scenes):
+            mid = scene.humanoid_motion_id
+            if mid >= 0 and mid < num_motions:
+                mapping[mid] = scene_idx
+        return mapping
 
     def _create_scenes(
         self, scenes: List[Scene], scene_weights: Optional[List[float]] = None
@@ -1340,6 +1477,181 @@ class SceneLib:
             self.combine_object_pointclouds()
             self.combine_object_pointcloud_normals()
         self.combine_object_motions()
+
+        # Compute bbox extents from scaled pointclouds (independent of BPS)
+        if self.pointcloud_samples_per_object is not None:
+            self._compute_bbox_extents()
+
+        # Build per-object validity mask from original scenes
+        self._build_per_object_valid_mask()
+
+        # Build per-object class IDs for voxel observations
+        self._build_object_class_ids()
+
+    def _build_per_object_valid_mask(self) -> None:
+        """Build mask distinguishing real objects from padding dummies.
+
+        A BoxSceneObject with all dimensions < 0.01 is considered padding.
+        All non-box primitives and mesh objects are always valid.
+        """
+        num_orig = len(self._original_scenes)
+        objs_per = self.num_objects_per_scene
+
+        mask = torch.ones(num_orig, objs_per, dtype=torch.bool, device=self.device)
+        for s_idx, scene in enumerate(self._original_scenes):
+            for o_idx, obj in enumerate(scene.objects):
+                if isinstance(obj, BoxSceneObject):
+                    if obj.width < 0.01 and obj.depth < 0.01 and obj.height < 0.01:
+                        mask[s_idx, o_idx] = False
+        self._per_object_valid_mask = mask
+
+    def get_per_object_valid_mask(
+        self, env_ids: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        """Get per-object validity mask for the given environments.
+
+        Args:
+            env_ids: Environment indices. If None, returns mask for all envs.
+
+        Returns:
+            (E, O) bool tensor — True for real objects, False for padding.
+        """
+        if (
+            self._per_object_valid_mask is None
+            or self._per_object_valid_mask.numel() == 0
+        ):
+            # Empty scene lib — return all-False mask
+            n = len(env_ids) if env_ids is not None else self.num_envs
+            return torch.zeros(
+                n, self.num_objects_per_scene, dtype=torch.bool, device=self.device
+            )
+
+        if env_ids is None:
+            orig_ids = self._scene_to_original_scene_id
+        else:
+            orig_ids = self._scene_to_original_scene_id[env_ids]
+        return self._per_object_valid_mask[orig_ids]
+
+    # Class name -> voxel class ID mapping.  0 = empty (reserved), 1 = terrain (reserved).
+    # Object types default to class 2 unless overridden.
+    _DEFAULT_CLASS_MAP: Dict[str, int] = {
+        "default": 2,
+    }
+
+    def _build_object_class_ids(self) -> None:
+        """Build per-object class ID tensor from object type names.
+
+        Maps each object to an integer class index for voxel observations.
+        Class 0 = empty, 1 = terrain (both reserved), 2+ = object types.
+        All objects currently map to class 2 (generic object).  Extend
+        ``_DEFAULT_CLASS_MAP`` or pass a custom map to support finer classes.
+        """
+        num_orig = len(self._original_scenes)
+        objs_per = self.num_objects_per_scene
+        class_ids = torch.full(
+            (num_orig, objs_per), 2, dtype=torch.long, device=self.device
+        )
+        # Zero out padding objects (invalid mask = False -> class 0)
+        if self._per_object_valid_mask is not None:
+            class_ids[~self._per_object_valid_mask] = 0
+        self._object_class_ids = class_ids
+
+    def get_object_class_ids(
+        self, env_ids: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        """Get per-object class IDs for the given environments.
+
+        Args:
+            env_ids: Environment indices. If None, returns for all envs.
+
+        Returns:
+            (E, O) long tensor — class index per object.
+        """
+        if self._object_class_ids is None or self._object_class_ids.numel() == 0:
+            n = len(env_ids) if env_ids is not None else self.num_envs
+            return torch.zeros(
+                n, self.num_objects_per_scene, dtype=torch.long, device=self.device
+            )
+
+        if env_ids is None:
+            orig_ids = self._scene_to_original_scene_id
+        else:
+            orig_ids = self._scene_to_original_scene_id[env_ids]
+        return self._object_class_ids[orig_ids]
+
+    def _compute_pointclouds_parallel(
+        self, scenes: List[Scene], num_samples: int
+    ) -> None:
+        """Compute pointclouds with deduplication and parallel mesh sampling.
+
+        Groups objects by ``object_identifier``, samples each unique mesh once
+        using a process pool, then copies the result to all duplicates.
+        Primitive objects (box, sphere, cylinder) are computed inline since
+        they don't involve I/O.
+
+        Args:
+            scenes: Scenes whose objects will be modified in-place.
+            num_samples: Number of surface points per object.
+        """
+        import time
+
+        t0 = time.perf_counter()
+
+        # Group objects by identifier; pick one representative per group
+        groups: Dict[str, List[SceneObject]] = {}
+        for scene in scenes:
+            for obj in scene.objects:
+                oid = obj.object_identifier
+                groups.setdefault(oid, []).append(obj)
+
+        # Split into mesh objects (parallelizable) and primitives (inline)
+        mesh_jobs: Dict[str, MeshSceneObject] = {}
+        for oid, objs in groups.items():
+            rep = objs[0]
+            if isinstance(rep, MeshSceneObject):
+                mesh_jobs[oid] = rep
+            else:
+                # Primitives are fast — compute inline on the representative
+                rep.compute_pointcloud(num_samples)
+
+        # Parallel mesh sampling via process pool
+        if mesh_jobs:
+            oids = list(mesh_jobs.keys())
+            paths = [mesh_jobs[oid].object_path for oid in oids]
+
+            max_workers = min(len(paths), os.cpu_count() or 4)
+            with ProcessPoolExecutor(max_workers=max_workers) as pool:
+                futures = {
+                    oid: pool.submit(_sample_mesh_pointcloud, path, num_samples)
+                    for oid, path in zip(oids, paths)
+                }
+                results = {oid: f.result() for oid, f in futures.items()}
+
+            # Assign results to representatives
+            for oid, (pts_np, norms_np) in results.items():
+                rep = mesh_jobs[oid]
+                rep.object_pointcloud = torch.tensor(pts_np, dtype=torch.float)
+                rep.object_pointcloud_normals = torch.tensor(
+                    norms_np, dtype=torch.float
+                )
+
+        # Copy from representative to all duplicates
+        for oid, objs in groups.items():
+            rep = objs[0]
+            for dup in objs[1:]:
+                dup.object_pointcloud = rep.object_pointcloud
+                dup.object_pointcloud_normals = rep.object_pointcloud_normals
+
+        elapsed = time.perf_counter() - t0
+        num_total = sum(len(s.objects) for s in scenes)
+        logger.info(
+            "Pointcloud sampling: %d unique meshes, %d total objects, "
+            "%.1fs (%d workers)",
+            len(mesh_jobs),
+            num_total,
+            elapsed,
+            min(len(mesh_jobs), os.cpu_count() or 4) if mesh_jobs else 0,
+        )
 
     def _process_scene_objects_for_asset_tracking(self, scenes: List[Scene]):
         """Process objects to set is_first_instance flags for asset loading.
@@ -1401,7 +1713,12 @@ class SceneLib:
         replicated_scenes = list(scenes)
         replicated_ids = list(scene_to_original_ids)
 
-        if replicate_method == ReplicationMethod.SEQUENTIAL:
+        if replicate_method == ReplicationMethod.FIRST:
+            for _ in range(self.num_envs - num_scenes):
+                scene = copy.deepcopy(replicated_scenes[0])
+                replicated_scenes.append(scene)
+                replicated_ids.append(replicated_ids[0])
+        elif replicate_method == ReplicationMethod.SEQUENTIAL:
             for i in range(self.num_envs - num_scenes):
                 idx = i % num_scenes
                 scene = copy.deepcopy(replicated_scenes[idx])
@@ -1418,7 +1735,9 @@ class SceneLib:
         else:
             logger.error("Unknown replicate method: %s", replicate_method)
             raise ValueError(
-                "Replicate method must be either ReplicationMethod.SEQUENTIAL or ReplicationMethod.RANDOM."
+                "Replicate method must be one of ReplicationMethod.FIRST, "
+                "ReplicationMethod.SEQUENTIAL, ReplicationMethod.RANDOM, or "
+                "ReplicationMethod.WEIGHTED."
             )
 
         return replicated_scenes, replicated_ids
@@ -1434,7 +1753,7 @@ class SceneLib:
 
         print(f"subset_method: {subset_method}")
 
-        if subset_method == SubsetMethod.FIRST:
+        if subset_method in (SubsetMethod.FIRST, SubsetMethod.SEQUENTIAL):
             return (
                 scenes[: self.num_envs],
                 scene_weights[: self.num_envs] if scene_weights is not None else None,
@@ -1522,11 +1841,20 @@ class SceneLib:
         self.num_objects_per_scene = object_counts[0]
 
     def combine_object_pointclouds(self):
-        """Combine pointclouds from ORIGINAL scenes only (not replicated)."""
+        """Combine pointclouds from ORIGINAL scenes only (not replicated).
+
+        Mesh objects are scaled by their ``scale`` tuple so the stored
+        pointclouds match the physical size the simulator renders.
+        Primitives already bake dimensions into their pointclouds.
+        """
         all_pointclouds = []
         for scene in self._original_scenes:
             for obj in scene.objects:
-                all_pointclouds.append(obj.object_pointcloud)
+                pc = obj.object_pointcloud
+                if isinstance(obj, MeshSceneObject):
+                    scale = torch.tensor(obj.scale, dtype=pc.dtype)
+                    pc = pc * scale
+                all_pointclouds.append(pc)
         num_original_scenes = len(self._original_scenes)
         self._object_pointclouds = (
             torch.cat(all_pointclouds, dim=0)
@@ -1535,7 +1863,15 @@ class SceneLib:
         )
 
     def combine_object_pointcloud_normals(self):
-        """Combine pointcloud normals from ORIGINAL scenes only (not replicated)."""
+        """Combine pointcloud normals from ORIGINAL scenes only (not replicated).
+
+        For mesh objects with non-uniform scale, normals must be transformed
+        by the inverse-transpose of the scale matrix and renormalized.  For a
+        diagonal scale ``S = diag(sx, sy, sz)`` the inverse-transpose is
+        ``diag(1/sx, 1/sy, 1/sz)``, so ``n' = normalize(n / S)``.
+        Primitives bake their dimensions directly, so their normals are used
+        as-is.
+        """
         all_normals = []
         for scene in self._original_scenes:
             for obj in scene.objects:
@@ -1543,16 +1879,19 @@ class SceneLib:
                     raise ValueError(
                         f"Object {obj.instance_id} ({obj.object_identifier}) is missing pointcloud normals."
                     )
-                all_normals.append(obj.object_pointcloud_normals)
+                normals = obj.object_pointcloud_normals
+                if isinstance(obj, MeshSceneObject):
+                    inv_scale = 1.0 / torch.tensor(obj.scale, dtype=normals.dtype)
+                    normals = normals * inv_scale
+                    normals = normals / (
+                        torch.norm(normals, dim=-1, keepdim=True) + 1e-8
+                    )
+                all_normals.append(normals)
 
         num_original_scenes = len(self._original_scenes)
         self._object_pointcloud_normals = (
-            torch.stack(
-                all_normals, dim=0
-            )  # Use stack instead of cat if shapes are guaranteed [N_points, 3]
-            .reshape(
-                num_original_scenes, self.num_objects_per_scene, -1, 3
-            )  # Reshape assuming N_points is constant
+            torch.stack(all_normals, dim=0)
+            .reshape(num_original_scenes, self.num_objects_per_scene, -1, 3)
             .to(self.device)
         )
 
@@ -1657,12 +1996,13 @@ class SceneLib:
         Returns:
             Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: Frame index 0, frame index 1, and blend factor.
         """
+        time = torch.minimum(torch.clamp_min(time, 0.0), length)
         phase = time / length
         phase = torch.clip(phase, 0.0, 1.0)
 
         frame_idx0 = (phase * (num_frames - 1)).long()
         frame_idx1 = torch.min(frame_idx0 + 1, num_frames - 1)
-        blend = (time - frame_idx0 * dt) / dt
+        blend = torch.clip((time - frame_idx0 * dt) / dt, 0.0, 1.0)
 
         return frame_idx0, frame_idx1, blend
 
@@ -1740,14 +2080,15 @@ class SceneLib:
                 - translations: [num_scenes, objects_per_scene, 3]
                 - rotations: [num_scenes, objects_per_scene, 4]
         """
-        # Handle empty scene library
+        # Handle empty scene library (true-empty or phantom mode)
         if self.num_scenes() == 0:
             num_scenes = scene_indices.shape[0] if scene_indices.numel() > 0 else 0
+            N = self.num_objects_per_scene  # 0 for true-empty, >0 for phantom
             return ObjectState(
-                root_pos=torch.zeros(num_scenes, 0, 3, device=self.device),
-                root_rot=torch.zeros(num_scenes, 0, 4, device=self.device),
-                root_vel=torch.zeros(num_scenes, 0, 3, device=self.device),
-                root_ang_vel=torch.zeros(num_scenes, 0, 3, device=self.device),
+                root_pos=torch.zeros(num_scenes, N, 3, device=self.device),
+                root_rot=torch.zeros(num_scenes, N, 4, device=self.device),
+                root_vel=torch.zeros(num_scenes, N, 3, device=self.device),
+                root_ang_vel=torch.zeros(num_scenes, N, 3, device=self.device),
                 state_conversion=StateConversion.COMMON,
             )
 
@@ -1827,6 +2168,15 @@ class SceneLib:
         if scene_indices is None:
             return self._object_pointclouds
 
+        if self.num_scenes() == 0:
+            return torch.empty(
+                scene_indices.shape[0],
+                self.num_objects_per_scene,
+                self._object_pointclouds.shape[2],
+                3,
+                device=self.device,
+            )
+
         # Map to original scene indices
         original_scene_indices = self._scene_to_original_scene_id[scene_indices]
         return self._object_pointclouds[original_scene_indices]
@@ -1855,9 +2205,115 @@ class SceneLib:
         if scene_indices is None:
             return self._object_pointcloud_normals
 
+        if self.num_scenes() == 0:
+            return torch.empty(
+                scene_indices.shape[0],
+                self.num_objects_per_scene,
+                self._object_pointcloud_normals.shape[2],
+                3,
+                device=self.device,
+            )
+
         # Map to original scene indices
         original_scene_indices = self._scene_to_original_scene_id[scene_indices]
         return self._object_pointcloud_normals[original_scene_indices]
+
+    def get_object_scales(
+        self, device: torch.device, scene_indices: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        """Return per-object scale factors broadcastable with pointclouds.
+
+        Mesh objects carry an explicit ``scale`` tuple; primitives bake their
+        dimensions directly into the pointcloud so their scale is ``(1,1,1)``.
+
+        Args:
+            device: Target device.
+            scene_indices: Replicated scene indices (mapped to originals internally).
+                If None, returns scales for all original scenes.
+
+        Returns:
+            Tensor [..., num_objects_per_scene, 1, 3]
+        """
+        if not hasattr(self, "_object_scales"):
+            scales = []
+            for scene in self._original_scenes:
+                for obj in scene.objects:
+                    if isinstance(obj, MeshSceneObject):
+                        scales.append(obj.scale)
+                    else:
+                        scales.append((1.0, 1.0, 1.0))
+            num_original = len(self._original_scenes)
+            self._object_scales = torch.tensor(
+                scales, dtype=torch.float, device=device
+            ).reshape(num_original, self.num_objects_per_scene, 1, 3)
+
+        if scene_indices is None:
+            return self._object_scales
+
+        if self.num_scenes() == 0:
+            return torch.empty(
+                scene_indices.shape[0],
+                self.num_objects_per_scene,
+                1,
+                3,
+                device=device,
+            )
+
+        original_ids = self._scene_to_original_scene_id[scene_indices]
+        return self._object_scales[original_ids]
+
+    @staticmethod
+    def _scaled_pointcloud(obj: SceneObject) -> torch.Tensor:
+        """Return the object pointcloud with scale applied (if applicable)."""
+        pc = obj.object_pointcloud.cpu()
+        if isinstance(obj, MeshSceneObject):
+            scale = torch.tensor(obj.scale, dtype=pc.dtype)
+            pc = pc * scale
+        return pc
+
+    def _compute_bbox_extents(self):
+        """Compute bounding box extents from scaled pointclouds.
+
+        Sets ``_object_bbox_extents`` to (num_orig_scenes, objs_per_scene, 3).
+        """
+        num_orig_scenes = len(self._original_scenes)
+        objs_per_scene = self.num_objects_per_scene
+        object_bbox = torch.zeros(num_orig_scenes, objs_per_scene, 3)
+        for s_idx, scene in enumerate(self._original_scenes):
+            for o_idx, obj in enumerate(scene.objects):
+                if obj.object_pointcloud is not None:
+                    pc = self._scaled_pointcloud(obj)
+                    object_bbox[s_idx, o_idx] = (
+                        pc.max(dim=0).values - pc.min(dim=0).values
+                    )
+        self._object_bbox_extents = object_bbox.to(self.device)
+
+    def get_object_bbox_extents(
+        self, scene_indices: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        """Get bounding box extents for the specified scenes.
+
+        Args:
+            scene_indices: Scene indices (can be replicated). If None, returns all.
+
+        Returns:
+            (len(scene_indices), objs_per_scene, 3) extents (width, depth, height).
+        """
+        if self._object_bbox_extents is None:
+            raise ValueError(
+                "Bbox extents not computed. Requires pointcloud_samples_per_object."
+            )
+        if scene_indices is None:
+            return self._object_bbox_extents
+        if self.num_scenes() == 0:
+            return torch.empty(
+                scene_indices.shape[0],
+                self.num_objects_per_scene,
+                3,
+                device=self.device,
+            )
+        original_scene_indices = self._scene_to_original_scene_id[scene_indices]
+        return self._object_bbox_extents[original_scene_indices]
 
     def num_scenes(self) -> int:
         """
@@ -1973,20 +2429,20 @@ class SceneLib:
         return object_states
 
     @staticmethod
-    def save_scenes_to_file(scenes: List[Scene], file_path: str):
+    def save_scenes_to_file(
+        scenes: List[Scene], file_path: str, asset_root: Optional[str] = None
+    ):
         """Save scenes to file without creating a SceneLib instance.
 
-        This is a convenience static method for saving scenes that were created
-        programmatically. No SceneLib instance or config is needed - just pass
-        the scenes directly.
-
-        The saved file contains only scene data (objects, poses, motion) and is
-        independent of any SceneLibConfig parameters. When loading, you provide
-        a fresh config with desired runtime parameters (num_envs, replicate_method, etc.).
+        Mesh object paths are stored relative to *asset_root* (defaults to the
+        scene file's parent directory).  This makes the ``.pt`` file portable --
+        as long as meshes keep the same relative layout, it loads on any machine.
 
         Args:
             scenes: List of Scene objects to save
             file_path: Path to save the scenes file (.pt)
+            asset_root: Root directory that mesh paths are relative to.
+                If None, uses the scene file's parent directory.
 
         Raises:
             ValueError: If scenes have inconsistent number of objects
@@ -1995,7 +2451,8 @@ class SceneLib:
         Example:
             ```python
             scenes = [Scene(objects=[obj1, obj2]), ...]
-            SceneLib.save_scenes_to_file(scenes, "my_scenes.pt")
+            SceneLib.save_scenes_to_file(scenes, "data/scenes.pt")
+            # Mesh paths stored relative to data/
             ```
         """
         assert file_path.endswith(".pt"), "File path must end with .pt"
@@ -2007,8 +2464,27 @@ class SceneLib:
                 f"All scenes must have the same number of objects. Found counts: {set(object_counts)}"
             )
 
+        if asset_root is None:
+            asset_root = os.path.dirname(os.path.abspath(file_path))
+        asset_root = os.path.abspath(asset_root)
+
+        serialized = SceneLib._serialize_scenes_for_storage_static(scenes)
+
+        # Convert absolute mesh paths to relative
+        for scene_data in serialized:
+            for obj_data in scene_data["objects"]:
+                if obj_data["type"] == "MeshSceneObject" and os.path.isabs(
+                    obj_data["object_path"]
+                ):
+                    try:
+                        obj_data["object_path"] = os.path.relpath(
+                            obj_data["object_path"], asset_root
+                        )
+                    except ValueError:
+                        pass  # Different drive on Windows; keep absolute
+
         save_data = {
-            "original_scenes": SceneLib._serialize_scenes_for_storage_static(scenes),
+            "original_scenes": serialized,
             "num_original_scenes": len(scenes),
             "num_objects_per_scene": object_counts[0],
         }
@@ -2057,7 +2533,9 @@ class SceneLib:
                 elif isinstance(obj, CylinderSceneObject):
                     obj_data.update({"radius": obj.radius, "height": obj.height})
                 elif isinstance(obj, MeshSceneObject):
-                    obj_data.update({"object_path": obj.object_path})
+                    obj_data.update(
+                        {"object_path": obj.object_path, "scale": list(obj.scale)}
+                    )
                 scene_data["objects"].append(obj_data)
             serialized_scenes.append(scene_data)
         return serialized_scenes
@@ -2065,8 +2543,15 @@ class SceneLib:
     @staticmethod
     def _deserialize_scenes_from_storage_static(
         serialized_scenes: List[Dict],
+        asset_root: Optional[str] = None,
     ) -> List[Scene]:
-        """Static method to deserialize scenes from storage format."""
+        """Static method to deserialize scenes from storage format.
+
+        Args:
+            serialized_scenes: Serialized scene data.
+            asset_root: Root directory for resolving relative mesh paths.
+                If None, paths are used as-is (assumed absolute or already resolved).
+        """
         scenes = []
         for scene_data in serialized_scenes:
             objects = []
@@ -2105,13 +2590,21 @@ class SceneLib:
                         options=options,
                     )
                 elif obj_type == "MeshSceneObject":
+                    object_path = obj_data["object_path"]
+                    # Resolve relative paths against asset_root
+                    if asset_root is not None and not os.path.isabs(object_path):
+                        object_path = os.path.join(asset_root, object_path)
                     obj = MeshSceneObject(
-                        object_path=obj_data["object_path"],
+                        object_path=object_path,
+                        scale=tuple(obj_data.get("scale", (1.0, 1.0, 1.0))),
                         translation=translation,
                         rotation=rotation,
                         fps=obj_data["fps"],
                         options=options,
+                        object_dims=obj_data.get("object_dims"),
                     )
+                else:
+                    raise ValueError(f"Unsupported SceneObject type: {obj_type}")
 
                 objects.append(obj)
 

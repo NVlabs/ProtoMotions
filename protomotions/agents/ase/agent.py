@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Adversarial Skill Embeddings (ASE) agent implementation.
 
 This module implements the ASE algorithm which extends AMP with learned skill embeddings.
@@ -35,7 +23,7 @@ from tensordict import TensorDict
 
 from lightning.fabric import Fabric
 
-from protomotions.agents.ase.model import ASEModel, ASEDiscriminatorEncoder
+from protomotions.agents.ase.model import ASEModel
 from protomotions.agents.utils.step_tracker import StepTracker
 from protomotions.envs.base_env.env import BaseEnv
 from protomotions.agents.amp.agent import AMP
@@ -45,7 +33,6 @@ from protomotions.agents.ase.config import ASEAgentConfig
 from protomotions.agents.utils.normalization import RewardRunningMeanStd
 from protomotions.agents.ppo.utils import discount_values
 from protomotions.utils.hydra_replacement import instantiate
-from protomotions.agents.utils.training import handle_model_grad_clipping
 
 
 log = logging.getLogger(__name__)
@@ -87,7 +74,6 @@ class ASE(AMP):
     """
 
     model: ASEModel
-    discriminator: ASEDiscriminatorEncoder
     config: ASEAgentConfig
 
     # -----------------------------
@@ -129,12 +115,13 @@ class ASE(AMP):
             self.config.model.mi_critic_optimizer,
             params=list(model._mi_critic.parameters()),
         )
-        self.mi_critic, self.mi_critic_optimizer = self.fabric.setup(
+        self.mi_critic, self.mi_critic_optimizer = self._setup_model_optimizer(
             model._mi_critic, mi_critic_optimizer
         )
 
-    def load_parameters(self, state_dict):
-        super().load_parameters(state_dict)
+    def _load_training_state(self, state_dict):
+        """Restore ASE optimizer and mutual-information normalization state."""
+        super()._load_training_state(state_dict)
         self.mi_critic_optimizer.load_state_dict(state_dict["mi_critic_optimizer"])
         if self.config.normalize_rewards:
             self.running_mi_enc_norm.load_state_dict(state_dict["running_mi_enc_norm"])
@@ -210,7 +197,7 @@ class ASE(AMP):
         # Convert to TensorDict and forward through discriminator
         batch_size = obs_dict[list(obs_dict.keys())[0]].shape[0]
         obs_td = TensorDict(obs_dict, batch_size=batch_size)
-        obs_td = self.discriminator(obs_td)
+        obs_td = self.amp_component.discriminator(obs_td)
         return obs_td["mi_enc_output"]
 
     # -----------------------------
@@ -226,16 +213,24 @@ class ASE(AMP):
         self.experience_buffer.register_key("next_mi_value", shape=value_shape)
         self.experience_buffer.register_key("mi_returns")
         if self.config.normalize_rewards:
-            self.experience_buffer.register_key("unnormalized_mi_value", shape=value_shape)
-            self.experience_buffer.register_key("unnormalized_next_mi_value", shape=value_shape)
+            self.experience_buffer.register_key(
+                "unnormalized_mi_value", shape=value_shape
+            )
+            self.experience_buffer.register_key(
+                "unnormalized_next_mi_value", shape=value_shape
+            )
 
     # -----------------------------
     # Environment Interaction
     # -----------------------------
-    def add_agent_info_to_obs(self, obs):
-        """Perform an environment step and inject current latents into observations."""
-        obs = super().add_agent_info_to_obs(obs)
+    def pre_collect_step(self, step: int) -> None:
+        """Advance latent reset timer once per rollout step."""
+        super().pre_collect_step(step)
         self.update_latents()
+
+    def add_agent_info_to_obs(self, obs):
+        """Inject current latents into observations (stateless read)."""
+        obs = super().add_agent_info_to_obs(obs)
         obs["latents"] = self.latents.clone()
         return obs
 
@@ -258,13 +253,15 @@ class ASE(AMP):
             next_obs_td, actions, rewards, dones, terminated, done_indices, extras, step
         )
 
-        next_obs_td = self.discriminator(next_obs_td)
+        next_obs_td = self.amp_component.discriminator(next_obs_td)
 
-        mi_r = self.discriminator.compute_mi_reward(
+        mi_r = self.amp_component.discriminator.module.compute_mi_reward(
             next_obs_td, self.config.ase_parameters.mi_hypersphere_reward_shift
         ).view(-1)
 
-        next_mi_value = self.mi_critic(next_obs_td)[self.mi_critic.config.out_keys[0]]
+        next_mi_value = self.mi_critic(next_obs_td)[
+            self.mi_critic.module.config.out_keys[0]
+        ]
         next_mi_value = next_mi_value * (1 - terminated.float()).unsqueeze(-1)
         self.experience_buffer.update_data("next_mi_value", step, next_mi_value)
 
@@ -288,7 +285,9 @@ class ASE(AMP):
 
         mi_value = self.experience_buffer.mi_value
         unnorm_mi_value = self.running_mi_enc_norm.normalize(mi_value, un_norm=True)
-        self.experience_buffer.batch_update_data("unnormalized_mi_value", unnorm_mi_value)
+        self.experience_buffer.batch_update_data(
+            "unnormalized_mi_value", unnorm_mi_value
+        )
 
         next_mi_value = self.experience_buffer.next_mi_value
         unnorm_next_mi_value = self.running_mi_enc_norm.normalize(
@@ -306,7 +305,9 @@ class ASE(AMP):
         if self.config.normalize_rewards:
             mi_rewards = self.experience_buffer.unnormalized_mi_rewards
             mi_values = self.experience_buffer.unnormalized_mi_value.squeeze(-1)
-            mi_next_values = self.experience_buffer.unnormalized_next_mi_value.squeeze(-1)
+            mi_next_values = self.experience_buffer.unnormalized_next_mi_value.squeeze(
+                -1
+            )
         else:
             mi_rewards = self.experience_buffer.mi_rewards
             mi_values = self.experience_buffer.mi_value.squeeze(-1)
@@ -334,26 +335,25 @@ class ASE(AMP):
     def perform_optimization_step(self, batch_dict, batch_idx: int) -> Dict:
         iter_log_dict = super().perform_optimization_step(batch_dict, batch_idx)
 
+        if self._skip_actor_for_epoch:
+            return iter_log_dict
+
         mi_critic_loss, mi_critic_loss_dict = self.mi_critic_step(batch_dict)
         iter_log_dict.update(mi_critic_loss_dict)
-        self.mi_critic_optimizer.zero_grad(set_to_none=True)
-        self.fabric.backward(mi_critic_loss)
-        mi_critic_grad_clip_dict = handle_model_grad_clipping(
-            config=self.config,
-            fabric=self.fabric,
+        mi_critic_grad_clip_dict = self._step_optimizer(
+            loss=mi_critic_loss,
             model=self.mi_critic,
             optimizer=self.mi_critic_optimizer,
             model_name="mi_critic",
         )
         iter_log_dict.update(mi_critic_grad_clip_dict)
-        self.mi_critic_optimizer.step()
 
         return iter_log_dict
 
     def mi_critic_step(self, batch_dict) -> Tuple[Tensor, Dict]:
         batch_td = TensorDict(batch_dict, batch_size=batch_dict["action"].shape[0])
         batch_td = self.mi_critic(batch_td)
-        values = batch_td[self.mi_critic.config.out_keys[0]]
+        values = batch_td[self.mi_critic.module.config.out_keys[0]]
 
         if self.config.clip_critic_loss:
             mi_critic_loss_unclipped = (
@@ -367,7 +367,9 @@ class ASE(AMP):
             mi_critic_loss_clipped = (
                 v_clipped - batch_dict["mi_returns"].unsqueeze(-1)
             ).pow(2)
-            mi_critic_loss_max = torch.max(mi_critic_loss_unclipped, mi_critic_loss_clipped)
+            mi_critic_loss_max = torch.max(
+                mi_critic_loss_unclipped, mi_critic_loss_clipped
+            )
             mi_critic_loss = mi_critic_loss_max.mean()
         else:
             mi_critic_loss = (
@@ -395,7 +397,9 @@ class ASE(AMP):
                 : self.config.amp_parameters.discriminator_batch_size
             ]
         random_conditioned_latent = torch.rand_like(
-            batch_dict["agent_latents"][: self.config.amp_parameters.discriminator_batch_size]
+            batch_dict["agent_latents"][
+                : self.config.amp_parameters.discriminator_batch_size
+            ]
         )
         projected_latent = torch.nn.functional.normalize(
             random_conditioned_latent, dim=-1
@@ -453,7 +457,7 @@ class ASE(AMP):
         mi_enc_pred_expert = self.mi_enc_forward(expert_disc_obs)
 
         # Original MI encoder loss for agent observations
-        mi_enc_err = self.discriminator.calc_von_mises_fisher_enc_error(
+        mi_enc_err = self.amp_component.discriminator.module.calc_von_mises_fisher_enc_error(
             mi_enc_pred_agent, latents
         )
         mi_enc_loss = torch.mean(mi_enc_err)
@@ -468,7 +472,7 @@ class ASE(AMP):
         )
 
         if self.config.ase_parameters.mi_enc_weight_decay > 0:
-            enc_weight_params = self.discriminator.enc_weights()
+            enc_weight_params = self.amp_component.discriminator.module.enc_weights()
             total: Tensor = sum([p.pow(2).sum() for p in enc_weight_params])
             weight_decay_loss: Tensor = (
                 total * self.config.ase_parameters.mi_enc_weight_decay
@@ -479,7 +483,7 @@ class ASE(AMP):
         if self.config.ase_parameters.mi_enc_grad_penalty > 0:
             mi_enc_obs_grad = torch.autograd.grad(
                 mi_enc_err,
-                agent_obs,
+                agent_obs_tensor,
                 grad_outputs=torch.ones_like(mi_enc_err),
                 create_graph=True,
                 retain_graph=True,

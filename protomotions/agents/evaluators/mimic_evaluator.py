@@ -1,35 +1,27 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-import torch
-import numpy as np
-from typing import Dict, Optional, Tuple, Any
-from torch import Tensor
+
+import logging
 import math
 from dataclasses import dataclass
+from typing import Any, Dict, Optional, Tuple
+
+import torch
+from torch import Tensor
 
 from protomotions.agents.evaluators.base_evaluator import BaseEvaluator
+from protomotions.agents.evaluators.config import MimicEvaluatorConfig
 from protomotions.agents.evaluators.metrics import MotionMetrics
 from protomotions.components.motion_lib import MotionLib
-from protomotions.agents.evaluators.config import MimicEvaluatorConfig
 from protomotions.envs.motion_manager.mimic_motion_manager import MimicMotionManager
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
 class MimicEpisodeContext:
     """Per-episode-batch state for mimic evaluation."""
+
     motion_ids: Tensor  # which motion each env is tracking
     frame_limits: Tensor  # how many frames before clip ends
 
@@ -129,6 +121,29 @@ class MimicEvaluator(BaseEvaluator):
             new_weights[failed_motions] = 1.0
         self.env.motion_manager.update_sampling_weights(new_weights)
 
+    def _park_inactive_envs(self, active_env_ids: Tensor) -> None:
+        """Move envs not in ``active_env_ids`` far below the terrain.
+
+        With scene-paired motions, ``_build_eval_batches`` returns a single
+        batch whose ``env_ids`` (from ``get_unique_fixed_motions``) can be
+        much smaller than ``num_envs`` -- the remaining envs would otherwise
+        keep running physics with their (replicated) scenes, contributing
+        substantially to the PhysX broadphase pair budget and triggering
+        ``foundLostPairsCapacity`` overflow at large num_envs (silent contact
+        drops -> tunneling -> phantom failures).
+
+        Parking those envs at z << 0 removes their AABBs from the broadphase
+        active region without changing the policy's view of the rollout.
+        """
+        if active_env_ids is None or active_env_ids.numel() >= self.num_envs:
+            return
+        all_mask = torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
+        all_mask[active_env_ids] = False
+        inactive_env_ids = torch.nonzero(all_mask, as_tuple=False).flatten()
+        if inactive_env_ids.numel() == 0:
+            return
+        self.env.simulator.park_envs(inactive_env_ids)
+
     def evaluate_episode(self, env_ids: torch.Tensor, max_steps: int) -> None:
         """Run a single episode batch, optionally with EMA action smoothing.
 
@@ -140,7 +155,13 @@ class MimicEvaluator(BaseEvaluator):
 
         self._on_episode_start(env_ids)
 
+        # Park envs that aren't part of this batch so they don't generate
+        # PhysX broadphase pairs / contacts during the eval. Pre-eval state is
+        # restored later in cleanup_after_evaluation via env.restore_state().
+        self._park_inactive_envs(env_ids)
+
         obs, _ = self.env.reset(env_ids, **self._get_reset_kwargs())
+        self.agent.pre_collect_step(0)
         obs = self.agent.add_agent_info_to_obs(obs)
         obs_td = self.agent.obs_dict_to_tensordict(obs)
 
@@ -158,6 +179,7 @@ class MimicEvaluator(BaseEvaluator):
                 prev_actions = actions.clone()
 
             obs, rewards, dones, terminated, extras = self.env.step(actions)
+            self.agent.pre_collect_step(step_idx + 1)
             obs = self.agent.add_agent_info_to_obs(obs)
             obs_td = self.agent.obs_dict_to_tensordict(obs)
 
@@ -175,15 +197,16 @@ class MimicEvaluator(BaseEvaluator):
             # Build episode context before evaluate_episode so hooks can read it
             self._episode_ctx = MimicEpisodeContext(
                 motion_ids=motion_ids,
-                frame_limits=(motion_lengths / self.env.dt).floor().long().clamp(
-                    max=self.config.max_eval_steps
-                ),
+                frame_limits=(motion_lengths / self.env.dt)
+                .floor()
+                .long()
+                .clamp(max=self.config.max_eval_steps),
             )
             self.evaluate_episode(env_ids, max_len)
 
     def _build_eval_batches(self):
         """Build list of (env_ids, motion_ids) batches to evaluate.
-        
+
         Returns:
             List of (env_ids, motion_ids) tuples
         """
@@ -206,16 +229,16 @@ class MimicEvaluator(BaseEvaluator):
         return batches
 
     # --- Hook overrides ---
-    
+
     def _on_episode_start(self, env_ids: Tensor) -> None:
         """Set motion_ids/times in the motion manager before reset."""
         self.motion_manager.motion_ids[env_ids] = self._episode_ctx.motion_ids
         self.motion_manager.motion_times[env_ids] = 0.0
-    
+
     def _get_reset_kwargs(self) -> dict:
         """Customize env.reset() for mimic evaluation."""
         return {"sample_flat": True, "disable_motion_resample": True}
-    
+
     def _check_eval_components(self, env_ids: Tensor, step_idx: int) -> None:
         """Filter by frame limits and check failures only for active clips."""
         still_active = self._episode_ctx.frame_limits > step_idx
@@ -223,7 +246,7 @@ class MimicEvaluator(BaseEvaluator):
             active_env_ids = env_ids[still_active]
             active_motion_ids = self._episode_ctx.motion_ids[still_active]
             self._check_evaluation_failures(active_env_ids, active_motion_ids)
-    
+
     def _on_episode_step(self, env_ids: Tensor, extras: Dict, actions: Tensor) -> None:
         """Collect smoothness metrics each step."""
         self._record_trajectory_step(
@@ -240,17 +263,21 @@ class MimicEvaluator(BaseEvaluator):
     ) -> None:
         """Record robot state and actions into trajectory buffers for this step."""
         if "actions" in metrics and actions is not None:
-            metrics["actions"].update(active_motion_ids, actions[active_env_ids].detach())
+            metrics["actions"].update(
+                active_motion_ids, actions[active_env_ids].detach()
+            )
 
         for k in metrics.keys():
             if k == "actions":
                 continue
             if f"raw/{k}" in extras:
-                metrics[k].update(active_motion_ids, extras[f"raw/{k}"][active_env_ids].detach())
+                metrics[k].update(
+                    active_motion_ids, extras[f"raw/{k}"][active_env_ids].detach()
+                )
 
-    def process_eval_results(self) -> Tuple[Dict, Optional[float]]:
+    def process_eval_results(self) -> Tuple[Dict, Optional[float], int]:
         """Process results and update motion sampling weights."""
-        to_log, success_rate = super().process_eval_results()
+        to_log, success_rate, num_eval_items = super().process_eval_results()
         self._update_motion_sampling_weights()
 
         additional_metrics = self._compute_additional_metrics(self._metrics)
@@ -261,16 +288,18 @@ class MimicEvaluator(BaseEvaluator):
                 self.config.save_predicted_motion_lib_every is not None
                 and self.eval_count % self.config.save_predicted_motion_lib_every == 0
             ):
-                self._save_predicted_motion_lib(self._metrics, epoch=self.agent.current_epoch)
+                self._save_predicted_motion_lib(
+                    self._metrics, epoch=self.agent.current_epoch
+                )
 
-        return to_log, success_rate
+        return to_log, success_rate, num_eval_items
 
     def cleanup_after_evaluation(self) -> None:
         """Restore env and motion manager state after evaluation."""
         self.motion_manager.motion_ids = self._cached_motion_ids
         self.motion_manager.motion_times = self._cached_motion_times
         self.env.restore_state(self._env_snapshot)
-        
+
         del self._env_snapshot
         del self._cached_motion_ids
         del self._cached_motion_times
@@ -386,6 +415,42 @@ class MimicEvaluator(BaseEvaluator):
         grs = grs_flat.view(-1, num_bodies, 4)
         gvs = gvs_flat.view(-1, num_bodies, 3)
         gavs = gavs_flat.view(-1, num_bodies, 3)
+
+        # Rigid body positions captured via "raw/rigid_body_pos" are in the
+        # simulator's world frame, so they include the per-env respawn offset
+        # the env applies on reset. The replay-time counterpart
+        # ``get_spawn_to_ref_pose_offset_with_terrain_height_correction`` adds
+        # back only ``scene_xy + fresh terrain height correction`` (and
+        # deliberately NOT ``ref_respawn_offset``, which is a spawn-only
+        # safety bump for physics). So to keep the saved lib replay-faithful,
+        # we undo exactly what replay will re-add — no more, no less.
+        #
+        # Concretely: stored ``respawn_root_offset.z`` equals
+        # ``terrain_height_at_spawn + ref_respawn_offset``; subtracting just
+        # the ``terrain_height_at_spawn`` portion leaves the 5 cm spawn bump
+        # baked into ``gts[0, root, z]`` so playback renders the "drop from
+        # 5 cm, then settle" trajectory the policy actually experienced.
+        # Velocities/rotations are invariant under a constant translation.
+        per_motion_offset = torch.zeros(
+            num_motions, 3, device=device, dtype=gts.dtype
+        )
+        unique_motion_ids, first_env_indices = (
+            self.motion_manager.get_unique_fixed_motions()
+        )
+        if unique_motion_ids.numel() > 0:
+            env_offsets = self.env.respawn_root_offset[first_env_indices].to(
+                device=device, dtype=gts.dtype
+            ).clone()
+            # Strip the spawn-only ref_respawn_offset from z; keep terrain
+            # correction and scene xy.
+            env_offsets[:, 2] -= float(self.env.config.ref_respawn_offset)
+            per_motion_offset[unique_motion_ids] = env_offsets
+        for m in range(num_motions):
+            nframes = int(motion_num_frames[m].item())
+            if nframes == 0:
+                continue
+            start = int(length_starts[m].item())
+            gts[start : start + nframes] -= per_motion_offset[m].view(1, 1, 3)
 
         # Pack predicted contacts from metrics
         contacts_data = metrics[

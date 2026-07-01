@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Terrain generation and management.
 
 Handles the creation of procedural terrains, sub-terrains, and height fields.
@@ -264,10 +252,7 @@ class Terrain:
         Returns True only if terrain_proportions has flat=1.0 and all others are 0.0.
         This is used to skip expensive terrain height calculations when unnecessary.
         """
-        # terrain types: [smooth slope, rough slope, stairs up, stairs down, discrete, stepping, poles, flat]
-        # flat is at index 7
-
-        # TODO: for now indexing is hardcoded.
+        # Matches the terrain type order used by curriculum().
         proportions = self.config.terrain_proportions
         assert len(proportions) == 8
         return proportions[-1] == 1.0 and sum(proportions[:-1]) == 0.0
@@ -311,10 +296,9 @@ class Terrain:
         if sample_flat:
             return self.sample_flat_locations(num_envs)
 
-        x_loc = np.random.randint(0, self.walkable_x_coords.shape[0], size=num_envs)
-        y_loc = np.random.randint(0, self.walkable_y_coords.shape[0], size=num_envs)
+        idx = np.random.randint(0, self.walkable_x_coords.shape[0], size=num_envs)
         valid_locs = torch.stack(
-            [self.walkable_x_coords[x_loc], self.walkable_y_coords[y_loc]], dim=-1
+            [self.walkable_x_coords[idx], self.walkable_y_coords[idx]], dim=-1
         )
 
         # Raise an error if any position is invalid
@@ -325,10 +309,9 @@ class Terrain:
         return valid_locs
 
     def sample_flat_locations(self, num_envs):
-        x_loc = np.random.randint(0, self.flat_x_coords.shape[0], size=num_envs)
-        y_loc = np.random.randint(0, self.flat_y_coords.shape[0], size=num_envs)
+        idx = np.random.randint(0, self.flat_x_coords.shape[0], size=num_envs)
         flat_locs = torch.stack(
-            [self.flat_x_coords[x_loc], self.flat_y_coords[y_loc]], dim=-1
+            [self.flat_x_coords[idx], self.flat_y_coords[idx]], dim=-1
         )
 
         # Raise an error if any position is invalid
@@ -439,9 +422,7 @@ class Terrain:
         x_min = max(0, x - radius)
         x_max = min(self.tot_rows, x + radius + 1)
         y_min = max(0, y - radius)
-        y_max = min(
-            self.tot_cols - self.object_playground_buffer_size, y + radius + 1
-        )  # Respect the buffer
+        y_max = min(self.tot_cols, y + radius + 1)
 
         self.scene_placement_map[x_min:x_max, y_min:y_max] = True
 
@@ -467,8 +448,15 @@ class Terrain:
         y_min = torch.clamp(locations[:, 1] - radius, min=0)
         y_max = torch.clamp(locations[:, 1] + radius + 1, max=self.tot_cols)
 
-        # Check if the area is completely outside the valid range
-        valid = (x_max > x_min) & (y_max > y_min)
+        # Check centers before clamping so partially overlapping out-of-bounds
+        # locations are not treated as valid spawn sites.
+        centers_in_bounds = (
+            (locations[:, 0] >= 0)
+            & (locations[:, 0] < self.tot_rows)
+            & (locations[:, 1] >= 0)
+            & (locations[:, 1] < self.tot_cols)
+        )
+        valid = centers_in_bounds & (x_max > x_min) & (y_max > y_min)
 
         # Use advanced indexing to check all valid locations in a single operation
         for i in range(batch_size):

@@ -1,23 +1,11 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Configuration classes for Lightning Fabric distributed training."""
 
 from typing import Dict, Any, Union, Optional, List
 from omegaconf import DictConfig
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from lightning import fabric
 
 from protomotions.utils.hydra_replacement import instantiate
@@ -77,3 +65,19 @@ class FabricConfig:
                 else:
                     callbacks.append(callback)
             self.callbacks = callbacks
+
+    def as_kwargs(self) -> Dict[str, Any]:
+        """Return Fabric constructor kwargs without deep-copying live objects."""
+        return {field.name: getattr(self, field.name) for field in fields(self)}
+
+    def as_loggable_dict(self) -> Dict[str, Any]:
+        """Return a safe summary for logs without touching logger internals."""
+
+        def summarize(value: Any) -> Any:
+            if isinstance(value, (str, int, float, bool)) or value is None:
+                return value
+            if isinstance(value, (list, tuple)):
+                return [summarize(item) for item in value]
+            return value.__class__.__name__
+
+        return {field.name: summarize(getattr(self, field.name)) for field in fields(self)}

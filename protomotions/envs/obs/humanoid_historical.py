@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Compute helper functions for humanoid observations.
 
 These are tensor-param helper functions that perform the actual observation
@@ -283,7 +271,7 @@ def compute_historical_poses_with_time(
     """Compute historical pose observations with time offsets from raw state.
     
     Wraps compute_historical_max_coords_from_state and compute_historical_time_offsets,
-    concatenating poses with time per step for backward compatibility.
+    concatenating poses with time per step.
     
     Args:
         historical_rigid_body_pos: Historical body positions [envs, history_steps, bodies, 3].
@@ -356,7 +344,7 @@ def compute_historical_poses_with_time_reduced_coords(
     """Compute historical reduced coords observations with time offsets.
     
     Wraps compute_historical_reduced_coords_from_state and compute_historical_time_offsets,
-    concatenating poses with time per step for backward compatibility.
+    concatenating poses with time per step.
     
     Args:
         historical_dof_pos: Historical DOF positions [envs, history_steps, num_dofs].
@@ -417,6 +405,8 @@ def compute_historical_max_coords_from_motion_lib(
     dt: float,
     local_obs: bool = True,
     root_height_obs: bool = True,
+    observe_contacts: bool = False,
+    contact_body_ids: Tensor = None,
     history_steps: Union[int, List[int]] = None,
 ) -> Tensor:
     """Compute historical max_coords observations from motion library reference data.
@@ -432,6 +422,9 @@ def compute_historical_max_coords_from_motion_lib(
         dt: Time step between historical observations.
         local_obs: Whether to use local (heading-aligned) coordinate frame.
         root_height_obs: Whether to include root height observation.
+        observe_contacts: Whether to include contact observations.
+        contact_body_ids: Optional simulator contact body subset. When provided,
+            reference contacts are sliced the same way as BaseEnv reset history.
         history_steps: Steps to select. Int N for first N consecutive steps (1 to N),
             list for specific step indices (e.g., [1, 4, 8, 12, 16]).
             None = use all num_state_history_steps.
@@ -456,6 +449,13 @@ def compute_historical_max_coords_from_motion_lib(
         # Time offset going backwards from current time (step 1 = 1*dt back, etc.)
         time_offset = step_idx * dt
         sample_times = (motion_times - time_offset).clamp(min=0.0)
+        motion_lengths = getattr(motion_lib, "motion_lengths", None)
+        if motion_lengths is not None:
+            max_times = motion_lengths[motion_ids].to(
+                device=sample_times.device,
+                dtype=sample_times.dtype,
+            )
+            sample_times = torch.min(sample_times, max_times)
         
         # Get motion state at this time
         ref_state = motion_lib.get_motion_state(motion_ids, sample_times)
@@ -463,9 +463,28 @@ def compute_historical_max_coords_from_motion_lib(
         # Compute observation for this frame
         # Use zero ground height for reference (flat ground assumption)
         ground_height = torch.zeros(num_samples, 1, device=device)
-        # Use empty contacts (reference doesn't have contact info)
         num_bodies = ref_state.rigid_body_pos.shape[1]
-        body_contacts = torch.zeros(num_samples, num_bodies, dtype=torch.bool, device=device)
+        rigid_body_contacts = getattr(ref_state, "rigid_body_contacts", None)
+        if observe_contacts and rigid_body_contacts is not None:
+            if contact_body_ids is None:
+                body_contacts = rigid_body_contacts.bool()
+            else:
+                contact_body_ids = contact_body_ids.to(
+                    device=rigid_body_contacts.device,
+                    dtype=torch.long,
+                )
+                body_contacts = rigid_body_contacts[:, contact_body_ids].bool()
+            body_contacts = body_contacts.to(device=device)
+        else:
+            num_contact_bodies = (
+                num_bodies if contact_body_ids is None else contact_body_ids.numel()
+            )
+            body_contacts = torch.zeros(
+                num_samples,
+                num_contact_bodies,
+                dtype=torch.bool,
+                device=device,
+            )
         
         frame_obs = compute_humanoid_max_coords_observations(
             body_pos=ref_state.rigid_body_pos,
@@ -476,7 +495,7 @@ def compute_historical_max_coords_from_motion_lib(
             body_contacts=body_contacts,
             local_obs=local_obs,
             root_height_obs=root_height_obs,
-            observe_contacts=False,
+            observe_contacts=observe_contacts,
             w_last=True,
         )
         all_obs.append(frame_obs)

@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="690" viewBox="0 0 1440 690" role="img" aria-labelledby="title desc">
+  <title id="title">ProtoMotions high-level architecture</title>
+  <desc id="desc">A maintainable architecture diagram showing experiment configs composing a configured runtime from environment components and agents, with data assets, simulator backends, and outputs.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="9" markerHeight="9" orient="auto">
+      <path d="M2 2 L10 6 L2 10 Z" fill="#566574"/>
+    </marker>
+    <style>
+      .bg { fill: #f7f9fb; }
+      .card { fill: #ffffff; stroke: #d7e0e8; stroke-width: 2; }
+      .panel { fill: #fbfcfd; stroke: #d7e0e8; stroke-width: 1.5; }
+      .rail { fill: #edf3f7; stroke: #cad7e2; stroke-width: 2; }
+      .chip { fill: #ffffff; stroke: #cbd7e1; stroke-width: 1.5; }
+      .title { fill: #17212b; font: 700 34px Arial, sans-serif; }
+      .subtitle { fill: #52606d; font: 400 20px Arial, sans-serif; }
+      .card-title { fill: #17212b; font: 700 24px Arial, sans-serif; }
+      .section-title { fill: #17212b; font: 700 22px Arial, sans-serif; }
+      .body { fill: #52606d; font: 400 18px Arial, sans-serif; }
+      .body-strong { fill: #27323f; font: 700 18px Arial, sans-serif; }
+      .chip-text { fill: #27323f; font: 700 17px Arial, sans-serif; }
+      .tag { fill: #ffffff; font: 700 14px Arial, sans-serif; letter-spacing: 0.5px; }
+      .arrow { stroke: #566574; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+      .soft-arrow { stroke: #8a99a8; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+      .teal { fill: #0b6f79; }
+      .green { fill: #2f7d4f; }
+      .blue { fill: #315f9c; }
+      .rose { fill: #a43f54; }
+      .violet { fill: #6a548f; }
+      .dark { fill: #27323f; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1440" height="690"/>
+  <text x="720" y="54" text-anchor="middle" class="title">ProtoMotions Architecture</text>
+  <text x="720" y="86" text-anchor="middle" class="subtitle">Experiment configs assemble reusable runtime modules, then save exact resolved configs with each run.</text>
+
+  <g id="experiment-configs">
+    <rect x="48" y="128" width="260" height="238" rx="12" class="card"/>
+    <rect x="48" y="128" width="260" height="42" rx="12" class="teal"/>
+    <text x="178" y="155" text-anchor="middle" class="tag">ENTRY POINT</text>
+    <text x="78" y="210" class="card-title">Experiment Configs</text>
+    <text x="78" y="248" class="body">examples/experiments/*.py</text>
+    <text x="78" y="282" class="body">robot + simulator + env</text>
+    <text x="78" y="316" class="body">agent + data libraries</text>
+    <text x="78" y="350" class="body">CLI overrides to configs</text>
+  </g>
+
+  <g id="configured-runtime">
+    <rect x="370" y="112" width="650" height="346" rx="14" class="card"/>
+    <text x="695" y="154" text-anchor="middle" class="section-title">Configured Runtime</text>
+    <text x="695" y="184" text-anchor="middle" class="body">BaseEnv and TensorDict modules exchange explicit keys.</text>
+
+    <rect x="402" y="216" width="280" height="208" rx="12" class="panel"/>
+    <rect x="402" y="216" width="280" height="38" rx="12" class="blue"/>
+    <text x="542" y="241" text-anchor="middle" class="tag">ENVIRONMENT</text>
+    <text x="428" y="282" class="body-strong">Components</text>
+    <text x="428" y="314" class="body">Controls, actions</text>
+    <text x="428" y="344" class="body">Observations, rewards</text>
+    <text x="428" y="374" class="body">Terminations, motion manager</text>
+    <text x="428" y="404" class="body">Simulator interface</text>
+
+    <rect x="708" y="216" width="280" height="208" rx="12" class="panel"/>
+    <rect x="708" y="216" width="280" height="38" rx="12" class="rose"/>
+    <text x="848" y="241" text-anchor="middle" class="tag">AGENTS AND MODELS</text>
+    <text x="734" y="282" class="body">PPO, AMP, ASE</text>
+    <text x="734" y="312" class="body">Mimic</text>
+    <text x="734" y="342" class="body">MaskedMimic</text>
+    <text x="734" y="372" class="body">GPC</text>
+    <text x="734" y="402" class="body">PEFT fine tuning</text>
+  </g>
+
+  <g id="outputs">
+    <rect x="1084" y="128" width="308" height="238" rx="12" class="card"/>
+    <rect x="1084" y="128" width="308" height="42" rx="12" class="violet"/>
+    <text x="1238" y="155" text-anchor="middle" class="tag">OUTPUTS</text>
+    <text x="1118" y="210" class="card-title">Run Artifacts</text>
+    <text x="1118" y="248" class="body">training checkpoints</text>
+    <text x="1118" y="282" class="body">inference configs</text>
+    <text x="1118" y="316" class="body">videos + metrics</text>
+    <text x="1118" y="350" class="body">ONNX / deployment export</text>
+  </g>
+
+  <g id="data-assets">
+    <rect x="48" y="486" width="420" height="156" rx="12" class="card"/>
+    <rect x="48" y="486" width="420" height="40" rx="12" class="green"/>
+    <text x="258" y="512" text-anchor="middle" class="tag">DATA AND ASSETS</text>
+    <text x="78" y="558" class="body">MotionLib clips + labels</text>
+    <text x="78" y="590" class="body">SceneLib, terrain, objects</text>
+    <text x="78" y="622" class="body">Robot configs, MJCF, USD</text>
+  </g>
+
+  <g id="simulator-backends">
+    <rect x="520" y="486" width="872" height="156" rx="12" class="rail"/>
+    <text x="552" y="526" class="section-title">Simulator Backends</text>
+    <text x="552" y="558" class="body">The environment calls one simulator interface across physics engines.</text>
+    <rect x="661" y="588" width="112" height="34" rx="8" class="dark"/>
+    <text x="717" y="611" text-anchor="middle" class="tag">IsaacGym</text>
+    <rect x="789" y="588" width="112" height="34" rx="8" class="dark"/>
+    <text x="845" y="611" text-anchor="middle" class="tag">IsaacLab</text>
+    <rect x="917" y="588" width="104" height="34" rx="8" class="dark"/>
+    <text x="969" y="611" text-anchor="middle" class="tag">Newton</text>
+    <rect x="1037" y="588" width="104" height="34" rx="8" class="dark"/>
+    <text x="1089" y="611" text-anchor="middle" class="tag">Genesis</text>
+    <rect x="1157" y="588" width="94" height="34" rx="8" class="dark"/>
+    <text x="1204" y="611" text-anchor="middle" class="tag">MuJoCo</text>
+  </g>
+
+  <path class="arrow" d="M308 246 H370"/>
+  <path class="arrow" d="M1020 246 H1084"/>
+  <path class="soft-arrow" d="M258 486 V454 H452 V424"/>
+  <path class="soft-arrow" d="M632 424 V454 H956 V486"/>
+</svg>

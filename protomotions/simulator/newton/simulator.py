@@ -1,23 +1,9 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 import os
 import torch
 import numpy as np
-import sys
-from glob import has_magic
 from typing import Dict, List, Optional, Tuple
 
 from protomotions.simulator.base_simulator.simulator import Simulator
@@ -36,6 +22,10 @@ from protomotions.simulator.base_simulator.simulator_state import (
     ResetState,
 )
 from protomotions.simulator.newton.config import NewtonSimulatorConfig
+from protomotions.simulator.newton.contact_utils import (
+    get_contact_sensor_body_patterns,
+    validate_contact_sensor_match,
+)
 import warp as wp
 import newton
 from newton import JointTargetMode
@@ -124,8 +114,7 @@ class NewtonSimulator(Simulator):
             device=device,
         )
 
-        self._custom_key_handlers = custom_key_handlers or {}
-        self._any_key_pressed = False  # used to avoid repeating the same key press
+        self._register_custom_user_interface_keys(custom_key_handlers or {})
 
         # Configure timing
         self.sim_time = 0.0
@@ -678,21 +667,7 @@ class NewtonSimulator(Simulator):
 
     @staticmethod
     def _get_contact_sensor_body_patterns(body_name: str) -> List[str]:
-        """Build Newton body-label patterns for a configured contact body.
-
-        ProtoMotions contact bodies use short MJCF body names like
-        ``left_ankle_roll_link``. Newton 1.0 stores ``model.body_label`` as full
-        paths like ``g1_29dof/worldbody/.../left_ankle_roll_link`` and
-        ``SensorContact`` matches against those labels via ``fnmatch``.
-
-        Match both the original short name and any full-path label that ends in
-        that body name, while preserving explicit glob patterns or full paths
-        unchanged.
-        """
-        if "/" in body_name or has_magic(body_name):
-            return [body_name]
-
-        return [body_name, f"*/{body_name}"]
+        return get_contact_sensor_body_patterns(body_name)
 
     @staticmethod
     def _count_sensor_sensing_objects(sensor: SensorContact) -> int:
@@ -703,15 +678,9 @@ class NewtonSimulator(Simulator):
     def _validate_contact_sensor_match(
         body_name: str, sensor_body_patterns: List[str], matched_body_count: int
     ) -> None:
-        """Fail fast when a configured contact body matches no Newton labels."""
-        if matched_body_count == 0:
-            raise ValueError(
-                "Newton contact sensor for "
-                f"'{body_name}' matched no body labels using "
-                f"{sensor_body_patterns}. "
-                "This usually means the configured ProtoMotions body name does not "
-                "match Newton's body_label format."
-            )
+        validate_contact_sensor_match(
+            body_name, sensor_body_patterns, matched_body_count
+        )
 
     def _setup_contact_sensors(self) -> None:
         """Setup contact sensors for each contact body."""
@@ -1306,46 +1275,25 @@ class NewtonSimulator(Simulator):
             else:
                 self._update_camera()
 
-            any_key_pressed = False
-            if self.viewer.is_key_down("q"):
-                sys.exit()
-            elif self.viewer.is_key_down("j"):
-                if not self._any_key_pressed:
-                    self._throw_projectile()
-                any_key_pressed = True
-            elif self.viewer.is_key_down("l"):
-                if not self._any_key_pressed:
-                    self._toggle_video_record()
-                any_key_pressed = True
-            elif self.viewer.is_key_down(";"):
-                if not self._any_key_pressed:
-                    self._cancel_video_record()
-                any_key_pressed = True
-            elif self.viewer.is_key_down("o"):
-                if not self._any_key_pressed:
-                    self._toggle_camera_target()
-                any_key_pressed = True
-            elif self.viewer.is_key_down("m"):
-                if not self._any_key_pressed:
-                    self._toggle_markers()
-                any_key_pressed = True
-            elif self.viewer.is_key_down("r"):
-                if not self._any_key_pressed:
-                    self._requested_reset()
-                any_key_pressed = True
-            for key, handler in self._custom_key_handlers.items():
-                if self.viewer.is_key_down(key):
-                    if not self._any_key_pressed:
-                        handler()
-                    any_key_pressed = True
-
-            self._any_key_pressed = any_key_pressed
+            for key_name in self.user_interface.registered_key_names():
+                self.user_interface.handle_key_event(
+                    key_name, pressed=self.viewer.is_key_down(key_name.lower())
+                )
 
             self.viewer.begin_frame(self.sim_time)
             self.viewer.log_state(self.state_0)
             self.viewer.end_frame()
 
         super().render()
+
+    def _register_custom_user_interface_keys(self, handlers: Dict[str, callable]) -> None:
+        for key_name, handler in handlers.items():
+            self.user_interface.register_key(
+                key_name,
+                owner="simulator.custom",
+                description=f"Custom simulator key handler for {key_name}",
+                on_press=handler,
+            )
 
     def _write_viewport_to_file(self, file_name: str) -> None:
         import matplotlib.pyplot as plt

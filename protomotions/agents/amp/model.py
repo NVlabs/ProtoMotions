@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """AMP model components including discriminator network.
 
 This module implements the AMP-specific neural networks, particularly the
@@ -27,14 +15,15 @@ import torch
 from torch import nn
 from typing import List
 from tensordict import TensorDict
-from tensordict.nn import TensorDictModuleBase
 from protomotions.utils.hydra_replacement import get_class
 from protomotions.agents.ppo.model import PPOModel
 from protomotions.agents.amp.config import DiscriminatorConfig, AMPModelConfig
-from protomotions.agents.common.common import ModuleContainer
+from protomotions.agents.common.common import ModuleContainer, ObsProcessor
+from protomotions.agents.common.mlp import MLPWithConcat
+from protomotions.agents.base_agent.model import ProtoMotionsTensorDictModule
 
 
-class Discriminator(TensorDictModuleBase):
+class Discriminator(ProtoMotionsTensorDictModule):
     """Discriminator network for AMP style rewards.
 
     Binary classifier that distinguishes between agent-generated and reference motion data.
@@ -66,7 +55,50 @@ class Discriminator(TensorDictModuleBase):
         self.in_keys = self.config.in_keys
         self.out_keys = self.config.out_keys
 
-    def forward(self, tensordict: TensorDict) -> TensorDict:
+        # Discover gradient penalty targets once at init
+        self._grad_penalty_keys = self._find_grad_penalty_keys()
+        if not self._grad_penalty_keys:
+            self._grad_penalty_keys = list(self.config.in_keys)
+
+    def _find_grad_penalty_keys(self) -> List[str]:
+        """Discover tensordict keys to use as gradient penalty targets.
+
+        Returns keys for the effective inputs to the discriminator's learned
+        function — after preprocessing but before learned layers:
+        - ObsProcessor outputs (normalizing or not — they preprocess raw obs)
+        - MLPWithConcat internal norm_ keys (when normalize_obs=True)
+        - Raw pass-through keys that bypass all preprocessing
+
+        Some keys (e.g. masks) may not be in the autograd graph — the caller
+        handles this via allow_unused=True and filters None gradients.
+        """
+        transformed_keys = []
+        consumed_raw_keys: set = set()
+
+        for model in self.models:
+            cfg = getattr(model, "config", None)
+            if cfg is None:
+                continue
+            if isinstance(model, ObsProcessor):
+                consumed_raw_keys.update(model.in_keys)
+                transformed_keys.extend(model.out_keys)
+            elif isinstance(model, MLPWithConcat) and getattr(
+                cfg, "normalize_obs", False
+            ):
+                consumed_raw_keys.update(model.in_keys)
+                transformed_keys.append(f"norm_{model.config.in_keys[0]}")
+
+        passthrough_keys = [
+            k for k in self.config.in_keys if k not in consumed_raw_keys
+        ]
+
+        return transformed_keys + passthrough_keys
+
+    def forward(
+        self,
+        tensordict: TensorDict,
+        log_internals: bool = False,
+    ) -> TensorDict:
         """Forward pass through discriminator.
 
         Args:
@@ -77,7 +109,10 @@ class Discriminator(TensorDictModuleBase):
         """
         # Chain through all modules
         for model in self.models:
-            tensordict = model(tensordict)
+            if isinstance(model, ProtoMotionsTensorDictModule):
+                tensordict = model(tensordict, log_internals=log_internals)
+            else:
+                tensordict = model(tensordict)
         return tensordict
 
     def compute_disc_reward(
@@ -123,7 +158,47 @@ class Discriminator(TensorDictModuleBase):
         return [last_module.weight]
 
 
-class AMPModel(PPOModel):
+class AMPModelComponentsMixin:
+    """Adds AMP discriminator modules to a host model."""
+
+    def _build_amp_model_components(self, config):
+        DiscriminatorClass = get_class(config.discriminator._target_)
+        self._discriminator: Discriminator = DiscriminatorClass(
+            config=config.discriminator
+        )
+        DiscCriticClass = get_class(config.disc_critic._target_)
+        self._disc_critic: ModuleContainer = DiscCriticClass(
+            config=config.disc_critic
+        )
+        self._validate_amp_model_keys(config)
+
+    def _validate_amp_model_keys(self, config):
+        discriminator_in_keys = list(
+            set(self._discriminator.in_keys + self._disc_critic.in_keys)
+        )
+        discriminator_out_keys = list(
+            set(self._discriminator.out_keys + self._disc_critic.out_keys)
+        )
+        for key in discriminator_out_keys:
+            assert (
+                key in config.out_keys
+            ), f"Discriminator output key {key} not in out_keys {config.out_keys}"
+        for key in discriminator_in_keys:
+            assert (
+                key in config.in_keys
+            ), f"Discriminator input key {key} not in in_keys {config.in_keys}"
+
+    def _forward_amp_model_components(
+        self,
+        tensordict: TensorDict,
+        log_internals: bool = False,
+    ) -> TensorDict:
+        tensordict = self._discriminator(tensordict, log_internals=log_internals)
+        tensordict = self._disc_critic(tensordict, log_internals=log_internals)
+        return tensordict
+
+
+class AMPModel(AMPModelComponentsMixin, PPOModel):
     """AMP model with actor, task critic, disc critic, and discriminator networks.
 
     Extends PPOModel by adding a discriminator network that provides style rewards
@@ -143,25 +218,13 @@ class AMPModel(PPOModel):
 
     def __init__(self, config: AMPModelConfig):
         super().__init__(config)
-        DiscriminatorClass = get_class(config.discriminator._target_)
-        self._discriminator: Discriminator = DiscriminatorClass(
-            config=self.config.discriminator
-        )
-        DiscCriticClass = get_class(self.config.disc_critic._target_)
-        self._disc_critic: ModuleContainer = DiscCriticClass(config=self.config.disc_critic)
+        self._build_amp_model_components(self.config)
 
-        discriminator_in_keys = list(set(self._discriminator.in_keys + self._disc_critic.in_keys))
-        discriminator_out_keys = list(set(self._discriminator.out_keys + self._disc_critic.out_keys))
-        for key in discriminator_out_keys:
-            assert (
-                key in self.config.out_keys
-            ), f"Discriminator output key {key} not in out_keys {self.config.out_keys}"
-        for key in discriminator_in_keys:
-            assert (
-                key in self.config.in_keys
-            ), f"Discriminator input key {key} not in in_keys {self.config.in_keys}"
-
-    def forward(self, tensordict: TensorDict) -> TensorDict:
+    def forward(
+        self,
+        tensordict: TensorDict,
+        log_internals: bool = False,
+    ) -> TensorDict:
         """Forward pass through PPO, and discriminator.
 
         Args:
@@ -170,9 +233,8 @@ class AMPModel(PPOModel):
         Returns:
             TensorDict with all model outputs added.
         """
-        tensordict = super().forward(tensordict)
+        tensordict = super().forward(tensordict, log_internals=log_internals)
 
-        # Discriminator forward: adds discriminator output
-        tensordict = self._discriminator(tensordict)
-        tensordict = self._disc_critic(tensordict)
-        return tensordict
+        return self._forward_amp_model_components(
+            tensordict, log_internals=log_internals
+        )

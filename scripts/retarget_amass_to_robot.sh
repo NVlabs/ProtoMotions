@@ -1,5 +1,5 @@
 #!/bin/bash
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Convenience script to retarget AMASS SMPL motions to a robot (G1 or H1_2)
@@ -7,13 +7,13 @@
 # IMPORTANT: ProtoMotions and PyRoki require separate Python environments.
 # You must provide paths to both Python interpreters.
 #
-# Usage: ./scripts/retarget_amass_to_robot.sh <proto_python> <pyroki_python> <amass_pt_file> <robot_type> [skip_freq]
+# Usage: ./scripts/retarget_amass_to_robot.sh <proto_python> <pyroki_python> <amass_pt_file> <robot_type> [skip_freq] [--clean]
 #
 # Example:
 #   ./scripts/retarget_amass_to_robot.sh \
 #       ~/miniconda3/envs/protomotions/bin/python \
 #       ~/miniconda3/envs/pyroki/bin/python \
-#       /path/to/amass.pt g1 15
+#       /path/to/amass.pt g1 15 --clean
 #
 # Arguments:
 #   proto_python:  Path to Python interpreter with ProtoMotions installed
@@ -21,12 +21,13 @@
 #   amass_pt_file: Path to packaged AMASS MotionLib .pt file (outputs saved in same directory)
 #   robot_type:    Target robot: 'g1' or 'h1_2'
 #   skip_freq:     (Optional) Skip every N motions for subset processing (default: 1 = all motions)
+#   --clean:       (Optional) Remove all intermediate outputs before running, ensuring a fresh pipeline
 
 set -e  # Exit on error
 
 # Parse arguments
 if [ $# -lt 4 ]; then
-    echo "Usage: $0 <proto_python> <pyroki_python> <amass_pt_file> <robot_type> [skip_freq]"
+    echo "Usage: $0 <proto_python> <pyroki_python> <amass_pt_file> <robot_type> [skip_freq] [--clean]"
     echo ""
     echo "Arguments:"
     echo "  proto_python   Path to Python interpreter with ProtoMotions installed"
@@ -34,9 +35,10 @@ if [ $# -lt 4 ]; then
     echo "  amass_pt_file  Path to packaged AMASS MotionLib .pt file (outputs saved in same dir)"
     echo "  robot_type     Target robot: 'g1' or 'h1_2'"
     echo "  skip_freq      (Optional) Skip every N motions (default: 1 = all motions)"
+    echo "  --clean        (Optional) Remove all intermediate outputs before running"
     echo ""
     echo "Example:"
-    echo "  $0 ~/miniconda3/envs/protomotions/bin/python ~/miniconda3/envs/pyroki/bin/python /data/amass.pt g1 15"
+    echo "  $0 ~/miniconda3/envs/protomotions/bin/python ~/miniconda3/envs/pyroki/bin/python /data/amass.pt g1 15 --clean"
     exit 1
 fi
 
@@ -45,6 +47,7 @@ PYROKI_PYTHON="$2"
 AMASS_PT_FILE="$3"
 ROBOT_TYPE="$4"
 SKIP_FREQ="${5:-1}"
+CLEAN="${6:-}"
 
 # Validate robot type
 if [ "$ROBOT_TYPE" != "g1" ] && [ "$ROBOT_TYPE" != "h1_2" ]; then
@@ -76,6 +79,23 @@ RETARGETED_DIR="${OUTPUT_DIR}/pyroki-retargeted-${ROBOT_TYPE}"
 CONTACTS_DIR="${OUTPUT_DIR}/contacts"
 PROTO_DIR="${OUTPUT_DIR}/proto-${ROBOT_TYPE}"
 FINAL_PT="${OUTPUT_DIR}/proto-${ROBOT_TYPE}.pt"
+
+if [ "$CLEAN" == "--clean" ]; then
+    echo "=============================================="
+    echo "--clean: Removing all intermediate outputs..."
+    echo "=============================================="
+    for DIR_TO_CLEAN in "$KEYPOINTS_DIR" "$RETARGETED_DIR" "$CONTACTS_DIR" "$PROTO_DIR"; do
+        if [ -d "$DIR_TO_CLEAN" ]; then
+            echo "  rm -rf $DIR_TO_CLEAN"
+            rm -rf "$DIR_TO_CLEAN"
+        fi
+    done
+    if [ -f "$FINAL_PT" ]; then
+        echo "  rm $FINAL_PT"
+        rm "$FINAL_PT"
+    fi
+    echo ""
+fi
 
 echo "=============================================="
 echo "Retargeting AMASS to ${ROBOT_TYPE^^}"

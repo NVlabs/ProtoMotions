@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """BeyondMimic + L2C2 + AMP discriminator experiment.
 
 Based on mlp_bm_deploy_future_obs_norm_learned_std_torso_anchor_l2c2.py with
@@ -180,23 +168,19 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
         "relative_body_pos": relative_body_pos_rew_factory(
             weight=1.0,
             sigma=0.3,
-            use_region_weights=True,
         ),
         "relative_body_ori": relative_body_ori_rew_factory(
             weight=1.0,
             sigma=0.4,
-            use_region_weights=True,
         ),
         # Global body velocities (region-weighted)
         "body_lin_vel": global_body_lin_vel_rew_factory(
             weight=1.0,
             sigma=1.0,
-            use_region_weights=True,
         ),
         "body_ang_vel": global_body_ang_vel_rew_factory(
             weight=1.0,
             sigma=3.14,
-            use_region_weights=True,
         ),
         "action_rate": action_smoothness_factory(weight=-0.1),
         "limits_dof_pos": MdpComponent(
@@ -513,6 +497,7 @@ def apply_inference_overrides(
     env_cfg.max_episode_length = 1000000
     env_cfg.motion_manager.resample_on_reset = True
     env_cfg.motion_manager.init_start_prob = 1.0
+    robot_cfg.reset_noise = None
 
     terrain_cfg.sim_config = TerrainSimConfig(
         static_friction=1.0,

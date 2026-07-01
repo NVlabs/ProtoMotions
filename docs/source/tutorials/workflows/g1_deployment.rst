@@ -13,7 +13,7 @@ The design philosophy:
   inputs and outputs.
 * **Minimal and readable** -- deployment code avoids heavy frameworks.  The
   reference MuJoCo test script (``deployment/test_tracker_mujoco.py``) runs
-  with only ``mujoco``, ``onnxruntime``, ``numpy``, and ``pyyaml``.
+  with only ``mujoco``, ``onnxruntime``, ``numpy``, ``pyyaml``, and ``torch``.
 * **Reproducible** -- the pre-trained general motion tracker was trained on the full
   `BONES-SEED <https://huggingface.co/datasets/bones-studio/seed>`_ dataset (~142K retargeted G1
   motions, see :doc:`../../getting_started/seed_g1_csv_preparation`) using
@@ -40,7 +40,7 @@ Pipeline Overview
         v  protomotions/train_agent.py (IsaacGym/IsaacLab, multi-GPU)
    Trained checkpoint (last.ckpt + resolved_configs_inference.pt)
         |
-        v  deployment/export_tracker_onnx.py (CPU, no simulator)
+        v  deployment/export_bm_tracker_onnx.py (CPU, no simulator)
    Unified ONNX model + YAML metadata
         |
         +---> deployment/test_tracker_mujoco.py  (reference MuJoCo test)
@@ -139,7 +139,7 @@ the ProtoMotions package -- no simulator or GPU needed.
 
 .. code-block:: bash
 
-   python deployment/export_tracker_onnx.py \
+   python deployment/export_bm_tracker_onnx.py \
        --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/last.ckpt
 
 This produces:
@@ -180,25 +180,16 @@ its behaviour will drive the policy correctly.
        --motion /path/to/walk.50fps.pt \
        --render
 
-Additional test modes:
+Additional test mode:
 
 .. code-block:: bash
-
-   # Test heading alignment (robot starts at random yaw)
-   python deployment/test_tracker_mujoco.py \
-       --onnx ... --motion ... --render --random-heading
-
-   # Test explicit PD (matches real robot motor loop)
-   python deployment/test_tracker_mujoco.py \
-       --onnx ... --motion ... --render --explicit-pd
 
    # Headless benchmark
    python deployment/test_tracker_mujoco.py \
        --onnx ... --motion ... --no-realtime
 
-The script handles: MJCF loading/patching, implicit or explicit PD
-configuration, heading alignment, acceleration clamping, EMA action filtering,
-and real-time pacing.
+The script handles: MJCF loading/patching, PD configuration, heading alignment,
+acceleration clamping, EMA action filtering, and real-time pacing.
 
 
 Step 5: Deploy via RoboJuDo (Simulation)

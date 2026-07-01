@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 import logging
 import sys
 from dataclasses import asdict
@@ -74,8 +62,13 @@ class IsaacGymSimulator(Simulator):
             device=device,
         )
 
-        # Store custom key handlers
-        self._custom_key_handlers = custom_key_handlers or {}
+        self.user_interface.register_key(
+            "V",
+            owner="simulator",
+            description="Toggle IsaacGym viewer sync",
+            on_press=self._toggle_viewer_sync,
+        )
+        self._register_custom_user_interface_keys(custom_key_handlers or {})
 
         # Create temporary directory for primitive URDFs
         self._temp_dir = tempfile.TemporaryDirectory()
@@ -134,35 +127,9 @@ class IsaacGymSimulator(Simulator):
 
         # if running with a viewer, set up keyboard shortcuts and camera
         if not self.headless:
-            # subscribe to keyboard shortcuts
             self._viewer = self._gym.create_viewer(self._sim, gymapi.CameraProperties())
-            self._gym.subscribe_viewer_keyboard_event(
-                self._viewer, gymapi.KEY_Q, "QUIT"
-            )
-            self._gym.subscribe_viewer_keyboard_event(
-                self._viewer, gymapi.KEY_V, "toggle_viewer_sync"
-            )
-            self._gym.subscribe_viewer_keyboard_event(
-                self._viewer, gymapi.KEY_J, "throw_projectile"
-            )
-            self._gym.subscribe_viewer_keyboard_event(
-                self._viewer, gymapi.KEY_L, "toggle_video_record"
-            )
-            self._gym.subscribe_viewer_keyboard_event(
-                self._viewer, gymapi.KEY_SEMICOLON, "cancel_video_record"
-            )
-            self._gym.subscribe_viewer_keyboard_event(
-                self._viewer, gymapi.KEY_R, "reset_envs"
-            )
-            self._gym.subscribe_viewer_keyboard_event(
-                self._viewer, gymapi.KEY_O, "toggle_camera_target"
-            )
-            self._gym.subscribe_viewer_keyboard_event(
-                self._viewer, gymapi.KEY_M, "toggle_markers"
-            )
-
-            # Subscribe to custom key handlers
-            self._register_custom_key_handlers()
+            self._subscribed_user_interface_keys = set()
+            self._subscribe_user_interface_keys()
 
             # set the camera position based on up axis
             sim_params = self._gym.get_sim_params(self._sim)
@@ -294,32 +261,44 @@ class IsaacGymSimulator(Simulator):
         if self._visualization_markers:
             self._build_marker_state_tensors()
 
-    def _register_custom_key_handlers(self) -> None:
-        """Register custom keyboard event handlers"""
-        # Define available keys for custom handlers (1-0 for consistency with IsaacLab)
-        available_keys = {
-            "1": gymapi.KEY_1,
-            "2": gymapi.KEY_2,
-            "3": gymapi.KEY_3,
-            "4": gymapi.KEY_4,
-            "5": gymapi.KEY_5,
-            "6": gymapi.KEY_6,
-            "7": gymapi.KEY_7,
-            "8": gymapi.KEY_8,
-            "9": gymapi.KEY_9,
-            "0": gymapi.KEY_0,
-        }
+    def _register_custom_user_interface_keys(self, handlers: Dict[str, callable]) -> None:
+        for key_name, handler in handlers.items():
+            self.user_interface.register_key(
+                key_name,
+                owner="simulator.custom",
+                description=f"Custom simulator key handler for {key_name}",
+                on_press=handler,
+            )
 
-        # Register custom key handlers
-        for key_name, handler in self._custom_key_handlers.items():
-            if key_name in available_keys:
-                action_name = f"custom_{key_name}"
-                self._gym.subscribe_viewer_keyboard_event(
-                    self._viewer, available_keys[key_name], action_name
-                )
-            else:
-                print(f"Warning: Key '{key_name}' not available for custom handlers")
-                print(f"Available keys: {list(available_keys.keys())}")
+    def _toggle_viewer_sync(self) -> None:
+        self._enable_viewer_sync = not self._enable_viewer_sync
+
+    def _subscribe_user_interface_keys(self) -> None:
+        self.user_interface.add_registration_callback(
+            self._subscribe_user_interface_key,
+            replay_existing=True,
+        )
+
+    def _subscribe_user_interface_key(self, handle) -> None:
+        key_name = handle.key
+        if key_name in self._subscribed_user_interface_keys:
+            return
+        self._gym.subscribe_viewer_keyboard_event(
+            self._viewer,
+            self._gym_key_for_user_interface_key(key_name),
+            key_name,
+        )
+        self._subscribed_user_interface_keys.add(key_name)
+
+    @staticmethod
+    def _gym_key_for_user_interface_key(key_name: str):
+        if key_name == ";":
+            return gymapi.KEY_SEMICOLON
+        if len(key_name) == 1 and key_name.isalpha():
+            return getattr(gymapi, f"KEY_{key_name.upper()}")
+        if len(key_name) == 1 and key_name.isdigit():
+            return getattr(gymapi, f"KEY_{key_name}")
+        raise ValueError(f"Unsupported IsaacGym user-interface key: {key_name}")
 
     # ===== Group 2: Environment Setup & Configuration =====
     def _create_humanoid_asset_options(self) -> gymapi.AssetOptions:
@@ -906,6 +885,14 @@ class IsaacGymSimulator(Simulator):
             self._apply_object_body_properties_to_actor(
                 env_ptr, object_handle, obj, env_id
             )
+
+            # Apply per-actor scale for MeshSceneObjects
+            if isinstance(obj, MeshSceneObject) and obj.scale != (1.0, 1.0, 1.0):
+                if not (obj.scale[0] == obj.scale[1] == obj.scale[2]):
+                    raise ValueError(
+                        f"IsaacGym only supports uniform scale, got {obj.scale}"
+                    )
+                self._gym.set_actor_scale(env_ptr, object_handle, obj.scale[0])
 
             # Store handle and index for this object
             self._object_handles.append(object_handle)
@@ -1648,32 +1635,9 @@ class IsaacGymSimulator(Simulator):
 
             # check for keyboard events
             for evt in self._gym.query_viewer_action_events(self._viewer):
-                if evt.action == "QUIT" and evt.value > 0:
-                    sys.exit()
-                elif evt.action == "toggle_viewer_sync" and evt.value > 0:
-                    self._enable_viewer_sync = not self._enable_viewer_sync
-                elif evt.action == "throw_projectile" and evt.value > 0:
-                    self._throw_projectile()
-                elif evt.action == "toggle_video_record" and evt.value > 0:
-                    self._toggle_video_record()
-                elif evt.action == "cancel_video_record" and evt.value > 0:
-                    self._cancel_video_record()
-                elif evt.action == "reset_envs" and evt.value > 0:
-                    self._requested_reset()
-                elif evt.action == "toggle_camera_target" and evt.value > 0:
-                    self._toggle_camera_target()
-                elif evt.action == "toggle_markers" and evt.value > 0:
-                    self._toggle_markers()
-                elif evt.action.startswith("custom_") and evt.value > 0:
-                    # Handle custom key events
-                    key_name = evt.action[7:]  # Remove "custom_" prefix
-                    if key_name in self._custom_key_handlers:
-                        try:
-                            self._custom_key_handlers[key_name]()
-                        except Exception as e:
-                            print(
-                                f"Error executing custom key handler for '{key_name}': {e}"
-                            )
+                self.user_interface.handle_key_event(
+                    evt.action, pressed=evt.value > 0
+                )
 
             if self.device.type != "cpu":
                 self._gym.fetch_results(self._sim, True)

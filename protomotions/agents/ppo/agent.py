@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Proximal Policy Optimization (PPO) agent implementation.
 
 This module implements the PPO algorithm for reinforcement learning. PPO is an
@@ -38,16 +26,21 @@ from typing import Optional, Tuple, Dict
 
 from lightning.fabric import Fabric
 
-from protomotions.utils.hydra_replacement import instantiate, get_class
+from protomotions.utils.hydra_replacement import get_class
 
 from protomotions.agents.ppo.model import PPOModel
-from protomotions.agents.common.common import weight_init
+from protomotions.agents.common.common import MODULE_INTERNALS_KEY, weight_init_trainable
+from protomotions.agents.optimizer.factory import (
+    instantiate_optimizer,
+    optimizer_learning_rate,
+    scale_optimizer_learning_rates,
+)
 from protomotions.envs.base_env.env import BaseEnv
 from protomotions.agents.utils.normalization import combine_moments
 from protomotions.agents.ppo.utils import discount_values
 from protomotions.agents.ppo.config import PPOAgentConfig
 from protomotions.agents.base_agent.agent import BaseAgent
-from protomotions.agents.utils.training import bounds_loss, handle_model_grad_clipping
+from protomotions.agents.utils.training import bounds_loss
 
 log = logging.getLogger(__name__)
 
@@ -111,6 +104,11 @@ class PPO(BaseAgent):
             self.adv_mean_ema = None
             self.adv_std_ema = None
 
+    @property
+    def has_critic(self) -> bool:
+        """PPO owns a value critic by construction."""
+        return True
+
     def create_model(self):
         """Create PPO actor-critic model.
 
@@ -122,80 +120,117 @@ class PPO(BaseAgent):
         """
         PPOModelClass = get_class(self.config.model._target_)
         model: PPOModel = PPOModelClass(config=self.config.model)
-        model.apply(weight_init)
+        model.apply(weight_init_trainable)
         return model
 
     def create_optimizers(self, model: PPOModel):
         """Create separate optimizers for actor and critic.
 
-        Sets up Adam optimizers for policy and value networks with independent
-        learning rates. Uses Fabric for distributed training setup.
+        Uses Fabric to prepare both model/optimizer pairs for distributed
+        training, matching the public PPO setup path.
 
         Args:
             model: PPOModel with actor and critic networks.
         """
-        actor_optimizer = instantiate(
+        actor_optimizer = instantiate_optimizer(
             self.config.model.actor_optimizer,
-            params=list(model._actor.parameters()),
+            model._actor,
         )
-        self.actor, self.actor_optimizer = self.fabric.setup(
+        self.actor, self.actor_optimizer = self._setup_model_optimizer(
             model._actor, actor_optimizer
         )
-        # Actor now only has forward() method
 
-        critic_optimizer = instantiate(
+        critic_optimizer = instantiate_optimizer(
             self.config.model.critic_optimizer,
-            params=list(model._critic.parameters()),
+            model._critic,
         )
-        self.critic, self.critic_optimizer = self.fabric.setup(
+        self.critic, self.critic_optimizer = self._setup_model_optimizer(
             model._critic, critic_optimizer
         )
 
         # Store initial learning rates for adaptive KL scheduling
         if self.config.adaptive_lr.enabled:
-            self.actor_lr = self.config.model.actor_optimizer.lr
-            self.critic_lr = self.config.model.critic_optimizer.lr
+            self.actor_lr = optimizer_learning_rate(
+                self.config.model.actor_optimizer, self.actor_optimizer
+            )
+            self.critic_lr = optimizer_learning_rate(
+                self.config.model.critic_optimizer, self.critic_optimizer
+            )
 
-    def load_parameters(self, state_dict):
-        """Load PPO-specific parameters from checkpoint.
+    @property
+    def actor_module(self):
+        """Underlying actor module, unwrapped from DDP when needed."""
+        return self.actor.module if hasattr(self.actor, "module") else self.actor
 
-        Loads actor, critic, and optimizer states. Preserves config overrides
-        for actor_logstd if specified at command line.
+    @property
+    def critic_module(self):
+        """Underlying critic module, unwrapped from DDP when needed."""
+        return self.critic.module if hasattr(self.critic, "module") else self.critic
 
-        Args:
-            state_dict: Checkpoint state dictionary containing model and optimizer states.
-        """
+    def _load_model_state_dict(self, model_state_dict):
         # Save current logstd value to preserve config overrides.
         # Only override the checkpoint's logstd when std is NOT learnable
         # (i.e., a fixed hyperparameter that may have been changed via CLI).
         # When learnable_std=True, the checkpoint contains the trained value
         # and must not be overwritten.
-        current_logstd = self.actor.logstd.data.clone()
-        current_actor_logstd_config = self.config.model.actor.actor_logstd
+        has_fixed_logstd = not self.config.model.actor.learnable_std
+        if has_fixed_logstd:
+            current_logstd = self.actor_module.logstd.data.clone()
+            current_actor_logstd_config = self.config.model.actor.actor_logstd
 
-        super().load_parameters(state_dict)
+        super()._load_model_state_dict(model_state_dict)
 
-        checkpoint_logstd = self.actor.logstd.data
-        if not self.config.model.actor.learnable_std:
+        if has_fixed_logstd:
+            checkpoint_logstd = self.actor_module.logstd.data
             # Fixed std: preserve config override if it differs from checkpoint
             if not torch.allclose(current_logstd, checkpoint_logstd, atol=1e-6):
                 print(
                     f"Preserving overridden actor_logstd: {current_actor_logstd_config} "
                     f"(checkpoint had: {checkpoint_logstd[0].item():.3f})"
                 )
-                self.actor.logstd.data = current_logstd
+                self.actor_module.logstd.data = current_logstd
 
-        self.actor_optimizer.load_state_dict(state_dict["actor_optimizer"])
-        self.critic_optimizer.load_state_dict(state_dict["critic_optimizer"])
+    def _load_training_state(self, state_dict):
+        """Restore PPO optimizer and advantage-normalization state."""
+        super()._load_training_state(state_dict)
+        self._load_ppo_training_state(state_dict, require_optimizers=True)
+
+    def _load_ppo_training_state(self, state_dict, require_optimizers: bool):
+        if require_optimizers or "actor_optimizer" in state_dict:
+            self.actor_optimizer.load_state_dict(state_dict["actor_optimizer"])
+        if require_optimizers or "critic_optimizer" in state_dict:
+            self.critic_optimizer.load_state_dict(state_dict["critic_optimizer"])
 
         # Restore adaptive LR state
         if self.config.adaptive_lr.enabled and "adaptive_lr" in state_dict:
+            old_actor_lr = getattr(
+                self,
+                "actor_lr",
+                optimizer_learning_rate(
+                    self.config.model.actor_optimizer,
+                    self.actor_optimizer,
+                ),
+            )
+            old_critic_lr = getattr(
+                self,
+                "critic_lr",
+                optimizer_learning_rate(
+                    self.config.model.critic_optimizer,
+                    self.critic_optimizer,
+                ),
+            )
             self.actor_lr = state_dict["adaptive_lr"]["actor_lr"]
             self.critic_lr = state_dict["adaptive_lr"]["critic_lr"]
-            for param_group in self.actor_optimizer.param_groups:
-                param_group["lr"] = self.actor_lr
-            for param_group in self.critic_optimizer.param_groups:
-                param_group["lr"] = self.critic_lr
+            scale_optimizer_learning_rates(
+                self.actor_optimizer,
+                old_lr=old_actor_lr,
+                new_lr=self.actor_lr,
+            )
+            scale_optimizer_learning_rates(
+                self.critic_optimizer,
+                old_lr=old_critic_lr,
+                new_lr=self.critic_lr,
+            )
 
         # Load EMA state if available
         if (
@@ -300,7 +335,9 @@ class PPO(BaseAgent):
 
         next_value = self.experience_buffer.next_value
         unnorm_next_value = self.running_reward_norm.normalize(next_value, un_norm=True)
-        self.experience_buffer.batch_update_data("unnormalized_next_value", unnorm_next_value)
+        self.experience_buffer.batch_update_data(
+            "unnormalized_next_value", unnorm_next_value
+        )
 
     # -----------------------------
     # Optimization
@@ -340,13 +377,18 @@ class PPO(BaseAgent):
             and self.config.actor_clip_frac_threshold is not None
         ):
             clip_frac = actor_loss_dict["actor/clip_frac"].item()
-            # Synchronize clip_frac across all GPUs
-            if self.fabric.world_size > 1 and torch.distributed.is_initialized():
-                clip_frac_tensor = torch.tensor(clip_frac, device=self.device)
-                torch.distributed.all_reduce(
-                    clip_frac_tensor, op=torch.distributed.ReduceOp.SUM
+            # Synchronize clip_frac across all GPUs (weighted by batch size)
+            if self.fabric.world_size > 1:
+                batch_size = batch_dict["action"].shape[0]
+                clip_sum = torch.tensor(
+                    clip_frac * batch_size, device=self.device, dtype=torch.float32
                 )
-                clip_frac = (clip_frac_tensor / self.fabric.world_size).item()
+                clip_count = torch.tensor(
+                    batch_size, device=self.device, dtype=torch.float32
+                )
+                all_sums = self.fabric.all_gather(clip_sum)
+                all_counts = self.fabric.all_gather(clip_count)
+                clip_frac = (all_sums.sum() / all_counts.sum()).item()
 
             if clip_frac > self.config.actor_clip_frac_threshold:
                 self._skip_actor_for_epoch = True
@@ -356,40 +398,30 @@ class PPO(BaseAgent):
                         f"(clip_frac {clip_frac:.3f} > {self.config.actor_clip_frac_threshold})"
                     )
 
-        if not self._skip_actor_for_epoch:
-            self.actor_optimizer.zero_grad(set_to_none=True)
-            self.fabric.backward(actor_loss)
-            actor_grad_clip_dict = handle_model_grad_clipping(
-                config=self.config,
-                fabric=self.fabric,
-                model=self.actor,
-                optimizer=self.actor_optimizer,
-                model_name="actor",
-            )
-            iter_log_dict.update(actor_grad_clip_dict)
-            self.actor_optimizer.step()
-            iter_log_dict["actor/update_skipped"] = torch.tensor(
-                0.0, device=self.device
-            )
-        else:
+        if self._skip_actor_for_epoch:
             iter_log_dict["actor/update_skipped"] = torch.tensor(
                 1.0, device=self.device
             )
+            return iter_log_dict
 
-        # Update critic
+        actor_grad_clip_dict = self._step_optimizer(
+            loss=actor_loss,
+            model=self.actor,
+            optimizer=self.actor_optimizer,
+            model_name="actor",
+        )
+        iter_log_dict.update(actor_grad_clip_dict)
+        iter_log_dict["actor/update_skipped"] = torch.tensor(0.0, device=self.device)
+
         critic_loss, critic_loss_dict = self.critic_step(batch_dict)
         iter_log_dict.update(critic_loss_dict)
-        self.critic_optimizer.zero_grad(set_to_none=True)
-        self.fabric.backward(critic_loss)
-        critic_grad_clip_dict = handle_model_grad_clipping(
-            config=self.config,
-            fabric=self.fabric,
+        critic_grad_clip_dict = self._step_optimizer(
+            loss=critic_loss,
             model=self.critic,
             optimizer=self.critic_optimizer,
             model_name="critic",
         )
         iter_log_dict.update(critic_grad_clip_dict)
-        self.critic_optimizer.step()
 
         return iter_log_dict
 
@@ -409,14 +441,14 @@ class PPO(BaseAgent):
         """
         # Forward through actor to get current policy's distribution
         batch_td = TensorDict(batch_dict, batch_size=batch_dict["action"].shape[0])
-        batch_td = self.actor(batch_td)
+        batch_td = self.actor(batch_td, log_internals=True)
 
         mean_action = batch_td["mean_action"]
 
         # Recompute neglogp for the actions that were actually taken (from experience buffer)
         # We need the current policy's evaluation, not the sampled action's neglogp
         mu = mean_action  # Already tanh-bounded
-        std = torch.exp(self.actor.logstd)
+        std = torch.exp(self.actor_module.logstd)
         dist = torch.distributions.Normal(mu, mu * 0 + std)
         current_neglogp = -dist.log_prob(batch_dict["action"]).sum(dim=-1)
 
@@ -427,6 +459,7 @@ class PPO(BaseAgent):
             ratio, 1.0 - self.e_clip, 1.0 + self.e_clip
         )
         ppo_loss = torch.max(-surr1, -surr2)
+
         clipped = torch.abs(ratio - 1.0) > self.e_clip
         clipped = clipped.detach().float().mean()
 
@@ -438,8 +471,14 @@ class PPO(BaseAgent):
         actor_ppo_loss = ppo_loss.mean()
         b_loss = b_loss.mean()
         extra_loss, extra_actor_log_dict = self.calculate_extra_actor_loss(batch_td)
+        model_loss, model_log_dict = self.actor_module.compute_model_loss(
+            batch_td,
+            current_epoch=self.current_epoch,
+            zero_loss=actor_ppo_loss,
+            log_prefix="actor_model",
+        )
 
-        actor_loss = actor_ppo_loss + b_loss + extra_loss
+        actor_loss = actor_ppo_loss + b_loss + extra_loss + model_loss
 
         # Entropy bonus for learnable std exploration noise
         if self.config.model.actor.learnable_std:
@@ -448,16 +487,32 @@ class PPO(BaseAgent):
         else:
             entropy_loss = torch.tensor(0.0, device=self.device)
 
+        with torch.no_grad():
+            approx_kl = (ratio - 1.0 - torch.log(ratio + 1e-8)).mean()
+
         log_dict = {
             "actor/ppo_loss": actor_ppo_loss.detach(),
             "actor/bounds_loss": b_loss.detach(),
             "actor/extra_loss": extra_loss.detach(),
+            "actor/model_loss": model_loss.detach(),
             "actor/entropy_loss": entropy_loss.detach(),
             "actor/clip_frac": clipped.detach(),
+            "actor/approx_kl": approx_kl.detach(),
+            "actor/ratio_mean": ratio.mean().detach(),
+            "actor/ratio_std": ratio.std().detach(),
+            "actor/ratio_max": ratio.max().detach(),
             "losses/actor_loss": actor_loss.detach(),
         }
         if self.config.model.actor.learnable_std:
             log_dict["actor/std_mean"] = std.mean().detach()
+        module_internals = batch_td.get(MODULE_INTERNALS_KEY, None)
+        if module_internals is not None:
+            for key, value in module_internals.items():
+                if isinstance(value, Tensor):
+                    log_dict[f"actor/internals/{key}"] = (
+                        value.float().mean().detach()
+                    )
+        log_dict.update(model_log_dict)
         log_dict.update(extra_actor_log_dict)
 
         # Compute KL divergence for adaptive learning rate
@@ -501,7 +556,7 @@ class PPO(BaseAgent):
             input_ss = torch.tensor(0.0, device=self.device)
             input_n = 0
             clean_td_dict = {}
-            for key in self.actor.in_keys:
+            for key in self.actor_module.in_keys:
                 if key in self.config.l2c2.obs_pairs:
                     clean_key = self.config.l2c2.obs_pairs[key]
                     clean_td_dict[key] = batch_td[clean_key]
@@ -562,7 +617,34 @@ class PPO(BaseAgent):
         else:
             critic_loss = (batch_dict["returns"].unsqueeze(-1) - values).pow(2).mean()
 
-        log_dict = {"losses/critic_loss": critic_loss.detach()}
+        model_loss, model_log_dict = self.critic_module.compute_model_loss(
+            batch_td,
+            current_epoch=self.current_epoch,
+            zero_loss=critic_loss,
+            log_prefix="critic_model",
+        )
+        critic_loss = critic_loss + model_loss
+
+        with torch.no_grad():
+            returns = batch_dict["returns"].unsqueeze(-1)
+            errors = values.detach() - returns
+            return_var = returns.var()
+            explained_var = (
+                1.0 - errors.var() / (return_var + 1e-8) if return_var > 1e-8 else torch.zeros(1, device=values.device)
+            )
+
+        log_dict = {
+            "losses/critic_loss": critic_loss.detach(),
+            "critic/model_loss": model_loss.detach(),
+            "critic/explained_variance": explained_var,
+            "critic/value_mean": values.detach().mean(),
+            "critic/value_std": values.detach().std(),
+            "critic/return_mean": returns.mean(),
+            "critic/return_std": returns.std(),
+            "critic/error_mean": errors.mean(),
+            "critic/error_std": errors.std(),
+        }
+        log_dict.update(model_log_dict)
 
         # Memory optimization: Detach values tensor if not needed for gradients
         values = values.detach()
@@ -603,11 +685,13 @@ class PPO(BaseAgent):
         old_dist = torch.distributions.Normal(old_mu, std)
         new_dist = torch.distributions.Normal(new_mu, std)
         kl = torch.distributions.kl_divergence(old_dist, new_dist).sum(-1)
-        kl_mean = kl.mean()
-        if self.fabric.world_size > 1 and torch.distributed.is_initialized():
-            torch.distributed.all_reduce(kl_mean, op=torch.distributed.ReduceOp.SUM)
-            kl_mean /= self.fabric.world_size
-        return kl_mean
+        kl_sum = kl.sum()
+        kl_count = torch.tensor(kl.numel(), dtype=kl_sum.dtype, device=kl_sum.device)
+        if self.fabric.world_size > 1:
+            all_sums = self.fabric.all_gather(kl_sum)
+            all_counts = self.fabric.all_gather(kl_count)
+            return all_sums.sum() / all_counts.sum()
+        return kl_sum / kl_count
 
     def _update_learning_rate(self, kl_mean):
         """Adjust actor and critic learning rates based on KL divergence.
@@ -619,25 +703,25 @@ class PPO(BaseAgent):
         Args:
             kl_mean: Mean KL divergence from _compute_kl.
         """
+        old_actor_lr = self.actor_lr
+        old_critic_lr = self.critic_lr
         if kl_mean > self.config.adaptive_lr.desired_kl * 2.0:
-            self.actor_lr = max(
-                self.config.adaptive_lr.min_lr, self.actor_lr / 1.5
-            )
-            self.critic_lr = max(
-                self.config.adaptive_lr.min_lr, self.critic_lr / 1.5
-            )
+            self.actor_lr = max(self.config.adaptive_lr.min_lr, self.actor_lr / 1.5)
+            self.critic_lr = max(self.config.adaptive_lr.min_lr, self.critic_lr / 1.5)
         elif kl_mean < self.config.adaptive_lr.desired_kl / 2.0 and kl_mean > 0.0:
-            self.actor_lr = min(
-                self.config.adaptive_lr.max_lr, self.actor_lr * 1.5
-            )
-            self.critic_lr = min(
-                self.config.adaptive_lr.max_lr, self.critic_lr * 1.5
-            )
+            self.actor_lr = min(self.config.adaptive_lr.max_lr, self.actor_lr * 1.5)
+            self.critic_lr = min(self.config.adaptive_lr.max_lr, self.critic_lr * 1.5)
 
-        for param_group in self.actor_optimizer.param_groups:
-            param_group["lr"] = self.actor_lr
-        for param_group in self.critic_optimizer.param_groups:
-            param_group["lr"] = self.critic_lr
+        scale_optimizer_learning_rates(
+            self.actor_optimizer,
+            old_lr=old_actor_lr,
+            new_lr=self.actor_lr,
+        )
+        scale_optimizer_learning_rates(
+            self.critic_optimizer,
+            old_lr=old_critic_lr,
+            new_lr=self.critic_lr,
+        )
 
     @torch.no_grad()
     def compute_advantages(self):

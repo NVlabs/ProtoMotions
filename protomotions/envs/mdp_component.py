@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """MdpComponent: Binds pure tensor compute functions to context paths.
 
 MdpComponent separates:
@@ -55,7 +43,7 @@ combining logic, not by the compute_func itself.  These are automatically filter
 out before calling the compute_func.  Current metadata keys:
 
     weight, multiplicative, zero_during_grace_period,
-    min_value, max_value, use_region_weights
+    min_value, max_value
 
 Example
 -------
@@ -107,8 +95,8 @@ if TYPE_CHECKING:
 # be forwarded to the compute_func function.
 _METADATA_KEYS = frozenset({
     "weight", "multiplicative", "zero_during_grace_period",
-    "min_value", "max_value", "use_region_weights",
-    "threshold", "fail_above",
+    "min_value", "max_value",
+    "threshold", "fail_above", "use_region_weights",
 })
 
 

@@ -117,7 +117,7 @@ teaching the robot to walk while staying low.
 .. code-block:: python
 
    from protomotions.envs.context_views import EnvContext
-   from protomotions.envs.context_router import ContextRouter
+   from protomotions.envs.mdp_component import MdpComponent
    from protomotions.envs.rewards.base import mean_squared_error_exp
    
    # Add a simple crouch reward kernel
@@ -125,9 +125,9 @@ teaching the robot to walk while staying low.
        return mean_squared_error_exp(root_height, target_height, coefficient)
    
    # Then in reward_components:
-   "crouch_rew": ContextRouter(
-       kernel=compute_crouch_rew,
-       dynamic_bindings={
+   "crouch_rew": MdpComponent(
+       compute_func=compute_crouch_rew,
+       dynamic_vars={
            "root_height": EnvContext.current.root_height,
            "target_height": EnvContext.current.root_height,  # Will broadcast scalar
        },
@@ -149,7 +149,7 @@ Challenge 5: Agent Class Extension
 
 **Starting point:**
 
-1. Study how ADD is implemented in ``protomotions/agents/add/agent.py``
+1. Study how ADD-style motion imitation is implemented in ``protomotions/agents/mimic/agent_add.py``
 2. Look at how other agents extend BaseAgent
 
 Challenge 6: OMOMO Dataset Loader

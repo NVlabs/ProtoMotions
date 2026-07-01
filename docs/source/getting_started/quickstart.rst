@@ -10,7 +10,7 @@ We provide pre-trained checkpoints for various robots and tasks. Download them a
 
 **Available Pre-trained Models:**
 
-The first four models below are **General Motion Trackers** - DeepMimic-style policies capable of tracking a wide variety of human motions, trained on large motion datasets (AMASS or BONES-SEED).
+The motion tracker models below are DeepMimic-style policies capable of tracking a wide variety of human motions, trained on large motion datasets (AMASS or BONES-SEED). The FSQ tracker exposes the bottleneck used for GPC prior training.
 
 .. list-table::
    :header-rows: 1
@@ -31,15 +31,15 @@ The first four models below are **General Motion Trackers** - DeepMimic-style po
    * - SOMA BONES-SEED
      - General motion tracker: SOMA 23-body humanoid on BONES-SEED motions
      - ``data/pretrained_models/motion_tracker/soma-bones/last.ckpt``
-   * - Vaulting
-     - DeepMimic policy for a vaulting motion
-     - *Coming soon*
+   * - SOMA BONES-SEED FSQ
+     - Motion tracker with an FSQ bottleneck for GPC prior training
+     - ``data/pretrained_models/motion_tracker/soma_bones_fsq/inference_last.ckpt``
+   * - SOMA GPC prior
+     - Discrete latent prior for GPC and PEFT experiments
+     - Releasing soon
    * - MaskedMimic SMPL
      - MaskedMimic policy for SMPL
      - ``data/pretrained_models/masked_mimic/smpl/last.ckpt``
-   * - MaskedMimic G1
-     - MaskedMimic policy for G1 trained on AMASS
-     - ``data/pretrained_models/masked_mimic/g1/last.ckpt``
 
 **Example Motion Data:**
 
@@ -48,6 +48,7 @@ We provide small example motion files for testing with robot models:
 * ``data/motion_for_trackers/g1_random_subset_tiny.pt`` - Small subset of retargeted AMASS for G1
 * ``data/motion_for_trackers/g1_bones_seed_mini.pt`` - Small subset of BONES-SEED retargeted motions for G1
 * ``data/motion_for_trackers/soma23_bones_seed_mini.pt`` - Small subset of BONES-SEED motions for SOMA 23-body humanoid
+* ``data/motion_for_trackers/crouch_soma23.pt`` - Small SOMA crouch dataset for GPC/PEFT examples
 * ``data/motion_for_trackers/h1_2_random_subset_tiny.pt`` - Small subset of retargeted AMASS for H1-2
 
 For SMPL motion data, see :doc:`amass_preparation` to generate your own MotionLib from AMASS.
@@ -63,6 +64,15 @@ if your local GPU memory is not enough to load the entire motion lib of AMASS.
        --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/last.ckpt \
        --motion-file data/motion_for_trackers/g1_bones_seed_mini.pt \
        --simulator isaacgym
+
+   # Headless validation on a server or VM
+   python protomotions/inference_agent.py \
+       --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/last.ckpt \
+       --motion-file data/motion_for_trackers/g1_bones_seed_mini.pt \
+       --simulator isaaclab \
+       --num-envs 100 \
+       --headless \
+       --full-eval
 
    # Run SOMA 23-body humanoid on BONES-SEED motions
    python protomotions/inference_agent.py \
@@ -91,6 +101,10 @@ if your local GPU memory is not enough to load the entire motion lib of AMASS.
        --num-envs 1
 
 .. note::
+
+   On headless machines, ``--full-eval`` is usually easier to validate because
+   it exits after evaluating the motion set and prints metrics. Without
+   ``--full-eval``, inference runs continuously until interrupted.
 
    Sim2sim transfer works for robots with hinge (revolute) joints (G1, H1, etc.)
    but not yet for robots with spherical joints (SMPL, SMPL-X) due to differing

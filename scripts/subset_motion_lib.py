@@ -1,18 +1,6 @@
 #!/usr/bin/env python3
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 """
 Script to create a subset of a motion library by sampling every N motions.
@@ -105,4 +93,20 @@ def subset_motion_lib(input_path: str, output_path: str, sample_every: int = 200
     print(f"\nSaved subset to {output_path}")
     print(f"  Motions: {num_motions} -> {num_selected}")
     print(f"  Total frames: {len(data['gts'])} -> {len(new_data['gts'])}")
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Create a subset of a motion library.")
+    parser.add_argument("input", help="Path to input .pt motion library")
+    parser.add_argument("output", help="Path to output .pt file")
+    parser.add_argument(
+        "--sample-every",
+        type=int,
+        default=200,
+        help="Take every Nth motion (default: 200)",
+    )
+    args = parser.parse_args()
+    subset_motion_lib(args.input, args.output, sample_every=args.sample_every)
 

@@ -30,7 +30,6 @@ repos:
         args:
           - --license-filepath=.license-header.txt
           - --comment-style=#
-          - --use-current-year
           - --no-extra-eol
         exclude: setup\.py$
 

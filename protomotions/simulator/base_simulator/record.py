@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Recording and rendering logic extracted from the Simulator base class.
 
 This module contains the RecordingMixin class which provides video recording,
@@ -171,6 +159,25 @@ class RecordingMixin:
     # Object serialization
     # -------------------------
 
+    def _build_terrain_save_data(self) -> Optional[dict]:
+        """Build terrain data dictionary for saving to .terrain.pt file.
+
+        Returns None if terrain is flat or not available.
+        """
+        terrain = getattr(self, "terrain", None)
+        if terrain is None:
+            return None
+
+        # Skip saving for flat terrains — Blender's default ground plane suffices
+        if terrain.is_flat():
+            return None
+
+        return {
+            "height_field_raw": terrain.height_field_raw,
+            "horizontal_scale": terrain.horizontal_scale,
+            "vertical_scale": terrain.vertical_scale,
+        }
+
     def _build_objects_save_data(self) -> dict:
         """Build objects data dictionary for saving to .objects.pt file."""
         objects_list = []
@@ -210,6 +217,7 @@ class RecordingMixin:
                     obj_info["shape"] = "mesh"
                     obj_info["size"] = []
                     obj_info["mesh_path"] = obj.object_path
+                    obj_info["scale"] = list(obj.scale)
                 else:
                     obj_info["shape"] = "box"
                     dims = obj.object_dims
@@ -293,7 +301,7 @@ class RecordingMixin:
                     self._recorded_markers = {}
                     self._recorded_objects = []
                     self._recorded_projectiles = []
-                    self._recording_env_id = 0
+                    self._recording_env_id = self._camera_target["env"]
 
                     if not os.path.exists(self._curr_user_recording_name):
                         os.makedirs(self._curr_user_recording_name)
@@ -366,8 +374,16 @@ class RecordingMixin:
                             )
                             torch.save(objects_data, objects_path)
                             print(f"Objects saved to {objects_path}")
+                        terrain_data = self._build_terrain_save_data()
+                        if terrain_data is not None:
+                            terrain_path = (
+                                f"{self._curr_user_recording_name}.terrain.pt"
+                            )
+                            torch.save(terrain_data, terrain_path)
+                            print(f"Terrain saved to {terrain_path}")
+
                     except Exception as e:
-                        print(f"Warning: failed to save markers/objects: {e}")
+                        print(f"Warning: failed to save markers/objects/terrain: {e}")
                     self._recorded_markers = None
                     self._recorded_objects = None
                     self._recorded_projectiles = None

@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Transformer architecture for sequential modeling.
 
 This module implements transformer-based networks for processing temporal information
@@ -33,13 +21,13 @@ Key Features:
 import torch
 from torch import nn
 from tensordict import TensorDict
-from tensordict.nn import TensorDictModuleBase
 
+from protomotions.agents.base_agent.model import ProtoMotionsTensorDictModule
 from protomotions.agents.utils.training import get_activation_func
 from protomotions.agents.common.config import TransformerConfig
 
 
-class Transformer(TensorDictModuleBase):
+class Transformer(ProtoMotionsTensorDictModule):
     """Transformer network for sequential observation processing.
 
     Processes multi-modal sequential inputs through separate encoders, combines them
@@ -101,11 +89,16 @@ class Transformer(TensorDictModuleBase):
             seqTransEncoderLayer, num_layers=self.config.num_layers
         )
 
-    def forward(self, tensordict: TensorDict) -> TensorDict:
+    def forward(
+        self,
+        tensordict: TensorDict,
+        log_internals: bool = False,
+    ) -> TensorDict:
         """Forward pass through transformer.
 
         Args:
             tensordict: TensorDict containing all input observations.
+            log_internals: Accepted for the common TensorDict-module contract.
 
         Returns:
             TensorDict with transformer output added at self.out_keys[0].
@@ -125,14 +118,28 @@ class Transformer(TensorDictModuleBase):
                 and in_key in self.config.input_and_mask_mapping
             ):
                 mask_key = self.config.input_and_mask_mapping[in_key]
+                token = tensordict[in_key]
+                token_seq_len = 1 if token.dim() == 2 else token.shape[1]
 
                 # Our mask is 1 for valid and 0 for invalid
                 # The transformer expects the mask to be 0 for valid and 1 for invalid
-                mask = tensordict[mask_key].logical_not()
-                if tensordict[mask_key].dim() == 1:
-                    all_masks.append(mask.unsqueeze(1))
+                raw_mask = tensordict[mask_key]
+                if raw_mask.dim() == 1:
+                    mask = raw_mask.logical_not().unsqueeze(1)
                 else:
-                    all_masks.append(mask)
+                    mask = raw_mask.logical_not()
+
+                # Reduce mask when it has more entries than the token sequence
+                # e.g. per-object mask (E, O) for a single-token encoding (E, 1, D)
+                if mask.shape[1] > token_seq_len:
+                    # Token is invalid only if ALL mask entries are invalid
+                    # (inverted: any(original_valid) -> token valid -> inverted_mask=False)
+                    # mask is inverted (True=invalid), so: all(inverted)=True -> invalid
+                    mask = mask.all(dim=-1, keepdim=True).expand(-1, token_seq_len)
+                elif mask.shape[1] < token_seq_len:
+                    mask = mask.expand(-1, token_seq_len)
+
+                all_masks.append(mask)
             else:
                 if tensordict[in_key].dim() == 2:
                     all_masks.append(

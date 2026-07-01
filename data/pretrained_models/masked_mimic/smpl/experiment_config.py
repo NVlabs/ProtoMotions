@@ -1,22 +1,12 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 from protomotions.robot_configs.base import RobotConfig
 from protomotions.simulator.base_simulator.config import SimulatorConfig
 from protomotions.envs.base_env.config import EnvConfig
-from protomotions.agents.masked_mimic.config import MaskedMimicAgentConfig
+from protomotions.agents.supervised.masked_mimic_config import (
+    MaskedMimicSupervisedAgentConfig,
+)
 import argparse
 
 
@@ -184,11 +174,14 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
 
     expert_model_path = getattr(args, 'expert_model_path', None)
     if expert_model_path:
-        from protomotions.agents.masked_mimic.utils import (
-            load_expert_configs,
+        from protomotions.agents.supervised.expert_utils import (
             get_expert_observation_components,
         )
-        expert_configs = load_expert_configs(expert_model_path)
+        from protomotions.utils.config_utils import (
+            load_resolved_configs_from_checkpoint,
+        )
+
+        expert_configs = load_resolved_configs_from_checkpoint(expert_model_path)
         expert_env_config = expert_configs["env"]
         expert_agent_config = expert_configs["agent"]
         
@@ -202,8 +195,7 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
                 expert_num_future = getattr(ctrl_cfg, 'future_steps', None)
                 if expert_num_future is not None:
                     masked_mimic_cfg = control_components["masked_mimic"]
-                    if masked_mimic_cfg.future_steps < expert_num_future:
-                        masked_mimic_cfg.future_steps = expert_num_future
+                    masked_mimic_cfg.future_steps = expert_num_future
         
         expert_obs_components = get_expert_observation_components(
             expert_env_config,
@@ -249,11 +241,11 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
 
 def agent_config(
     robot_config: RobotConfig, env_config: EnvConfig, args: argparse.Namespace
-) -> MaskedMimicAgentConfig:
-    from protomotions.agents.masked_mimic.config import (
+) -> MaskedMimicSupervisedAgentConfig:
+    from protomotions.agents.supervised.masked_mimic_config import (
         MaskedMimicModelConfig,
-        VaeConfig,
-        VaeNoiseType,
+        MaskedMimicVAEConfig,
+        VAENoiseType,
         KLDScheduleConfig,
     )
     from protomotions.agents.common.config import (
@@ -468,9 +460,9 @@ def agent_config(
         encoder=encoder_config,
         prior=prior_config,
         trunk=trunk_config,
-        vae=VaeConfig(
+        vae=MaskedMimicVAEConfig(
             vae_latent_dim=vae_latent_dim,
-            vae_noise_type=VaeNoiseType.NORMAL,
+            vae_noise_type=VAENoiseType.NORMAL,
             kld_schedule=KLDScheduleConfig(start_epoch=500, end_epoch=2000),
         ),
         optimizer=OptimizerConfig(_target_="torch.optim.Adam", lr=2e-5),
@@ -488,7 +480,7 @@ def agent_config(
     expert_model_path = getattr(args, 'expert_model_path', None)
     
     # Agent configuration
-    agent_config = MaskedMimicAgentConfig(
+    agent_config = MaskedMimicSupervisedAgentConfig(
         model=model_config,
         batch_size=args.batch_size,
         training_max_steps=args.training_max_steps,
@@ -504,20 +496,20 @@ def apply_inference_overrides(
     robot_cfg: RobotConfig,
     simulator_cfg: SimulatorConfig,
     env_cfg: EnvConfig,
-    agent_cfg: MaskedMimicAgentConfig,
+    agent_cfg: MaskedMimicSupervisedAgentConfig,
     terrain_cfg,
     motion_lib_cfg,
     scene_lib_cfg,
     args: argparse.Namespace,
 ):
     """Apply evaluation-specific overrides."""
-    # Reuse the mimic apply_inference_overrides function from mimic.mlp
+    # Reuse the matching SMPL tracker inference overrides.
     from protomotions.utils.config_utils import (
         import_experiment_relative_eval_overrides,
     )
 
     apply_inference_overrides_fn = import_experiment_relative_eval_overrides(
-        "../mimic/mlp.py"
+        "../../motion_tracker/smpl/experiment_config.py"
     )
     apply_inference_overrides_fn(robot_cfg, simulator_cfg, env_cfg, agent_cfg, terrain_cfg, motion_lib_cfg, scene_lib_cfg, args)
 
@@ -527,11 +519,14 @@ def apply_inference_overrides(
         # Remove expert observation components
         if expert_model_path is not None and env_cfg is not None:
             if hasattr(env_cfg, "observation_components") and env_cfg.observation_components is not None:
-                from protomotions.agents.masked_mimic.utils import (
-                    load_expert_configs,
+                from protomotions.agents.supervised.expert_utils import (
                     get_expert_observation_keys,
                 )
-                expert_configs = load_expert_configs(expert_model_path)
+                from protomotions.utils.config_utils import (
+                    load_resolved_configs_from_checkpoint,
+                )
+
+                expert_configs = load_resolved_configs_from_checkpoint(expert_model_path)
                 expert_obs_keys = get_expert_observation_keys(expert_configs["env"], expert_configs["agent"])
                 for key in expert_obs_keys:
                     if key in env_cfg.observation_components:

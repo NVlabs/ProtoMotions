@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Target pose building utilities for mimic environments.
 
 Provides functions for building target pose observations from reference motions,
@@ -25,7 +13,10 @@ import torch
 from torch import Tensor
 
 from protomotions.utils import rotations
-from protomotions.envs.obs.utils import select_step_indices
+from protomotions.envs.obs.utils import (
+    heading_local_xy_delta,
+    select_step_indices,
+)
 
 
 def build_max_coords_target_poses_future_rel(
@@ -979,3 +970,62 @@ def build_deploy_target_poses(
 
     obs = torch.cat(obs_components, dim=-1)
     return obs.view(num_envs, -1)
+
+
+def build_corrupted_xy_offset(
+    current_state_anchor_pos: Tensor,
+    current_state_anchor_rot: Tensor,
+    ref_rigid_body_pos: Tensor,
+    anchor_idx: int,
+    odom_scale: Tensor,
+    odom_yaw_cos_sin: Tensor,
+    w_last: bool = True,
+    log_noise_std: float = 0.12,
+    soft_threshold: float = 0.15,
+) -> Tensor:
+    """Heading-local XY offset from robot to reference, with odometer corruption.
+
+    Two-phase design matching the deployment data flow:
+
+    **Phase 1 — sensor reading** (heading-local XY offset):
+        Computes ``heading_inv @ (ref_anchor_xy - robot_anchor_xy)``.
+        At deployment this is what the odometer + IMU heading math produces.
+
+    **Phase 2 — shared corruption** (``apply_odom_corruption_torch``):
+        Per-episode affine + per-step proportional log-space noise.
+        The **same algorithm** runs at deployment via ``apply_odom_corruption_np``
+        from ``protomotions.utils.odom_corruption`` — single source of truth,
+        zero reimplementation risk.
+
+    Design rationale — see ``data/scripts/visualize_odometer_corruption.py`` for
+    interactive tuning and ``protomotions/utils/odom_corruption.py`` for the
+    shared implementation.
+
+    Args:
+        current_state_anchor_pos: Current robot anchor position [envs, 3].
+        current_state_anchor_rot: Current robot anchor rotation [envs, 4] (IMU).
+        ref_rigid_body_pos: Current-time reference body positions [envs, num_bodies, 3].
+        anchor_idx: Body index of the anchor body.
+        odom_scale: Per-episode scale factor [envs], sampled at reset.
+        odom_yaw_cos_sin: Per-episode yaw bias as (cos, sin) [envs, 2], sampled at reset.
+        w_last: If True, quaternions are in XYZW format.
+        log_noise_std: Std of per-step additive noise in log(1+mag) space.
+        soft_threshold: Characteristic length (m) for smooth noise weight ramp-up.
+
+    Returns:
+        Corrupted heading-local XY offset [envs, 2].
+    """
+    from protomotions.utils.odom_corruption import apply_odom_corruption_torch
+
+    # Phase 1: compute clean heading-local XY offset (same as deployment sensor reading)
+    xy_local = heading_local_xy_delta(
+        current_state_anchor_pos,
+        current_state_anchor_rot,
+        ref_rigid_body_pos[:, anchor_idx],
+        w_last,
+    )
+
+    # Phase 2: shared corruption transform (same code as deployment numpy version)
+    return apply_odom_corruption_torch(
+        xy_local, odom_scale, odom_yaw_cos_sin, log_noise_std, soft_threshold
+    )

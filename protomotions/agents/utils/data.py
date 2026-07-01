@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Data utilities for experience management and batching.
 
 This module provides utilities for managing experience buffers and creating
@@ -117,9 +105,16 @@ class DictDataset(Dataset):
     automatic batching for training. Used to create minibatch iterators from
     collected experience buffers.
 
+    Tensors may have different lengths along dim 0. The longest tensor defines
+    the number of minibatches; shorter tensors are indexed with modulo wrapping.
+    This allows e.g. expert discriminator observations to be computed for fewer
+    samples than the full rollout without padding or duplication at creation
+    time.
+
     Args:
         batch_size: Size of each minibatch.
-        tensor_dict: Dictionary of tensors to batch (all same length in dim 0).
+        tensor_dict: Dictionary of tensors to batch. All lengths must be
+            <= the maximum and the maximum must be divisible by batch_size.
         shuffle: Whether to shuffle indices before batching.
 
     Example:
@@ -136,12 +131,8 @@ class DictDataset(Dataset):
         shuffle=False,
     ):
         assert len(tensor_dict) > 0
-        lengths_dict = {k: len(v) for k, v in tensor_dict.items()}
-        assert (
-            len(set(lengths_dict.values())) == 1
-        ), f"All tensors must have the same length. Found: {lengths_dict}"
-
-        self.num_tensors = next(iter(lengths_dict.values()))
+        self._tensor_lengths = {k: len(v) for k, v in tensor_dict.items()}
+        self.num_tensors = max(self._tensor_lengths.values())
         self.batch_size = batch_size
         assert (
             self.num_tensors % self.batch_size == 0
@@ -166,7 +157,7 @@ class DictDataset(Dataset):
         assert index < len(self), f"{index} {len(self)}"
         start_idx = index * self.batch_size
         end_idx = min((index + 1) * self.batch_size, self.num_tensors)
+        indices = self.shuffled_to_original[start_idx:end_idx]
         return {
-            k: v[self.shuffled_to_original[start_idx:end_idx]]
-            for k, v in self.tensor_dict.items()
+            k: v[indices % self._tensor_lengths[k]] for k, v in self.tensor_dict.items()
         }

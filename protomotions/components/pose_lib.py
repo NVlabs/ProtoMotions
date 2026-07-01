@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """
 Batch-Optimized Forward Kinematics and Related Utilities for MJCF Models.
 
@@ -73,7 +61,6 @@ from protomotions.utils.rotations import (
     quat_conjugate,
     quat_mul_norm,
     quat_angle_axis,
-    get_euler_xyz,
     exp_map_to_quat,
     quat_to_exp_map,
     angle_from_matrix_axis,
@@ -228,6 +215,9 @@ def compute_body_density_weights(
     parent_indices = kinematic_info.parent_indices
     local_pos = kinematic_info.local_pos
     num_bodies = kinematic_info.num_bodies
+
+    if num_bodies == 1:
+        return torch.ones(1, dtype=torch.float32)
 
     bone_lengths = local_pos.norm(dim=-1).cpu()
 
@@ -421,6 +411,7 @@ def extract_kinematic_info(mjcf_path: str) -> KinematicInfo:
     """
 
     mjcf_model = mjcf.from_path(mjcf_path)
+    global_default_joint = getattr(mjcf_model.default, "joint", None)
 
     # Check if angles are in degrees or radians (default is degrees in MuJoCo)
     angle_unit = getattr(mjcf_model.compiler, "angle", None)
@@ -443,7 +434,17 @@ def extract_kinematic_info(mjcf_path: str) -> KinematicInfo:
 
     worldbody = mjcf_model.worldbody
 
-    def _traverse(mjcf_body, parent_idx):
+    def _resolve_joint_attr(joint, body_default_joint, attr_name):
+        value = getattr(joint, attr_name)
+        if value is None and joint.dclass is not None:
+            value = getattr(joint.dclass.joint, attr_name)
+        if value is None and body_default_joint is not None:
+            value = getattr(body_default_joint, attr_name)
+        if value is None and global_default_joint is not None:
+            value = getattr(global_default_joint, attr_name)
+        return value
+
+    def _traverse(mjcf_body, parent_idx, inherited_default=None):
         nonlocal root_processed
         body_name = mjcf_body.name
         if not body_name:
@@ -467,6 +468,10 @@ def extract_kinematic_info(mjcf_path: str) -> KinematicInfo:
         )
         local_pos_list.append(pos_val)
         local_quat_list.append(quat_mjcf)
+        body_default = (
+            mjcf_body.childclass if mjcf_body.childclass is not None else inherited_default
+        )
+        body_default_joint = body_default.joint if body_default is not None else None
 
         if body_idx == 0:  # Root Body
             assert np.allclose(
@@ -492,9 +497,7 @@ def extract_kinematic_info(mjcf_path: str) -> KinematicInfo:
                 for joint in joints:
                     # Resolve attributes: direct or inherited from default class
                     # (dm_control doesn't auto-resolve class-inherited attributes)
-                    axis = joint.axis
-                    if axis is None and joint.dclass is not None:
-                        axis = joint.dclass.joint.axis
+                    axis = _resolve_joint_attr(joint, body_default_joint, "axis")
                     assert (
                         axis is not None
                     ), f"Hinge joint '{joint.name}' for body '{body_name}' has no axis defined."
@@ -503,9 +506,9 @@ def extract_kinematic_info(mjcf_path: str) -> KinematicInfo:
                     non_root_dof_names.append(joint.name)
 
                     # Extract joint limits (convert to radians if needed)
-                    joint_range = joint.range
-                    if joint_range is None and joint.dclass is not None:
-                        joint_range = joint.dclass.joint.range
+                    joint_range = _resolve_joint_attr(
+                        joint, body_default_joint, "range"
+                    )
                     if joint_range is not None:
                         dof_limits_lower_list.append(joint_range[0] * angle_to_radians)
                         dof_limits_upper_list.append(joint_range[1] * angle_to_radians)
@@ -519,9 +522,10 @@ def extract_kinematic_info(mjcf_path: str) -> KinematicInfo:
 
         child_bodies = mjcf_body.body
         for child in child_bodies:
-            _traverse(child, body_idx)
+            _traverse(child, body_idx, body_default)
 
     assert worldbody.body, "MJCF worldbody contains no bodies."
+    assert len(worldbody.body) == 1, "Multiple root bodies"
     root_body = worldbody.body[0]
     _traverse(root_body, -1)
     assert root_processed, "Failed to identify/process root body."
@@ -812,6 +816,9 @@ def extract_transforms_from_qpos_non_root(
         .clone()
     )
 
+    if not hinge_axes_map:
+        return joint_rot_mats
+
     joint_rot_mats[:, list(hinge_axes_map.keys()), :, :] = (
         extract_transforms_from_qpos_non_root_ignore_fixed_helper(
             hinge_axes_map, qpos_non_root, qpos_is_exp_map_on_3dof_joints
@@ -933,6 +940,8 @@ def extract_qpos_from_transforms(
     hinge_axes_map = kinematic_info.hinge_axes_map
     hinge_axes_map = {k: v.to(device).to(dtype) for k, v in hinge_axes_map.items()}
     num_hinge_dofs = nq - 7
+    if num_hinge_dofs == 0:
+        return qpos
     assert num_hinge_dofs > 0, "No hinge DOFs found"
 
     joint_start = 7
@@ -956,8 +965,11 @@ def extract_qpos_from_transforms(
             quat_k = matrix_to_quaternion(rot_mat_k, w_last=False)
 
             if multi_dof_decomposition_method == "euler_xyz":
-                # Get Euler angles (roll, pitch, yaw = X, Y, Z rotations)
-                roll, pitch, yaw = get_euler_xyz(quat_k, w_last=False)
+                # Inverse of extract_transforms_from_qpos_non_root's
+                # independent-hinge composition order: Rx @ Ry @ Rz.
+                pitch = torch.asin(torch.clamp(rot_mat_k[:, 0, 2], -1.0, 1.0))
+                roll = torch.atan2(-rot_mat_k[:, 1, 2], rot_mat_k[:, 2, 2])
+                yaw = torch.atan2(-rot_mat_k[:, 0, 1], rot_mat_k[:, 0, 0])
                 # Assign to qpos indices assuming the order in kinematic_info corresponds to X, Y, Z
                 qpos[:, qpos_indices[0]] = roll
                 qpos[:, qpos_indices[1]] = pitch
@@ -1276,27 +1288,29 @@ def compute_angular_velocity(
         )
 
         if T > horizon:
-            # Get quaternions at t and t+horizon
             quat_t = batched_robot_quats[:-horizon]
             quat_t_plus_h = batched_robot_quats[horizon:]
+            tail_len = horizon
+        else:
+            quat_t = batched_robot_quats[:-1]
+            quat_t_plus_h = batched_robot_quats[1:]
+            dt = 1 / fps
+            tail_len = 1
 
-            # Compute difference quaternion: q_diff = q_{t+h} * q_t^{-1}
-            quat_t_inv = quat_conjugate(quat_t, w_last=True)
-            diff_quat = quat_mul_norm(quat_t_plus_h, quat_t_inv, w_last=True)
+        # Compute difference quaternion: q_diff = q_{t+h} * q_t^{-1}
+        quat_t_inv = quat_conjugate(quat_t, w_last=True)
+        diff_quat = quat_mul_norm(quat_t_plus_h, quat_t_inv, w_last=True)
 
-            # Extract angle and axis
-            diff_angle, diff_axis = quat_angle_axis(diff_quat, w_last=True)
+        # Extract angle and axis
+        diff_angle, diff_axis = quat_angle_axis(diff_quat, w_last=True)
 
-            # Angular velocity = axis * angle / dt
-            ang_vel_valid = diff_axis * diff_angle.unsqueeze(-1) / dt
+        # Angular velocity = axis * angle / dt
+        ang_vel_valid = diff_axis * diff_angle.unsqueeze(-1) / dt
 
-            # Assign to output (first frame gets zero, rest get computed values)
-            ang_vel[1 : T - horizon + 1] = ang_vel_valid
-            # For last 'horizon-1' frames (if horizon > 1), repeat last valid
-            if horizon > 1 and T > horizon:
-                ang_vel[T - horizon + 1 :] = ang_vel_valid[-1:].expand(
-                    horizon - 1, -1, -1
-                )
+        # Store the forward difference at frame t and carry the last valid value
+        # over frames without enough lookahead, matching compute_cartesian_velocity.
+        ang_vel[:-tail_len] = ang_vel_valid
+        ang_vel[-tail_len:] = ang_vel_valid[-1:].expand(tail_len, -1, -1)
 
         angular_velocities.append(ang_vel)
 

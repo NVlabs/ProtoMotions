@@ -183,9 +183,10 @@ terminations, and control.
 Component System
 ----------------
 
-**Location:** ``protomotions/envs/managers/``
+**Location:** ``protomotions/envs/component_manager.py``,
+``protomotions/envs/component_factories.py``, and ``protomotions/envs/control/``
 
-ProtoMotions uses a component-based architecture where observations, rewards, 
+ProtoMotions uses a component-based architecture where observations, rewards,
 terminations, and control are defined as modular, reusable components.
 
 **Why components?**
@@ -339,23 +340,25 @@ Termination components check for episode termination conditions.
 * ``tracking_error``: Terminates when tracking error exceeds threshold
 * Height termination and max episode length are handled by ``BaseEnv`` directly
 
-Managers
-~~~~~~~~
+Component Runtime
+~~~~~~~~~~~~~~~~~
 
-**Location:** ``protomotions/envs/managers/``
+**Location:** ``protomotions/envs/component_manager.py`` and
+``protomotions/envs/control/manager.py``
 
-Managers orchestrate component evaluation:
+The runtime orchestrates component evaluation:
 
-* ``ControlManager``: Initializes and steps control components
-* ``ObservationManager``: Evaluates observation functions, caches body indices
-* ``RewardManager``: Evaluates rewards, applies grace periods, combines terms
-* ``TerminationManager``: Evaluates termination conditions
+* ``ControlManager`` initializes and steps task control components.
+* ``ComponentManager`` executes observation, reward, and termination
+  ``MdpComponent`` kernels from the current ``EnvContext``.
+* ``BaseEnv`` combines raw reward and termination outputs, applies grace periods,
+  and stores observations for the agent.
 
 **Data flow:**
 
 .. code-block:: text
 
-   Control Components → Context Dict → Observation/Reward/Termination Functions
+   Control Components → EnvContext → Observation/Reward/Termination Components
           │                                         │
           └─────────────────────────────────────────┘
                           ↓

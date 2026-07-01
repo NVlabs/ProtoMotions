@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Test trained agents and visualize their behavior.
 
 This script loads trained checkpoints and runs agents in the simulation environment
@@ -53,6 +41,7 @@ During inference, these controls are available:
 - **O**: Toggle camera view
 - **L**: Start/stop video recording
 - **Q**: Quit
+- **W/A/S/D**: Move target when running with ``--command-source target=keyboard``
 
 Example
 -------
@@ -115,6 +104,16 @@ def create_parser():
         default=[],
         help="Config overrides in format key=value (e.g., env.max_episode_length=5000 simulator.headless=True)",
     )
+    parser.add_argument(
+        "--command-source",
+        nargs="*",
+        default=[],
+        help=(
+            "Override task command sources for inference, e.g. "
+            "target=keyboard. A bare value applies to the single target "
+            "control component."
+        ),
+    )
 
     return parser
 
@@ -138,8 +137,6 @@ import torch  # noqa: E402
 from protomotions.utils.hydra_replacement import get_class  # noqa: E402
 from protomotions.utils.fabric_config import FabricConfig  # noqa: E402
 from lightning.fabric import Fabric  # noqa: E402
-from dataclasses import asdict  # noqa: E402
-from protomotions.utils.config_utils import clean_dict_for_storage  # noqa: E402
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s: %(message)s")
@@ -148,25 +145,27 @@ log = logging.getLogger(__name__)
 
 
 # def tmp_enable_domain_randomization(robot_cfg, simulator_cfg, env_cfg):
-#     """Temporary function to enable domain randomization for testing.
-
-#     TODO: find a better way for sophisticated tmp inference overrides beyond CLI.
+#     """Example for quick inference-only config experiments.
+#
+#     Keep this commented out unless you are doing a local smoke test and need a
+#     richer temporary override than the CLI can express. For reusable behavior,
+#     put the override in an experiment file's apply_inference_overrides hook.
 #     """
 #     from protomotions.simulator.base_simulator.config import (
 #         # FrictionDomainRandomizationConfig,
 #         CenterOfMassDomainRandomizationConfig,
 #         DomainRandomizationConfig,
 #     )
-
+#
 #     # env_cfg.terrain.sim_config.static_friction = 0.01
 #     # env_cfg.terrain.sim_config.dynamic_friction = 0.01
-
+#
 #     simulator_cfg.domain_randomization = DomainRandomizationConfig(
 #         # Uncomment to enable action noise and friction randomization:
 #         # action_noise=ActionNoiseDomainRandomizationConfig(
 #         #     action_noise_range=(-0.01, 0.01),
 #         #     dof_names=[".*"],
-#         #     dof_indices=None
+#         #     dof_indices=None,
 #         # ),
 #         # friction=FrictionDomainRandomizationConfig(
 #         #     num_buckets=64,
@@ -174,10 +173,64 @@ log = logging.getLogger(__name__)
 #         #     dynamic_friction_range=(0.0, 1.0),
 #         #     restitution_range=(0.0, 0.0),
 #         #     body_names=[".*"],
-#         #     body_indices=None
+#         #     body_indices=None,
 #         # ),
 #     )
 #     log.info("Enabled domain randomization for testing")
+#
+
+def apply_command_source_overrides(env_config, command_source_specs):
+    """Apply inference-only task command source overrides."""
+    if len(command_source_specs) == 0:
+        return
+
+    from protomotions.envs.control.target_control import (
+        KeyboardTargetCommandSourceConfig,
+        RandomTargetCommandSourceConfig,
+        TargetControlConfig,
+    )
+
+    control_components = env_config.control_components
+    for spec in command_source_specs:
+        if "=" in spec:
+            component_name, source_name = spec.split("=", 1)
+        else:
+            target_components = [
+                name
+                for name, component in control_components.items()
+                if isinstance(component, TargetControlConfig)
+            ]
+            if len(target_components) != 1:
+                raise ValueError(
+                    "Bare --command-source values require exactly one "
+                    "TargetControlConfig component"
+                )
+            component_name = target_components[0]
+            source_name = spec
+
+        if component_name not in control_components:
+            raise ValueError(
+                f"Cannot override command source for unknown control component "
+                f"'{component_name}'"
+            )
+
+        component_config = control_components[component_name]
+        if not isinstance(component_config, TargetControlConfig):
+            raise ValueError(
+                f"Command source override '{component_name}={source_name}' only "
+                "supports TargetControlConfig components"
+            )
+
+        source_name = source_name.lower()
+        if source_name in ("keyboard", "manual", "user", "user-control"):
+            component_config.command_source = KeyboardTargetCommandSourceConfig()
+        elif source_name in ("random", "training"):
+            component_config.command_source = RandomTargetCommandSourceConfig()
+        else:
+            raise ValueError(
+                f"Unsupported command source '{source_name}' for component "
+                f"'{component_name}'"
+            )
 
 
 def main():
@@ -225,12 +278,8 @@ def main():
             new_simulator=args.simulator,
             robot_config=robot_config,
         )
-    # Apply backward compatibility fixes for old checkpoints
-    from protomotions.utils.inference_utils import apply_backward_compatibility_fixes
-
-    apply_backward_compatibility_fixes(robot_config, simulator_config, env_config)
-
-    # # Temporary: Enable domain randomization for testing (uncomment to use)
+    # # Temporary: Enable domain randomization for local inference testing.
+    # # Prefer --overrides or apply_inference_overrides for reusable changes.
     # tmp_enable_domain_randomization(robot_config, simulator_config, env_config)
 
     # from protomotions.robot_configs.base import ControlType
@@ -246,8 +295,22 @@ def main():
         motion_lib_config.motion_file = args.motion_file  # Always present
 
     if args.scenes_file is not None:
-        log.info(f"CLI override: scenes_file = {args.scenes_file}")
-        scene_lib_config.scene_file = args.scenes_file  # Always present
+        # Normalise "None"/"null" strings to actual None (disable scenes)
+        scenes_file = (
+            None if args.scenes_file.lower() in ("none", "null") else args.scenes_file
+        )
+        log.info(f"CLI override: scenes_file = {scenes_file}")
+        scene_lib_config.scene_file = scenes_file
+        if scenes_file is None:
+            scene_lib_config.asset_root = None
+        # Recompute asset_root from the new scene file path (experiment's
+        # asset_root may point to a different machine, e.g. lustre vs local)
+        elif scene_lib_config.asset_root is not None:
+            import os
+
+            scene_lib_config.asset_root = os.path.dirname(
+                os.path.dirname(os.path.abspath(scenes_file))
+            )
 
     if args.headless is not None:
         log.info(f"CLI override: headless = {args.headless}")
@@ -273,6 +336,10 @@ def main():
             scene_lib_config,
         )
 
+    if args.command_source:
+        log.info(f"CLI override: command_source = {args.command_source}")
+        apply_command_source_overrides(env_config, args.command_source)
+
     # Create fabric config for inference (simplified)
     # MuJoCo is CPU-only, so force CPU accelerator
     accelerator = "cpu" if args.simulator == "mujoco" else "gpu"
@@ -283,7 +350,7 @@ def main():
         loggers=[],  # No loggers needed for inference
         callbacks=[],  # No callbacks needed for inference
     )
-    fabric: Fabric = Fabric(**asdict(fabric_config))
+    fabric: Fabric = Fabric(**fabric_config.as_kwargs())
     fabric.launch()
 
     # Setup IsaacLab simulation_app if using IsaacLab simulator
@@ -294,7 +361,9 @@ def main():
         simulator_extra_params["simulation_app"] = app_launcher.app
 
     # Convert friction for simulator compatibility
-    from protomotions.simulator.base_simulator.utils import convert_friction_for_simulator
+    from protomotions.simulator.base_simulator.utils import (
+        convert_friction_for_simulator,
+    )
 
     terrain_config, simulator_config = convert_friction_for_simulator(
         terrain_config, simulator_config
@@ -361,19 +430,28 @@ def main():
     )
 
     agent.setup()
-    agent.load(args.checkpoint, load_env=False)
+    agent.load(args.checkpoint, load_env=False, load_training_state=False)
+    headless = getattr(env.simulator, "headless", True)
+    ui = getattr(env.simulator, "user_interface", None)
+    if not headless and ui is not None:
+        help_text = ui.help_text()
+        if help_text:
+            log.info("Viewer keybinds:\n%s", help_text)
 
     try:
         if args.full_eval:
             agent.evaluator.eval_count = 0
-            evaluation_log, evaluated_score = agent.evaluator.evaluate()
-            
+            evaluation_log, evaluated_score, num_eval_items = (
+                agent.evaluator.evaluate()
+            )
+
             # Print evaluation metrics
             print("\n" + "=" * 60)
             print("EVALUATION RESULTS")
             print("=" * 60)
             for key, value in sorted(evaluation_log.items()):
                 print(f"  {key}: {value:.6f}")
+            print(f"  Items Evaluated: {num_eval_items}")
             print("=" * 60)
             if evaluated_score is not None:
                 print(f"  Overall Score: {evaluated_score:.6f}")

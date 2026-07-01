@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Multi-Layer Perceptron (MLP) network implementations.
 
 This module provides MLP architectures used throughout the codebase.
@@ -21,8 +9,7 @@ All MLPs support optional observation normalization and operate on TensorDict in
 These are the building blocks for actor and critic networks in RL agents.
 
 Key Classes:
-    - MLP: Feedforward network with optional observation normalization
-    - MultiHeadedMLP: MLP with multiple parallel input heads and a trunk
+    - MLPWithConcat: Feedforward network with optional observation normalization
 
 Functions:
     - build_mlp: Factory function to construct MLP from configuration
@@ -31,7 +18,7 @@ Functions:
 import torch
 from torch import nn
 from tensordict import TensorDict
-from tensordict.nn import TensorDictModuleBase
+from protomotions.agents.base_agent.model import ProtoMotionsTensorDictModule
 from protomotions.agents.common.common import NormObsBase, apply_module_operations
 from protomotions.agents.utils.training import get_activation_func
 from protomotions.agents.common.config import (
@@ -64,7 +51,7 @@ def build_mlp(config: MLPWithConcatConfig):
     return nn.Sequential(*layers)
 
 
-class MLPWithConcat(TensorDictModuleBase):
+class MLPWithConcat(ProtoMotionsTensorDictModule):
     """Multi-layer perceptron network with optional observation normalization.
 
     Feedforward network that processes observations through multiple
@@ -88,7 +75,7 @@ class MLPWithConcat(TensorDictModuleBase):
     config: MLPWithConcatConfig
 
     def __init__(self, config: MLPWithConcatConfig):
-        TensorDictModuleBase.__init__(self)
+        ProtoMotionsTensorDictModule.__init__(self)
         self.config = config
 
         # Validate TensorDict keys
@@ -108,12 +95,16 @@ class MLPWithConcat(TensorDictModuleBase):
         self.out_keys = self.config.out_keys
         assert len(self.out_keys) == 1, "MLP requires exactly one output key"
 
-    def forward(self, tensordict: TensorDict) -> TensorDict:
+    def forward(
+        self,
+        tensordict: TensorDict,
+        log_internals: bool = False,
+    ) -> TensorDict:
         """Forward pass with optional normalization.
 
         Args:
             tensordict: TensorDict containing observations.
-            return_norm_obs: If True, stores normalized obs in tensordict.
+            log_internals: Accepted for the common TensorDict-module contract.
 
         Returns:
             TensorDict with processed outputs.
@@ -123,7 +114,10 @@ class MLPWithConcat(TensorDictModuleBase):
         )
 
         result = apply_module_operations(
-            combined_obs, self.config.module_operations, normalizer=self.norm, forward_model=self.mlp
+            combined_obs,
+            self.config.module_operations,
+            normalizer=self.norm,
+            forward_model=self.mlp,
         )
 
         outs = result["output"]

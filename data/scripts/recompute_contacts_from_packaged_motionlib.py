@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """
 Recompute contact labels from packaged MotionLib
 
@@ -94,8 +82,14 @@ def main(
     print(f"Loaded MotionLib with {motion_lib.num_motions()} motions.")
 
     # Get the original contact tensor shape for verification
-    original_contacts_shape = motion_lib.contacts.shape
-    print(f"Original contacts shape: {original_contacts_shape}")
+    if motion_lib.contacts is not None:
+        original_contacts_shape = motion_lib.contacts.shape
+        print(f"Original contacts shape: {original_contacts_shape}")
+    else:
+        print(
+            "Original contacts: None (all zeros or missing — will compute from scratch)"
+        )
+        original_contacts_shape = None
 
     # Recompute contacts for all frames at once
     print("Recomputing contact labels...")
@@ -108,8 +102,11 @@ def main(
 
     print(f"New contacts shape: {new_contacts.shape}")
 
-    # Verify shapes match
-    if new_contacts.shape != original_contacts_shape:
+    # Verify shapes match (skip if original was None)
+    if (
+        original_contacts_shape is not None
+        and new_contacts.shape != original_contacts_shape
+    ):
         print(
             f"Warning: Contact shape mismatch. Original: {original_contacts_shape}, New: {new_contacts.shape}"
         )

@@ -1,25 +1,13 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Path follower control component for navigation tasks.
 
 Manages path generation and provides target positions for path following tasks.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, Any, Tuple, TYPE_CHECKING
+from typing import Dict, Tuple, TYPE_CHECKING
 
 import torch
 from torch import Tensor
@@ -51,7 +39,9 @@ class PathFollowerControlConfig(ControlComponentConfig):
         fail_height_dist: Maximum height deviation from path before termination.
     """
 
-    _target_: str = "protomotions.envs.control.path_follower_control.PathFollowerControl"
+    _target_: str = (
+        "protomotions.envs.control.path_follower_control.PathFollowerControl"
+    )
 
     num_traj_samples: int = 10
     traj_sample_timestep: float = 0.3
@@ -113,7 +103,9 @@ class PathFollowerControl(ControlComponent):
 
         # Build head position from root x,y and approximate head height
         head_position = root_pos.clone()
-        height_below_head = self.env.terrain.get_ground_heights(head_position).squeeze(1)
+        height_below_head = self.env.terrain.get_ground_heights(head_position).squeeze(
+            1
+        )
         head_position[..., 2] -= height_below_head
 
         # Reset path starting from ground-relative head position
@@ -125,8 +117,12 @@ class PathFollowerControl(ControlComponent):
 
     def check_resets_and_terminations(self) -> Tuple[Tensor, Tensor]:
         """Check for path deviation terminations."""
-        reset_buf = torch.zeros(self.env.num_envs, dtype=torch.bool, device=self.env.device)
-        terminate_buf = torch.zeros(self.env.num_envs, dtype=torch.bool, device=self.env.device)
+        reset_buf = torch.zeros(
+            self.env.num_envs, dtype=torch.bool, device=self.env.device
+        )
+        terminate_buf = torch.zeros(
+            self.env.num_envs, dtype=torch.bool, device=self.env.device
+        )
 
         if not self.config.enable_path_termination:
             return reset_buf, terminate_buf
@@ -139,7 +135,9 @@ class PathFollowerControl(ControlComponent):
         head_pos = bodies_positions[:, self._head_body_id, :]
 
         # Get target position
-        env_ids = torch.arange(self.env.num_envs, device=self.env.device, dtype=torch.long)
+        env_ids = torch.arange(
+            self.env.num_envs, device=self.env.device, dtype=torch.long
+        )
         tar_pos = self.calc_target_pos(env_ids)
 
         # Check horizontal distance from path
@@ -248,7 +246,9 @@ class PathFollowerControl(ControlComponent):
 
     def populate_context(self, ctx: EnvContext) -> None:
         """Populate path-specific view in the EnvContext."""
-        env_ids = torch.arange(self.env.num_envs, device=self.env.device, dtype=torch.long)
+        env_ids = torch.arange(
+            self.env.num_envs, device=self.env.device, dtype=torch.long
+        )
 
         ctx.path = PathContext(
             tar_pos=self.calc_target_pos(env_ids),
@@ -256,6 +256,7 @@ class PathFollowerControl(ControlComponent):
             traj_samples=self.fetch_path_samples(env_ids),
             height_conditioned=self.height_conditioned,
             head_body_id=self._head_body_id,
+            progress_buf=self.env.progress_buf,
         )
 
     def create_visualization_markers(
@@ -265,7 +266,9 @@ class PathFollowerControl(ControlComponent):
         if headless:
             return {}
 
-        path_markers = [MarkerConfig(size="regular") for _ in range(self.config.num_traj_samples)]
+        path_markers = [
+            MarkerConfig(size="regular") for _ in range(self.config.num_traj_samples)
+        ]
         path_markers_cfg = VisualizationMarkerConfig(
             type="sphere", color=(1.0, 0.0, 0.0), markers=path_markers
         )
@@ -294,4 +297,3 @@ class PathFollowerControl(ControlComponent):
                 ),
             )
         }
-

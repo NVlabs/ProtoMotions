@@ -15,6 +15,7 @@ Training Workflows
 * :doc:`workflows/retargeting_pyroki` - Retarget AMASS/SMPL motions to robots
 * :doc:`workflows/vaulting` - Scene interaction with vaulting motions
 * :doc:`workflows/domain_randomization` - Sim2sim transfer techniques
+* :doc:`../user_guide/gpc` - Train GPC and adapt it with PEFT
 
 Robot & Environment Setup
 -------------------------
@@ -53,14 +54,15 @@ Quick Reference
    * - :doc:`workflows/domain_randomization`
      - Sim2sim transfer
      - Trained policy
+   * - :doc:`../user_guide/gpc`
+     - GPC and PEFT adaptation
+     - FSQ motion tracker
    * - :doc:`workflows/custom_robot`
      - Add new robot morphology
      - MJCF file
 
-Coming Soon
------------
+More Examples
+-------------
 
-* **MJCF to USD Conversion** - Convert MuJoCo assets to USD for IsaacLab
-* **USD GS Backgrounds** - Load Gaussian Splatting scenes in IsaacSim 5.0+
-* **Pure RL Training** - Train without motion data (steering, locomotion)
-* **MaskedMimic / AMP / ASE** - Generative policy training
+Additional experiment families, including AMP, ASE, MaskedMimic, steering,
+and target-reaching tasks, are listed in :doc:`../user_guide/experiments`.

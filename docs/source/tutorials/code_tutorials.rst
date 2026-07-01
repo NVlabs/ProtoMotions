@@ -227,12 +227,19 @@ Learn to create a complete RL environment using ``BaseEnv``.
 
    env_config = EnvConfig(
        max_episode_length=1000,
-       humanoid_obs=HumanoidObsConfig(
-           max_coords_obs=MaxCoordsSelfObsConfig(enabled=True, local_obs=True),
-       ),
+       observation_components={
+           "max_coords_obs": max_coords_obs_factory(),
+       },
    )
-   
-   env = BaseEnv(config=env_config, robot_config=robot_cfg, simulator=simulator, ...)
+
+   env = BaseEnv(
+       config=env_config,
+       robot_config=robot_cfg,
+       device=device,
+       simulator=simulator,
+       terrain=terrain,
+       scene_lib=scene_lib,
+   )
    obs, rewards, dones, terminated, extras = env.step(actions)
 
 Tutorial 5: Motion Manager
@@ -313,16 +320,42 @@ Learn to create motion imitation environments using ``Mimic``.
 
 .. code-block:: python
 
-   env_config = MimicEnvConfig(
-       sync_motion=False,  # False = policy training, True = kinematic playback
-       mimic_obs=MimicObsConfig(
-           mimic_phase_obs=MimicPhaseObsConfig(enabled=True),
-           mimic_target_pose=MimicTargetPoseConfig(enabled=True, future_steps=1),
+   control_components = {
+       "mimic": MimicControlConfig(bootstrap_on_episode_end=True),
+   }
+   observation_components = {
+       "max_coords_obs": max_coords_obs_factory(),
+       "previous_actions": previous_actions_factory(history_steps=1),
+       "mimic_target_poses": mimic_target_poses_max_coords_factory(with_velocities=True),
+   }
+   reward_components = {
+       "action_smoothness": action_smoothness_factory(weight=-0.02),
+       **mimic_tracking_rewards_factory(
+           gt_weight=0.5,
+           gr_weight=0.3,
+           gv_weight=0.1,
+           gav_weight=0.1,
        ),
-       motion_manager=MimicMotionManagerConfig(init_start_prob=0.5),  # 50% RSI
+   }
+
+   env_config = EnvConfig(
+       max_episode_length=300,
+       num_state_history_steps=2,
+       control_components=control_components,
+       observation_components=observation_components,
+       reward_components=reward_components,
+       motion_manager=MimicMotionManagerConfig(init_start_prob=0.5),
    )
-   
-   env = Mimic(config=env_config, motion_lib=motion_lib, ...)
+
+   env = BaseEnv(
+       config=env_config,
+       robot_config=robot_cfg,
+       device=device,
+       simulator=simulator,
+       motion_lib=motion_lib,
+       terrain=terrain,
+       scene_lib=scene_lib,
+   )
 
 Tutorial 7: DeepMimic Agent
 ----------------------------
@@ -352,34 +385,52 @@ Learn to train a complete motion tracking agent with PPO.
 
 .. code-block:: python
 
-   # Reward configuration for motion tracking (using ContextRouter)
-   from protomotions.envs.context_views import EnvContext
-   from protomotions.envs.context_router import ContextRouter
-   from protomotions.envs.rewards import compute_gt_rew
-   
    reward_components = {
-       "gt_rew": ContextRouter(
-           kernel=compute_gt_rew,
-           dynamic_bindings={
-               "current_rigid_body_pos": EnvContext.current.rigid_body_pos,
-               "ref_rigid_body_pos": EnvContext.mimic.ref_state.rigid_body_pos,
-           },
-           static_params={"weight": 0.5, "coefficient": -100.0},
+       "action_smoothness": action_smoothness_factory(weight=-0.02),
+       **mimic_tracking_rewards_factory(
+           gt_weight=0.5,
+           gr_weight=0.3,
+           gv_weight=0.1,
+           gav_weight=0.1,
        ),
-       ...
    }
-   
-   # PPO agent with actor-critic
-   agent_config = PPOAgentConfig(
-       model=PPOModelConfig(
-           actor=PPOActorConfig(mu_model=MLPWithConcatConfig(in_keys=obs_keys, ...)),
-           critic=MLPWithConcatConfig(in_keys=obs_keys, num_out=1, ...),
+   termination_components = {
+       "tracking_error": tracking_error_term_factory(threshold=0.5),
+   }
+
+   env_config = EnvConfig(
+       max_episode_length=200,
+       num_state_history_steps=2,
+       control_components=control_components,
+       observation_components=observation_components,
+       reward_components=reward_components,
+       termination_components=termination_components,
+       action_config=make_pd_action_config(robot_cfg),
+       motion_manager=MimicMotionManagerConfig(init_start_prob=1.0),
+   )
+
+   obs_keys = ["max_coords_obs", "mimic_target_poses"]
+   actor_config = PPOActorConfig(
+       in_keys=obs_keys,
+       num_out=robot_cfg.kinematic_info.num_dofs,
+       mu_model=MLPWithConcatConfig(
+           in_keys=obs_keys,
+           out_keys=["actor_trunk_out"],
+           num_out=robot_cfg.number_of_actions,
        ),
+   )
+   critic_config = MLPWithConcatConfig(
+       in_keys=obs_keys,
+       out_keys=["value"],
+       num_out=1,
+   )
+   agent_config = PPOAgentConfig(
+       model=PPOModelConfig(actor=actor_config, critic=critic_config),
        batch_size=128,
        num_steps=32,
    )
-   
-   agent = PPO(fabric=fabric, env=env, config=agent_config, ...)
-   agent.fit()  # Run training
+
+   agent = PPO(fabric=fabric, env=env, config=agent_config)
+   agent.fit()
 
 **This is a complete training example!**

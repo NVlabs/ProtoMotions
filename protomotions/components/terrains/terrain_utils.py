@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 import torch
 from torch import Tensor
 import numpy as np
@@ -298,13 +286,21 @@ def _generate_optimized_mesh(
                 physical_size = np.array([width, height]) * horizontal_scale
                 if np.linalg.norm(physical_size) > max_triangle_size:
                     subdivs = np.ceil(physical_size / max_triangle_size).astype(int)
-                    for si in range(subdivs[1]):
-                        for sj in range(subdivs[0]):
-                            sub_height = height // subdivs[1]
-                            sub_width = width // subdivs[0]
+                    num_width_subdivs = min(width, max(1, subdivs[0]))
+                    num_height_subdivs = min(height, max(1, subdivs[1]))
+                    height_edges = np.linspace(
+                        0, height, num_height_subdivs + 1, dtype=int
+                    )
+                    width_edges = np.linspace(
+                        0, width, num_width_subdivs + 1, dtype=int
+                    )
+                    for si in range(num_height_subdivs):
+                        for sj in range(num_width_subdivs):
+                            sub_height = height_edges[si + 1] - height_edges[si]
+                            sub_width = width_edges[sj + 1] - width_edges[sj]
                             add_quad(
-                                i + si * sub_height,
-                                j + sj * sub_width,
+                                i + height_edges[si],
+                                j + width_edges[sj],
                                 sub_height,
                                 sub_width,
                             )

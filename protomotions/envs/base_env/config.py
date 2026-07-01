@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Configuration classes for the base environment.
 
 This module defines the configuration dataclasses for environment settings,
@@ -108,4 +96,30 @@ class EnvConfig:
     action_config: Optional[Dict[str, Any]] = field(
         default=None,
         metadata={"help": "Single action processing config dict with 'fn' key. Use make_pd_action_config() helper."}
+    )
+
+    # Odometer corruption parameters.  Used by corrupted_xy_offset_factory to
+    # simulate per-session calibration error in the G1 leg-kinematics odometer.
+    # The env samples odom_scale and a yaw_bias angle once per episode at reset.
+    # Identity defaults mean no corruption when the factory is not used.
+    odom_scale_range: tuple = field(
+        default=(1.0, 1.0),
+        metadata={
+            "help": (
+                "Per-episode odometer scale factor range (lo, hi) drawn from Uniform. "
+                "Default (1.0, 1.0) = no scale corruption. "
+                "Recommended for odom experiments: (0.7, 1.3)."
+            )
+        },
+    )
+    odom_yaw_range_deg: float = field(
+        default=0.0,
+        metadata={
+            "help": (
+                "Per-episode odometer yaw bias magnitude in degrees. "
+                "The actual bias is drawn from Uniform(-deg, +deg). "
+                "Default 0.0 = no yaw corruption. "
+                "Recommended for odom experiments: 6.0."
+            )
+        },
     )

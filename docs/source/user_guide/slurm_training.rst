@@ -144,7 +144,7 @@ Once configured, launch training from your local machine:
        --num-envs=4096 \
        --batch-size=16384 \
        --motion-file=/cluster/path/to/motions.pt \
-       --experiment-path=examples/experiments/mimic/mlp_bm.py \
+       --experiment-path=examples/experiments/mimic/mlp.py \
        --experiment-name=g1_motion_tracker \
        --user=myusername \
        --ngpu=4 \

@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 # Motion Manager Configuration
 
 # ## Subset Method
@@ -298,6 +286,16 @@ class MotionManager:
                     epoch_files.sort(key=lambda x: x[0], reverse=True)
                     path = epoch_files[0][1]
                     print(f"Motion Manager: Using failed motions from {path}")
+                else:
+                    print(
+                        f"Warning: No rank-0 failed motions file found in {failed_motions_dir}"
+                    )
+                    return None
+            else:
+                print(
+                    f"Warning: No rank-0 failed motions file found in {failed_motions_dir}"
+                )
+                return None
         else:
             print(f"Warning: exclude_motions_file not found: {path}")
             return None
@@ -328,6 +326,9 @@ class MotionManager:
         Returns:
             Sampled motion IDs [n]
         """
+        if n == 0:
+            return torch.empty(0, dtype=torch.long, device=self.device)
+
         # Apply exclusions before sampling
         self._apply_motion_exclusions()
         return torch.multinomial(self.motion_weights, num_samples=n, replacement=True)

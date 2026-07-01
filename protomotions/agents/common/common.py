@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Common neural network components and utilities for agents.
 
 This module provides shared building blocks used across different agent architectures,
@@ -31,10 +19,10 @@ Key Functions:
 import torch
 from torch import nn, Tensor
 from protomotions.utils.hydra_replacement import get_class
+from protomotions.agents.base_agent.model import ProtoMotionsTensorDictModule
 from copy import copy
 from typing import List, Dict, Optional
 from tensordict import TensorDict
-from tensordict.nn import TensorDictModuleBase
 
 from protomotions.agents.utils.normalization import RunningMeanStd
 from protomotions.agents.common.config import (
@@ -50,6 +38,9 @@ from protomotions.agents.common.config import (
     ModuleOperationExpandConfig,
     ModuleOperationSphereProjectionConfig,
 )
+
+
+MODULE_INTERNALS_KEY = "_module_internals"
 
 
 def get_params(obj) -> List[nn.Parameter]:
@@ -92,6 +83,18 @@ def weight_init(m, orthogonal=False):
         m.reset_parameters()
 
 
+def weight_init_trainable(m, orthogonal=False):
+    """Initialize modules that own trainable direct parameters.
+
+    Checkpoint-backed modules can live inside otherwise trainable models. Applying
+    ``reset_parameters`` to the whole tree would overwrite those loaded weights,
+    so frozen leaves are skipped while trainable leaves keep the normal init.
+    """
+
+    if any(parameter.requires_grad for parameter in m.parameters(recurse=False)):
+        weight_init(m, orthogonal=orthogonal)
+
+
 class NormObsBase(nn.Module):
     """Base class for modules with observation normalization.
 
@@ -114,6 +117,7 @@ class NormObsBase(nn.Module):
     def __init__(self, config: NormObsBaseConfig):
         super().__init__()
         self.config = config
+        self._freeze_running = False
         self.build_norm()
 
     def build_norm(self):
@@ -124,6 +128,7 @@ class NormObsBase(nn.Module):
                 shape=None,  # Lazy: inferred from first input
                 device="cpu",
                 clamp_value=self.config.norm_clamp_value,
+                ema_decay=self.config.norm_ema_decay,
             )
 
     def forward(self, obs: Tensor) -> Tensor:
@@ -137,7 +142,7 @@ class NormObsBase(nn.Module):
         """
         if self.config.normalize_obs:
             norm_obs = self.running_obs_norm.normalize(obs)
-            if self.training:
+            if self.training and not self._freeze_running:
                 self.running_obs_norm.record_moments(obs)
         else:
             norm_obs = obs
@@ -164,7 +169,9 @@ def apply_module_operations(
             elif isinstance(new_shape[0], str) and "batch_size" in new_shape[0]:
                 # Handle expressions like "batch_size * 2" - only works for concrete values
                 try:
-                    new_shape[0] = eval(new_shape[0].replace("batch_size", str(int(batch_size))))
+                    new_shape[0] = eval(
+                        new_shape[0].replace("batch_size", str(int(batch_size)))
+                    )
                 except (TypeError, ValueError):
                     # During tracing, batch_size may not be convertible to int
                     # Fall back to using -1 which PyTorch will infer
@@ -198,16 +205,16 @@ def apply_module_operations(
     return return_dict
 
 
-class ObsProcessor(TensorDictModuleBase):
+class ObsProcessor(ProtoMotionsTensorDictModule):
     """General observation processor - applies operations and normalization.
-    
+
     ForwardConfig applies normalization but skips the forward model (no MLP).
     """
 
     config: ObsProcessorConfig
 
     def __init__(self, config: ObsProcessorConfig):
-        TensorDictModuleBase.__init__(self)
+        ProtoMotionsTensorDictModule.__init__(self)
         self.config = config
 
         assert len(config.out_keys) == 1, "ObsProcessor requires exactly one output key"
@@ -227,9 +234,9 @@ class ObsProcessor(TensorDictModuleBase):
         return tensordict
 
 
-class ModuleContainer(TensorDictModuleBase):
+class ModuleContainer(ProtoMotionsTensorDictModule):
     """Generic container that runs a list of modules sequentially on a TensorDict.
-    
+
     With TensorDict, the distinction between "sequential", "parallel input",
     and "parallel output" is implicit in how keys flow between modules.
     """
@@ -237,19 +244,19 @@ class ModuleContainer(TensorDictModuleBase):
     config: ModuleContainerConfig
 
     def __init__(self, config: ModuleContainerConfig):
-        TensorDictModuleBase.__init__(self)
+        ProtoMotionsTensorDictModule.__init__(self)
         self.config = config
 
         self.models = nn.ModuleList()
-        
+
         # Build models and validate data flow
         # Container in_keys are "available" at the start (like sources)
         available_keys = set(self.config.in_keys)
-        
+
         for i, model_cfg in enumerate(config.models):
             model = get_class(model_cfg._target_)(config=model_cfg)
             self.models.append(model)
-            
+
             # Validate: each model's in_keys must be available
             # (either from container in_keys or a previous model's out_keys)
             for in_key in model.in_keys:
@@ -259,7 +266,7 @@ class ModuleContainer(TensorDictModuleBase):
                     f"  Available keys: {sorted(available_keys)}\n"
                     f"  Model in_keys: {model.in_keys}"
                 )
-            
+
             # Add this model's outputs to available keys for subsequent models
             available_keys.update(model.out_keys)
 
@@ -277,5 +284,8 @@ class ModuleContainer(TensorDictModuleBase):
     def forward(self, tensordict: TensorDict, *args, **kwargs) -> TensorDict:
         """Forward through all models sequentially."""
         for model in self.models:
-            tensordict = model(tensordict)
+            if isinstance(model, ProtoMotionsTensorDictModule):
+                tensordict = model(tensordict, *args, **kwargs)
+            else:
+                tensordict = model(tensordict)
         return tensordict

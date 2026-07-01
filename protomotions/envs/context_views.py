@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Typed context views for observations, rewards, and terminations.
 
 This module provides lightweight view classes that wrap existing data structures
@@ -451,6 +439,7 @@ class PathContext:
     traj_samples: Tensor = FieldPath()
     height_conditioned: bool = FieldPath()
     head_body_id: int = FieldPath()
+    progress_buf: Tensor = FieldPath()
 
     def __init__(
         self,
@@ -459,6 +448,7 @@ class PathContext:
         traj_samples: Tensor,
         height_conditioned: bool,
         head_body_id: int,
+        progress_buf: Tensor = None,
     ):
         """Initialize PathContext.
 
@@ -468,12 +458,62 @@ class PathContext:
             traj_samples: Future waypoint positions [num_envs, num_samples, 3].
             height_conditioned: Whether observations include height information.
             head_body_id: Index of head body in kinematic chain.
+            progress_buf: Episode progress counter [num_envs].
         """
         self.tar_pos = tar_pos
         self.head_pos = head_pos
         self.traj_samples = traj_samples
         self.height_conditioned = height_conditioned
         self.head_body_id = head_body_id
+        self.progress_buf = progress_buf
+
+
+class TargetContext:
+    """View for target-reaching control context."""
+
+    tar_pos: Tensor = FieldPath()
+    tar_proximity_threshold: float = FieldPath()
+
+    def __init__(self, tar_pos: Tensor, tar_proximity_threshold: float):
+        self.tar_pos = tar_pos
+        self.tar_proximity_threshold = tar_proximity_threshold
+
+
+class TerrainContext:
+    """View for terrain tensors used by component observations."""
+
+    height_points: Tensor = FieldPath()
+    height_samples: Tensor = FieldPath()
+
+    def __init__(self, height_points: Tensor, height_samples: Tensor):
+        self.height_points = height_points
+        self.height_samples = height_samples
+
+
+class SceneSurfaceContext:
+    """View for scene-object surface tensors used by observations.
+
+    Empty tensors are used when the environment has no scene objects, so
+    factories can bind these paths unconditionally while compute kernels decide
+    whether object surfaces are present from the tensor shapes.
+    """
+
+    object_pos: Tensor = FieldPath()
+    object_rot: Tensor = FieldPath()
+    neutral_pointclouds: Tensor = FieldPath()
+    object_valid_mask: Tensor = FieldPath()
+
+    def __init__(
+        self,
+        object_pos: Tensor,
+        object_rot: Tensor,
+        neutral_pointclouds: Tensor,
+        object_valid_mask: Tensor,
+    ):
+        self.object_pos = object_pos
+        self.object_rot = object_rot
+        self.neutral_pointclouds = neutral_pointclouds
+        self.object_valid_mask = object_valid_mask
 
 
 # =============================================================================
@@ -523,19 +563,32 @@ class EnvContext:
     # Environment state
     ground_heights: Optional[Tensor] = FieldPath()
     noisy_ground_heights: Optional[Tensor] = FieldPath()
+    terrain: Optional[TerrainContext] = NestedField(TerrainContext)
+    scene: Optional[SceneSurfaceContext] = NestedField(SceneSurfaceContext)
     body_contacts: Optional[Tensor] = FieldPath()
     current_contact_force_magnitudes: Optional[Tensor] = FieldPath()
     prev_contact_force_magnitudes: Optional[Tensor] = FieldPath()
     dt: float = FieldPath()
+    progress_buf: Optional[Tensor] = FieldPath()
 
     # Contact tracking
     contact_body_ids: Optional[Tensor] = FieldPath()
+    non_termination_contact_body_ids: Optional[Tensor] = FieldPath()
+
+    # Per-episode odometer corruption parameters (sampled once at episode reset).
+    # odom_scale [num_envs]: multiplicative scale for XY offset magnitude.
+    # odom_yaw_cos_sin [num_envs, 2]: (cos, sin) of per-episode yaw bias angle.
+    # Both are always present (initialized to identity: scale=1, angle=0) even
+    # when no corrupted XY observation is used, so factories can always bind to them.
+    odom_scale: Tensor = FieldPath()
+    odom_yaw_cos_sin: Tensor = FieldPath()
 
     # Control-specific contexts (populated by controllers via populate_context)
     mimic: Optional[MimicContext] = NestedField(MimicContext)
     masked_mimic: Optional[MaskedMimicContext] = NestedField(MaskedMimicContext)
     steering: Optional[SteeringContext] = NestedField(SteeringContext)
     path: Optional[PathContext] = NestedField(PathContext)
+    target: Optional[TargetContext] = NestedField(TargetContext)
 
     def __init__(
         self,
@@ -549,14 +602,21 @@ class EnvContext:
         previous_processed_action: Optional[Tensor] = None,
         ground_heights: Optional[Tensor] = None,
         noisy_ground_heights: Optional[Tensor] = None,
+        terrain: Optional[TerrainContext] = None,
+        scene: Optional[SceneSurfaceContext] = None,
         body_contacts: Optional[Tensor] = None,
         current_contact_force_magnitudes: Optional[Tensor] = None,
         prev_contact_force_magnitudes: Optional[Tensor] = None,
+        progress_buf: Optional[Tensor] = None,
         contact_body_ids: Optional[Tensor] = None,
+        non_termination_contact_body_ids: Optional[Tensor] = None,
+        odom_scale: Optional[Tensor] = None,
+        odom_yaw_cos_sin: Optional[Tensor] = None,
         mimic: Optional[MimicContext] = None,
         masked_mimic: Optional[MaskedMimicContext] = None,
         steering: Optional[SteeringContext] = None,
         path: Optional[PathContext] = None,
+        target: Optional[TargetContext] = None,
     ):
         """Initialize EnvContext with all state views.
 
@@ -571,14 +631,21 @@ class EnvContext:
             previous_processed_action: Previous processed action (optional).
             ground_heights: Ground height beneath root position [num_envs] (optional).
             noisy_ground_heights: Noisy ground height for actor (optional).
+            terrain: Terrain tensor context (optional).
+            scene: Scene object surface context (optional).
             body_contacts: Boolean contact flags for tracked bodies (optional).
             current_contact_force_magnitudes: Current contact force magnitudes (optional).
             prev_contact_force_magnitudes: Previous contact forces (optional).
+            progress_buf: Episode progress counters (optional).
             contact_body_ids: Indices of bodies to track contacts for (optional).
+            non_termination_contact_body_ids: Body IDs that may contact the ground without fall termination.
+            odom_scale: Per-episode odometer scale [num_envs] (optional).
+            odom_yaw_cos_sin: Per-episode yaw bias as (cos, sin) [num_envs, 2] (optional).
             mimic: Mimic control context (optional).
             masked_mimic: Masked mimic context (optional).
             steering: Steering control context (optional).
             path: Path following context (optional).
+            target: Target-reaching context (optional).
         """
         # Core state
         self.current = current
@@ -597,18 +664,27 @@ class EnvContext:
         # Environment state
         self.ground_heights = ground_heights
         self.noisy_ground_heights = noisy_ground_heights
+        self.terrain = terrain
+        self.scene = scene
         self.body_contacts = body_contacts
         self.current_contact_force_magnitudes = current_contact_force_magnitudes
         self.prev_contact_force_magnitudes = prev_contact_force_magnitudes
+        self.progress_buf = progress_buf
 
         # Contact tracking
         self.contact_body_ids = contact_body_ids
+        self.non_termination_contact_body_ids = non_termination_contact_body_ids
+
+        # Per-episode odometer corruption parameters
+        self.odom_scale = odom_scale
+        self.odom_yaw_cos_sin = odom_yaw_cos_sin
 
         # Control-specific views
         self.mimic = mimic
         self.masked_mimic = masked_mimic
         self.steering = steering
         self.path = path
+        self.target = target
 
 
 # =============================================================================
@@ -622,5 +698,8 @@ __all__ = [
     "MaskedMimicContext",
     "SteeringContext",
     "PathContext",
+    "TargetContext",
+    "TerrainContext",
+    "SceneSurfaceContext",
     "EnvContext",
 ]

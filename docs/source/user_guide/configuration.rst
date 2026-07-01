@@ -210,33 +210,32 @@ Generate configs without training (useful for migrating old checkpoints):
        --num-envs 4096 --batch-size 16384 \
        --create-config-only
 
-For simple code changes which breaks old models,
-you can also add to backward compatibility fixes in 
-``apply_backward_compatibility_fixes()`` in ``protomotions.utils.inference_utils.py``.
+When code or config classes change, regenerate the resolved configs for public
+artifacts instead of adding hidden inference-time migration hooks.
 
 Component Configuration (Observations, Rewards, Terminations)
 --------------------------------------------------------------
 
-All components use ``ContextRouter`` to bind pure tensor kernels to context paths:
+Components use ``MdpComponent`` to bind pure tensor kernels to context paths:
 
 .. code-block:: python
 
    from protomotions.envs.context_views import EnvContext
-   from protomotions.envs.context_router import ContextRouter
+   from protomotions.envs.mdp_component import MdpComponent
    from protomotions.envs.rewards import compute_gt_rew, compute_action_smoothness
 
    reward_components = {
-       "gt_rew": ContextRouter(
-           kernel=compute_gt_rew,                      # Pure tensor function
-           dynamic_bindings={                                  # Map params to context paths
+       "gt_rew": MdpComponent(
+           compute_func=compute_gt_rew,                      # Pure tensor function
+           dynamic_vars={                                  # Map params to context paths
                "current_rigid_body_pos": EnvContext.current.rigid_body_pos,
                "ref_rigid_body_pos": EnvContext.mimic.ref_state.rigid_body_pos,
            },
            static_params={"weight": 0.5, "coefficient": -100.0},  # Static parameters
        ),
-       "action_smoothness": ContextRouter(
-           kernel=compute_action_smoothness,
-           dynamic_bindings={
+       "action_smoothness": MdpComponent(
+           compute_func=compute_action_smoothness,
+           dynamic_vars={
                "current_processed_action": EnvContext.current_processed_action,
                "previous_processed_action": EnvContext.previous_processed_action,
            },

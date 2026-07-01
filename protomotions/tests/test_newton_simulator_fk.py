@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """
 Test for Newton simulator forward kinematics integration.
 
@@ -34,22 +22,23 @@ import os
 import sys
 import torch
 import numpy as np
+from pathlib import Path
 from typing import Optional
+import pytest
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from protomotions.simulator.newton.simulator import NewtonSimulator
-from protomotions.simulator.newton.config import NewtonSimulatorConfig, NewtonSimParams
-from protomotions.robot_configs.factory import robot_config
-from protomotions.components.terrains.terrain import Terrain
-from protomotions.components.terrains.config import TerrainConfig
-from protomotions.components.motion_lib import MotionLib, MotionLibConfig
-from protomotions.components.scene_lib import SceneLib
-from protomotions.simulator.base_simulator.simulator_state import RobotState
+from protomotions.simulator.base_simulator.simulator_state import (
+    RobotState,
+    StateConversion,
+)
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_G1_MOTION_FILE = REPO_ROOT / "examples/data/g1_crouch_to_run.motion"
 
 
-class TestNewtonSimulatorFK:
+class NewtonSimulatorFKHarness:
     """Test suite for Newton simulator forward kinematics."""
 
     def __init__(
@@ -89,6 +78,8 @@ class TestNewtonSimulatorFK:
 
     def _setup_robot_config(self):
         """Load robot configuration."""
+        from protomotions.robot_configs.factory import robot_config
+
         print(f"Loading robot config for {self.robot_name}...")
         self.robot_cfg = robot_config(self.robot_name)
         print(f"  ✓ Loaded robot with {self.robot_cfg.kinematic_info.num_dofs} DOFs")
@@ -109,6 +100,7 @@ class TestNewtonSimulatorFK:
                 )
 
         print(f"Loading motion library from {self.motion_file}...")
+        from protomotions.components.motion_lib import MotionLib, MotionLibConfig
 
         # Check if file exists
         if not os.path.exists(self.motion_file):
@@ -129,6 +121,15 @@ class TestNewtonSimulatorFK:
 
     def _setup_simulator(self):
         """Initialize the Newton simulator."""
+        from protomotions.components.scene_lib import SceneLib
+        from protomotions.components.terrains.config import TerrainConfig
+        from protomotions.components.terrains.terrain import Terrain
+        from protomotions.simulator.newton.config import (
+            NewtonSimParams,
+            NewtonSimulatorConfig,
+        )
+        from protomotions.simulator.newton.simulator import NewtonSimulator
+
         print("Initializing Newton simulator...")
 
         # Create a simple flat terrain
@@ -179,7 +180,7 @@ class TestNewtonSimulatorFK:
         print(f"  ✓ Simulation dt: {self.simulator.sim_dt:.4f}s")
         print(f"  ✓ Frame dt: {self.simulator.frame_dt:.4f}s")
 
-    def test_single_frame_fk(self, motion_id: int = 0, frame_idx: int = 0) -> dict:
+    def run_single_frame_fk(self, motion_id: int = 0, frame_idx: int = 0) -> dict:
         """
         Test FK for a single frame from the motion library.
 
@@ -228,7 +229,8 @@ class TestNewtonSimulatorFK:
 
         return results
 
-    def _compute_errors(self, gt_state: RobotState, sim_state: RobotState) -> dict:
+    @staticmethod
+    def _compute_errors(gt_state: RobotState, sim_state: RobotState) -> dict:
         """
         Compute errors between ground truth and simulator states.
 
@@ -381,7 +383,7 @@ class TestNewtonSimulatorFK:
 
         return all_passed
 
-    def test_multiple_frames(self, num_frames: int = 10) -> list:
+    def run_multiple_frames(self, num_frames: int = 10) -> list:
         """
         Test FK for multiple frames from the motion library.
 
@@ -404,7 +406,7 @@ class TestNewtonSimulatorFK:
         all_results = []
         for i, frame_idx in enumerate(frame_indices):
             print(f"\n--- Testing Frame {i+1}/{num_frames} (frame_idx={frame_idx}) ---")
-            results = self.test_single_frame_fk(motion_id=0, frame_idx=frame_idx)
+            results = self.run_single_frame_fk(motion_id=0, frame_idx=frame_idx)
             all_results.append(results)
 
         # Aggregate results
@@ -428,6 +430,97 @@ class TestNewtonSimulatorFK:
             print(f"  Min across frames:  {np.min(values):.6f}")
 
         return all_results
+
+
+def _make_robot_state() -> RobotState:
+    rigid_body_pos = torch.tensor(
+        [
+            [[0.0, 0.1, 0.2], [1.0, 2.0, 3.0]],
+            [[0.3, 0.4, 0.5], [4.0, 5.0, 6.0]],
+        ],
+        dtype=torch.float32,
+    )
+    rigid_body_rot = torch.tensor(
+        [
+            [[0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 0.0]],
+            [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]],
+        ],
+        dtype=torch.float32,
+    )
+    dof_pos = torch.tensor(
+        [[0.1, -0.2, 0.3], [0.4, 0.5, -0.6]], dtype=torch.float32
+    )
+
+    return RobotState(
+        state_conversion=StateConversion.COMMON,
+        dof_pos=dof_pos,
+        dof_vel=torch.zeros_like(dof_pos),
+        rigid_body_pos=rigid_body_pos,
+        rigid_body_rot=rigid_body_rot,
+    )
+
+
+def test_compute_errors_reports_zero_for_identical_states():
+    state = _make_robot_state()
+
+    results = NewtonSimulatorFKHarness._compute_errors(state, state)
+
+    scalar_metrics = [
+        "root_pos_error_mean",
+        "root_pos_error_max",
+        "root_rot_error_mean",
+        "root_rot_error_max",
+        "dof_pos_error_mean",
+        "dof_pos_error_max",
+        "body_pos_error_mean",
+        "body_pos_error_max",
+        "body_rot_error_mean",
+        "body_rot_error_max",
+    ]
+    for metric in scalar_metrics:
+        assert results[metric] == pytest.approx(0.0, abs=1e-6)
+
+    assert torch.allclose(
+        results["body_pos_error_per_body_mean"], torch.zeros(2), atol=1e-6
+    )
+    assert torch.allclose(
+        results["body_rot_error_per_body_mean"], torch.zeros(2), atol=1e-6
+    )
+
+
+def test_compute_errors_treats_negated_quaternions_as_same_rotation():
+    gt_state = _make_robot_state()
+    sim_state = gt_state.clone()
+    sim_state.rigid_body_rot = -gt_state.rigid_body_rot
+
+    results = NewtonSimulatorFKHarness._compute_errors(gt_state, sim_state)
+
+    assert results["root_rot_error_max"] == pytest.approx(0.0, abs=1e-6)
+    assert results["body_rot_error_max"] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_newton_simulator_fk_matches_motionlib_default_frame():
+    pytest.importorskip("warp")
+    pytest.importorskip("newton")
+    if not torch.cuda.is_available():
+        pytest.skip("Newton FK integration requires CUDA")
+    if not DEFAULT_G1_MOTION_FILE.exists():
+        pytest.skip(f"Default G1 motion file is missing: {DEFAULT_G1_MOTION_FILE}")
+
+    harness = NewtonSimulatorFKHarness(
+        robot_name="g1",
+        motion_file=str(DEFAULT_G1_MOTION_FILE),
+        num_envs=1,
+        device="cuda",
+    )
+
+    results = harness.run_single_frame_fk(motion_id=0, frame_idx=0)
+
+    assert results["root_pos_error_mean"] < 1e-4
+    assert results["root_rot_error_mean"] < 1e-2
+    assert results["dof_pos_error_mean"] < 1e-4
+    assert results["body_pos_error_mean"] < 1e-3
+    assert results["body_rot_error_mean"] < 0.1
 
 
 def main():
@@ -470,7 +563,7 @@ def main():
     args = parser.parse_args()
 
     # Initialize test
-    test = TestNewtonSimulatorFK(
+    test = NewtonSimulatorFKHarness(
         robot_name=args.robot,
         motion_file=args.motion_file,
         num_envs=args.num_envs,
@@ -479,9 +572,9 @@ def main():
 
     # Run tests
     if args.test_multiple:
-        test.test_multiple_frames(num_frames=args.num_frames)
+        test.run_multiple_frames(num_frames=args.num_frames)
     else:
-        test.test_single_frame_fk(motion_id=0, frame_idx=args.frame_idx)
+        test.run_single_frame_fk(motion_id=0, frame_idx=args.frame_idx)
 
 
 if __name__ == "__main__":

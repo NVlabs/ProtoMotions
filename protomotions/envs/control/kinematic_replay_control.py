@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Kinematic replay control - plays reference motions without physics."""
 
 from dataclasses import dataclass
@@ -46,10 +34,23 @@ class KinematicReplayControl(ControlComponent):
         pass
     
     def step(self):
+        all_env_ids = torch.arange(
+            self.env.num_envs, dtype=torch.long, device=self.env.device
+        )
+
+        # Honour user-requested reset (e.g. R key). This control component zeros
+        # progress_buf/reset_buf below to avoid double-resetting on done clips,
+        # which would otherwise swallow the env.user_reset() → max-length path.
+        # Intercept the flag here instead: re-sample motions (respecting fixed
+        # IDs) and restart every env from t=0.
+        if self.env.consume_reset_request():
+            self.env.motion_manager.sample_motions(all_env_ids)
+            self.env.motion_manager.motion_times[:] = 0.0
+
         # Advance motion time
         sync_motion_dt = self.env.simulator.decimation * 1.0 / self.env.simulator.config.sim.fps
         self.env.motion_manager.motion_times += sync_motion_dt
-        
+
         # Handle done clips
         done_clip = self.env.motion_manager.get_done_tracks()
         if any(done_clip):
@@ -68,8 +69,8 @@ class KinematicReplayControl(ControlComponent):
         ref_state.rigid_body_ang_vel *= 0
         ref_reset_state = ResetState.from_robot_state(ref_state)
         
-        env_ids = torch.arange(self.env.num_envs, dtype=torch.long, device=self.env.device)
-        
+        env_ids = all_env_ids
+
         # Get object state
         ref_object_state = self.env.scene_lib.get_scene_pose(
             env_ids,

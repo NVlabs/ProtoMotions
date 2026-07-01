@@ -1,23 +1,5 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-# https://github.com/user-attachments/files/19629778/LeftTurn01_stageii.npz.zip
-# Here's a file from AMASS-X.
-# Place it in /home/amassx/tmp/
-# You can run
-# python data/scripts/convert_amass_to_proto.py /home/amassx --humanoid-type=smplx --robot-type=g1
 
 import os
 from pathlib import Path
@@ -346,7 +328,9 @@ def main(
 
     # Check if there are npz/pkl files directly in the root directory (flat structure)
     root_files = list(Path(amass_root_dir).glob("*.[np][pk][lz]"))
-    root_files = [f for f in root_files if f.name != "shape.npz" and "stagei.npz" not in f.name]
+    root_files = [
+        f for f in root_files if f.name != "shape.npz" and "stagei.npz" not in f.name
+    ]
     if root_files:
         # Add empty string to indicate processing files in root directory
         folder_names.append("")
@@ -446,7 +430,7 @@ def main(
 
                 # gender = "neutral"      # assume neutral gender with beta = 0
                 amass_trans = motion_data["trans"]
-                
+
                 # Handle both combined "poses" format and separate keys format
                 if "poses" in motion_data:
                     pose_aa = motion_data["poses"]
@@ -455,16 +439,24 @@ def main(
                     # Combined format: root(3) + body(63) + jaw(3) + eyes(6) + hands(90) = 165
                     root_orient = motion_data["root_orient"]  # (T, 3)
                     pose_body = motion_data["pose_body"]  # (T, 63)
-                    pose_jaw = motion_data.get("pose_jaw", np.zeros((root_orient.shape[0], 3)))  # (T, 3)
-                    pose_eye = motion_data.get("pose_eye", np.zeros((root_orient.shape[0], 6)))  # (T, 6)
-                    pose_hand = motion_data.get("pose_hand", np.zeros((root_orient.shape[0], 90)))  # (T, 90)
-                    
+                    pose_jaw = motion_data.get(
+                        "pose_jaw", np.zeros((root_orient.shape[0], 3))
+                    )  # (T, 3)
+                    pose_eye = motion_data.get(
+                        "pose_eye", np.zeros((root_orient.shape[0], 6))
+                    )  # (T, 6)
+                    pose_hand = motion_data.get(
+                        "pose_hand", np.zeros((root_orient.shape[0], 90))
+                    )  # (T, 90)
+
                     pose_aa = np.concatenate(
                         [root_orient, pose_body, pose_jaw, pose_eye, pose_hand],
                         axis=-1,
                     )
                 else:
-                    raise KeyError(f"Cannot find pose data in {filename}. Available keys: {list(motion_data.keys())}")
+                    raise KeyError(
+                        f"Cannot find pose data in {filename}. Available keys: {list(motion_data.keys())}"
+                    )
                 if humanoid_type == "smplx":
                     # Load the fps from the yaml file
                     fps_yaml_path = Path("data/yaml_files/motion_fps_amassx.yaml")
@@ -516,7 +508,9 @@ def main(
             # Skip motions with too few frames (need at least 2 for velocity computation)
             num_frames = pose_aa.shape[0]
             if num_frames < 2:
-                print(f"Skipping {filename}: only {num_frames} frame(s), need at least 2")
+                print(
+                    f"Skipping {filename}: only {num_frames} frame(s), need at least 2"
+                )
                 continue
 
             # Check if this motion should be sliced based on YAML configs

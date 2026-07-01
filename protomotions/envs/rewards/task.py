@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Task-specific reward compute kernels.
 
 Pure tensor functions (kernels) for computing task-specific rewards.
@@ -21,7 +9,7 @@ Use MdpComponent in experiment configs to bind kernels to context paths:
     from protomotions.envs.context_views import EnvContext
     from protomotions.envs.mdp_component import MdpComponent
     from protomotions.envs.rewards.task import compute_heading_velocity_rew
-    
+
     reward_components = {
         "heading_velocity": MdpComponent(
             compute_func=compute_heading_velocity_rew,
@@ -40,6 +28,7 @@ Use MdpComponent in experiment configs to bind kernels to context paths:
 Provides reward functions for specific tasks:
 - Steering/locomotion rewards
 - Path following rewards
+- Target reaching rewards
 """
 
 import torch
@@ -164,7 +153,25 @@ def compute_path_following_rew(
     return reward
 
 
+# =============================================================================
+# Target Reaching Reward Kernels
+# =============================================================================
+
+def compute_target_rew(
+    root_pos: Tensor,
+    tar_pos: Tensor,
+    tar_proximity_threshold: float,
+    pos_err_scale: float = 0.42,
+) -> Tensor:
+    """Distance-based target reaching reward."""
+    pos_diff = tar_pos[..., :2] - root_pos[..., :2]
+    dist = torch.linalg.norm(pos_diff, dim=-1)
+    reward = torch.exp(-pos_err_scale * dist)
+    return torch.where(dist < tar_proximity_threshold, torch.ones_like(reward), reward)
+
+
 __all__ = [
     "compute_heading_velocity_rew",
     "compute_path_following_rew",
+    "compute_target_rew",
 ]

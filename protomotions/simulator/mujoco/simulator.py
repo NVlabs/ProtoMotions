@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """MuJoCo CPU-only simulator implementation."""
 
 import atexit
@@ -1047,15 +1035,15 @@ class MujocoSimulator(Simulator):
         mujoco.mj_forward(self.model, self.data)
 
     def _mujoco_key_callback(self, keycode: int) -> None:
-        """Handle keyboard events from MuJoCo passive viewer."""
-        if keycode == ord("J") or keycode == ord("j"):
-            self._throw_projectile()
-        elif keycode == ord("R") or keycode == ord("r"):
-            self._requested_reset()
-        elif keycode == ord("L") or keycode == ord("l"):
-            self._toggle_video_record()
-        elif keycode == ord("M") or keycode == ord("m"):
-            self._toggle_markers()
+        """Handle ASCII keyboard events from MuJoCo passive viewer.
+
+        MuJoCo special keys use non-ASCII key codes that do not correspond to
+        the string keys registered in ``UserInterface``. Ignore those codes so a
+        special key cannot be normalized into an unrelated Unicode character.
+        """
+        if keycode < 0 or keycode > 127:
+            return
+        self.user_interface.handle_key_event(chr(keycode), pressed=True)
 
     def _write_viewport_to_file(self, file_name: str) -> None:
         """Render current view to file."""

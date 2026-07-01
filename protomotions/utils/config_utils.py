@@ -1,29 +1,59 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
 # =============================================================================
 # General Config Override Utilities
 # =============================================================================
 
+from __future__ import annotations
+
 import logging
+from enum import Enum
+from pathlib import Path
 from typing import Dict, Any, Callable
 import torch
 import numpy as np
 
 
 log = logging.getLogger(__name__)
+
+
+def load_resolved_configs_from_checkpoint(
+    checkpoint_path: str | Path,
+    prefer_inference: bool = False,
+):
+    """Load resolved configs from the directory containing a checkpoint."""
+    checkpoint_dir = Path(checkpoint_path).parent
+    config_names = (
+        ("resolved_configs_inference.pt", "resolved_configs.pt")
+        if prefer_inference
+        else ("resolved_configs.pt",)
+    )
+    for config_name in config_names:
+        resolved_configs_path = checkpoint_dir / config_name
+        if resolved_configs_path.exists():
+            try:
+                return torch.load(
+                    resolved_configs_path,
+                    map_location="cpu",
+                    weights_only=False,
+                )
+            except ModuleNotFoundError as exc:
+                raise ModuleNotFoundError(
+                    f"{resolved_configs_path} references missing module "
+                    f"{exc.name!r}. The checkpoint was likely produced on a "
+                    "different branch; regenerate the resolved configs or use "
+                    "a checkpoint produced on this branch."
+                ) from exc
+
+    if prefer_inference:
+        raise FileNotFoundError(
+            "Resolved configs not found: "
+            f"{checkpoint_dir / 'resolved_configs_inference.pt'} or "
+            f"{checkpoint_dir / 'resolved_configs.pt'}"
+        )
+    raise FileNotFoundError(
+        f"Resolved configs not found: {checkpoint_dir / 'resolved_configs.pt'}"
+    )
 
 
 def import_experiment_relative_eval_overrides(
@@ -133,9 +163,13 @@ def apply_config_overrides(
                 "simulator.num_envs": 4096,
                 "env.reward_components.pow_rew.weight": 2e-6,  # dict key access
                 "terrain.horizontal_scale": 0.1,
+                "motion_lib.motion_file": "data/motions/my_motions.pt",
+                "scene_lib.subset_method": "random",  # scene_lib is top-level, NOT env.scene_lib_config
             },
             env_config, simulator_config, robot_config,
-            terrain_config=terrain_config
+            terrain_config=terrain_config,
+            motion_lib_config=motion_lib_config,
+            scene_lib_config=scene_lib_config,
         )
     """
     if not overrides:
@@ -193,7 +227,7 @@ def apply_config_overrides(
                 target = getattr(target, field)
 
         final_field = field_path[-1]
-        allowed_field_types = [int, float, bool, str, type(None)]
+        allowed_field_types = [int, float, bool, str, list, tuple, type(None)]
 
         if isinstance(target, dict):
             if final_field not in target:
@@ -210,7 +244,22 @@ def apply_config_overrides(
                 raise ValueError(f"Field '{final_field}' not found in config path: '{key}'")
             old_value = getattr(target, final_field)
             field_type = type(old_value)
-            if field_type not in allowed_field_types:
+            if isinstance(old_value, Enum):
+                # Coerce string -> enum via from_str (if available) or by value lookup
+                enum_cls = type(old_value)
+                if isinstance(value, str):
+                    if hasattr(enum_cls, "from_str"):
+                        value = enum_cls.from_str(value)
+                    else:
+                        try:
+                            value = enum_cls(value)
+                        except ValueError:
+                            valid = [m.value for m in enum_cls]
+                            raise ValueError(
+                                f"Invalid value '{value}' for enum {enum_cls.__name__} at '{key}'. "
+                                f"Valid values: {valid}"
+                            )
+            elif field_type not in allowed_field_types:
                 raise ValueError(
                     f"Field '{final_field}' has unsupported type '{field_type}'"
                 )
@@ -291,6 +340,8 @@ def clean_dict_for_storage(d):
             d[key] = value.tolist()
         elif isinstance(value, np.ndarray):
             d[key] = value.tolist()
+        elif isinstance(value, Enum):
+            d[key] = value.value
         elif callable(value):
             d[key] = value.__name__
         else:
@@ -317,9 +368,15 @@ def make_json_serializable(obj, max_depth=10, current_depth=0):
         result = {}
         for key, value in obj.items():
             try:
-                result[str(key)] = make_json_serializable(value, max_depth, current_depth + 1)
+                serializable_key = str(key)
             except Exception:
-                result[str(key)] = f"<non-serializable: {type(value).__name__}>"
+                serializable_key = f"<non-serializable-key: {type(key).__name__}>"
+            try:
+                result[serializable_key] = make_json_serializable(
+                    value, max_depth, current_depth + 1
+                )
+            except Exception:
+                result[serializable_key] = f"<non-serializable: {type(value).__name__}>"
         return result
 
     elif isinstance(obj, (list, tuple)):

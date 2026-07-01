@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Base simulator interface for physics engines.
 
 This module defines the abstract base class for physics simulators. It provides a
@@ -65,6 +53,7 @@ from protomotions.simulator.base_simulator.config import (
 )
 from protomotions.robot_configs.base import ControlType, RobotConfig
 from protomotions.simulator.base_simulator.record import RecordingMixin
+from protomotions.simulator.base_simulator.user_interface import UserInterface
 
 
 class Simulator(RecordingMixin, ABC):
@@ -156,7 +145,8 @@ class Simulator(RecordingMixin, ABC):
             self._process_domain_randomization()
         )
 
-        self.user_requested_reset: bool = False
+        self.user_interface = UserInterface()
+        self._register_base_user_interface_keys()
 
         self._simulation_running: bool = True
 
@@ -412,19 +402,13 @@ class Simulator(RecordingMixin, ABC):
     def _resolve_proj_config(self) -> "ProjectileConfig":
         """Resolve and cache the active projectile config.
 
-        Reads ``self.config.projectile`` when present (fresh configs default
-        to a ``ProjectileConfig`` instance via ``SimulatorConfig``), falling
-        back to a default for legacy ``resolved_configs.pt`` pickles that
-        predate the field. Cached on ``self._proj_config`` so callers get
-        the same instance whether invoked from a backend ``__init__`` (which
-        needs the config before scene construction) or later from
-        ``_init_projectiles``. To disable projectiles, set
+        Cached on ``self._proj_config`` so callers get the same instance whether
+        invoked from a backend ``__init__`` (which needs the config before scene
+        construction) or later from ``_init_projectiles``. To disable projectiles, set
         ``SimulatorConfig.projectile.num_projectiles = 0``.
         """
         if not hasattr(self, "_proj_config"):
-            self._proj_config = (
-                getattr(self.config, "projectile", None) or ProjectileConfig()
-            )
+            self._proj_config = self.config.projectile
         return self._proj_config
 
     def _init_projectiles(self) -> None:
@@ -618,12 +602,52 @@ class Simulator(RecordingMixin, ABC):
     # -------------------------
     # ⏱️ Group 3: Simulation Steps & State Management
     # -------------------------
-    def _requested_reset(self) -> None:
+    def _register_base_user_interface_keys(self) -> None:
+        """Register simulator-owned viewer controls.
+
+        Environment and task controls register their own semantic keys
+        separately. Duplicate registration fails in UserInterface with a clear
+        owner/use message.
         """
-        Set the flag indicating that a user-requested reset has been made.
-        """
-        print("User requested reset")
-        self.user_requested_reset = True
+        self.user_interface.register_key(
+            "Q",
+            owner="simulator",
+            description="Close simulator viewer",
+            on_press=self._request_close,
+        )
+        self.user_interface.register_key(
+            "J",
+            owner="simulator",
+            description="Throw projectile",
+            on_press=self._throw_projectile,
+        )
+        self.user_interface.register_key(
+            "L",
+            owner="simulator",
+            description="Toggle viewer recording",
+            on_press=self._toggle_video_record,
+        )
+        self.user_interface.register_key(
+            ";",
+            owner="simulator",
+            description="Cancel viewer recording",
+            on_press=self._cancel_video_record,
+        )
+        self.user_interface.register_key(
+            "O",
+            owner="simulator",
+            description="Switch camera target",
+            on_press=self._toggle_camera_target,
+        )
+        self.user_interface.register_key(
+            "M",
+            owner="simulator",
+            description="Toggle visualization markers",
+            on_press=self._toggle_markers,
+        )
+
+    def _request_close(self) -> None:
+        self._simulation_running = False
 
     def get_previous_actions(
         self, env_ids: Optional[torch.Tensor] = None
@@ -665,7 +689,7 @@ class Simulator(RecordingMixin, ABC):
         # Store the action history (two-step buffer for acceleration clamp)
         self._prev_prev_actions = self._previous_actions.clone()
         self._previous_actions = self._common_actions.clone()
-        self.user_requested_reset = False
+        self.user_interface.begin_step()
         self._common_actions = common_actions.to(self.device)
 
         # Apply PD target acceleration clamp (limits oscillatory jerk)
@@ -713,7 +737,12 @@ class Simulator(RecordingMixin, ABC):
         self._prev_prev_actions[env_ids] = 0.0
         self._steps_since_reset[env_ids] = 0
         if new_object_states is not None:
-            new_object_states = new_object_states.convert_to_sim(self.data_conversion)
+            if self.scene_lib.num_objects_per_scene > 0:
+                new_object_states = new_object_states.convert_to_sim(
+                    self.data_conversion
+                )
+            else:
+                new_object_states = None
         self._set_simulator_env_state(new_states, new_object_states, env_ids)
 
         # Reset push randomization state for reset environments
@@ -723,6 +752,86 @@ class Simulator(RecordingMixin, ABC):
 
         # Reset projectiles for reset environments
         self._reset_projectiles(env_ids)
+
+    def park_envs(
+        self,
+        env_ids: torch.Tensor,
+        hide_z: float = -50.0,
+    ) -> None:
+        """Move robot and scene objects for ``env_ids`` far below the terrain.
+
+        Used during evaluation to disable physics for envs that are not being
+        evaluated, eliminating their contribution to the PhysX broadphase pair
+        budget. Parked bodies sit well below any terrain/object AABB so no
+        broadphase pairs are generated, no narrow-phase contacts are computed,
+        and no found/lost pair churn occurs. Velocities are zeroed so the
+        parked bodies stay put.
+
+        Pre-eval state is restored later via ``BaseEnv.restore_state(snapshot)``,
+        which calls ``reset_envs`` over all envs with the saved snapshot.
+
+        Args:
+            env_ids: Environment IDs to park. No-op if empty/None.
+            hide_z: World z-coordinate to teleport robot roots to. Object roots
+                are placed slightly below at ``hide_z - 1.0`` so their AABBs
+                cannot overlap with the parked robot's AABB.
+        """
+        from protomotions.simulator.base_simulator.simulator_state import (
+            StateConversion,
+        )
+
+        if env_ids is None or env_ids.numel() == 0:
+            return
+
+        n = env_ids.numel()
+        device = self.device
+
+        # Preserve current root xy so parked envs stay in their own grid cell
+        # (avoids stacking all parked envs at world origin, which could exceed
+        # PhysX broadphase region limits at large num_envs).
+        current_root = self.get_root_state(env_ids)
+        park_root_pos = current_root.root_pos.clone()
+        park_root_pos[:, 2] = hide_z
+        park_root_rot = current_root.root_rot.clone()
+        zero_root_vel = torch.zeros((n, 3), device=device, dtype=torch.float32)
+
+        num_dofs = self.robot_config.kinematic_info.num_dofs
+        park_dof_pos = (
+            self.robot_config.default_dof_pos.unsqueeze(0)
+            .repeat(n, 1)
+            .to(device=device, dtype=torch.float32)
+        )
+        park_dof_vel = torch.zeros((n, num_dofs), device=device, dtype=torch.float32)
+
+        park_state = ResetState(
+            root_pos=park_root_pos,
+            root_rot=park_root_rot,
+            root_vel=zero_root_vel,
+            root_ang_vel=zero_root_vel.clone(),
+            dof_pos=park_dof_pos,
+            dof_vel=park_dof_vel,
+            state_conversion=StateConversion.COMMON,
+        )
+
+        park_object_state = None
+        if self.scene_lib.num_objects_per_scene > 0:
+            current_obj = self.get_object_root_state(env_ids)
+            obj_root_pos = current_obj.root_pos.clone()
+            obj_root_pos[..., 2] = hide_z - 1.0
+            obj_root_rot = current_obj.root_rot.clone()
+            m = self.scene_lib.num_objects_per_scene
+            zero_obj_vel = torch.zeros(
+                (n, m, 3), device=device, dtype=torch.float32
+            )
+            park_object_state = ObjectState(
+                root_pos=obj_root_pos,
+                root_rot=obj_root_rot,
+                root_vel=zero_obj_vel,
+                root_ang_vel=zero_obj_vel.clone(),
+                state_conversion=StateConversion.COMMON,
+            )
+
+        self.reset_envs(park_state, park_object_state, env_ids)
 
     @abstractmethod
     def _set_simulator_env_state(
@@ -1044,6 +1153,9 @@ class Simulator(RecordingMixin, ABC):
         Returns:
             RobotState: The environment state corresponding to objects.
         """
+        # No objects: return None
+        if self.scene_lib.num_objects_per_scene == 0:
+            return None
         simulator_object_root_state: ObjectState = (
             self._get_simulator_object_root_state(env_ids)
         )

@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Tracking reward compute kernels for motion imitation.
 
 Pure tensor functions (kernels) for computing tracking rewards.
@@ -413,6 +401,84 @@ def compute_global_body_ang_vel_rew(
     )
 
 
+def compute_gt_rel_rew(
+    current_rigid_body_pos: Tensor,
+    ref_rigid_body_pos: Tensor,
+    current_anchor_rot: Tensor,
+    ref_rigid_body_rot: Tensor,
+    anchor_idx: int,
+    coefficient: float = -100.0,
+    body_indices=None,
+) -> Tensor:
+    """Heading-local anchor-relative body position tracking reward.
+
+    Subtracts the anchor position from all body positions and rotates into the
+    heading-aligned frame before computing exponential MSE.  Invariant to global
+    XY translation and yaw heading, so it remains well-defined when
+    ``realign_motion_with_humanoid_on_each_step=False``.
+
+    Args:
+        current_rigid_body_pos: Current body positions [num_envs, num_bodies, 3].
+        ref_rigid_body_pos: Reference body positions [num_envs, num_bodies, 3].
+        current_anchor_rot: Current anchor rotation [num_envs, 4] (w-last).
+        ref_rigid_body_rot: Reference body rotations [num_envs, num_bodies, 4] (w-last).
+        anchor_idx: Index of the anchor body.
+        coefficient: Exponential coefficient for error.
+        body_indices: Optional list of body indices to restrict to a subset.
+
+    Returns:
+        Reward tensor [num_envs].
+    """
+    ref_anchor_pos = ref_rigid_body_pos[:, anchor_idx, :]
+    ref_anchor_rot = ref_rigid_body_rot[:, anchor_idx, :]
+    current_anchor_pos = current_rigid_body_pos[:, anchor_idx, :]
+
+    current_heading_inv = calc_heading_quat_inv(current_anchor_rot, w_last=True)
+    ref_heading_inv = calc_heading_quat_inv(ref_anchor_rot, w_last=True)
+
+    current_rel = current_rigid_body_pos - current_anchor_pos.unsqueeze(1)
+    ref_rel = ref_rigid_body_pos - ref_anchor_pos.unsqueeze(1)
+
+    if body_indices is not None:
+        current_rel = current_rel[:, body_indices]
+        ref_rel = ref_rel[:, body_indices]
+
+    N, B, _ = current_rel.shape
+    cur_h = current_heading_inv.unsqueeze(1).expand(-1, B, -1).reshape(-1, 4)
+    ref_h = ref_heading_inv.unsqueeze(1).expand(-1, B, -1).reshape(-1, 4)
+    current_local = quat_rotate(cur_h, current_rel.reshape(-1, 3), w_last=True).reshape(N, B, 3)
+    ref_local = quat_rotate(ref_h, ref_rel.reshape(-1, 3), w_last=True).reshape(N, B, 3)
+
+    return mean_squared_error_exp(current_local, ref_local, coefficient)
+
+
+def compute_anchor_xy_rew(
+    current_anchor_pos: Tensor,
+    ref_rigid_body_pos: Tensor,
+    anchor_idx: int,
+    coefficient: float = -20.0,
+) -> Tensor:
+    """Anchor XY position tracking reward (exponential MSE).
+
+    Analogous to ``compute_rh_rew`` but for XY coordinates.  Provides a loose
+    global XY position signal when ``realign_motion_with_humanoid_on_each_step``
+    is off.  The coefficient should be kept small relative to ``compute_rh_rew``
+    since odometer-based XY is inherently noisier than height.
+
+    Args:
+        current_anchor_pos: Current anchor position [num_envs, 3].
+        ref_rigid_body_pos: Reference body positions [num_envs, num_bodies, 3].
+        anchor_idx: Index of the anchor body in ref_rigid_body_pos.
+        coefficient: Exponential coefficient for error.
+
+    Returns:
+        Reward tensor [num_envs].
+    """
+    ref_anchor_xy = ref_rigid_body_pos[:, anchor_idx, :2]
+    current_xy = current_anchor_pos[:, :2]
+    return mean_squared_error_exp(current_xy, ref_anchor_xy, coefficient)
+
+
 __all__ = [
     # Standard tracking rewards
     "compute_gt_rew",
@@ -420,6 +486,9 @@ __all__ = [
     "compute_gv_rew",
     "compute_gav_rew",
     "compute_rh_rew",
+    # Heading-local relative tracking (realign=OFF compatible)
+    "compute_gt_rel_rew",
+    "compute_anchor_xy_rew",
     # BeyondMimic-style rewards
     "compute_global_position_error_exp",
     "compute_global_anchor_pos_rew",

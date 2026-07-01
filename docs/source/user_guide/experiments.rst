@@ -91,6 +91,36 @@ text descriptions, or scene information).
        --overrides "agent.config.expert_model_path='<path_to_expert_model>/last.ckpt'" \
        --experiment-name smpl_masked_mimic
 
+GPC and PEFT
+------------
+
+GPC trains a reusable discrete latent prior from tracker-derived FSQ tokens,
+then adapts the frozen prior to task skills with parameter-efficient fine-tuning.
+Use this path when you want a reusable generative motion prior that can be
+specialized with SFT, RLFT, or RLFT+AMP adapters.
+
+See :doc:`gpc` for the staged tracker, prior, SFT, RLFT, checkpoint, and
+inference workflow.
+
+.. raw:: html
+
+   <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; align-items: start;">
+     <figure style="margin: 0;">
+       <video width="100%" controls>
+         <source src="../_static/gpc_prior_unconditional.mp4" type="video/mp4">
+         Your browser does not support the video tag.
+       </video>
+       <figcaption>Unconditional GPC prior</figcaption>
+     </figure>
+     <figure style="margin: 0;">
+       <video width="100%" controls>
+         <source src="../_static/gpc_location_peft.mp4" type="video/mp4">
+         Your browser does not support the video tag.
+       </video>
+       <figcaption>Location task after PEFT</figcaption>
+     </figure>
+   </div>
+
 AMP (Adversarial Motion Priors)
 -------------------------------
 
@@ -178,7 +208,7 @@ See Also
 --------
 
 * :doc:`configuration` - Configuration system
+* :doc:`gpc` - GPC and PEFT workflow
 * :doc:`../tutorials/code_tutorials` - Step-by-step tutorials
 * :doc:`../getting_started/quickstart` - Quick start guide
-
 

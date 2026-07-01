@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Base environment implementation for reinforcement learning.
 
 This module provides the foundational environment class for all RL tasks. It integrates
@@ -80,6 +68,8 @@ from protomotions.envs.context_views import (
     EnvContext,
     CurrentStateView,
     HistoricalView,
+    TerrainContext,
+    SceneSurfaceContext,
 )
 from protomotions.envs.obs.observation_noise import (
     NoisyObservations,
@@ -99,8 +89,6 @@ from protomotions.envs.base_env.utils import (
     combine_rewards,
     combine_terminations,
 )
-from protomotions.components.pose_lib import compute_body_density_weights
-
 from protomotions.components.pose_lib import build_body_ids_tensor
 
 from protomotions.robot_configs.base import RobotConfig
@@ -190,6 +178,15 @@ class BaseEnv:
             self.num_envs, 3, dtype=torch.float, device=self.device
         )
 
+        # Per-episode odometer corruption parameters.
+        # Sampled once at episode reset; held constant within the episode.
+        # Identity values (scale=1, yaw_bias=0) until first reset.
+        self.odom_scale = torch.ones(self.num_envs, dtype=torch.float, device=self.device)
+        self.odom_yaw_cos_sin = torch.zeros(
+            self.num_envs, 2, dtype=torch.float, device=self.device
+        )
+        self.odom_yaw_cos_sin[:, 0] = 1.0  # cos(0) = 1
+
         # Contact force tracking for impact penalty rewards
         # Initialized properly after simulator init when we know num_bodies
         self.prev_contact_force_magnitudes = None
@@ -274,6 +271,8 @@ class BaseEnv:
         self.terrain_obs_cb = TerrainObs(self.terrain.config, self)
         self.scene_obs_cb = SceneObs(self.config.scene_obs, self)
 
+        self._key_bindings = self.simulator.user_interface.scope("env")
+        self._key_bindings.register("R", "reset", "Reset all environments")
         self.control_manager = ControlManager(self.config.control_components, self)
 
         visualization_markers = self.create_visualization_markers(
@@ -284,9 +283,6 @@ class BaseEnv:
         # Component infrastructure for MdpComponent
         self._component_manager = ComponentManager(self.device)
         self._observation_buffer: Dict[str, Tensor] = {}
-        self._density_weights = compute_body_density_weights(
-            self.robot_config.kinematic_info
-        ).to(self.device)
 
         # Initialize observations
         self._initialize_observations()
@@ -304,7 +300,7 @@ class BaseEnv:
         motion_dofs = sample_state.dof_pos.shape[1]
         motion_bodies = sample_state.rigid_body_pos.shape[1]
 
-        if motion_dofs != expected_dofs:
+        if motion_dofs != expected_dofs or motion_bodies != expected_bodies:
             raise ValueError(
                 f"\n{'=' * 70}\n"
                 f"MOTION FILE / ROBOT MISMATCH\n"
@@ -359,6 +355,10 @@ class BaseEnv:
         """
         return self.simulator.num_act
 
+    def consume_reset_request(self) -> bool:
+        """Return and consume a user-interface reset request."""
+        return self._key_bindings.reset.consume()
+
     ###############################################################
     # Component Processing
     ###############################################################
@@ -399,7 +399,6 @@ class BaseEnv:
             raw_rewards=raw_rewards,
             configs=self.config.reward_components,
             grace_mask=grace_mask,
-            region_weights=self._density_weights,
             num_envs=self.num_envs,
             device=self.device,
         )
@@ -494,7 +493,10 @@ class BaseEnv:
         For environments without a scene, a random valid coordinate is sampled,
         and non-negative vertical offset is added based on terrain height.
 
-        ref terrain.py, when motion require scene terrain is always flat.
+        During co-training, scene groups use flat terrain, but during
+        inference the resolved terrain may be complex (with negative heights
+        that get normalised).  Height correction is applied to both scene
+        and non-scene envs unless the terrain is entirely flat.
 
         """
 
@@ -506,6 +508,24 @@ class BaseEnv:
         if scene_mask.any():
             scene_pos = self.scene_lib.get_scene_positions(self.terrain, self.device)
             respawn_offset[scene_mask, :2] = scene_pos[env_ids[scene_mask], :2]
+
+            # Scene envs also need terrain height correction — the object
+            # playground is flat at height-field 0, but terrain normalisation
+            # (shifting min height to z=0) can raise the playground above
+            # world z=0.  Without correction the agent spawns underground.
+            if not self.skip_height_correction:
+                if ref_state is not None:
+                    rigid_body_pos = ref_state.rigid_body_pos[scene_mask].clone()
+                    rigid_body_pos_spawned = rigid_body_pos + respawn_offset[
+                        scene_mask
+                    ].unsqueeze(1)
+                else:
+                    rigid_body_pos_spawned = respawn_offset[scene_mask].unsqueeze(1)
+
+                terrain_heights = self.terrain.find_terrain_height_for_max_below_body(
+                    rigid_body_pos_spawned
+                )
+                respawn_offset[scene_mask, 2] = terrain_heights
 
         if non_scene_mask.any():
             num_non_scene = non_scene_mask.sum().item()
@@ -671,7 +691,7 @@ class BaseEnv:
 
         self.post_physics_step()
 
-        if self.simulator.user_requested_reset:
+        if self.consume_reset_request():
             self.user_reset()
 
         obs = self.get_obs()
@@ -898,6 +918,8 @@ class BaseEnv:
                 ground_heights=ground_heights,
             )
 
+        scene_surface_context = self._build_scene_surface_context()
+
         # Build context with view wrappers
         ctx = EnvContext(
             # Core state views (wrap RobotState without copying)
@@ -921,18 +943,63 @@ class BaseEnv:
             # Environment state
             ground_heights=ground_heights,
             noisy_ground_heights=noisy.ground_heights,
+            terrain=TerrainContext(
+                self.terrain.height_points,
+                self.terrain.height_samples,
+            ),
+            scene=scene_surface_context,
             body_contacts=body_contacts,
             current_contact_force_magnitudes=current_contact_force_magnitudes,
             prev_contact_force_magnitudes=self.prev_contact_force_magnitudes,
             dt=self.dt,
+            progress_buf=self.progress_buf,
             # Contact tracking
             contact_body_ids=self.contact_body_ids,
+            non_termination_contact_body_ids=self.non_termination_contact_body_ids,
+            # Per-episode odometer corruption parameters
+            odom_scale=self.odom_scale,
+            odom_yaw_cos_sin=self.odom_yaw_cos_sin,
         )
 
         # Controllers populate their task-specific views
         self.control_manager.populate_context(ctx)
 
         return ctx
+
+    def _build_scene_surface_context(self) -> SceneSurfaceContext:
+        """Build scene-object surface tensors for component observations.
+
+        Nearest-surface observations bind these fields unconditionally. Envs
+        without object pointclouds receive empty tensors, which lets the compute
+        kernel naturally fall back to terrain-only behavior.
+        """
+        has_object_pointclouds = (
+            getattr(self.scene_lib, "_object_pointclouds", None) is not None
+        )
+        if self.scene_lib.num_objects_per_scene <= 0 or not has_object_pointclouds:
+            object_pos = torch.zeros(self.num_envs, 0, 3, device=self.device)
+            object_rot = torch.zeros(self.num_envs, 0, 4, device=self.device)
+            neutral_pointclouds = torch.zeros(
+                self.num_envs, 0, 0, 3, device=self.device
+            )
+            object_valid_mask = torch.zeros(
+                self.num_envs, 0, dtype=torch.bool, device=self.device
+            )
+            return SceneSurfaceContext(
+                object_pos=object_pos,
+                object_rot=object_rot,
+                neutral_pointclouds=neutral_pointclouds,
+                object_valid_mask=object_valid_mask,
+            )
+
+        env_ids = torch.arange(self.num_envs, device=self.device, dtype=torch.long)
+        object_state = self.simulator.get_object_root_state()
+        return SceneSurfaceContext(
+            object_pos=object_state.root_pos,
+            object_rot=object_state.root_rot,
+            neutral_pointclouds=self.scene_lib.get_scene_neutral_pointcloud(env_ids),
+            object_valid_mask=self.scene_lib.get_per_object_valid_mask(env_ids),
+        )
 
     def get_has_reset_grace(self):
         """Check if environments are in the grace period after reset.
@@ -1122,6 +1189,19 @@ class BaseEnv:
         self.prev_contact_force_magnitudes[env_ids] = 0.0
         self._current_raw_action[env_ids] = 0.0
         self._current_processed_action[env_ids] = 0.0
+
+        # Resample per-episode odometer corruption parameters.
+        # These remain constant within an episode and are used by
+        # corrupted_xy_offset_factory when present in observation components.
+        n = len(env_ids)
+        self.odom_scale[env_ids] = torch.empty(n, device=self.device).uniform_(
+            self.config.odom_scale_range[0], self.config.odom_scale_range[1]
+        )
+        yaw_bias = torch.empty(n, device=self.device).uniform_(
+            -self.config.odom_yaw_range_deg, self.config.odom_yaw_range_deg
+        ) * (3.14159265358979 / 180.0)
+        self.odom_yaw_cos_sin[env_ids, 0] = torch.cos(yaw_bias)
+        self.odom_yaw_cos_sin[env_ids, 1] = torch.sin(yaw_bias)
 
         # Update cached noisy obs for the reset envs with fresh noise
         if self._current_noisy_obs is not None:
@@ -1472,6 +1552,8 @@ class BaseEnv:
             "reset_buf": self.reset_buf.clone(),
             "terminate_buf": self.terminate_buf.clone(),
             "respawn_root_offset": self.respawn_root_offset.clone(),
+            "odom_scale": self.odom_scale.clone(),
+            "odom_yaw_cos_sin": self.odom_yaw_cos_sin.clone(),
         }
         if self.state_history is not None:
             snapshot["state_history"] = self.state_history.save_state()
@@ -1507,6 +1589,9 @@ class BaseEnv:
         self.reset_buf.copy_(snapshot["reset_buf"])
         self.terminate_buf.copy_(snapshot["terminate_buf"])
         self.respawn_root_offset.copy_(snapshot["respawn_root_offset"])
+        if "odom_scale" in snapshot:
+            self.odom_scale.copy_(snapshot["odom_scale"])
+            self.odom_yaw_cos_sin.copy_(snapshot["odom_yaw_cos_sin"])
         self._current_noisy_obs = snapshot.get("_current_noisy_obs")
         self._current_context = None
 
@@ -1514,10 +1599,21 @@ class BaseEnv:
         if "isaacgym" in self.simulator.config._target_.lower():
             self.simulator.step(snapshot["actions"], markers_callback=None)
 
-    def close(self):
-        """
-        Clean up environment resources.
-        This method should be called when the environment is no longer needed.
-        """
-        if hasattr(self, "simulator") and self.simulator is not None:
-            self.simulator.close()
+    def close(self) -> None:
+        """Release control-component and env-owned UI handles, then close
+        the simulator. Safe to call multiple times."""
+        control_manager = getattr(self, "control_manager", None)
+        if control_manager is not None:
+            for component in control_manager.components.values():
+                component.close()
+
+        ui = getattr(self, "_key_bindings", None)
+        if ui is not None:
+            ui.unregister_all()
+            self._key_bindings = None
+
+        simulator = getattr(self, "simulator", None)
+        if simulator is not None:
+            close = getattr(simulator, "close", None)
+            if callable(close):
+                close()

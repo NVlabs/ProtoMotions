@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Factory functions for common MdpComponent configurations.
 
 These factories reduce boilerplate in experiment configs by providing
@@ -254,6 +242,33 @@ def previous_actions_factory(
     )
 
 
+def nearest_surface_obs_factory(
+    body_ids: Optional[List[int]] = None,
+    terrain_horizontal_scale: float = 0.1,
+) -> MdpComponent:
+    """Factory for vectors from bodies to nearest terrain or object surface."""
+    from protomotions.envs.obs import compute_nearest_surface_vectors
+
+    return MdpComponent(
+        compute_func=compute_nearest_surface_vectors,
+        dynamic_vars={
+            "rigid_body_pos": EnvContext.current.rigid_body_pos,
+            "root_pos": EnvContext.current.root_pos,
+            "root_rot": EnvContext.current.root_rot,
+            "height_points": EnvContext.terrain.height_points,
+            "height_samples": EnvContext.terrain.height_samples,
+            "object_pos": EnvContext.scene.object_pos,
+            "object_rot": EnvContext.scene.object_rot,
+            "neutral_pointclouds": EnvContext.scene.neutral_pointclouds,
+            "object_valid_mask": EnvContext.scene.object_valid_mask,
+        },
+        static_params={
+            "terrain_horizontal_scale": terrain_horizontal_scale,
+            "body_ids": body_ids,
+        },
+    )
+
+
 def mimic_target_poses_max_coords_factory(
     use_noisy: bool = False,
     with_velocities: bool = True,
@@ -433,6 +448,50 @@ def mimic_deploy_target_poses_factory(
     )
 
 
+def target_obs_factory() -> MdpComponent:
+    """Factory for target-reaching observations."""
+    from protomotions.envs.obs import compute_target_obs
+
+    return MdpComponent(
+        compute_func=compute_target_obs,
+        dynamic_vars={
+            "root_pos": EnvContext.current.root_pos,
+            "root_rot": EnvContext.current.root_rot,
+            "tar_pos": EnvContext.target.tar_pos,
+        },
+    )
+
+
+def steering_obs_factory() -> MdpComponent:
+    """Factory for steering task observations."""
+    from protomotions.envs.obs import compute_steering_obs
+
+    return MdpComponent(
+        compute_func=compute_steering_obs,
+        dynamic_vars={
+            "root_rot": EnvContext.current.root_rot,
+            "tar_dir": EnvContext.steering.tar_dir,
+            "tar_speed": EnvContext.steering.tar_speed,
+            "tar_face_dir": EnvContext.steering.tar_face_dir,
+        },
+    )
+
+
+def path_obs_factory() -> MdpComponent:
+    """Factory for path-following observations."""
+    from protomotions.envs.obs import compute_path_obs
+
+    return MdpComponent(
+        compute_func=compute_path_obs,
+        dynamic_vars={
+            "root_rot": EnvContext.current.root_rot,
+            "head_pos": EnvContext.path.head_pos,
+            "traj_samples": EnvContext.path.traj_samples,
+            "height_conditioned": EnvContext.path.height_conditioned,
+        },
+    )
+
+
 # =============================================================================
 # Reward Factories
 # =============================================================================
@@ -566,6 +625,118 @@ def rh_rew_factory(weight: float = 0.2, coefficient: float = -100.0) -> MdpCompo
             "ref_rigid_body_pos": EnvContext.mimic.ref_state.rigid_body_pos,
         },
         static_params={"weight": weight, "coefficient": coefficient},
+    )
+
+
+def gt_rel_rew_factory(
+    weight: float = 0.5,
+    coefficient: float = -100.0,
+    body_indices=None,
+) -> MdpComponent:
+    """Factory for heading-local anchor-relative position tracking reward.
+
+    Invariant to global XY translation and yaw heading; remains well-defined when
+    ``realign_motion_with_humanoid_on_each_step=False``.  Use in place of
+    ``gt_rew_factory`` when the reference motion is not realigned each step.
+
+    Args:
+        weight: Reward weight.
+        coefficient: Exponential coefficient for error.
+        body_indices: Optional list of body indices to restrict to a subset.
+
+    Returns:
+        MdpComponent configured for heading-local relative position tracking.
+    """
+    from protomotions.envs.rewards import compute_gt_rel_rew
+
+    static_params: Dict[str, Any] = {"weight": weight, "coefficient": coefficient}
+    if body_indices is not None:
+        static_params["body_indices"] = body_indices
+    return MdpComponent(
+        compute_func=compute_gt_rel_rew,
+        dynamic_vars={
+            "current_rigid_body_pos": EnvContext.current.rigid_body_pos,
+            "ref_rigid_body_pos": EnvContext.mimic.ref_state.rigid_body_pos,
+            "current_anchor_rot": EnvContext.current.anchor_rot,
+            "ref_rigid_body_rot": EnvContext.mimic.ref_state.rigid_body_rot,
+            "anchor_idx": EnvContext.mimic.anchor_idx,
+        },
+        static_params=static_params,
+    )
+
+
+def anchor_xy_rew_factory(
+    weight: float = 0.1, coefficient: float = -20.0
+) -> MdpComponent:
+    """Factory for anchor XY position tracking reward.
+
+    Analogous to ``rh_rew_factory`` but for XY coordinates.  Provides a soft
+    global XY position signal when ``realign_motion_with_humanoid_on_each_step``
+    is off.  The coefficient should be kept small relative to ``rh_rew_factory``
+    since odometer-based XY is noisier than height.
+
+    Args:
+        weight: Reward weight.
+        coefficient: Exponential coefficient for XY error.
+
+    Returns:
+        MdpComponent configured for anchor XY position tracking.
+    """
+    from protomotions.envs.rewards import compute_anchor_xy_rew
+
+    return MdpComponent(
+        compute_func=compute_anchor_xy_rew,
+        dynamic_vars={
+            "current_anchor_pos": EnvContext.current.anchor_pos,
+            "ref_rigid_body_pos": EnvContext.mimic.ref_state.rigid_body_pos,
+            "anchor_idx": EnvContext.mimic.anchor_idx,
+        },
+        static_params={"weight": weight, "coefficient": coefficient},
+    )
+
+
+def corrupted_xy_offset_factory(
+    log_noise_std: float = 0.12,
+    soft_threshold: float = 0.15,
+) -> MdpComponent:
+    """Factory for odometer-corrupted XY offset observation.
+
+    Produces a heading-local 2D vector from the robot's current position to
+    the reference anchor position, with per-episode affine corruption (scale +
+    yaw bias, sampled at reset from EnvConfig.odom_scale_range /
+    odom_yaw_range_deg) and per-step proportional log-space noise.
+
+    Applied identically in simulation and on the real G1 by passing the real
+    odometer reading through the same corruption parameters — eliminating the
+    sim-to-real gap on this observation channel.
+
+    See ``build_corrupted_xy_offset`` in target_poses.py for full design rationale,
+    and ``data/scripts/visualize_odometer_corruption.py`` for interactive tuning.
+
+    Args:
+        log_noise_std: Std of per-step noise in log(1+mag) space (default 0.12).
+        soft_threshold: Noise ramp characteristic length in metres (default 0.15).
+
+    Returns:
+        MdpComponent producing corrupted XY offset [envs, 2].
+    """
+    from protomotions.envs.obs import build_corrupted_xy_offset
+
+    return MdpComponent(
+        compute_func=build_corrupted_xy_offset,
+        dynamic_vars={
+            "current_state_anchor_pos": EnvContext.current.anchor_pos,
+            "current_state_anchor_rot": EnvContext.current.anchor_rot,
+            "ref_rigid_body_pos": EnvContext.mimic.ref_state.rigid_body_pos,
+            "anchor_idx": EnvContext.mimic.anchor_idx,
+            "odom_scale": EnvContext.odom_scale,
+            "odom_yaw_cos_sin": EnvContext.odom_yaw_cos_sin,
+        },
+        static_params={
+            "w_last": True,
+            "log_noise_std": log_noise_std,
+            "soft_threshold": soft_threshold,
+        },
     )
 
 
@@ -706,6 +877,65 @@ def contact_force_change_rew_factory(
     )
 
 
+def target_reward_factory(
+    weight: float = 1.0, pos_err_scale: float = 0.42
+) -> MdpComponent:
+    """Factory for target-reaching reward."""
+    from protomotions.envs.rewards import compute_target_rew
+
+    return MdpComponent(
+        compute_func=compute_target_rew,
+        dynamic_vars={
+            "root_pos": EnvContext.current.root_pos,
+            "tar_pos": EnvContext.target.tar_pos,
+            "tar_proximity_threshold": EnvContext.target.tar_proximity_threshold,
+        },
+        static_params={"weight": weight, "pos_err_scale": pos_err_scale},
+    )
+
+
+def steering_reward_factory(weight: float = 1.0) -> MdpComponent:
+    """Factory for heading and velocity steering reward."""
+    from protomotions.envs.rewards import compute_heading_velocity_rew
+
+    return MdpComponent(
+        compute_func=compute_heading_velocity_rew,
+        dynamic_vars={
+            "root_pos": EnvContext.current.root_pos,
+            "prev_root_pos": EnvContext.steering.prev_root_pos,
+            "root_rot": EnvContext.current.root_rot,
+            "tar_dir": EnvContext.steering.tar_dir,
+            "tar_speed": EnvContext.steering.tar_speed,
+            "tar_face_dir": EnvContext.steering.tar_face_dir,
+            "dt": EnvContext.dt,
+        },
+        static_params={"weight": weight},
+    )
+
+
+def path_following_reward_factory(
+    weight: float = 1.0,
+    pos_err_scale: float = 2.0,
+    height_err_scale: float = 10.0,
+) -> MdpComponent:
+    """Factory for path-following reward."""
+    from protomotions.envs.rewards import compute_path_following_rew
+
+    return MdpComponent(
+        compute_func=compute_path_following_rew,
+        dynamic_vars={
+            "head_pos": EnvContext.path.head_pos,
+            "tar_pos": EnvContext.path.tar_pos,
+            "height_conditioned": EnvContext.path.height_conditioned,
+        },
+        static_params={
+            "weight": weight,
+            "pos_err_scale": pos_err_scale,
+            "height_err_scale": height_err_scale,
+        },
+    )
+
+
 # =============================================================================
 # Termination Factories
 # =============================================================================
@@ -729,6 +959,25 @@ def tracking_error_term_factory(threshold: float = 0.5) -> MdpComponent:
             "ref_rigid_body_pos": EnvContext.mimic.ref_state.rigid_body_pos,
         },
         static_params={"threshold": threshold},
+    )
+
+
+def fall_termination_factory(termination_height: float = 0.15) -> MdpComponent:
+    """Factory for standard fall termination."""
+    from protomotions.envs.terminations import fall_termination
+
+    return MdpComponent(
+        compute_func=fall_termination,
+        dynamic_vars={
+            "rigid_body_pos": EnvContext.current.rigid_body_pos,
+            "rigid_body_contacts": EnvContext.current.rigid_body_contacts,
+            "ground_heights": EnvContext.ground_heights,
+            "non_termination_contact_body_ids": (
+                EnvContext.non_termination_contact_body_ids
+            ),
+            "progress_buf": EnvContext.progress_buf,
+        },
+        static_params={"termination_height": termination_height},
     )
 
 
@@ -790,14 +1039,12 @@ def global_anchor_ori_rew_factory(
 def relative_body_pos_rew_factory(
     weight: float = 1.0,
     sigma: float = 0.3,
-    use_region_weights: bool = True,
 ) -> MdpComponent:
     """Factory for relative body position reward (BeyondMimic).
 
     Args:
         weight: Reward weight.
         sigma: Gaussian kernel width.
-        use_region_weights: If True, apply region-based body weights.
 
     Returns:
         MdpComponent configured for relative body position reward.
@@ -814,25 +1061,19 @@ def relative_body_pos_rew_factory(
             "current_anchor_pos": EnvContext.current.anchor_pos,
             "anchor_idx": EnvContext.mimic.anchor_idx,
         },
-        static_params={
-            "weight": weight,
-            "sigma": sigma,
-            "use_region_weights": use_region_weights,
-        },
+        static_params={"weight": weight, "sigma": sigma},
     )
 
 
 def relative_body_ori_rew_factory(
     weight: float = 1.0,
     sigma: float = 0.4,
-    use_region_weights: bool = True,
 ) -> MdpComponent:
     """Factory for relative body orientation reward (BeyondMimic).
 
     Args:
         weight: Reward weight.
         sigma: Gaussian kernel width.
-        use_region_weights: If True, apply region-based body weights.
 
     Returns:
         MdpComponent configured for relative body orientation reward.
@@ -847,25 +1088,19 @@ def relative_body_ori_rew_factory(
             "current_anchor_rot": EnvContext.current.anchor_rot,
             "anchor_idx": EnvContext.mimic.anchor_idx,
         },
-        static_params={
-            "weight": weight,
-            "sigma": sigma,
-            "use_region_weights": use_region_weights,
-        },
+        static_params={"weight": weight, "sigma": sigma},
     )
 
 
 def global_body_lin_vel_rew_factory(
     weight: float = 1.0,
     sigma: float = 1.0,
-    use_region_weights: bool = True,
 ) -> MdpComponent:
     """Factory for global body linear velocity reward (BeyondMimic).
 
     Args:
         weight: Reward weight.
         sigma: Gaussian kernel width.
-        use_region_weights: If True, apply region-based body weights.
 
     Returns:
         MdpComponent configured for body linear velocity reward.
@@ -878,25 +1113,19 @@ def global_body_lin_vel_rew_factory(
             "current_rigid_body_vel": EnvContext.current.rigid_body_vel,
             "ref_rigid_body_vel": EnvContext.mimic.ref_state.rigid_body_vel,
         },
-        static_params={
-            "weight": weight,
-            "sigma": sigma,
-            "use_region_weights": use_region_weights,
-        },
+        static_params={"weight": weight, "sigma": sigma},
     )
 
 
 def global_body_ang_vel_rew_factory(
     weight: float = 1.0,
     sigma: float = 3.14,
-    use_region_weights: bool = True,
 ) -> MdpComponent:
     """Factory for global body angular velocity reward (BeyondMimic).
 
     Args:
         weight: Reward weight.
         sigma: Gaussian kernel width.
-        use_region_weights: If True, apply region-based body weights.
 
     Returns:
         MdpComponent configured for body angular velocity reward.
@@ -909,11 +1138,7 @@ def global_body_ang_vel_rew_factory(
             "current_rigid_body_ang_vel": EnvContext.current.rigid_body_ang_vel,
             "ref_rigid_body_ang_vel": EnvContext.mimic.ref_state.rigid_body_ang_vel,
         },
-        static_params={
-            "weight": weight,
-            "sigma": sigma,
-            "use_region_weights": use_region_weights,
-        },
+        static_params={"weight": weight, "sigma": sigma},
     )
 
 
@@ -1195,6 +1420,20 @@ def anchor_height_error_metric_factory(threshold: float = None) -> MdpComponent:
     )
 
 
+def _check_path_distance_term_wrapper(**kwargs):
+    """Picklable wrapper around jit-scripted check_path_distance_term."""
+    from protomotions.envs.terminations import check_path_distance_term
+
+    return check_path_distance_term(**kwargs)
+
+
+def _check_steering_velocity_error_wrapper(**kwargs):
+    """Picklable wrapper around jit-scripted check_steering_velocity_error."""
+    from protomotions.envs.terminations import check_steering_velocity_error
+
+    return check_steering_velocity_error(**kwargs)
+
+
 def path_distance_error_factory(
     threshold: float = 1.0,
     min_progress: int = 10,
@@ -1211,10 +1450,8 @@ def path_distance_error_factory(
     Returns:
         MdpComponent configured for path distance evaluation.
     """
-    from protomotions.envs.terminations import check_path_distance_term
-
     return MdpComponent(
-        compute_func=check_path_distance_term,
+        compute_func=_check_path_distance_term_wrapper,
         dynamic_vars={
             "head_pos": EnvContext.path.head_pos,
             "target_pos": EnvContext.path.tar_pos,
@@ -1244,10 +1481,8 @@ def steering_velocity_error_factory(
     Returns:
         MdpComponent configured for steering velocity evaluation.
     """
-    from protomotions.envs.terminations import check_steering_velocity_error
-
     return MdpComponent(
-        compute_func=check_steering_velocity_error,
+        compute_func=_check_steering_velocity_error_wrapper,
         dynamic_vars={
             "root_pos": EnvContext.current.root_pos,
             "prev_root_pos": EnvContext.steering.prev_root_pos,
@@ -1265,39 +1500,51 @@ def steering_velocity_error_factory(
 
 __all__ = [
     # Observation factories
-    "max_coords_obs",
-    "reduced_coords_obs",
-    "historical_max_coords_obs",
-    "historical_reduced_coords_obs",
-    "previous_actions",
-    "mimic_target_poses_max_coords",
-    "mimic_target_poses_future_rel",
-    "mimic_target_poses_reduced_coords",
-    "mimic_deploy_target_poses",
+    "max_coords_obs_factory",
+    "reduced_coords_obs_factory",
+    "historical_max_coords_obs_factory",
+    "historical_reduced_coords_obs_factory",
+    "previous_actions_factory",
+    "nearest_surface_obs_factory",
+    "mimic_target_poses_max_coords_factory",
+    "mimic_target_poses_future_rel_factory",
+    "mimic_target_poses_reduced_coords_factory",
+    "mimic_deploy_target_poses_factory",
+    "target_obs_factory",
+    "steering_obs_factory",
+    "path_obs_factory",
     # Reward factories
-    "action_smoothness",
-    "gt_rew",
-    "gr_rew",
-    "gv_rew",
-    "gav_rew",
-    "rh_rew",
+    "action_smoothness_factory",
+    "gt_rew_factory",
+    "gr_rew_factory",
+    "gv_rew_factory",
+    "gav_rew_factory",
+    "rh_rew_factory",
+    "gt_rel_rew_factory",
+    "anchor_xy_rew_factory",
     "mimic_tracking_rewards_factory",
-    "pow_rew",
-    "contact_match_rew",
-    "contact_force_change_rew",
+    # Odometer observation factory
+    "corrupted_xy_offset_factory",
+    "pow_rew_factory",
+    "contact_match_rew_factory",
+    "contact_force_change_rew_factory",
+    "target_reward_factory",
+    "steering_reward_factory",
+    "path_following_reward_factory",
     # BeyondMimic reward factories
-    "global_anchor_pos_rew",
-    "global_anchor_ori_rew",
-    "relative_body_pos_rew",
-    "relative_body_ori_rew",
-    "global_body_lin_vel_rew",
-    "global_body_ang_vel_rew",
+    "global_anchor_pos_rew_factory",
+    "global_anchor_ori_rew_factory",
+    "relative_body_pos_rew_factory",
+    "relative_body_ori_rew_factory",
+    "global_body_lin_vel_rew_factory",
+    "global_body_ang_vel_rew_factory",
     # Termination factories
-    "tracking_error_term",
-    "anchor_pos_error_term",
-    "anchor_ori_error_term",
-    "relative_body_pos_error_term",
-    "anchor_height_error_term",
+    "tracking_error_term_factory",
+    "anchor_pos_error_term_factory",
+    "anchor_ori_error_term_factory",
+    "relative_body_pos_error_term_factory",
+    "anchor_height_error_term_factory",
+    "fall_termination_factory",
     # Evaluation metric factories
     "anchor_height_error_metric_factory",
     "gt_error_factory",

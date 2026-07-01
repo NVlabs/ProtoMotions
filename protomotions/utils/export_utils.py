@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Utilities for exporting trained models to ONNX format.
 
 This module provides functions to export TensorDict-based models to ONNX format
@@ -29,6 +17,7 @@ Note:
     Action processing is now handled by ActionProcessor in the policy network.
     When you export the model, action processing is automatically included.
 """
+from __future__ import annotations
 
 import torch
 import json
@@ -565,6 +554,31 @@ ONNX_OUTPUT_MAPPING = {
 }
 
 
+def _strip_onnx_name_suffix(name: str) -> str:
+    """Strip numeric suffixes that ONNX may append to graph value names."""
+    base_name = name
+    while True:
+        for separator in (".", "_"):
+            prefix, sep, suffix = base_name.rpartition(separator)
+            if sep and prefix and suffix.isdigit():
+                base_name = prefix
+                break
+        else:
+            return base_name
+
+
+def _resolve_onnx_semantic_name(onnx_name: str, known_names: set[str]) -> Optional[str]:
+    """Recover the semantic name for an ONNX value, preserving the original key."""
+    if onnx_name in known_names:
+        return onnx_name
+
+    base_name = _strip_onnx_name_suffix(onnx_name)
+    if base_name in known_names:
+        return base_name
+
+    return None
+
+
 def _build_policy_input(
     onnx_name: str,
     input_shapes: Dict[str, list],
@@ -573,11 +587,14 @@ def _build_policy_input(
     anchor_body: str = "pelvis",
 ) -> Optional[Dict[str, Any]]:
     """Build a policy input entry for YAML from ONNX name."""
-    if onnx_name not in ONNX_INPUT_MAPPING:
+    semantic_name = _resolve_onnx_semantic_name(
+        onnx_name, set(ONNX_INPUT_MAPPING.keys())
+    )
+    if semantic_name is None:
         return None
 
-    name, kind = ONNX_INPUT_MAPPING[onnx_name]
-    shape = input_shapes.get(onnx_name, [1, 1])
+    name, kind = ONNX_INPUT_MAPPING[semantic_name]
+    shape = input_shapes.get(onnx_name, input_shapes.get(semantic_name, [1, 1]))
 
     # Normalize shape to have batch size 1.
     shape = [1] + list(shape)[1:]
@@ -635,7 +652,7 @@ def _build_policy_input(
     elif kind in ("reference_motion_joint_pos", "reference_motion_joint_vel"):
         entry["element_names"] = [joint_names]
     elif kind == "reference_motion_body_rot":
-        if onnx_name in ("mimic_ref_anchor_rot", "mimic_future_anchor_rot"):
+        if semantic_name in ("mimic_ref_anchor_rot", "mimic_future_anchor_rot"):
             entry["element_names"] = [[anchor_body], quat_elements]
         else:
             entry["element_names"] = [body_names, quat_elements]
@@ -647,7 +664,7 @@ def _build_policy_input(
         "previous_processed_actions",
     }
     if kind == "last_actions":
-        if onnx_name in _PROCESSED_ACTION_ONNX_NAMES:
+        if semantic_name in _PROCESSED_ACTION_ONNX_NAMES:
             entry["output_key"] = "robot_action"
         else:
             entry["output_key"] = "actions"
@@ -674,11 +691,16 @@ def _build_policy_output(
         use_onnx_for_gains: If True, read stiffness/damping from ONNX outputs.
                            If False, use constant values from YAML.
     """
-    if onnx_name not in ONNX_OUTPUT_MAPPING:
+    semantic_name = _resolve_onnx_semantic_name(
+        onnx_name, set(ONNX_OUTPUT_MAPPING.keys())
+    )
+    if semantic_name is None:
         return None
 
-    name, kind = ONNX_OUTPUT_MAPPING[onnx_name]
-    shape = output_shapes.get(onnx_name, [1, len(joint_names)])
+    name, kind = ONNX_OUTPUT_MAPPING[semantic_name]
+    shape = output_shapes.get(
+        onnx_name, output_shapes.get(semantic_name, [1, len(joint_names)])
+    )
 
     # Normalize shape to have batch size 1.
     shape = [1] + list(shape)[1:]
@@ -936,25 +958,12 @@ def export_unified_pipeline(
     sanitized_to_semantic = {sanitize_name(k): k for k in all_input_keys}
 
     for onnx_name in actual_onnx_in_names:
-        matched = False
-
-        # Try exact match with sanitized names.
-        if onnx_name in sanitized_to_semantic:
-            onnx_name_to_in_key[onnx_name] = sanitized_to_semantic[onnx_name]
-            matched = True
+        semantic_name = _resolve_onnx_semantic_name(
+            onnx_name, set(sanitized_to_semantic.keys())
+        )
+        if semantic_name is not None:
+            onnx_name_to_in_key[onnx_name] = sanitized_to_semantic[semantic_name]
         else:
-            # Try stripping ONNX suffixes (.1, .2, etc.).
-            base_name = onnx_name
-            for suffix in [".1", ".2", ".3", "_1", "_2", "_3"]:
-                if base_name.endswith(suffix):
-                    base_name = base_name[: -len(suffix)]
-                    break
-
-            if base_name in sanitized_to_semantic:
-                onnx_name_to_in_key[onnx_name] = sanitized_to_semantic[base_name]
-                matched = True
-
-        if not matched:
             log.warning(f"Could not match ONNX input '{onnx_name}' to any semantic key")
 
     # Build output shapes dict.
@@ -1312,34 +1321,14 @@ def export_observations(
     }  # One key may map to multiple ONNX inputs
 
     for onnx_name in actual_onnx_in_names:
-        # Try to find the semantic key that matches this ONNX name
-        matched = False
-        # First try exact match with sanitized names
-        for i, expected_name in enumerate(onnx_input_names):
-            if onnx_name == expected_name:
-                semantic_key = input_keys[i]
-                onnx_name_to_in_key[onnx_name] = semantic_key
-                in_key_to_onnx_names[semantic_key].append(onnx_name)
-                matched = True
-                break
-
-        if not matched:
-            # Try matching by stripping .1, .2, etc. suffixes
-            base_name = onnx_name.rsplit(".", 1)[0] if "." in onnx_name else onnx_name
-            # Also try removing trailing numbers after underscore (e.g., previous_actions_1)
-            base_name_alt = (
-                base_name.rsplit("_", 1)[0] if base_name[-1].isdigit() else base_name
-            )
-
-            for i, expected_name in enumerate(onnx_input_names):
-                if base_name == expected_name or base_name_alt == expected_name:
-                    semantic_key = input_keys[i]
-                    onnx_name_to_in_key[onnx_name] = semantic_key
-                    in_key_to_onnx_names[semantic_key].append(onnx_name)
-                    matched = True
-                    break
-
-        if not matched:
+        semantic_name = _resolve_onnx_semantic_name(
+            onnx_name, set(onnx_input_names)
+        )
+        if semantic_name is not None:
+            semantic_key = input_keys[onnx_input_names.index(semantic_name)]
+            onnx_name_to_in_key[onnx_name] = semantic_key
+            in_key_to_onnx_names[semantic_key].append(onnx_name)
+        else:
             log.warning(f"Could not match ONNX input '{onnx_name}' to any semantic key")
 
     log.info(f"ONNX name to semantic key mapping: {onnx_name_to_in_key}")

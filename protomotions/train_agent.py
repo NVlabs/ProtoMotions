@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Train reinforcement learning agents for physics-based character animation.
 
 This is the main training script for ProtoMotions. It handles configuration loading,
@@ -88,6 +76,7 @@ Example
 """
 
 import os
+import sys
 import json
 
 os.environ["WANDB_DISABLE_SENTRY"] = "true"  # Must be first environment variable
@@ -235,7 +224,12 @@ def create_parser():
         "--nodes", type=int, default=1, help="Number of nodes for distributed training"
     )
     parser.add_argument(
-        "--headless", default=True, help="Run simulation in headless mode"
+        "--headless",
+        nargs="?",
+        const=True,
+        default=True,
+        type=parse_bool,
+        help="Run simulation in headless mode",
     )
     parser.add_argument(
         "--seed", type=int, default=0, help="Random seed for reproducibility"
@@ -272,6 +266,7 @@ def create_parser():
 
 # Parse arguments first (argparse is safe, doesn't import torch)
 import argparse  # noqa: E402
+from protomotions.utils.cli_utils import parse_bool  # noqa: E402
 
 parser = create_parser()
 args, unknown_args = parser.parse_known_args()
@@ -363,11 +358,30 @@ def load_experiment_module(experiment_path):
 
     log.info(f"Loading experiment module from: {experiment_path}")
 
+    # Ensure the repo root is on sys.path so that experiment configs can import
+    # from sibling packages (e.g. `from examples.experiments.mimic... import ...`).
+    repo_root = str(Path(__file__).resolve().parent.parent)
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+
     spec = importlib.util.spec_from_file_location("experiment_module", experiment_path)
     experiment_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(experiment_module)
 
     return experiment_module
+
+
+def prepare_inference_configs_for_save(*configs):
+    """Let configs make inference bundles self-contained before saving.
+
+    Training configs should stay faithful to the experiment setup. Inference
+    configs may need to embed lightweight construction metadata for frozen
+    modules whose weights are saved inside the owning checkpoint.
+    """
+    for config in configs:
+        hook = getattr(config, "prepare_inference_config_for_save", None)
+        if callable(hook):
+            hook()
 
 
 def save_configs(
@@ -479,7 +493,7 @@ def try_log_hyperparams_to_wandb(
                     "motion_lib": clean_dict_for_storage(asdict(motion_lib_config)),
                     "env": clean_dict_for_storage(asdict(env_config)),
                     "agent": clean_dict_for_storage(asdict(agent_config)),
-                    "fabric": clean_dict_for_storage(asdict(fabric_config)),
+                    "fabric": clean_dict_for_storage(fabric_config.as_loggable_dict()),
                 }
 
                 log.info("Preparing configs for wandb logging...")
@@ -686,8 +700,8 @@ def main():
         loggers=loggers,
         callbacks=callbacks,
     )
-    print(asdict(fabric_config))
-    fabric: Fabric = Fabric(**asdict(fabric_config))
+    print(fabric_config.as_loggable_dict())
+    fabric: Fabric = Fabric(**fabric_config.as_kwargs())
     fabric.launch()
 
     # ===================================================================
@@ -804,7 +818,7 @@ def main():
 
     agent.setup()
     agent.fabric.strategy.barrier()
-    agent.load(args.checkpoint)
+    agent.load(args.checkpoint, load_training_state=(mode == "resume"))
 
     # ===================================================================
     # 6. Save Configs (First Run Only - Warm Start or Fresh)
@@ -863,6 +877,15 @@ def main():
             scene_lib_config_inference,
             experiment_module=experiment_module,
             args=args,
+        )
+        prepare_inference_configs_for_save(
+            robot_config_inference,
+            simulator_config_inference,
+            terrain_config_inference,
+            scene_lib_config_inference,
+            motion_lib_config_inference,
+            env_config_inference,
+            agent_config_inference,
         )
         save_configs(
             save_dir,
@@ -960,6 +983,15 @@ def _handle_create_config_only(
         scene_lib_config_inference,
         experiment_module=experiment_module,
         args=args,
+    )
+    prepare_inference_configs_for_save(
+        robot_config_inference,
+        simulator_config_inference,
+        terrain_config_inference,
+        scene_lib_config_inference,
+        motion_lib_config_inference,
+        env_config_inference,
+        agent_config_inference,
     )
     save_configs(
         save_dir,

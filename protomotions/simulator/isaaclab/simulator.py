@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 import logging
 
 import torch
@@ -42,6 +30,9 @@ from protomotions.simulator.isaaclab.utils.scene import SceneCfg
 from protomotions.simulator.isaaclab.config import (
     IsaacLabSimulatorConfig,
     ProtoMotionsIsaacLabMarkers,
+)
+from protomotions.simulator.isaaclab.utils.collision_baking import (
+    ensure_baked_collision_usd,
 )
 from protomotions.simulator.base_simulator.simulator import Simulator
 from protomotions.simulator.base_simulator.config import (
@@ -94,8 +85,7 @@ class IsaacLabSimulator(Simulator):
             device=device,
         )
 
-        # Store custom key handlers
-        self._custom_key_handlers = custom_key_handlers or {}
+        self._register_custom_user_interface_keys(custom_key_handlers or {})
 
         sim_cfg = sim_utils.SimulationCfg(
             device=str(device),
@@ -194,6 +184,8 @@ class IsaacLabSimulator(Simulator):
         """
         print("=========== Building object playground")
 
+        self._baked_path_cache: Dict[str, Path] = {}
+
         # Spawn objects at origin (actual positions set via reset_envs later)
         initial_obj_pos = torch.zeros(
             (self.num_envs, self.scene_lib.num_objects_per_scene, 7),
@@ -237,8 +229,25 @@ class IsaacLabSimulator(Simulator):
                     ).resolve()
                     mass_props = self._mass_props_from_options(object_options)
 
+                    # Pre-bake collision approximation into the USD asset
+                    approx = self.scene_lib.config.mesh_collision_approximation
+                    if approx is not None:
+                        cache_key = str(asset_path)
+                        if cache_key not in self._baked_path_cache:
+                            self._baked_path_cache[cache_key] = (
+                                ensure_baked_collision_usd(
+                                    original_path=cache_key,
+                                    approximation=approx,
+                                    max_convex_hulls=self.scene_lib.config.mesh_collision_max_convex_hulls,
+                                    hull_vertex_limit=self.scene_lib.config.mesh_collision_hull_vertex_limit,
+                                    voxel_resolution=self.scene_lib.config.mesh_collision_voxel_resolution,
+                                )
+                            )
+                        asset_path = self._baked_path_cache[cache_key]
+
                     spawn_cfg = sim_utils.UsdFileCfg(
                         usd_path=str(asset_path),
+                        scale=obj.scale,
                         rigid_props=rigid_props,
                         mass_props=mass_props,
                         collision_props=collision_props,
@@ -331,49 +340,74 @@ class IsaacLabSimulator(Simulator):
                     v_x_sensitivity=0.8, v_y_sensitivity=0.4, omega_z_sensitivity=1.0
                 )
 
-        self.keyboard_interface.add_callback("R", self._requested_reset)
-        self.keyboard_interface.add_callback("L", self._toggle_video_record)
-        self.keyboard_interface.add_callback(";", self._cancel_video_record)
-        self.keyboard_interface.add_callback("Q", self.close)
-        self.keyboard_interface.add_callback("O", self._toggle_camera_target)
-        self.keyboard_interface.add_callback("J", self._throw_projectile)
-        self.keyboard_interface.add_callback("M", self._toggle_markers)
+        self.user_interface.add_registration_callback(
+            self._register_user_interface_key_callback,
+            replay_existing=True,
+        )
 
-        # Register custom key handlers for keys 1-0
-        self._register_custom_key_handlers()
+    def _register_custom_user_interface_keys(self, handlers: Dict[str, callable]) -> None:
+        for key_name, handler in handlers.items():
+            self.user_interface.register_key(
+                key_name,
+                owner="simulator.custom",
+                description=f"Custom simulator key handler for {key_name}",
+                on_press=handler,
+            )
 
-    def _register_custom_key_handlers(self) -> None:
-        """Register custom keyboard event handlers for keys 1-0"""
-        # Define available keys for custom handlers (1-0)
-        available_keys = {
-            "1": "NUMPAD_1",
-            "2": "NUMPAD_2",
-            "3": "NUMPAD_3",
-            "4": "NUMPAD_4",
-            "5": "NUMPAD_5",
-            "6": "NUMPAD_6",
-            "7": "NUMPAD_7",
-            "8": "NUMPAD_8",
-            "9": "NUMPAD_9",
-            "0": "NUMPAD_0",
-        }
+    def _register_user_interface_key_callback(self, handle) -> None:
+        key_name = handle.key
+        callback_key = self._isaaclab_callback_key(key_name)
 
-        # Register custom key handlers
-        for key_name, handler in self._custom_key_handlers.items():
-            if key_name in available_keys.keys():
-                try:
-                    self.keyboard_interface.add_callback(
-                        available_keys[key_name], handler
-                    )
-                    print(f"Registered custom key handler for '{key_name}'")
-                    # input()
-                except Exception as e:
-                    print(
-                        f"Warning: Failed to register custom key handler for '{key_name}': {e}"
-                    )
-            else:
-                print(f"Warning: Key '{key_name}' not available for custom handlers")
-                print(f"Available keys: {list(available_keys.keys())}")
+        release_callback = getattr(
+            self.keyboard_interface, "add_release_callback", None
+        )
+
+        def callback(*args, key_name=key_name, pressed=True):
+            has_backend_state = bool(args) or release_callback is not None
+            if args:
+                pressed = self._isaaclab_event_is_pressed(args[0], default=pressed)
+            self.user_interface.handle_key_event(key_name, pressed=pressed)
+            if pressed and not has_backend_state:
+                # Older IsaacLab keyboard callbacks are press-only. Pulse-release so
+                # one-shot bindings work without leaving KeyBinding.down() stuck.
+                self.user_interface.handle_key_event(key_name, pressed=False)
+
+        try:
+            self.keyboard_interface.add_callback(callback_key, callback)
+            if release_callback is not None:
+                release_callback(
+                    callback_key,
+                    lambda *args, key_name=key_name: callback(
+                        *args, key_name=key_name, pressed=False
+                    ),
+                )
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to register IsaacLab key '{key_name}' "
+                f"as '{callback_key}'"
+            ) from e
+
+    @staticmethod
+    def _isaaclab_event_is_pressed(event, *, default: bool) -> bool:
+        event_type = getattr(event, "type", None)
+        if event_type is not None:
+            name = getattr(event_type, "name", str(event_type)).upper()
+            if "RELEASE" in name:
+                return False
+            if "PRESS" in name:
+                return True
+        value = getattr(event, "value", None)
+        if value is not None:
+            return bool(value)
+        if isinstance(event, bool):
+            return event
+        return default
+
+    @staticmethod
+    def _isaaclab_callback_key(key_name: str) -> str:
+        if len(key_name) == 1 and key_name.isdigit():
+            return f"NUMPAD_{key_name}"
+        return key_name
 
     # =====================================================
     # Group 2: Environment Setup & Configuration
@@ -592,7 +626,7 @@ class IsaacLabSimulator(Simulator):
         self._robot.write_joint_state_to_sim(
             new_states.dof_pos, new_states.dof_vel, None, env_ids
         )
-        if new_object_states is not None:
+        if new_object_states is not None and len(self._object) > 0:
             init_object_root_state = torch.cat(
                 [
                     new_object_states.root_pos,
@@ -602,7 +636,7 @@ class IsaacLabSimulator(Simulator):
                 ],
                 dim=-1,
             ).reshape(len(env_ids), self.scene_lib.num_objects_per_scene, 13)
-            for object_idx in range(self.scene_lib.num_objects_per_scene):
+            for object_idx in range(len(self._object)):
                 self._object[object_idx].write_root_state_to_sim(
                     init_object_root_state[:, object_idx], env_ids
                 )
@@ -845,7 +879,7 @@ class IsaacLabSimulator(Simulator):
         isaacsim_root_rot = []
         isaacsim_root_vel = []
         isaacsim_root_ang_vel = []
-        for obj_idx in range(self.scene_lib.num_objects_per_scene):
+        for obj_idx in range(len(self._object)):
             isaacsim_root_pos.append(self._object[obj_idx].data.root_pos_w.clone())
             isaacsim_root_rot.append(self._object[obj_idx].data.root_quat_w.clone())
             isaacsim_root_vel.append(self._object[obj_idx].data.root_lin_vel_w.clone())

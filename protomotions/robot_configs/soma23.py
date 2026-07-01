@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 from protomotions.robot_configs.base import (
     RobotConfig,
     RobotAssetConfig,
@@ -21,7 +9,10 @@ from protomotions.robot_configs.base import (
     SimulatorParams,
 )
 from protomotions.simulator.isaacgym.config import IsaacGymSimParams
-from protomotions.simulator.isaaclab.config import IsaacLabSimParams
+from protomotions.simulator.isaaclab.config import (
+    IsaacLabPhysXParams,
+    IsaacLabSimParams,
+)
 from protomotions.simulator.genesis.config import GenesisSimParams
 from protomotions.simulator.newton.config import NewtonSimParams
 from protomotions.components.pose_lib import ControlInfo
@@ -62,7 +53,7 @@ class Soma23RobotConfig(RobotConfig):
 
     trackable_bodies_subset: List[str] = field(
         default_factory=lambda: [
-            "Chest",
+            "Hips",
             "Head",
             "LeftFoot",
             "RightFoot",
@@ -78,6 +69,10 @@ class Soma23RobotConfig(RobotConfig):
             asset_file_name="mjcf/soma23_humanoid.xml",
             usd_asset_file_name="usd/soma23_humanoid_flat/soma23_humanoid_flat.usda",
             usd_bodies_root_prim_path="/World/envs/env_.*/Robot/Hips/",
+            max_linear_velocity=1000.0,
+            max_angular_velocity=1000.0,
+            angular_damping=0.0,
+            linear_damping=0.0,
         )
     )
 
@@ -108,6 +103,11 @@ class Soma23RobotConfig(RobotConfig):
             isaaclab=IsaacLabSimParams(
                 fps=120,
                 decimation=4,
+                physx=IsaacLabPhysXParams(
+                    num_position_iterations=4,
+                    num_velocity_iterations=4,
+                    max_depenetration_velocity=1,
+                ),
             ),
             genesis=GenesisSimParams(
                 fps=60,

@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """BaseEnv utility functions.
 
 Contains RL combining logic for rewards/terminations.
@@ -43,7 +31,6 @@ def combine_rewards(
     raw_rewards: Dict[str, Tensor],
     configs: Dict[str, Any],
     grace_mask: Optional[Tensor] = None,
-    region_weights: Optional[Tensor] = None,
     num_envs: int = 0,
     device: Optional[torch.device] = None,
 ) -> Tuple[Tensor, Dict[str, Tensor]]:
@@ -53,13 +40,11 @@ def combine_rewards(
     - multiplicative=True: rewards multiplied together (e.g., alive bonus)
     - Otherwise: weighted sum with optional clamping
     - grace_mask: zero rewards during grace period after reset
-    - region_weights: per-body weights based on anatomical regions
     
     Args:
         raw_rewards: Dict of {name: reward_tensor} from component execution.
         configs: Dict of {name: MdpComponent} where params contain metadata.
         grace_mask: Boolean mask [num_envs] - True where in grace period.
-        region_weights: Optional tensor of per-body weights.
         num_envs: Number of environments.
         device: Device for tensors.
     

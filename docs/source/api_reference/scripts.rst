@@ -17,7 +17,7 @@ and checkpoint management. Supports Hydra-based configuration composition.
 .. code-block:: bash
 
    python protomotions/train_agent.py \\
-       --experiment-path examples/experiments/steering_mlp.py \\
+       --experiment-path examples/experiments/steering/mlp.py \\
        --robot-name h1 \\
        --simulator isaacgym \\
        --experiment-name h1_steering
@@ -40,42 +40,38 @@ All configurations are saved to ``results/<experiment_name>/``:
 * ``experiment_config.py`` - Copy of experiment file
 * ``last.ckpt`` - Model checkpoint
 
-eval_agent.py
--------------
+inference_agent.py
+------------------
 
 **Evaluation and visualization script for trained agents.**
 
 Loads trained checkpoints and runs agents in the simulation environment for
 evaluation, visualization, and analysis. Supports interactive controls and
-video recording.
+video recording when the selected simulator backend provides a viewer.
 
 **Usage:**
 
 .. code-block:: bash
 
-   python protomotions/eval_agent.py \\
-       --robot-name h1 \\
+   python protomotions/inference_agent.py \\
        --simulator isaacgym \\
        --checkpoint results/h1_steering/last.ckpt
 
 **Motion Playback:**
 
-For kinematic motion playback without physics:
+For kinematic motion playback without physics training state:
 
 .. code-block:: bash
 
-   python protomotions/eval_agent.py \\
-       --config-name play_motion \\
+   python examples/env_kinematic_playback.py \\
        --robot-name smpl \\
        --simulator isaacgym \\
-       +--motion-file data/motions/walk.motion
+       --motion-file data/motion_for_trackers/soma23_bones_seed_mini.pt
 
 **Keyboard Controls:**
 
-* **J** - Apply random forces (robustness test)
+* **W/A/S/D** - Move keyboard-controlled task targets when enabled
 * **R** - Reset environments
-* **O** - Toggle camera view
-* **L** - Start/stop video recording
 * **Q** - Quit
 
 train_slurm.py
@@ -91,7 +87,7 @@ Handles job submission, node coordination, and auto-resume on preemption.
 .. code-block:: bash
 
    python protomotions/train_slurm.py \\
-       --experiment-path examples/experiments/steering_mlp.py \\
+       --experiment-path examples/experiments/steering/mlp.py \\
        --robot-name h1 \\
        --simulator isaacgym \\
        --nodes 2 \\

@@ -24,6 +24,8 @@
 #       Useful for quick testing without GPU or for debugging.
 #
 mujoco>=3.0.0
+onnxruntime
+PyYAML
 dm_control>=1.0  # Required by pose_lib for MJCF parsing
 wheel
 tensordict==0.9.0

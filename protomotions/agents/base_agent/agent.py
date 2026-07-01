@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Base agent implementation for reinforcement learning.
 
 This module provides the core agent class that all RL algorithms extend. It handles
@@ -35,6 +23,7 @@ import torch
 from torch import Tensor
 import torch.distributed as dist
 from abc import abstractmethod
+from contextlib import contextmanager
 import logging
 import torch.nn as nn
 
@@ -51,11 +40,18 @@ from protomotions.utils.hydra_replacement import get_class
 from protomotions.agents.utils.metering import TimeReport, TensorAverageMeterDict
 from protomotions.agents.utils.data import DictDataset, ExperienceBuffer
 from protomotions.envs.base_env.env import BaseEnv
-from protomotions.agents.utils.normalization import RewardRunningMeanStd, RunningMeanStd
+from protomotions.agents.utils.normalization import (
+    RewardRunningMeanStd,
+    RunningMeanStd,
+    materialize_lazy_running_stats_from_state_dict,
+)
 from rich.progress import track
 from protomotions.agents.evaluators.base_evaluator import BaseEvaluator
 from protomotions.agents.base_agent.config import BaseAgentConfig
-from protomotions.agents.utils.training import aggregate_scalar_metrics
+from protomotions.agents.utils.training import (
+    aggregate_scalar_metrics,
+    handle_model_grad_clipping,
+)
 
 log = logging.getLogger(__name__)
 
@@ -83,6 +79,8 @@ class BaseAgent:
     # -----------------------------
     # Initialization and Setup
     # -----------------------------
+    require_reward_norm_on_load: bool = True
+
     def __init__(
         self,
         fabric: Fabric,
@@ -113,12 +111,28 @@ class BaseAgent:
         self.num_mini_epochs: int = self.config.num_mini_epochs
         self.gamma: float = self.config.gamma
         self._should_stop: bool = False
+
+        # Compute total envs across all ranks (supports heterogeneous num_envs).
+        # When all ranks have the same num_envs this reduces to num_envs * world_size.
+        local_ne = torch.tensor([self.num_envs], device=self.device)
+        all_ne = self.fabric.all_gather(local_ne)  # [world_size] or [world_size, 1]
+        self._total_envs: int = int(all_ne.sum().item())
+
         self.max_epochs: int = (
-            self.config.training_max_steps
-            // self.fabric.world_size
-            // self.num_envs
-            // self.num_steps
+            self.config.training_max_steps // self._total_envs // self.num_steps
         )
+
+        # Validate max_num_batches matches across all ranks (prevents DDP deadlock).
+        local_mnb = torch.tensor(
+            [self.max_num_batches()], dtype=torch.long, device=self.device
+        )
+        all_mnb = self.fabric.all_gather(local_mnb)
+        if all_mnb.unique().numel() > 1:
+            raise ValueError(
+                f"max_num_batches differs across ranks: {all_mnb.tolist()}. "
+                "All ranks must call backward() the same number of times per epoch "
+                "to avoid DDP deadlock. Adjust per-rank num_envs/batch_size."
+            )
 
         # timer
         self.time_report = TimeReport()
@@ -129,6 +143,8 @@ class BaseAgent:
         self.current_rewards = torch.zeros(
             self.num_envs, dtype=torch.float, device=self.device
         )
+        self.last_episode_reward = torch.tensor(0.0, device=self.device)
+        self.last_episode_length = torch.tensor(0.0, device=self.device)
         if self.config.normalize_rewards:
             self.running_reward_norm = RewardRunningMeanStd(
                 fabric=self.fabric,
@@ -136,6 +152,7 @@ class BaseAgent:
                 gamma=self.gamma,
                 device=self.device,
                 clamp_value=self.config.normalized_reward_clamp_value,
+                ema_decay=self.config.reward_norm_ema_decay,
             )
         else:
             self.running_reward_norm = None
@@ -170,21 +187,30 @@ class BaseAgent:
     def should_stop(self):
         return self.fabric.broadcast(self._should_stop)
 
+    @property
+    def has_critic(self) -> bool:
+        """Whether this agent has a value critic.
+
+        Base agents do not assume critic ownership; PPO-style subclasses define
+        that contract explicitly from their model config. Algorithm code should
+        branch on this property instead of probing for critic attributes.
+        """
+        return False
+
     def setup(self):
         self.fabric.call("on_model_init_start")
+        self._before_create_model()
         model = self.create_model()
 
         # Move model to device BEFORE materializing lazy modules
         model = model.to(self.device)
         self.model = model
+        self.model.reset_rollout_context(num_envs=self.num_envs, device=self.device)
 
         # Once model is created, we pass fabric to the RunningMeanStd modules.
         # This allows the modules to internally handle distributed aggregation of normalization moments.
-        def pass_fabric_to_running_mean_std(module):
-            if isinstance(module, RunningMeanStd):
-                module.fabric = self.fabric
-
-        self.model.apply(pass_fabric_to_running_mean_std)
+        self._attach_fabric_to_running_mean_std()
+        self._after_model_reset()
 
         # Materialize lazy modules (LazyLinear, RunningMeanStd)
         # by running a dummy forward pass before wrapping with DDP
@@ -193,13 +219,34 @@ class BaseAgent:
             dummy_obs = self.env.get_obs()
             dummy_obs = self.add_agent_info_to_obs(dummy_obs)
             dummy_obs_td = self.obs_dict_to_tensordict(dummy_obs)
-            _ = self.model(dummy_obs_td)
+            self._materialize_lazy_modules(dummy_obs_td)
 
         self.fabric.call("on_model_init_end")
 
         self.fabric.call("on_optimizer_init_start")
         self.create_optimizers(model)
         self.fabric.call("on_optimizer_init_end")
+        self._after_create_optimizers()
+
+    def _before_create_model(self) -> None:
+        """Hook for subclasses that need setup state before create_model()."""
+
+    def _after_model_reset(self) -> None:
+        """Hook after model creation, device transfer, and reset."""
+
+    def _attach_fabric_to_running_mean_std(self) -> None:
+        def pass_fabric_to_running_mean_std(module):
+            if isinstance(module, RunningMeanStd):
+                module.fabric = self.fabric
+
+        self.model.apply(pass_fabric_to_running_mean_std)
+
+    def _materialize_lazy_modules(self, dummy_obs_td: TensorDict) -> None:
+        """Materialize LazyLinear/RunningMeanStd modules with a dummy forward."""
+        self.model.materialize(dummy_obs_td)
+
+    def _after_create_optimizers(self) -> None:
+        """Hook after optimizers/DDP wrappers are created."""
 
     @abstractmethod
     def create_model(self):
@@ -209,7 +256,30 @@ class BaseAgent:
     def create_optimizers(self, model: nn.Module):
         pass
 
-    def load(self, checkpoint: Path, load_env: bool = True):
+    def _setup_model_optimizer(self, module, optimizer):
+        """Prepare a model/optimizer pair through Lightning Fabric."""
+        return self.fabric.setup(module, optimizer)
+
+    def _step_optimizer(self, loss, model, optimizer, model_name: str) -> Dict:
+        """Backpropagate one loss, clip gradients, and step one optimizer."""
+        optimizer.zero_grad(set_to_none=True)
+        self.fabric.backward(loss)
+        grad_clip_dict = handle_model_grad_clipping(
+            config=self.config,
+            fabric=self.fabric,
+            model=model,
+            optimizer=optimizer,
+            model_name=model_name,
+        )
+        optimizer.step()
+        return grad_clip_dict
+
+    def load(
+        self,
+        checkpoint: Path,
+        load_env: bool = True,
+        load_training_state: bool = True,
+    ):
         if checkpoint is not None:
             self.fabric.call("on_load_checkpoint_start")
             path_before_resolve = Path(checkpoint)
@@ -219,7 +289,10 @@ class BaseAgent:
             state_dict = torch.load(
                 checkpoint, map_location=self.device, weights_only=False
             )
-            self.load_parameters(state_dict)
+            self.load_parameters(
+                state_dict,
+                load_training_state=load_training_state,
+            )
 
             self.just_loaded_checkpoint_should_evaluate = True
 
@@ -236,18 +309,35 @@ class BaseAgent:
 
             self.fabric.call("on_load_checkpoint_end")
 
-    def load_parameters(self, state_dict):
+    def load_parameters(self, state_dict, load_training_state: bool = True):
         """Load agent parameters from state dictionary.
 
-        Restores training state including epoch counter, step count, timing info,
-        best scores, normalization statistics, and model weights.
+        Always restores model weights. When load_training_state is true, also
+        restores optimizer-era state such as counters, reward normalization, and
+        evaluator state.
 
         Args:
             state_dict: Dictionary containing saved agent state from checkpoint.
                        Expected keys: epoch, step_count, run_start_time, best_evaluated_score,
                        running_reward_norm (if normalization enabled), model.
         """
-        self.current_epoch = state_dict["epoch"]
+        self._load_model_state_dict(state_dict["model"])
+        self._after_load_model_state_dict(state_dict)
+        if load_training_state:
+            self._load_training_state(state_dict)
+
+    def _load_model_state_dict(self, model_state_dict):
+        """Load model parameters from a checkpoint model state dictionary."""
+        materialize_lazy_running_stats_from_state_dict(self.model, model_state_dict)
+        self.model.materialize_from_state_dict(model_state_dict)
+        self.model.load_state_dict(model_state_dict)
+
+    def _after_load_model_state_dict(self, state_dict) -> None:
+        """Hook for model-load adjustments that are not training state."""
+
+    def _load_training_state(self, state_dict):
+        """Restore training-only state shared by all training algorithms."""
+        self.current_epoch = state_dict.get("epoch", 0)
 
         if "step_count" in state_dict:
             self.step_count = state_dict["step_count"]
@@ -257,9 +347,16 @@ class BaseAgent:
         self.best_evaluated_score = state_dict.get("best_evaluated_score", None)
 
         if self.config.normalize_rewards:
-            self.running_reward_norm.load_state_dict(state_dict["running_reward_norm"])
+            if "running_reward_norm" in state_dict:
+                self.running_reward_norm.load_state_dict(
+                    state_dict["running_reward_norm"]
+                )
+            elif self.require_reward_norm_on_load:
+                raise KeyError("running_reward_norm")
 
-        self.model.load_state_dict(state_dict["model"])
+        if self.evaluator is not None:
+            if "evaluator" in state_dict:
+                self.evaluator.load_state_dict(state_dict["evaluator"])
 
     # -----------------------------
     # Model Saving and State Dict
@@ -289,12 +386,56 @@ class BaseAgent:
                 self.running_reward_norm.state_dict()
             )
 
+        if self.evaluator is not None:
+            extra_state_dict["evaluator"] = self.evaluator.get_state_dict()
+
         state_dict.update(extra_state_dict)
         return state_dict
+
+    def get_inference_state_dict(
+        self,
+        state_dict,
+        model_state_dict: Optional[Dict] = None,
+    ):
+        """Get a checkpoint containing only state needed to run inference."""
+        if model_state_dict is None:
+            model_state_dict = self.model.state_dict()
+
+        extra_state_dict = {
+            "model": {
+                key: value.detach().cpu().clone()
+                for key, value in model_state_dict.items()
+            },
+            "epoch": self.current_epoch,
+            "step_count": self.step_count,
+            "run_start_time": self.fit_start_time,
+            "best_evaluated_score": self.best_evaluated_score,
+        }
+        state_dict.update(extra_state_dict)
+        return state_dict
+
+    @staticmethod
+    def inference_checkpoint_name(checkpoint_name: str) -> str:
+        return f"inference_{checkpoint_name}"
+
+    def save_inference_checkpoint(
+        self,
+        checkpoint_name: str,
+        inference_state_dict: Dict,
+    ):
+        inference_checkpoint = self.root_dir / self.inference_checkpoint_name(
+            checkpoint_name
+        )
+        torch.save(inference_state_dict, inference_checkpoint)
+        log.info(f"Saved inference checkpoint: {inference_checkpoint}")
 
     def save(self, checkpoint_name: str = "last.ckpt", new_high_score: bool = False):
         """
         Save model checkpoint and environment state.
+
+        Rank 0 saves the main checkpoint (shared model weights).
+        Each unique-task rank saves its env checkpoint.
+        Global barrier ensures all ranks wait until saving is complete.
 
         Args:
             checkpoint_name: Name of checkpoint file (e.g., "last.ckpt" or "epoch_100.ckpt")
@@ -304,17 +445,25 @@ class BaseAgent:
 
         save_dir = self.root_dir
         state_dict = self.get_state_dict({})
+        inference_state_dict = None
+        if self.config.save_inference_checkpoint and self.fabric.global_rank == 0:
+            inference_state_dict = self.get_inference_state_dict(
+                {},
+                model_state_dict=state_dict["model"],
+            )
 
-        # Save the main checkpoint
-        self.fabric.save(save_dir / checkpoint_name, state_dict)
-        log.info(f"Saved checkpoint: {save_dir / checkpoint_name}")
+        # Rank 0 saves the main checkpoint (shared weights across all ranks)
+        if self.fabric.global_rank == 0:
+            torch.save(state_dict, save_dir / checkpoint_name)
+            log.info(f"Saved checkpoint: {save_dir / checkpoint_name}")
+            if inference_state_dict is not None:
+                self.save_inference_checkpoint(checkpoint_name, inference_state_dict)
 
         # Save environment checkpoint for unique task IDs
         task_id = self.env.get_task_id()
         per_rank_task_id = [None for _ in range(self.fabric.world_size)]
         dist.all_gather_object(per_rank_task_id, task_id)
 
-        # Only ranks with unique task IDs save the env checkpoint
         rank_to_task_id = {}
         seen_task_ids = set()
         for rank, tid in enumerate(per_rank_task_id):
@@ -329,16 +478,28 @@ class BaseAgent:
             log.info(
                 f"Saved env checkpoint: {env_checkpoint}, rank {self.fabric.global_rank}"
             )
-        self.fabric.barrier()
 
-        # Check if new high score flag is consistent across devices
-        gathered_high_score = self.fabric.all_gather(new_high_score)
+        # All ranks wait for saves to complete
+        dist.barrier()
+
+        # Check high score consistency
+        hs_tensor = torch.tensor(
+            int(new_high_score), device=self.device, dtype=torch.long
+        )
+        gathered = [torch.zeros_like(hs_tensor) for _ in range(dist.get_world_size())]
+        dist.all_gather(gathered, hs_tensor)
         assert all(
-            [x == gathered_high_score[0] for x in gathered_high_score]
+            g.item() == gathered[0].item() for g in gathered
         ), "New high score flag should be the same across all ranks."
 
         if new_high_score:
-            self.fabric.save(save_dir / "score_based.ckpt", state_dict)
+            if self.fabric.global_rank == 0:
+                torch.save(state_dict, save_dir / "score_based.ckpt")
+                if inference_state_dict is not None:
+                    self.save_inference_checkpoint(
+                        "score_based.ckpt",
+                        inference_state_dict,
+                    )
             log.info(
                 f"New best performing controller found with score {self.best_evaluated_score}. "
                 f"Model saved to {save_dir / 'score_based.ckpt'}"
@@ -356,6 +517,74 @@ class BaseAgent:
         (e.g., AMP adds discriminator observations, ASE adds latent codes).
         """
         pass
+
+    def register_algorithm_experience_buffer_keys_from_obs(self, obs_td: TensorDict):
+        """Register algorithm keys whose shapes need a sample observation."""
+        pass
+
+    @contextmanager
+    def _eval_model_for_buffer_registration(self):
+        """Run setup-only shape inference without training-mode side effects.
+
+        ``fit()`` runs a sample model forward before rollout collection so the
+        experience buffer can allocate tensors for model-owned outputs. That
+        forward is not training data collection: it should not update dropout,
+        BatchNorm-like state, or observation normalizers. In distributed runs,
+        normalizer updates also run Fabric collectives, so doing them during
+        setup can make ranks enter collectives from a different call path than
+        the real rollout loop.
+
+        This context temporarily switches the model to eval mode for buffer
+        shape inference, then restores every module's original mode. Restoring
+        each module avoids flattening intentionally mixed train/eval states
+        such as frozen encoders or other inference-only submodules.
+        """
+        training_modes = [(module, module.training) for module in self.model.modules()]
+
+        self.eval()
+        try:
+            yield
+        finally:
+            for module, was_training in training_modes:
+                module.training = was_training
+
+    def _register_model_output_keys(self, output_td: TensorDict) -> None:
+        """Register model outputs with shape/dtype inferred from setup forward.
+
+        Declared rollout state gets an extra validation step so state reset,
+        rollout writes, and replay storage cannot silently drift apart.
+        """
+        self.model_output_keys = self.model.experience_buffer_keys()
+        rollout_state_specs_fn = getattr(
+            self.model,
+            "_rollout_state_specs_recursive",
+            None,
+        )
+        rollout_state_specs = (
+            rollout_state_specs_fn() if rollout_state_specs_fn is not None else {}
+        )
+        for key in self.model_output_keys:
+            value = output_td[key]
+            if not isinstance(value, torch.Tensor):
+                continue
+
+            shape = tuple(value.shape[1:])
+            dtype = value.dtype
+            spec = rollout_state_specs.get(key)
+            if spec is not None:
+                if shape != spec.shape:
+                    raise ValueError(
+                        f"Rollout state '{key}' expected shape {spec.shape} "
+                        f"but observed {shape} from setup forward."
+                    )
+                if dtype != spec.dtype:
+                    raise ValueError(
+                        f"Rollout state '{key}' expected dtype {spec.dtype} "
+                        f"but observed {dtype} from setup forward."
+                    )
+                dtype = spec.dtype
+
+            self.experience_buffer.register_key(key, shape=shape, dtype=dtype)
 
     def collect_rollout_step(self, obs_td: TensorDict, step):
         """Collect experience data during rollout at current timestep.
@@ -416,22 +645,13 @@ class BaseAgent:
             dtype = env_tensor.dtype
             self.experience_buffer.register_key(key, shape=shape[1:], dtype=dtype)
 
-        # Auto-register model output keys by running one forward pass
-        with torch.no_grad():
+        # Auto-register model output keys with setup-only inference. Keep this
+        # in eval mode so normalizers do not update or run distributed collectives.
+        with self._eval_model_for_buffer_registration(), torch.no_grad():
             output_td = self.model(obs_td)
 
-            # Track which keys are model outputs (not from environment)
-            self.model_output_keys = self.model.out_keys
-            for key in self.model_output_keys:
-                value = output_td[key]
-                if isinstance(value, torch.Tensor):
-                    # Handle both scalar and tensor outputs
-                    if value.ndim == 1:  # Scalar per env
-                        self.experience_buffer.register_key(key)
-                    else:  # Tensor per env
-                        self.experience_buffer.register_key(
-                            key, shape=value.shape[1:], dtype=value.dtype
-                        )
+            # Track which keys are model outputs (not from environment).
+            self._register_model_output_keys(output_td)
 
             log.info(f"Auto-registered model output keys: {self.model_output_keys}")
 
@@ -441,6 +661,7 @@ class BaseAgent:
             self.experience_buffer.register_key("unnormalized_rewards")
         self.experience_buffer.register_key("dones", dtype=torch.long)
         self.register_algorithm_experience_buffer_keys()
+        self.register_algorithm_experience_buffer_keys_from_obs(obs_td)
 
         # Force reset on fit start
         done_indices = torch.arange(self.num_envs, device=self.device, dtype=torch.long)
@@ -462,6 +683,7 @@ class BaseAgent:
                 ):
                     # Reset returns observations directly
                     obs, _ = self.env.reset(done_indices)
+                    self.pre_collect_step(step)
                     obs = self.add_agent_info_to_obs(obs)
                     obs_td = self.obs_dict_to_tensordict(obs)
 
@@ -472,12 +694,14 @@ class BaseAgent:
                     actor_output = self.collect_rollout_step(obs_td, step)
                     self.check_for_nans(obs_td, actor_output)
 
-                    next_obs, rewards, dones, terminated, extras = self.env.step(actor_output["action"])
+                    next_obs, rewards, dones, terminated, extras = self.env.step(
+                        actor_output["action"]
+                    )
                     assert torch.all(
                         torch.isfinite(rewards)
                     ), f"NaN or Inf in rewards: {rewards}"
 
-                    next_obs = self.add_agent_info_to_obs(next_obs)
+                    next_obs = self.add_agent_info_to_next_obs(next_obs)
                     next_obs_td = self.obs_dict_to_tensordict(next_obs)
 
                     # Allow subclasses to modify dones/terminated (e.g., AMP discriminator termination)
@@ -541,9 +765,25 @@ class BaseAgent:
             ):
                 self.fabric.call("on_eval_start", self)
 
-                eval_log_dict, evaluated_score = self.evaluator.evaluate()
-                evaluated_score = self.fabric.broadcast(evaluated_score, src=0)
+                eval_log_dict, evaluated_score, num_eval_items = (
+                    self.evaluator.evaluate()
+                )
                 self.fabric.call("on_eval_end", self)
+
+                # Aggregate eval metrics across ranks weighted by num_eval_items
+                # (number of motions evaluated), not num_envs. This ensures
+                # proper averaging when ranks evaluate different motion counts
+                # (e.g., co-training with heterogeneous motion libraries).
+                eval_log_dict = aggregate_scalar_metrics(
+                    eval_log_dict, self.fabric, weight=num_eval_items
+                )
+                if evaluated_score is not None:
+                    score_dict = aggregate_scalar_metrics(
+                        {"_score": evaluated_score},
+                        self.fabric,
+                        weight=num_eval_items,
+                    )
+                    evaluated_score = score_dict["_score"]
 
                 if evaluated_score is not None:
                     if (
@@ -580,13 +820,35 @@ class BaseAgent:
     # -----------------------------
     # Environment Interaction Helpers
     # -----------------------------
+    def pre_collect_step(self, step: int) -> None:
+        """Advance agent-side state once per rollout step.
+
+        Called exactly once per step in the rollout loop, before
+        add_agent_info_to_obs. Use this for stateful operations that must
+        happen once per step (e.g., advancing hold counters, latent reset
+        timers). Keep add_agent_info_to_obs as a stateless read.
+        """
+        pass
+
     def add_agent_info_to_obs(self, obs: Dict) -> Dict:
         """Add agent-specific observations to the environment observations.
 
-        This can be used to augment observations from both reset() and step()
-        with agent-specific information (e.g., latent codes, discriminator obs).
+        Must be stateless — reads agent state set by pre_collect_step() but
+        does not modify it. Called for the actor's obs during rollout.
+        Also called during evaluation and setup (where pre_collect_step is
+        not called), so it must not depend on pre_collect_step having run.
         """
         return obs
+
+    def add_agent_info_to_next_obs(self, obs: Dict) -> Dict:
+        """Add agent info to the next-step observations used for critic value.
+
+        Called once per rollout step on next_obs (after env.step) to prepare
+        observations for the critic's next_value computation. By default
+        delegates to add_agent_info_to_obs. Override to provide different
+        observations to the critic (e.g., fresh targets instead of held).
+        """
+        return self.add_agent_info_to_obs(obs)
 
     def obs_dict_to_tensordict(self, obs_dict: Dict) -> TensorDict:
         """Convert observation dict to TensorDict.
@@ -603,7 +865,9 @@ class BaseAgent:
     def post_env_step_modifications(self, dones, terminated, extras):
         """Allow subclasses to modify dones/terminated after env.step().
 
-        This hook allows algorithm-specific modifications (e.g., AMP discriminator termination).
+        This hook allows algorithm-specific modifications (e.g., AMP
+        discriminator termination) and then clears model-owned rollout context
+        for any environment that is done.
 
         Args:
             dones: Reset flags from environment
@@ -613,6 +877,9 @@ class BaseAgent:
         Returns:
             Modified (dones, terminated, extras) tuple
         """
+        self.model.reset_rollout_context(
+            env_ids=dones.nonzero(as_tuple=False).squeeze(-1)
+        )
         return dones, terminated, extras
 
     def check_for_nans(self, *tensordicts: TensorDict):
@@ -669,7 +936,7 @@ class BaseAgent:
 
         extras_mean_std_dict = {}
         for key in extras:
-            if "raw/" in key:
+            if key.startswith("raw/"):
                 continue
             if isinstance(extras[key], torch.Tensor):
                 extra_val = extras[key].float()
@@ -677,7 +944,7 @@ class BaseAgent:
                     extras_mean_std_dict[key] = extra_val.flatten()
                 else:
                     extras_mean_std_dict[f"{key}_mean"] = extra_val.mean()
-                    # extras_mean_std_dict[f"{key}_std"] = extra_val.std()
+                    extras_mean_std_dict[f"{key}_std"] = extra_val.std()
         self.episode_env_tensors.add(extras_mean_std_dict)
 
         self.experience_buffer.update_data("dones", step, dones)
@@ -693,7 +960,9 @@ class BaseAgent:
             return
 
         rewards = self.experience_buffer.rewards
-        self.experience_buffer.batch_update_data("unnormalized_rewards", rewards.clone())
+        self.experience_buffer.batch_update_data(
+            "unnormalized_rewards", rewards.clone()
+        )
         self.experience_buffer.batch_update_data(
             "rewards", self.running_reward_norm.normalize(rewards)
         )
@@ -732,15 +1001,23 @@ class BaseAgent:
 
             iter_log_dict = self.perform_optimization_step(batch_dict, batch_idx)
 
-            # Memory optimization: Detach intermediate tensors to prevent gradient retention
+            # Memory optimization: Detach intermediate tensors to prevent gradient retention.
+            # Accumulator uses non-in-place add so shared-storage tensors in iter_log_dict
+            # (e.g. duplicate keys pointing at the same accuracy/perplexity tensor) are not
+            # mutated twice per step. The first-iter entry also stores a fresh clone for the
+            # same reason: without the clone, the first stored value still shares storage
+            # with iter_log_dict's source until the next iteration's `+` replaces it.
             for k, v in iter_log_dict.items():
                 if isinstance(v, torch.Tensor):
                     iter_log_dict[k] = v.detach()
                 if k in training_log_dict:
-                    training_log_dict[k][0] += iter_log_dict[k]
+                    training_log_dict[k][0] = training_log_dict[k][0] + iter_log_dict[k]
                     training_log_dict[k][1] += 1
                 else:
-                    training_log_dict[k] = [iter_log_dict[k], 1]
+                    initial = iter_log_dict[k]
+                    if isinstance(initial, torch.Tensor):
+                        initial = initial.clone()
+                    training_log_dict[k] = [initial, 1]
 
             # Memory optimization: Clear batch_dict to free memory early
             del batch_dict
@@ -752,7 +1029,7 @@ class BaseAgent:
         return training_log_dict
 
     @abstractmethod
-    def perform_optimization_step(self, batch_dict) -> Dict:
+    def perform_optimization_step(self, batch_dict, batch_idx) -> Dict:
         # Perform a single optimization step and return the log dictionary
         pass
 
@@ -764,8 +1041,12 @@ class BaseAgent:
         episode_length_dict = self.episode_length_meter.mean_and_clear()
 
         log_dict = {
-            "info/episode_length": episode_length_dict.get("episode_length", 0),
-            "info/episode_reward": episode_reward_dict.get("episode_reward", 0),
+            "info/episode_length": episode_length_dict.get(
+                "episode_length", self.last_episode_length
+            ),
+            "info/episode_reward": episode_reward_dict.get(
+                "episode_reward", self.last_episode_reward
+            ),
             "info/frames": torch.tensor(self.step_count),
             "info/gframes": torch.tensor(self.step_count / (10**9)),
             "times/fps_last_epoch": (self.num_steps * self.get_step_count_increment())
@@ -780,6 +1061,13 @@ class BaseAgent:
             log_dict["rewards/unnormalized_task_rewards"] = (
                 self.experience_buffer.unnormalized_rewards.mean().item()
             )
+            log_dict["reward_norm/var"] = self.running_reward_norm.var.item()
+            log_dict["reward_norm/pre_norm_reward"] = (
+                self.experience_buffer.unnormalized_rewards.mean().item()
+            )
+            log_dict["reward_norm/post_norm_reward"] = (
+                self.experience_buffer.rewards.mean().item()
+            )
 
         env_log_dict = self.episode_env_tensors.mean_and_clear()
         env_log_dict = {f"env/{k}": v for k, v in env_log_dict.items()}
@@ -789,7 +1077,11 @@ class BaseAgent:
 
         # Aggregate metrics across all devices before logging
         # This ensures wandb reports representative metrics from all ranks, not just rank 0
-        aggregated_log_dict = aggregate_scalar_metrics(log_dict, self.fabric)
+        aggregated_log_dict = aggregate_scalar_metrics(
+            log_dict, self.fabric, weight=self.num_envs
+        )
+        self.last_episode_length = aggregated_log_dict["info/episode_length"]
+        self.last_episode_reward = aggregated_log_dict["info/episode_reward"]
 
         # wandb logger does this: assert rank_zero_only.rank == 0
         # Pass current_epoch so TensorBoard knows the X-axis value
@@ -825,14 +1117,12 @@ class BaseAgent:
     def get_step_count_increment(self):
         """Calculate step count increment for distributed training.
 
-        Accounts for multiple GPUs and nodes in step counting.
+        Accounts for multiple GPUs/nodes and heterogeneous num_envs across ranks.
 
         Returns:
             Number of environment steps per training iteration across all processes.
         """
-        return (
-            self.num_envs * self.fabric.world_size
-        )  # fabric.world_size = num gpu * num nodes
+        return self._total_envs
 
     def terminate_early(self):
         """Request early termination of training.

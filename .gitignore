@@ -14,7 +14,6 @@ exps/*
 wandb/*
 newton_source/*
 data/amass/*.pkl
-.claude/*
-!.claude/commands/
 .cursor/
 renders/
+.envrc

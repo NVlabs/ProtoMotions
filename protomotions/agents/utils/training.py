@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Training utility functions for agent training.
 
 This module provides helper functions used during agent training including
@@ -71,7 +59,9 @@ def handle_model_grad_clipping(config, fabric, model, optimizer, model_name):
 
     Args:
         config: Agent config with grad clipping settings.
-        fabric: Fabric instance for distributed operations.
+        fabric: Fabric instance for distributed operations, or None for models
+            that use their own process group (e.g., per-group DDP). When None,
+            gradient clipping uses ``torch.nn.utils.clip_grad_norm_`` directly.
         model: Neural network model.
         optimizer: Optimizer for the model.
         model_name: Name for logging (e.g., "actor", "critic").
@@ -112,12 +102,19 @@ def handle_model_grad_clipping(config, fabric, model, optimizer, model_name):
                     p.grad.zero_()
 
     if config.gradient_clip_val > 0:
-        fabric.clip_gradients(
-            model,
-            optimizer,
-            max_norm=config.gradient_clip_val,
-            error_if_nonfinite=True,
-        )
+        if fabric is not None:
+            fabric.clip_gradients(
+                model,
+                optimizer,
+                max_norm=config.gradient_clip_val,
+                error_if_nonfinite=True,
+            )
+        else:
+            torch.nn.utils.clip_grad_norm_(
+                params,
+                max_norm=config.gradient_clip_val,
+                error_if_nonfinite=True,
+            )
     grad_norm_after_clip = torch_utils.grad_norm(params)
     clip_dict = {
         f"{model_name}/grad_norm_before_clip": grad_norm_before_clip.detach(),
@@ -127,9 +124,12 @@ def handle_model_grad_clipping(config, fabric, model, optimizer, model_name):
     return clip_dict
 
 
-def aggregate_scalar_metrics(log_dict: Dict, fabric: Fabric) -> Dict:
+def aggregate_scalar_metrics(log_dict: Dict, fabric: Fabric, weight: int = 1) -> Dict:
     """
-    Aggregate scalar metrics across all devices using all_gather and mean reduction.
+    Aggregate scalar metrics across all devices using weighted mean reduction.
+
+    Each rank contributes ``weight`` (typically ``num_envs``) to the weighted
+    average.  When all ranks have the same weight this reduces to a simple mean.
 
     All ranks compute the same averaged metrics. Then fabric.log_dict() only uploads
     from rank 0 (via Lightning's rank_zero_only pattern), so wandb logs the average
@@ -137,29 +137,33 @@ def aggregate_scalar_metrics(log_dict: Dict, fabric: Fabric) -> Dict:
     """
     aggregated_dict = {}
 
+    if fabric.world_size > 1:
+        weight_tensor = torch.tensor(weight, device=fabric.device, dtype=torch.float32)
+        all_weights = fabric.all_gather(weight_tensor)
+        total_weight = all_weights.sum()
+    else:
+        all_weights = None
+        total_weight = None
+
     for key, value in log_dict.items():
         if isinstance(value, (int, float)):
-            # Convert to tensor for aggregation
             value_tensor = torch.tensor(
                 value, device=fabric.device, dtype=torch.float32
             )
         elif isinstance(value, torch.Tensor):
-            # Ensure it's a scalar tensor
             if value.numel() == 1:
                 value_tensor = value.float().to(fabric.device)
             else:
-                # For non-scalar tensors, take the mean and treat as scalar
                 value_tensor = value.mean().float().to(fabric.device)
         else:
-            # For non-numeric values, keep as is (no aggregation needed)
             aggregated_dict[key] = value
             continue
 
         if fabric.world_size > 1:
-            # Gather values from all devices
             all_values = fabric.all_gather(value_tensor)
-            # Take mean across all devices
-            aggregated_value = all_values.mean().item()
+            # Weighted mean: sum(value_i * weight_i) / sum(weight_i)
+            aggregated_value = (all_values * all_weights).sum() / total_weight
+            aggregated_value = aggregated_value.item()
         else:
             aggregated_value = value_tensor.item()
 

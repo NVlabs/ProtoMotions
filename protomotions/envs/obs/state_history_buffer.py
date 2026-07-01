@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """State history buffer for storing historical robot state tensors.
 
 This module provides the StateHistoryBuffer class that stores raw 4D tensors
@@ -577,10 +565,7 @@ class StateHistoryBuffer:
         self.dof_pos.copy_(state['dof_pos'])
         self.dof_vel.copy_(state['dof_vel'])
         self.actions.copy_(state['actions'])
-        if 'processed_actions' in state:
-            self.processed_actions.copy_(state['processed_actions'])
-        else:
-            self.processed_actions.copy_(state['actions'])  # Fallback for old checkpoints
+        self.processed_actions.copy_(state['processed_actions'])
         self.ground_heights.copy_(state['ground_heights'])
         self.body_contacts.copy_(state['body_contacts'])
         if self.store_noisy and state.get('store_noisy', False):
@@ -591,4 +576,3 @@ class StateHistoryBuffer:
             self.noisy_dof_pos.copy_(state['noisy_dof_pos'])
             self.noisy_dof_vel.copy_(state['noisy_dof_vel'])
             self.noisy_ground_heights.copy_(state['noisy_ground_heights'])
-

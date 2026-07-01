@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Running mean and standard deviation computation for normalization.
 
 This module provides efficient online computation of mean and variance statistics
@@ -72,6 +60,7 @@ class RunningMeanStd(nn.Module):
         epsilon: int = 1e-5,
         device="cuda:0",
         clamp_value: Optional[float] = None,
+        ema_decay: Optional[float] = None,
     ):
         """Initialize running statistics tracker with optional lazy initialization.
 
@@ -81,11 +70,16 @@ class RunningMeanStd(nn.Module):
             epsilon: Numerical stability constant.
             device: PyTorch device.
             clamp_value: Optional value for clamping normalized outputs.
+            ema_decay: If set, use EMA instead of Welford's algorithm.
+                None (default) = Welford's (all-time statistics, count grows unbounded).
+                Float in (0, 1) = EMA decay factor (e.g. 0.999 tracks ~1000-sample window).
+                Checkpoint-compatible: same mean/var buffers, count is ignored in EMA mode.
         """
         super().__init__()
         self.fabric = fabric
         self.epsilon = epsilon
         self.clamp_value = clamp_value
+        self.ema_decay = ema_decay
         self.shape = shape
         self.device = device
         self._initialized = False
@@ -158,6 +152,12 @@ class RunningMeanStd(nn.Module):
     def update_from_moments(
         self, batch_mean: torch.tensor, batch_var: torch.tensor, batch_count: int
     ) -> None:
+        if self.ema_decay is not None:
+            d = self.ema_decay
+            self.mean[:] = d * self.mean + (1 - d) * batch_mean
+            self.var[:] = d * self.var + (1 - d) * batch_var
+            return
+
         new_mean, new_var, new_count = combine_moments(
             [self.mean, batch_mean], [self.var, batch_var], [self.count, batch_count]
         )
@@ -199,7 +199,7 @@ class RunningMeanStd(nn.Module):
         batch_var = torch.var(arr, dim=0, unbiased=False)
         batch_count = arr.shape[0]
 
-        if self.fabric.world_size > 1:
+        if self.fabric is not None and self.fabric.world_size > 1:
             all_means = self.fabric.all_gather(batch_mean)
             all_vars = self.fabric.all_gather(batch_var)
             all_counts = self.fabric.all_gather(batch_count)
@@ -209,17 +209,37 @@ class RunningMeanStd(nn.Module):
                     all_means, all_vars, all_counts
                 )
 
-        if self.fabric.global_rank == 0:
+            if self.fabric.global_rank == 0:
+                self.update_from_moments(batch_mean, batch_var, batch_count)
+
+            # Broadcast updated parameters to all ranks
+            updated_mean = self.fabric.broadcast(self.mean, src=0)
+            updated_var = self.fabric.broadcast(self.var, src=0)
+            updated_count = self.fabric.broadcast(self.count, src=0)
+
+            self.mean.copy_(updated_mean)
+            self.var.copy_(updated_var)
+            self.count.fill_(updated_count.item())
+        else:
             self.update_from_moments(batch_mean, batch_var, batch_count)
 
-        # Broadcast updated parameters to all ranks
-        updated_mean = self.fabric.broadcast(self.mean, src=0)
-        updated_var = self.fabric.broadcast(self.var, src=0)
-        updated_count = self.fabric.broadcast(self.count, src=0)
 
-        self.mean.copy_(updated_mean)
-        self.var.copy_(updated_var)
-        self.count.fill_(updated_count.item())
+def materialize_lazy_running_stats_from_state_dict(
+    model: nn.Module,
+    state_dict: dict,
+) -> None:
+    """Initialize lazy RunningMeanStd modules before loading checkpoint buffers."""
+    for module_name, module in model.named_modules():
+        if not isinstance(module, RunningMeanStd):
+            continue
+
+        mean_key = f"{module_name}.mean" if module_name else "mean"
+        if module._initialized or mean_key not in state_dict:
+            continue
+
+        mean = state_dict[mean_key]
+        module._create_buffers(tuple(mean.shape), mean.device)
+        module._initialized = True
 
 
 def combine_moments(means: List[Tensor], vars: List[Tensor], counts: List[Tensor]):
@@ -278,7 +298,24 @@ def combine_moments(means: List[Tensor], vars: List[Tensor], counts: List[Tensor
 
 
 class RewardRunningMeanStd(RunningMeanStd):
-    # Adopted from https://gymnasium.farama.org/_modules/gymnasium/wrappers/stateful_reward/#NormalizeReward
+    """Running statistics for reward normalization.
+
+    Supports two modes controlled by ``ema_decay``:
+
+    * **Welford (default, ema_decay=None)** -- all-time running statistics.
+      Variance estimate freezes after many updates because the sample count
+      grows without bound.
+    * **EMA (ema_decay in (0, 1))** -- exponential moving average of mean and
+      variance.  Tracks non-stationary reward distributions (e.g. when
+      discriminator reward magnitudes shift during adversarial training).
+
+    Checkpoint compatibility: both modes store the same ``mean`` / ``var`` /
+    ``count`` buffers.  Switching from Welford to EMA on resume is safe -- the
+    loaded mean/var become the EMA starting point and ``count`` is ignored.
+
+    Adopted from https://gymnasium.farama.org/_modules/gymnasium/wrappers/stateful_reward/#NormalizeReward
+    """
+
     def __init__(
         self,
         fabric: Fabric,
@@ -287,8 +324,9 @@ class RewardRunningMeanStd(RunningMeanStd):
         epsilon: float = 1e-5,
         clamp_value: Optional[float] = None,
         device: str = "cuda:0",
+        ema_decay: Optional[float] = None,
     ):
-        super().__init__(fabric, shape, epsilon, device, clamp_value)
+        super().__init__(fabric, shape, epsilon, device, clamp_value, ema_decay)
         self.gamma = gamma
 
         self.discounted_reward = None
@@ -306,7 +344,7 @@ class RewardRunningMeanStd(RunningMeanStd):
         self.record_moments(self.discounted_reward)
 
     def normalize(self, arr: torch.tensor, un_norm=False) -> torch.tensor:
-        # Override normalizer behavior for rewards. Only normalize the magnitude and not the offset.
+        # Only normalize the magnitude, not the offset.
         if not un_norm:
             result = arr / torch.sqrt(self.var.float() + self.epsilon)
             result = self.maybe_clamp(result)

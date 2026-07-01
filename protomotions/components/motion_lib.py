@@ -1,18 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025-2026 The ProtoMotions Developers
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+
 """Motion library for managing reference motion data.
 
 This module provides the MotionLib class which stores and manages collections of
@@ -83,6 +71,24 @@ class MotionLibConfig:
             "help": "Use interpolation for smooth motion queries between frames."
         },
     )
+    max_seconds: Optional[float] = field(
+        default=None,
+        metadata={
+            "help": "Clip motions longer than this to a random duration in "
+            "[max_seconds - clip_delta, max_seconds]. None disables clipping."
+        },
+    )
+    clip_delta: float = field(
+        default=3.0,
+        metadata={
+            "help": "Maximum random reduction (seconds) below max_seconds when clipping. "
+            "Clip target = uniform(max_seconds - clip_delta, max_seconds)."
+        },
+    )
+    clip_seed: int = field(
+        default=42,
+        metadata={"help": "RNG seed for reproducible per-motion clip lengths."},
+    )
 
 
 class MotionLib:
@@ -129,6 +135,7 @@ class MotionLib:
     lrs: Optional[torch.Tensor] = (
         None  # maybe also has local_rigid_body_rot for interpolation, see hack below
     )
+    goal_states: Optional[torch.Tensor] = None  # per-frame binary mask for goal poses
 
     # Get all field names defined at class level
     _fields = list(__annotations__.keys())
@@ -196,6 +203,7 @@ class MotionLib:
         self.contacts = torch.empty(0, 0, device=self.device)
         self.motion_files = ()
         self.lrs = None
+        self.goal_states = None
 
     @classmethod
     def empty(cls, device: str = "cpu"):
@@ -314,6 +322,64 @@ class MotionLib:
         frame_idx = torch.round(motion_times / motion_len * (num_frames - 1)).long()
         return frame_idx
 
+    def has_goal_states(self) -> bool:
+        """Check if this motion library has goal state annotations."""
+        return self.goal_states is not None
+
+    def get_goal_state_times(self, motion_ids: torch.Tensor) -> torch.Tensor:
+        """Return the time of the goal-state frame for each motion.
+
+        The goal state is the middle frame of the static interaction segment,
+        identified during pre-processing and stored as a per-frame binary mask.
+
+        Args:
+            motion_ids: Tensor of motion IDs.
+
+        Returns:
+            Tensor of goal-state times. Returns -1 for motions without goal states.
+
+        Raises:
+            RuntimeError: If goal_states is not loaded (caller should check
+            has_goal_states() first).
+        """
+        if self.goal_states is None:
+            raise RuntimeError(
+                "goal_states not available in this motion library. "
+                "Run scripts/samp_detect_goal_states.py to annotate."
+            )
+
+        goal_times = torch.full(
+            (len(motion_ids),), -1.0, device=self.device, dtype=torch.float32
+        )
+        for i, mid in enumerate(motion_ids):
+            start = self.length_starts[mid]
+            n_frames = self.motion_num_frames[mid]
+            mask = self.goal_states[start : start + n_frames]
+            goal_indices = torch.nonzero(mask, as_tuple=False)
+            if len(goal_indices) > 0:
+                median_idx = goal_indices[len(goal_indices) // 2].item()
+                goal_times[i] = (
+                    median_idx / max(n_frames.item() - 1, 1)
+                ) * self.motion_lengths[mid]
+        return goal_times
+
+    def get_goal_state_times_batched(self, motion_ids: torch.Tensor) -> torch.Tensor:
+        """Vectorized version of get_goal_state_times using precomputed cache.
+
+        On first call, precomputes goal_state_time for every motion and caches it.
+        Subsequent calls are a simple index lookup.
+
+        Args:
+            motion_ids: Tensor of motion IDs.
+
+        Returns:
+            Tensor of goal-state times. -1 for motions without goal states.
+        """
+        if not hasattr(self, "_goal_state_time_cache"):
+            all_ids = torch.arange(self.num_motions(), device=self.device)
+            self._goal_state_time_cache = self.get_goal_state_times(all_ids)
+        return self._goal_state_time_cache[motion_ids]
+
     def get_motion_state(
         self, motion_ids, motion_times, joint_3d_format="exp_map"
     ) -> RobotState:
@@ -380,6 +446,7 @@ class MotionLib:
                     | motion_state_1.rigid_body_contacts
                 )
             else:
+                # For smoothed (float) contacts, take the average between frames
                 motion_state_0.rigid_body_contacts = (
                     motion_state_0.rigid_body_contacts
                     + motion_state_1.rigid_body_contacts
@@ -423,12 +490,15 @@ class MotionLib:
             motion_data, state_conversion=StateConversion.COMMON
         )
         motion_state.local_rigid_body_rot = local_rigid_body_rot
-        if self.contacts is not None:
-            motion_state.rigid_body_contacts = self.contacts[fl].clone()
+        motion_state.rigid_body_contacts = (
+            self.contacts[fl].clone() if self.contacts is not None else None
+        )
 
         return motion_state
 
     def _load_motions(self, motion_file):
+        import random
+
         motions = []
         motion_lengths = []
         motion_dt = []
@@ -437,6 +507,10 @@ class MotionLib:
         motion_files, motion_weights = self._fetch_motion_files(motion_file)
 
         num_motion_files = len(motion_files)
+
+        clip_rng = None
+        if self.config.max_seconds is not None:
+            clip_rng = random.Random(self.config.clip_seed)
 
         for f in range(num_motion_files):
             curr_file = motion_files[f]
@@ -451,6 +525,22 @@ class MotionLib:
             curr_motion = RobotState.from_dict(
                 curr_motion, state_conversion=StateConversion.COMMON
             )
+
+            if (
+                clip_rng is not None
+                and curr_motion.motion_length > self.config.max_seconds
+            ):
+                target = clip_rng.uniform(
+                    self.config.max_seconds - self.config.clip_delta,
+                    self.config.max_seconds,
+                )
+                max_frames = min(
+                    int(target * curr_motion.fps) + 1, curr_motion.motion_num_frames
+                )
+                curr_motion = curr_motion[:max_frames]
+                print(
+                    f"    Clipped to {curr_motion.motion_length:.2f}s ({max_frames} frames)"
+                )
 
             motions.append(curr_motion)
             motion_lengths.append(curr_motion.motion_length)
@@ -588,9 +678,9 @@ class MotionLib:
         # Create a dictionary with all required tensors
         save_data = {}
 
-        for field in self._fields:
-            if getattr(self, field) is not None:
-                save_data[field] = getattr(self, field)
+        for field_name in self._fields:
+            if getattr(self, field_name) is not None:
+                save_data[field_name] = getattr(self, field_name)
 
         # Ensure directory exists
         os.makedirs(file_path.parent, exist_ok=True)
@@ -611,8 +701,13 @@ class MotionLib:
             file_path, map_location=self.device, weights_only=False
         )
 
+        # Pre-initialize all fields to None so missing fields (e.g. contacts
+        # discarded at save time) don't cause AttributeError below.
+        for field in self._fields:
+            if not hasattr(self, field):
+                setattr(self, field, None)
+
         for field in loaded_data:
-            assert loaded_data[field] is not None, f"Field {field} is None"
             setattr(self, field, loaded_data[field])
 
         if (
@@ -784,6 +879,26 @@ if __name__ == "__main__":
         default="cpu",
         help="Device to use for processing (cpu or cuda)",
     )
+    parser.add_argument(
+        "--max-seconds",
+        type=float,
+        default=None,
+        help="Clip motions longer than this to a random duration in "
+        "[max-seconds - clip-delta, max-seconds]. Default: disabled (no clipping).",
+    )
+    parser.add_argument(
+        "--clip-delta",
+        type=float,
+        default=3.0,
+        help="Maximum random reduction (seconds) below --max-seconds when clipping. "
+        "Clip target = uniform(max_seconds - clip_delta, max_seconds). Default: 3.",
+    )
+    parser.add_argument(
+        "--clip-seed",
+        type=int,
+        default=42,
+        help="RNG seed for reproducible per-motion clip lengths. Default: 42.",
+    )
 
     args = parser.parse_args()
 
@@ -808,6 +923,12 @@ if __name__ == "__main__":
 
     # Create and save motion library
     motion_lib = MotionLib(
-        config=MotionLibConfig(motion_file=motion_file), device=args.device
+        config=MotionLibConfig(
+            motion_file=motion_file,
+            max_seconds=args.max_seconds,
+            clip_delta=args.clip_delta,
+            clip_seed=args.clip_seed,
+        ),
+        device=args.device,
     )
     motion_lib.save_to_file(args.output_file)

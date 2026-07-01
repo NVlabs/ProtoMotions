@@ -68,7 +68,7 @@
                                   <joint name='RightHand_x' type='hinge' pos='0 0 0' axis='1.0000 0.0000 0.0000' stiffness='200' damping='20' armature='0.02' range='-180.0000 180.0000'/>
                                   <joint name='RightHand_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='200' damping='20' armature='0.02' range='-180.0000 180.0000'/>
                                   <joint name='RightHand_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='200' damping='20' armature='0.02' range='-180.0000 180.0000'/>
-                                  <geom type='capsule' size='0.05' contype='1' conaffinity='1' fromto='-0.02 0.0000 0.0000 -0.0807 -0.0215 -0.0158' density='1000' material='geom'/>
+                                  <geom type='capsule' size='0.05' contype='1' conaffinity='1' fromto='-0.02 0.0000 0.0000 -0.050 -0.011 -0.008' density='1000' material='geom'/>
                                 </body>
                             </body>
                         </body>
@@ -92,7 +92,7 @@
                                   <joint name='LeftHand_x' type='hinge' pos='0 0 0' axis='-1.0000 0.0000 0.0000' stiffness='200' damping='20' armature='0.02' range='-180.0000 180.0000'/>
                                   <joint name='LeftHand_y' type='hinge' pos='0 0 0' axis='0.0000 1.0000 0.0000' stiffness='200' damping='20' armature='0.02' range='-180.0000 180.0000'/>
                                   <joint name='LeftHand_z' type='hinge' pos='0 0 0' axis='0.0000 0.0000 1.0000' stiffness='200' damping='20' armature='0.02' range='-180.0000 180.0000'/>
-                                  <geom type='capsule' size='0.05' contype='1' conaffinity='1' fromto='0.02 0.0000 0.0000 0.0808 -0.0216 -0.0159' density='1000' material='geom'/>
+                                  <geom type='capsule' size='0.05' contype='1' conaffinity='1' fromto='0.02 0.0000 0.0000 0.050 -0.011 -0.008' density='1000' material='geom'/>
                                 </body>
                             </body>
                         </body>

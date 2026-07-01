@@ -24,11 +24,18 @@ You can install the simulation of your choice, and the simulation backend is sel
 Prerequisites
 -------------
 
-After cloning the repository, fetch all files stored in git-lfs:
+After cloning the repository, fetch and check out files stored in Git LFS:
 
 .. code-block:: bash
 
-   git lfs fetch --all
+   git lfs install
+   git lfs pull
+
+This can take a while because pretrained checkpoints, motion files, meshes, and
+USD assets are large. If you fetch a subset of assets manually, make sure the
+files are checked out and not still Git LFS pointer files. Pointer files start
+with ``version https://git-lfs.github.com/spec/v1`` and can cause errors such as
+``is not a valid usda layer`` when IsaacLab loads robot assets.
 
 Choose Your Simulator(s)
 ------------------------
@@ -82,7 +89,7 @@ For full installation details, see the `IsaacLab Pip Installation Guide <https:/
 
    .. code-block:: bash
 
-      uv pip install torch==2.7.0 torchvision==0.22.0 --index-url https://download.pytorch.org/whl/cu128
+      uv pip install torch==2.7.0 torchvision==0.22.0
       uv pip install isaaclab[isaacsim,all]==2.3.0 --extra-index-url https://pypi.nvidia.com
 
 3. Install ProtoMotions and dependencies:
@@ -91,6 +98,11 @@ For full installation details, see the `IsaacLab Pip Installation Guide <https:/
 
       uv pip install -e /path/to/protomotions
       uv pip install -r /path/to/protomotions/requirements_isaaclab.txt
+
+.. note::
+
+   IsaacLab/IsaacSim may prompt for NVIDIA EULA acceptance on first use. Accept
+   it interactively before running unattended headless jobs.
 
 Genesis (Experimental)
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -193,6 +205,20 @@ MuJoCo is a CPU-only backend for quick testing and debugging without GPU. It sup
 Troubleshooting
 ---------------
 
+IsaacLab Issues
+~~~~~~~~~~~~~~~
+
+**Torch Inductor Warning**
+
+On smaller GPUs, IsaacLab evaluation may print a warning similar to:
+
+.. code-block:: text
+
+   Not enough SMs to use max_autotune_gemm mode
+
+This is a non-fatal PyTorch performance warning. Evaluation can continue unless
+it is followed by an actual traceback.
+
 IsaacGym Issues
 ~~~~~~~~~~~~~~~
 
@@ -211,12 +237,19 @@ If you encounter ``libpython`` related errors, you need to set the ``LD_LIBRARY_
    # For example:
    export LD_LIBRARY_PATH=${CONDA_PREFIX}/lib:$LD_LIBRARY_PATH
 
-To make this permanent, add the export command to your ``~/.bashrc`` or ``~/.zshrc``:
+To make this permanent for only this conda environment, add activation hooks:
 
 .. code-block:: bash
 
-   echo 'export LD_LIBRARY_PATH=${CONDA_PREFIX}/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
-   source ~/.bashrc
+   mkdir -p "${CONDA_PREFIX}/etc/conda/activate.d" "${CONDA_PREFIX}/etc/conda/deactivate.d"
+   cat > "${CONDA_PREFIX}/etc/conda/activate.d/isaacgym-libpython.sh" <<'EOF'
+   export _OLD_LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
+   export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
+   EOF
+   cat > "${CONDA_PREFIX}/etc/conda/deactivate.d/isaacgym-libpython.sh" <<'EOF'
+   export LD_LIBRARY_PATH="${_OLD_LD_LIBRARY_PATH:-}"
+   unset _OLD_LD_LIBRARY_PATH
+   EOF
 
 **Memory Issues**
 
@@ -231,4 +264,3 @@ Next Steps
 ----------
 
 After installation, proceed to the :doc:`quickstart` guide to train your first agent or run pre-trained models.
-
