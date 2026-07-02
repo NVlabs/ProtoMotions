@@ -600,6 +600,13 @@ def extract_control_info(
 
     control_info = {}
 
+    def _optional_float(value):
+        if value is None:
+            return None
+        if isinstance(value, np.ndarray):
+            value = value.item()
+        return float(value)
+
     def _extract_joint_control_params(joint_name, joint):
         """Extract control parameters from a joint element."""
         # Extract stiffness and damping from joint attributes
@@ -628,10 +635,14 @@ def extract_control_info(
                 effort_limit = max_val
             except ValueError:
                 effort_limit = DEFAULT_EFFORT_LIMIT
-        if isinstance(effort_limit, list):
-            effort_limit = effort_limit[1]
-        if isinstance(effort_limit, np.ndarray):
-            effort_limit = effort_limit[1]
+        if isinstance(effort_limit, (list, tuple, np.ndarray)):
+            values = np.asarray(effort_limit).reshape(-1)
+            if values.size == 0:
+                effort_limit = DEFAULT_EFFORT_LIMIT
+            elif values.size == 1:
+                effort_limit = values[0]
+            else:
+                effort_limit = values[1]
 
         if override_control_info is not None:
             for (
@@ -652,6 +663,12 @@ def extract_control_info(
                         effort_limit = override_joint_control_info.effort_limit
                     if override_joint_control_info.velocity_limit is not None:
                         velocity_limit = override_joint_control_info.velocity_limit
+
+        stiffness = _optional_float(stiffness)
+        damping = _optional_float(damping)
+        armature = _optional_float(armature)
+        friction = _optional_float(friction)
+        effort_limit = _optional_float(effort_limit)
 
         dof_control_info = ControlInfo(
             stiffness=stiffness,

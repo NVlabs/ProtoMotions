@@ -845,6 +845,76 @@ def test_extract_control_info_converts_string_scalars_and_sequence_efforts(monke
     assert control_info["bad_effort_joint"].effort_limit is None
 
 
+def test_extract_control_info_converts_numpy_scalar_attributes(monkeypatch):
+    joint = SimpleNamespace(
+        type="hinge",
+        name="numpy_scalar_joint",
+        stiffness=np.array(1.5),
+        damping=np.array([2.5]),
+        armature=np.float32(0.125),
+        frictionloss=np.array(0.75),
+        actuatorfrcrange=np.array([-3.0, 4.0]),
+    )
+    fake_model = SimpleNamespace(
+        worldbody=SimpleNamespace(body=[SimpleNamespace(joint=[joint], body=[])])
+    )
+    monkeypatch.setattr(pose_lib.mjcf, "from_path", lambda _: fake_model)
+
+    info = extract_control_info("fake.xml")["numpy_scalar_joint"]
+
+    assert info.stiffness == pytest.approx(1.5)
+    assert info.damping == pytest.approx(2.5)
+    assert info.armature == pytest.approx(0.125)
+    assert info.friction == pytest.approx(0.75)
+    assert info.effort_limit == pytest.approx(4.0)
+    assert all(
+        type(value) is float
+        for value in (
+            info.stiffness,
+            info.damping,
+            info.armature,
+            info.friction,
+            info.effort_limit,
+        )
+    )
+
+    gains = torch.zeros(2)
+    gains[0] = info.stiffness
+    gains[1] = info.damping
+    assert torch.equal(gains, torch.tensor([1.5, 2.5]))
+
+
+def test_extract_control_info_accepts_scalar_effort_arrays(monkeypatch):
+    joints = [
+        SimpleNamespace(
+            type="hinge",
+            name="zero_dimensional_effort",
+            actuatorfrcrange=np.array(5.0),
+        ),
+        SimpleNamespace(
+            type="hinge",
+            name="singleton_effort",
+            actuatorfrcrange=np.array([6.0]),
+        ),
+        SimpleNamespace(
+            type="hinge",
+            name="range_effort",
+            actuatorfrcrange=np.array([-7.0, 8.0]),
+        ),
+    ]
+    fake_model = SimpleNamespace(
+        worldbody=SimpleNamespace(body=[SimpleNamespace(joint=joints, body=[])])
+    )
+    monkeypatch.setattr(pose_lib.mjcf, "from_path", lambda _: fake_model)
+
+    control_info = extract_control_info("fake.xml")
+
+    assert control_info["zero_dimensional_effort"].effort_limit == pytest.approx(5.0)
+    assert control_info["singleton_effort"].effort_limit == pytest.approx(6.0)
+    assert control_info["range_effort"].effort_limit == pytest.approx(8.0)
+    assert all(type(info.effort_limit) is float for info in control_info.values())
+
+
 def test_extract_control_info_rejects_model_with_only_free_joint(tmp_path):
     mjcf_path = _write_mjcf(
         tmp_path,
