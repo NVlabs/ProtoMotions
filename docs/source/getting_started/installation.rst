@@ -194,9 +194,14 @@ MuJoCo is a CPU-only backend for quick testing and debugging without GPU. It sup
    .. code-block:: bash
 
       python protomotions/inference_agent.py \
-        --checkpoint results/experiment/last.ckpt \
+        --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/last.ckpt \
+        --motion-file data/motion_for_trackers/g1_bones_seed_mini.pt \
         --simulator mujoco \
         --num-envs 1
+
+   This example uses the shipped G1 motion tracker and matching motion data. The
+   checkpoint directory includes the required ``resolved_configs_inference.pt``
+   file.
 
 .. note::
 
