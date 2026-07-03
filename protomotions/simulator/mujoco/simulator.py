@@ -293,6 +293,16 @@ class MujocoSimulator(Simulator):
             f"MuJoCo timestep: {self.model.opt.timestep:.4f}s ({self.config.sim.fps}Hz)"
         )
 
+        # Optional adverse-friction override (perturbed evaluation)
+        friction_override = getattr(self.config, "geom_friction_override", None)
+        if friction_override is not None:
+            self.model.geom_friction[:, 0] = float(friction_override)
+            log.info(
+                "Overriding sliding friction of all %d geoms to %.3f",
+                self.model.ngeom,
+                float(friction_override),
+            )
+
         # Zero passive forces from MJCF (we handle PD control via actuators)
         self._zero_passive_forces()
 
@@ -761,6 +771,36 @@ class MujocoSimulator(Simulator):
             f"max_dof_pos={max_pos:.3f} max_dof_vel={max_vel:.3f} max_ctrl={max_ctrl:.1f} "
             f"ncon={self.data.ncon}"
         )
+
+    def _resolve_wrench_bodies(self, body_names) -> int:
+        """Resolve wrench candidate body names to MuJoCo body ids."""
+        self._wrench_body_ids = []
+        for body_name in body_names:
+            body_id = mujoco.mj_name2id(
+                self.model, mujoco.mjtObj.mjOBJ_BODY, body_name
+            )
+            if body_id < 0:
+                raise ValueError(
+                    f"Wrench DR body '{body_name}' not found in MuJoCo model."
+                )
+            self._wrench_body_ids.append(body_id)
+        return len(self._wrench_body_ids)
+
+    def _apply_external_wrenches(
+        self, forces: torch.Tensor, torques: torch.Tensor
+    ) -> None:
+        """Write wrench buffers to MuJoCo's persistent applied-force array.
+
+        ``data.xfrc_applied`` is a world-frame force/torque applied at each
+        body's center of mass, persistent across mj_step until changed --
+        matching the base-class contract (only called when bursts change).
+        """
+        # num_envs == 1 for MuJoCo; env 0 only.
+        forces_np = forces[0].cpu().numpy()
+        torques_np = torques[0].cpu().numpy()
+        for i, body_id in enumerate(self._wrench_body_ids):
+            self.data.xfrc_applied[body_id, 0:3] = forces_np[i]
+            self.data.xfrc_applied[body_id, 3:6] = torques_np[i]
 
     def _apply_root_velocity_impulse(
         self,

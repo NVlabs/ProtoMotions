@@ -99,6 +99,13 @@ def create_parser():
         "--scenes-file", type=str, default=None, help="Path to scenes file (optional)"
     )
     parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="If set, seed torch/numpy/random RNGs for reproducible evaluation "
+        "(e.g. stochastic domain-randomization schedules).",
+    )
+    parser.add_argument(
         "--overrides",
         nargs="*",
         default=[],
@@ -237,6 +244,16 @@ def main():
     # Re-use the parser and args from module level
     global parser, args
     args = parser.parse_args()
+
+    if args.seed is not None:
+        import random
+
+        import numpy as np
+
+        log.info(f"Seeding RNGs with seed={args.seed}")
+        torch.manual_seed(args.seed)
+        np.random.seed(args.seed)
+        random.seed(args.seed)
 
     checkpoint = Path(args.checkpoint)
 

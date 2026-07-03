@@ -39,3 +39,13 @@ class MujocoSimulatorConfig(SimulatorConfig):
                     "False: explicit PD torque computation at each physics substep."
         }
     )
+    geom_friction_override: float = field(
+        default=None,
+        metadata={
+            "help": "If set, override the sliding-friction coefficient of ALL "
+                    "geoms in the model with this value (MuJoCo combines contact "
+                    "friction as the max of the two geoms, so both robot and "
+                    "floor geoms are overridden). Used for adverse-friction "
+                    "perturbed evaluation."
+        }
+    )
