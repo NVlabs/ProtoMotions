@@ -510,6 +510,18 @@ class WrenchDomainRandomizationConfig:
             "help": "Candidate body names (sim naming); ONE is chosen per burst per env."
         },
     )
+    persistent_fraction: float = field(
+        default=0.0,
+        metadata={
+            "help": (
+                "Fraction of envs (per-env Bernoulli draw at every reset, so "
+                "cohort membership churns) that receive a PERSISTENT wrench: "
+                "force/torque sampled once at reset and held constant for the "
+                "whole episode (no interval/duration cycling). Remaining envs "
+                "cycle normally. 0.0 (default) = exactly the previous behavior."
+            )
+        },
+    )
 
     def __post_init__(self):
         for name, rng in (
@@ -532,6 +544,8 @@ class WrenchDomainRandomizationConfig:
             raise ValueError(
                 "body_names must be provided when wrench randomization is enabled."
             )
+        if not (0.0 <= self.persistent_fraction <= 1.0):
+            raise ValueError("persistent_fraction must be in [0, 1].")
 
     def has_wrench(self) -> bool:
         """Check if any wrench magnitude is configured (non-zero)."""

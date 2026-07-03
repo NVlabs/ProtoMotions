@@ -402,11 +402,16 @@ class Simulator(RecordingMixin, ABC):
                     "torques": torch.zeros(
                         self.num_envs, num_union, 3, device=self.device
                     ),
+                    # Set when wrench values are written outside the update
+                    # loop (init/reset persistent cohort) so the next update
+                    # pushes them through the single apply call.
+                    "dirty": False,
                 }
             )
         all_envs = torch.arange(self.num_envs, device=self.device)
         for sched in self._wrench_scheds:
-            self._schedule_wrench(sched, all_envs)
+            if self._reset_wrench_class(sched, all_envs):
+                sched["dirty"] = True
 
     def _schedule_wrench(self, sched: dict, env_ids: torch.Tensor) -> None:
         """Schedule the next wrench start time for the given envs of one class."""
@@ -419,6 +424,51 @@ class Simulator(RecordingMixin, ABC):
             + interval_min
         )
         sched["next_start"][env_ids] = sched["time"][env_ids] + random_intervals
+
+    def _reset_wrench_class(self, sched: dict, env_ids: torch.Tensor) -> bool:
+        """Clear one class's state for env_ids and re-draw its persistent cohort.
+
+        A ``persistent_fraction`` (per-env Bernoulli at every reset, so cohort
+        membership churns) of envs gets a wrench sampled ONCE and held for the
+        whole episode (``end_time = +inf``, no interval/duration cycling);
+        the rest are rescheduled to cycle normally. Returns True if wrench
+        values were written (caller must ensure they reach the backend).
+        """
+        cfg = sched["cfg"]
+        sched["forces"][env_ids] = 0.0
+        sched["torques"][env_ids] = 0.0
+        sched["active"][env_ids] = False
+        sched["time"][env_ids] = 0.0
+        sched["end_time"][env_ids] = 0.0  # clear stale +inf persistent markers
+        wrote = False
+        # getattr: configs pickled before this field existed must keep loading.
+        p = getattr(cfg, "persistent_fraction", 0.0) or 0.0
+        cycling_ids = env_ids
+        if p > 0.0:
+            mask = torch.rand(len(env_ids), device=self.device) < p
+            persistent_ids = env_ids[mask]
+            cycling_ids = env_ids[~mask]
+            if len(persistent_ids) > 0:
+                body_choice = sched["cols"][
+                    torch.randint(
+                        len(sched["cols"]), (len(persistent_ids),), device=self.device
+                    )
+                ]
+                sched["forces"][persistent_ids, body_choice] = (
+                    self._sample_wrench_vectors(
+                        len(persistent_ids), cfg.force_magnitude_range, self.device
+                    )
+                )
+                sched["torques"][persistent_ids, body_choice] = (
+                    self._sample_wrench_vectors(
+                        len(persistent_ids), cfg.torque_magnitude_range, self.device
+                    )
+                )
+                sched["active"][persistent_ids] = True
+                sched["end_time"][persistent_ids] = float("inf")
+                wrote = True
+        self._schedule_wrench(sched, cycling_ids)
+        return wrote
 
     def _summed_wrench_buffers(self) -> Tuple[torch.Tensor, torch.Tensor]:
         """Sum force/torque buffers across wrench classes (superposition)."""
@@ -450,6 +500,11 @@ class Simulator(RecordingMixin, ABC):
         for sched in self._wrench_scheds:
             cfg = sched["cfg"]
             sched["time"] += self.dt
+
+            # Values written at init/reset (persistent cohort) not yet applied.
+            if sched["dirty"]:
+                sched["dirty"] = False
+                changed = True
 
             # Expire finished wrenches -> zero their rows.
             expired = sched["active"] & (sched["time"] >= sched["end_time"])
@@ -497,15 +552,12 @@ class Simulator(RecordingMixin, ABC):
         """Clear active wrenches (all classes) and reschedule for reset envs."""
         if not self._wrench_enabled or len(env_ids) == 0:
             return
-        any_active = False
+        need_apply = False
         for sched in self._wrench_scheds:
-            any_active = any_active or bool(sched["active"][env_ids].any())
-            sched["forces"][env_ids] = 0.0
-            sched["torques"][env_ids] = 0.0
-            sched["active"][env_ids] = False
-            sched["time"][env_ids] = 0.0
-            self._schedule_wrench(sched, env_ids)
-        if any_active:
+            was_active = bool(sched["active"][env_ids].any())
+            wrote = self._reset_wrench_class(sched, env_ids)
+            need_apply = need_apply or was_active or wrote
+        if need_apply:
             self._apply_external_wrenches(*self._summed_wrench_buffers())
 
     def _resolve_wrench_bodies(self, body_names: List[str]) -> int:
