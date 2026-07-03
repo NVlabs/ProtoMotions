@@ -272,6 +272,9 @@ class Simulator(RecordingMixin, ABC):
         # Initialize push randomization state
         self._init_push_randomization()
 
+        # Initialize external wrench randomization state
+        self._init_wrench_randomization()
+
         # Initialize projectile system
         self._init_projectiles()
 
@@ -334,6 +337,148 @@ class Simulator(RecordingMixin, ABC):
 
         self._apply_root_velocity_impulse(lin_vel, ang_vel, due_env_ids)
         self._schedule_push(due_env_ids)
+
+    # -------------------------
+    # External wrench randomization (random force/torque bursts)
+    # -------------------------
+    def _init_wrench_randomization(self) -> None:
+        """Initialize external wrench randomization state buffers."""
+        wrench_cfg = None
+        if (
+            self.config.domain_randomization is not None
+            and self.config.domain_randomization.wrench is not None
+            and self.config.domain_randomization.wrench.has_wrench()
+        ):
+            wrench_cfg = self.config.domain_randomization.wrench
+
+        self._wrench_enabled = wrench_cfg is not None
+
+        if self._wrench_enabled:
+            self._wrench_cfg = wrench_cfg
+            # Backend resolves configured body names to sim body indices and
+            # returns how many bodies are candidates (raises if unsupported).
+            num_wrench_bodies = self._resolve_wrench_bodies(wrench_cfg.body_names)
+            self._wrench_time = torch.zeros(self.num_envs, device=self.device)
+            self._wrench_next_start = torch.zeros(self.num_envs, device=self.device)
+            self._wrench_end_time = torch.zeros(self.num_envs, device=self.device)
+            self._wrench_active = torch.zeros(
+                self.num_envs, dtype=torch.bool, device=self.device
+            )
+            self._wrench_forces = torch.zeros(
+                self.num_envs, num_wrench_bodies, 3, device=self.device
+            )
+            self._wrench_torques = torch.zeros(
+                self.num_envs, num_wrench_bodies, 3, device=self.device
+            )
+            self._schedule_wrench(torch.arange(self.num_envs, device=self.device))
+
+    def _schedule_wrench(self, env_ids: torch.Tensor) -> None:
+        """Schedule the next wrench burst start time for the given envs."""
+        if not self._wrench_enabled or len(env_ids) == 0:
+            return
+        interval_min, interval_max = self._wrench_cfg.interval_range
+        random_intervals = (
+            torch.rand(len(env_ids), device=self.device)
+            * (interval_max - interval_min)
+            + interval_min
+        )
+        self._wrench_next_start[env_ids] = self._wrench_time[env_ids] + random_intervals
+
+    @staticmethod
+    def _sample_wrench_vectors(
+        num: int, magnitude_range: Tuple[float, float], device: torch.device
+    ) -> torch.Tensor:
+        """Sample [num, 3] vectors with uniform-on-sphere direction and uniform magnitude."""
+        directions = torch.randn(num, 3, device=device)
+        directions = directions / directions.norm(dim=-1, keepdim=True).clamp_min(1e-9)
+        mag_min, mag_max = magnitude_range
+        magnitudes = (
+            torch.rand(num, 1, device=device) * (mag_max - mag_min) + mag_min
+        )
+        return directions * magnitudes
+
+    def _update_wrench_randomization(self) -> None:
+        """Advance wrench timers; start due bursts, expire finished ones."""
+        if not self._wrench_enabled:
+            return
+        self._wrench_time += self.dt
+        changed = False
+
+        # Expire finished bursts -> zero their wrench rows.
+        expired = self._wrench_active & (self._wrench_time >= self._wrench_end_time)
+        if expired.any():
+            expired_ids = torch.where(expired)[0]
+            self._wrench_forces[expired_ids] = 0.0
+            self._wrench_torques[expired_ids] = 0.0
+            self._wrench_active[expired_ids] = False
+            self._schedule_wrench(expired_ids)
+            changed = True
+
+        # Start bursts that are due.
+        due = (~self._wrench_active) & (self._wrench_time >= self._wrench_next_start)
+        if due.any():
+            due_ids = torch.where(due)[0]
+            num_due = len(due_ids)
+            num_bodies = self._wrench_forces.shape[1]
+            body_choice = torch.randint(
+                num_bodies, (num_due,), device=self.device
+            )
+            forces = self._sample_wrench_vectors(
+                num_due, self._wrench_cfg.force_magnitude_range, self.device
+            )
+            torques = self._sample_wrench_vectors(
+                num_due, self._wrench_cfg.torque_magnitude_range, self.device
+            )
+            # Only the chosen body gets the burst; other candidate rows stay 0.
+            self._wrench_forces[due_ids] = 0.0
+            self._wrench_torques[due_ids] = 0.0
+            self._wrench_forces[due_ids, body_choice] = forces
+            self._wrench_torques[due_ids, body_choice] = torques
+            dur_min, dur_max = self._wrench_cfg.duration_range
+            durations = (
+                torch.rand(num_due, device=self.device) * (dur_max - dur_min) + dur_min
+            )
+            self._wrench_end_time[due_ids] = self._wrench_time[due_ids] + durations
+            self._wrench_active[due_ids] = True
+            changed = True
+
+        if changed:
+            self._apply_external_wrenches(self._wrench_forces, self._wrench_torques)
+
+    def _reset_wrench_randomization(self, env_ids: torch.Tensor) -> None:
+        """Clear active wrenches and reschedule for reset envs."""
+        if not self._wrench_enabled or len(env_ids) == 0:
+            return
+        any_active = self._wrench_active[env_ids].any()
+        self._wrench_forces[env_ids] = 0.0
+        self._wrench_torques[env_ids] = 0.0
+        self._wrench_active[env_ids] = False
+        self._wrench_time[env_ids] = 0.0
+        self._schedule_wrench(env_ids)
+        if any_active:
+            self._apply_external_wrenches(self._wrench_forces, self._wrench_torques)
+
+    def _resolve_wrench_bodies(self, body_names: List[str]) -> int:
+        """Resolve configured wrench body names to backend body indices.
+
+        Returns the number of candidate bodies. Backends that support wrench
+        DR must override this (and _apply_external_wrenches).
+        """
+        raise NotImplementedError(
+            "Wrench domain randomization is not implemented for this simulator backend."
+        )
+
+    def _apply_external_wrenches(
+        self, forces: torch.Tensor, torques: torch.Tensor
+    ) -> None:
+        """Write [num_envs, num_wrench_bodies, 3] force/torque buffers to the sim.
+
+        World-frame wrenches, persistently applied every physics step until
+        changed. Backends that support wrench DR must override this.
+        """
+        raise NotImplementedError(
+            "Wrench domain randomization is not implemented for this simulator backend."
+        )
 
     @abstractmethod
     def _apply_root_velocity_impulse(
@@ -704,6 +849,9 @@ class Simulator(RecordingMixin, ABC):
             self._simulation_time += self.dt
             self._apply_push_if_due()
 
+        # Update external wrench randomization (random force/torque bursts)
+        self._update_wrench_randomization()
+
         # Update projectile timers (hide expired cubes)
         self._update_projectiles()
 
@@ -749,6 +897,9 @@ class Simulator(RecordingMixin, ABC):
         if self._push_enabled:
             self._simulation_time[env_ids] = 0.0
             self._schedule_push(env_ids)
+
+        # Reset external wrench randomization state for reset environments
+        self._reset_wrench_randomization(env_ids)
 
         # Reset projectiles for reset environments
         self._reset_projectiles(env_ids)

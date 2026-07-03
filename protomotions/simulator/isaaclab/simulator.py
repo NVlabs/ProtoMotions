@@ -930,6 +930,52 @@ class IsaacLabSimulator(Simulator):
         new_vel[:, 3:6] += angular_velocity
         self._robot.write_root_velocity_to_sim(new_vel, env_ids=env_ids)
 
+    def _resolve_wrench_bodies(self, body_names) -> int:
+        """Resolve wrench DR body names to IsaacLab body indices (cached)."""
+        body_ids, resolved_names = self._robot.find_bodies(
+            body_names, preserve_order=True
+        )
+        if len(body_ids) == 0:
+            raise ValueError(
+                f"Wrench DR body_names {body_names} matched no bodies; "
+                f"available: {self._robot.data.body_names}"
+            )
+        self._wrench_body_ids = body_ids
+        print(
+            f"[INFO] Wrench DR enabled on bodies {resolved_names} (ids {body_ids})"
+        )
+        return len(body_ids)
+
+    def _apply_external_wrenches(
+        self, forces: torch.Tensor, torques: torch.Tensor
+    ) -> None:
+        """Write wrench buffers into IsaacLab's persistent external wrench buffers.
+
+        Applied at every physics sub-step by _scene.write_data_to_sim() until
+        the next call. World-frame (is_global=True).
+        """
+        self._robot.set_external_force_and_torque(
+            forces,
+            torques,
+            body_ids=self._wrench_body_ids,
+            env_ids=None,
+            is_global=True,
+        )
+        if os.environ.get("PM_WRENCH_DEBUG"):
+            self._wrench_debug_counter = getattr(self, "_wrench_debug_counter", 0) + 1
+            if self._wrench_debug_counter % 50 == 1:
+                buf_f = self._robot._external_force_b
+                buf_t = self._robot._external_torque_b
+                n_active = int((buf_f.norm(dim=-1) > 0).any(dim=-1).sum())
+                print(
+                    f"[WRENCH-DEBUG] call={self._wrench_debug_counter} "
+                    f"envs_with_force={n_active}/{buf_f.shape[0]} "
+                    f"|F|max={float(buf_f.norm(dim=-1).max()):.1f}N "
+                    f"|T|max={float(buf_t.norm(dim=-1).max()):.1f}Nm "
+                    f"has_external_wrench={self._robot.has_external_wrench}",
+                    flush=True,
+                )
+
     # =====================================================
     # Projectile Implementation
     # =====================================================

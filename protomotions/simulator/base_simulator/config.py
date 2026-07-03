@@ -474,6 +474,73 @@ class PushDomainRandomizationConfig:
 
 
 @dataclass
+class WrenchDomainRandomizationConfig:
+    """Configuration for random external wrench (force + torque) domain randomization.
+
+    Unlike push DR (which SETS root velocity instantaneously), this applies a
+    true external force/torque burst to a randomly chosen body from
+    ``body_names`` for a sampled duration, at randomized intervals, per env.
+    Force/torque direction is uniform on the sphere (world frame); magnitude
+    is sampled uniformly from the configured range. Requires backend support
+    (currently implemented for the IsaacLab backend via
+    ``Articulation.set_external_force_and_torque``).
+    """
+
+    force_magnitude_range: Tuple[float, float] = field(
+        default=(0.0, 0.0),
+        metadata={"help": "Range (min, max) of force magnitude in N."},
+    )
+    torque_magnitude_range: Tuple[float, float] = field(
+        default=(0.0, 0.0),
+        metadata={"help": "Range (min, max) of torque magnitude in N*m."},
+    )
+    duration_range: Tuple[float, float] = field(
+        default=(0.1, 0.3),
+        metadata={"help": "Range (min, max) of wrench burst duration in seconds."},
+    )
+    interval_range: Tuple[float, float] = field(
+        default=(1.0, 3.0),
+        metadata={
+            "help": "Range (min, max) in seconds between end of one burst and start of the next."
+        },
+    )
+    body_names: Optional[List[str]] = field(
+        default=None,
+        metadata={
+            "help": "Candidate body names (sim naming); ONE is chosen per burst per env."
+        },
+    )
+
+    def __post_init__(self):
+        for name, rng in (
+            ("force_magnitude_range", self.force_magnitude_range),
+            ("torque_magnitude_range", self.torque_magnitude_range),
+        ):
+            if rng[0] < 0 or rng[1] < 0:
+                raise ValueError(f"{name} values must be non-negative.")
+            if rng[0] > rng[1]:
+                raise ValueError(f"{name}[0] must be <= {name}[1].")
+        for name, rng in (
+            ("duration_range", self.duration_range),
+            ("interval_range", self.interval_range),
+        ):
+            if rng[0] <= 0 or rng[1] <= 0:
+                raise ValueError(f"{name} values must be positive.")
+            if rng[0] > rng[1]:
+                raise ValueError(f"{name}[0] must be <= {name}[1].")
+        if self.has_wrench() and not self.body_names:
+            raise ValueError(
+                "body_names must be provided when wrench randomization is enabled."
+            )
+
+    def has_wrench(self) -> bool:
+        """Check if any wrench magnitude is configured (non-zero)."""
+        return self.force_magnitude_range[1] > 0.0 or (
+            self.torque_magnitude_range[1] > 0.0
+        )
+
+
+@dataclass
 class ProjectileConfig:
     """Configuration for projectile cube throwing (J-key perturbation)."""
 
@@ -523,6 +590,12 @@ class DomainRandomizationConfig:
     push: Optional[PushDomainRandomizationConfig] = field(
         default=None,
         metadata={"help": "Push/perturbation randomization for sim-to-real transfer."},
+    )
+    wrench: Optional[WrenchDomainRandomizationConfig] = field(
+        default=None,
+        metadata={
+            "help": "Random external force/torque burst randomization for sim-to-real transfer."
+        },
     )
 
 
