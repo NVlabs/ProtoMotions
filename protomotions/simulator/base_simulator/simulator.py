@@ -342,47 +342,92 @@ class Simulator(RecordingMixin, ABC):
     # External wrench randomization (random force/torque bursts)
     # -------------------------
     def _init_wrench_randomization(self) -> None:
-        """Initialize external wrench randomization state buffers."""
-        wrench_cfg = None
-        if (
-            self.config.domain_randomization is not None
-            and self.config.domain_randomization.wrench is not None
-            and self.config.domain_randomization.wrench.has_wrench()
-        ):
-            wrench_cfg = self.config.domain_randomization.wrench
+        """Initialize external wrench randomization state buffers.
 
-        self._wrench_enabled = wrench_cfg is not None
+        Supports up to two independent wrench classes, each with its own
+        scheduler state: ``domain_randomization.wrench`` (short hard bursts)
+        and ``domain_randomization.sustained_wrench`` (long, low-magnitude
+        quasi-static loads — leaning/tether/payload). Their force/torque
+        buffers are SUMMED before the single ``_apply_external_wrenches``
+        call because backend application overwrites rather than accumulates
+        (IsaacLab ``set_external_force_and_torque`` sets the persistent
+        buffers; MuJoCo assigns ``xfrc_applied``).
 
-        if self._wrench_enabled:
-            self._wrench_cfg = wrench_cfg
-            # Backend resolves configured body names to sim body indices and
-            # returns how many bodies are candidates (raises if unsupported).
-            num_wrench_bodies = self._resolve_wrench_bodies(wrench_cfg.body_names)
-            self._wrench_time = torch.zeros(self.num_envs, device=self.device)
-            self._wrench_next_start = torch.zeros(self.num_envs, device=self.device)
-            self._wrench_end_time = torch.zeros(self.num_envs, device=self.device)
-            self._wrench_active = torch.zeros(
-                self.num_envs, dtype=torch.bool, device=self.device
-            )
-            self._wrench_forces = torch.zeros(
-                self.num_envs, num_wrench_bodies, 3, device=self.device
-            )
-            self._wrench_torques = torch.zeros(
-                self.num_envs, num_wrench_bodies, 3, device=self.device
-            )
-            self._schedule_wrench(torch.arange(self.num_envs, device=self.device))
+        ``getattr`` is used for ``sustained_wrench`` so configs pickled
+        before this field existed (old resolved_configs.pt) keep loading.
+        """
+        dr = self.config.domain_randomization
+        cfgs = []
+        if dr is not None:
+            for attr in ("wrench", "sustained_wrench"):
+                cfg = getattr(dr, attr, None)
+                if cfg is not None and cfg.has_wrench():
+                    cfgs.append(cfg)
 
-    def _schedule_wrench(self, env_ids: torch.Tensor) -> None:
-        """Schedule the next wrench burst start time for the given envs."""
-        if not self._wrench_enabled or len(env_ids) == 0:
+        self._wrench_enabled = len(cfgs) > 0
+        if not self._wrench_enabled:
             return
-        interval_min, interval_max = self._wrench_cfg.interval_range
+
+        # Resolve the UNION of candidate bodies once (single backend body-id
+        # list => single application call covers both classes).
+        union_names: List[str] = []
+        for cfg in cfgs:
+            for name in cfg.body_names:
+                if name not in union_names:
+                    union_names.append(name)
+        num_union = self._resolve_wrench_bodies(union_names)
+
+        # Per-class scheduler state; force/torque buffers are laid out over
+        # the union body list, with each class restricted to its own columns.
+        self._wrench_scheds = []
+        for cfg in cfgs:
+            cols = torch.tensor(
+                [union_names.index(n) for n in cfg.body_names],
+                dtype=torch.long,
+                device=self.device,
+            )
+            self._wrench_scheds.append(
+                {
+                    "cfg": cfg,
+                    "cols": cols,
+                    "time": torch.zeros(self.num_envs, device=self.device),
+                    "next_start": torch.zeros(self.num_envs, device=self.device),
+                    "end_time": torch.zeros(self.num_envs, device=self.device),
+                    "active": torch.zeros(
+                        self.num_envs, dtype=torch.bool, device=self.device
+                    ),
+                    "forces": torch.zeros(
+                        self.num_envs, num_union, 3, device=self.device
+                    ),
+                    "torques": torch.zeros(
+                        self.num_envs, num_union, 3, device=self.device
+                    ),
+                }
+            )
+        all_envs = torch.arange(self.num_envs, device=self.device)
+        for sched in self._wrench_scheds:
+            self._schedule_wrench(sched, all_envs)
+
+    def _schedule_wrench(self, sched: dict, env_ids: torch.Tensor) -> None:
+        """Schedule the next wrench start time for the given envs of one class."""
+        if len(env_ids) == 0:
+            return
+        interval_min, interval_max = sched["cfg"].interval_range
         random_intervals = (
             torch.rand(len(env_ids), device=self.device)
             * (interval_max - interval_min)
             + interval_min
         )
-        self._wrench_next_start[env_ids] = self._wrench_time[env_ids] + random_intervals
+        sched["next_start"][env_ids] = sched["time"][env_ids] + random_intervals
+
+    def _summed_wrench_buffers(self) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Sum force/torque buffers across wrench classes (superposition)."""
+        total_f = self._wrench_scheds[0]["forces"].clone()
+        total_t = self._wrench_scheds[0]["torques"].clone()
+        for sched in self._wrench_scheds[1:]:
+            total_f += sched["forces"]
+            total_t += sched["torques"]
+        return total_f, total_t
 
     @staticmethod
     def _sample_wrench_vectors(
@@ -398,65 +443,70 @@ class Simulator(RecordingMixin, ABC):
         return directions * magnitudes
 
     def _update_wrench_randomization(self) -> None:
-        """Advance wrench timers; start due bursts, expire finished ones."""
+        """Advance all wrench-class timers; start due wrenches, expire finished ones."""
         if not self._wrench_enabled:
             return
-        self._wrench_time += self.dt
         changed = False
+        for sched in self._wrench_scheds:
+            cfg = sched["cfg"]
+            sched["time"] += self.dt
 
-        # Expire finished bursts -> zero their wrench rows.
-        expired = self._wrench_active & (self._wrench_time >= self._wrench_end_time)
-        if expired.any():
-            expired_ids = torch.where(expired)[0]
-            self._wrench_forces[expired_ids] = 0.0
-            self._wrench_torques[expired_ids] = 0.0
-            self._wrench_active[expired_ids] = False
-            self._schedule_wrench(expired_ids)
-            changed = True
+            # Expire finished wrenches -> zero their rows.
+            expired = sched["active"] & (sched["time"] >= sched["end_time"])
+            if expired.any():
+                expired_ids = torch.where(expired)[0]
+                sched["forces"][expired_ids] = 0.0
+                sched["torques"][expired_ids] = 0.0
+                sched["active"][expired_ids] = False
+                self._schedule_wrench(sched, expired_ids)
+                changed = True
 
-        # Start bursts that are due.
-        due = (~self._wrench_active) & (self._wrench_time >= self._wrench_next_start)
-        if due.any():
-            due_ids = torch.where(due)[0]
-            num_due = len(due_ids)
-            num_bodies = self._wrench_forces.shape[1]
-            body_choice = torch.randint(
-                num_bodies, (num_due,), device=self.device
-            )
-            forces = self._sample_wrench_vectors(
-                num_due, self._wrench_cfg.force_magnitude_range, self.device
-            )
-            torques = self._sample_wrench_vectors(
-                num_due, self._wrench_cfg.torque_magnitude_range, self.device
-            )
-            # Only the chosen body gets the burst; other candidate rows stay 0.
-            self._wrench_forces[due_ids] = 0.0
-            self._wrench_torques[due_ids] = 0.0
-            self._wrench_forces[due_ids, body_choice] = forces
-            self._wrench_torques[due_ids, body_choice] = torques
-            dur_min, dur_max = self._wrench_cfg.duration_range
-            durations = (
-                torch.rand(num_due, device=self.device) * (dur_max - dur_min) + dur_min
-            )
-            self._wrench_end_time[due_ids] = self._wrench_time[due_ids] + durations
-            self._wrench_active[due_ids] = True
-            changed = True
+            # Start wrenches that are due.
+            due = (~sched["active"]) & (sched["time"] >= sched["next_start"])
+            if due.any():
+                due_ids = torch.where(due)[0]
+                num_due = len(due_ids)
+                # Choose one candidate body of THIS class per env.
+                body_choice = sched["cols"][
+                    torch.randint(len(sched["cols"]), (num_due,), device=self.device)
+                ]
+                forces = self._sample_wrench_vectors(
+                    num_due, cfg.force_magnitude_range, self.device
+                )
+                torques = self._sample_wrench_vectors(
+                    num_due, cfg.torque_magnitude_range, self.device
+                )
+                # Only the chosen body gets the wrench; other rows stay 0.
+                sched["forces"][due_ids] = 0.0
+                sched["torques"][due_ids] = 0.0
+                sched["forces"][due_ids, body_choice] = forces
+                sched["torques"][due_ids, body_choice] = torques
+                dur_min, dur_max = cfg.duration_range
+                durations = (
+                    torch.rand(num_due, device=self.device) * (dur_max - dur_min)
+                    + dur_min
+                )
+                sched["end_time"][due_ids] = sched["time"][due_ids] + durations
+                sched["active"][due_ids] = True
+                changed = True
 
         if changed:
-            self._apply_external_wrenches(self._wrench_forces, self._wrench_torques)
+            self._apply_external_wrenches(*self._summed_wrench_buffers())
 
     def _reset_wrench_randomization(self, env_ids: torch.Tensor) -> None:
-        """Clear active wrenches and reschedule for reset envs."""
+        """Clear active wrenches (all classes) and reschedule for reset envs."""
         if not self._wrench_enabled or len(env_ids) == 0:
             return
-        any_active = self._wrench_active[env_ids].any()
-        self._wrench_forces[env_ids] = 0.0
-        self._wrench_torques[env_ids] = 0.0
-        self._wrench_active[env_ids] = False
-        self._wrench_time[env_ids] = 0.0
-        self._schedule_wrench(env_ids)
+        any_active = False
+        for sched in self._wrench_scheds:
+            any_active = any_active or bool(sched["active"][env_ids].any())
+            sched["forces"][env_ids] = 0.0
+            sched["torques"][env_ids] = 0.0
+            sched["active"][env_ids] = False
+            sched["time"][env_ids] = 0.0
+            self._schedule_wrench(sched, env_ids)
         if any_active:
-            self._apply_external_wrenches(self._wrench_forces, self._wrench_torques)
+            self._apply_external_wrenches(*self._summed_wrench_buffers())
 
     def _resolve_wrench_bodies(self, body_names: List[str]) -> int:
         """Resolve configured wrench body names to backend body indices.

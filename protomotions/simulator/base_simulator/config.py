@@ -597,6 +597,21 @@ class DomainRandomizationConfig:
             "help": "Random external force/torque burst randomization for sim-to-real transfer."
         },
     )
+    sustained_wrench: Optional[WrenchDomainRandomizationConfig] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Second, independent wrench class for SUSTAINED (slowly-applied / "
+                "quasi-static) external loads — e.g. a human leaning or pulling, "
+                "tether/cable drag, carried payload. Same schema as `wrench` but "
+                "intended for long duration_range, low magnitudes and high duty "
+                "cycle. Runs on its own scheduler; forces from both classes are "
+                "SUMMED before the single backend application call (backends "
+                "overwrite, they do not accumulate). Default None = off; existing "
+                "configs and checkpoints are unaffected."
+            )
+        },
+    )
 
 
 @dataclass
