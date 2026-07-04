@@ -318,9 +318,16 @@ def detect_checkpoint_mode(args, save_dir):
             with open(checkpoint_config_path, "r") as file:
                 checkpoint_config = json.load(file)
 
-            # Update args with checkpoint config
+            # Update args with checkpoint config.
+            # Skip transient CLI-only flags that must NOT be restored from a
+            # saved run: `create_config_only` (a saved config minted via
+            # --create-config-only bakes this True; restoring it re-triggers the
+            # create-config-only branch on every resume -> save_configs ->
+            # json.dump(args) crashes on the resume checkpoint PosixPath) and
+            # `checkpoint` (resume sets its own checkpoint path below).
+            _SKIP_RESTORE = {"wandb_id", "create_config_only", "checkpoint"}
             for key, value in checkpoint_config.items():
-                if key != "wandb_id":
+                if key not in _SKIP_RESTORE:
                     setattr(args, key, value)
             wandb_id = checkpoint_config.get("wandb_id", None)
         else:
