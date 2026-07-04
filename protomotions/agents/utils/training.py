@@ -14,6 +14,7 @@ Key Functions:
 """
 
 import torch
+import torch.distributed as dist
 from torch import Tensor
 import torch.nn as nn
 from torch.nn import functional as F
@@ -137,37 +138,67 @@ def aggregate_scalar_metrics(log_dict: Dict, fabric: Fabric, weight: int = 1) ->
     """
     aggregated_dict = {}
 
-    if fabric.world_size > 1:
-        weight_tensor = torch.tensor(weight, device=fabric.device, dtype=torch.float32)
-        all_weights = fabric.all_gather(weight_tensor)
-        total_weight = all_weights.sum()
-    else:
-        all_weights = None
-        total_weight = None
-
-    for key, value in log_dict.items():
-        if isinstance(value, (int, float)):
-            value_tensor = torch.tensor(
-                value, device=fabric.device, dtype=torch.float32
-            )
-        elif isinstance(value, torch.Tensor):
-            if value.numel() == 1:
-                value_tensor = value.float().to(fabric.device)
+    if fabric.world_size == 1:
+        # Single-GPU: no collectives, behavior-preserving.
+        for key, value in log_dict.items():
+            if isinstance(value, (int, float)):
+                aggregated_dict[key] = float(value)
+            elif isinstance(value, torch.Tensor):
+                if value.numel() == 1:
+                    aggregated_dict[key] = value.float().item()
+                else:
+                    aggregated_dict[key] = value.mean().float().item()
             else:
-                value_tensor = value.mean().float().to(fabric.device)
-        else:
-            aggregated_dict[key] = value
-            continue
+                aggregated_dict[key] = value
+        return aggregated_dict
 
-        if fabric.world_size > 1:
-            all_values = fabric.all_gather(value_tensor)
-            # Weighted mean: sum(value_i * weight_i) / sum(weight_i)
-            aggregated_value = (all_values * all_weights).sum() / total_weight
-            aggregated_value = aggregated_value.item()
-        else:
-            aggregated_value = value_tensor.item()
+    # Distributed path. Lazily-created log keys can differ across ranks; if each
+    # rank iterated its own key set, ranks would issue a different number/order
+    # of all_gather collectives and deadlock the process group. Union the keys
+    # (deterministic sorted order) so every rank runs the SAME collectives.
+    local_keys = list(log_dict.keys())
+    gathered_keys = [None] * fabric.world_size
+    dist.all_gather_object(gathered_keys, local_keys)
+    union_keys = sorted({k for rank_keys in gathered_keys for k in rank_keys})
 
-        aggregated_dict[key] = aggregated_value
+    for key in union_keys:
+        local_value = 0.0
+        has_numeric = False
+        if key in log_dict:
+            value = log_dict[key]
+            if isinstance(value, (int, float)):
+                local_value = float(value)
+                has_numeric = True
+            elif isinstance(value, torch.Tensor):
+                if value.numel() == 1:
+                    local_value = value.float().item()
+                else:
+                    local_value = value.mean().float().item()
+                has_numeric = True
+            else:
+                # Non-numeric: preserve the rank-local pass-through value. It
+                # contributes zero weight below, so every rank still issues the
+                # same collectives for this key.
+                aggregated_dict[key] = value
+
+        value_tensor = torch.tensor(
+            local_value, device=fabric.device, dtype=torch.float32
+        )
+        # Ranks missing the key (or holding a non-numeric value) contribute zero
+        # weight, so they neither bias the mean nor desynchronize collectives.
+        present_weight = torch.tensor(
+            weight if has_numeric else 0.0,
+            device=fabric.device,
+            dtype=torch.float32,
+        )
+        all_values = fabric.all_gather(value_tensor)
+        all_present_weights = fabric.all_gather(present_weight)
+        total_present = all_present_weights.sum()
+        if total_present > 0:
+            # Weighted mean over ranks that actually reported a numeric value.
+            aggregated_dict[key] = (
+                (all_values * all_present_weights).sum() / total_present
+            ).item()
 
     return aggregated_dict
 
