@@ -76,6 +76,7 @@ Example
 """
 
 import os
+import time
 import sys
 import json
 
@@ -724,6 +725,15 @@ def main():
             app_launcher_flags["distributed"] = True
             os.environ["LOCAL_RANK"] = str(fabric.local_rank)
             os.environ["RANK"] = str(fabric.global_rank)
+            # 2026-07-04 crash-rootcause mitigation (patch-3): de-collide the
+            # 8-way concurrent NFS reads (motion-lib pickle, env_*.pt.ckpt on
+            # resume) that all ranks on a node issue at ~the same instant,
+            # which is the documented straggler source behind the
+            # BaseAgent.__init__ all_gather timeout. Opt-in (default 0 = off)
+            # so behavior is unchanged unless a wrapper sets NFS_STAGGER_SEC.
+            _stagger = float(os.environ.get("NFS_STAGGER_SEC", "0") or "0")
+            if _stagger > 0:
+                time.sleep(fabric.local_rank * _stagger)
         app_launcher = AppLauncher(app_launcher_flags)
         simulator_extra_params["simulation_app"] = app_launcher.app
 

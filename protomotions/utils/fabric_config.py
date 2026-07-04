@@ -3,12 +3,30 @@
 
 """Configuration classes for Lightning Fabric distributed training."""
 
+import os
+from datetime import timedelta
 from typing import Dict, Any, Union, Optional, List
 from omegaconf import DictConfig
 from dataclasses import dataclass, field, fields
 from lightning import fabric
 
 from protomotions.utils.hydra_replacement import instantiate
+
+
+def _default_ddp_strategy() -> fabric.strategies.DDPStrategy:
+    """Build the default DDPStrategy with a configurable process-group timeout.
+
+    2026-07-04 crash-rootcause fix: PyTorch's default 30-min (1800s) collective
+    timeout was firing on BaseAgent.__init__'s one-time world-size all_gather
+    whenever a rank's Isaac-env/motion-lib construction (documented to
+    legitimately take 25+ min under NFS contention) pushed past 30 min,
+    aborting the entire 8-rank job even though nothing was actually hung.
+    PG_TIMEOUT_SEC (env, default 3600s = 1h) raises that ceiling above the
+    known JIT/NFS-load variance without weakening real-hang detection (a
+    genuine deadlock still eventually aborts, just later).
+    """
+    timeout_sec = int(os.environ.get("PG_TIMEOUT_SEC", "3600"))
+    return fabric.strategies.DDPStrategy(timeout=timedelta(seconds=timeout_sec))
 
 
 @dataclass
@@ -28,7 +46,7 @@ class FabricConfig:
         metadata={"help": "Number of nodes for distributed training.", "min": 1}
     )
     strategy: Union[Dict, fabric.strategies.Strategy] = field(
-        default_factory=fabric.strategies.DDPStrategy,
+        default_factory=_default_ddp_strategy,
         metadata={"help": "Distributed training strategy (DDP, FSDP, etc)."}
     )
     precision: Union[str, int] = field(
