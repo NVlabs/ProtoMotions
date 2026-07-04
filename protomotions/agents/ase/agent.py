@@ -416,8 +416,13 @@ class ASE(AMP):
         Returns:
             Tuple[Tensor, Dict]: Discriminator loss and logging dictionary.
         """
-        discriminator_loss, discriminator_log_dict = super().discriminator_step(
-            batch_dict
+        negative_expert_obs = None
+        if self.config.ase_parameters.conditional_discriminator:
+            negative_expert_obs = self.produce_negative_expert_obs(batch_dict)
+
+        discriminator_loss, discriminator_log_dict = self.amp_component.discriminator_step(
+            batch_dict,
+            negative_expert_obs=negative_expert_obs,
         )
 
         # Extract agent and expert observations dynamically (like AMP parent class)

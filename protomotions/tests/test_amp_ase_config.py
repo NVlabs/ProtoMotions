@@ -92,6 +92,14 @@ def test_ase_parameters_model_and_agent_defaults():
     assert isinstance(agent.ase_parameters, ASEParametersConfig)
 
 
+def test_conditional_discriminator_is_ase_owned():
+    with pytest.raises(TypeError, match="conditional_discriminator"):
+        AMPParametersConfig(conditional_discriminator=True)
+
+    assert ASEParametersConfig().conditional_discriminator is False
+    assert ASEParametersConfig(conditional_discriminator=True).conditional_discriminator is True
+
+
 def test_prior_peft_amp_config_explicitly_combines_peft_and_amp_defaults():
     from protomotions.agents.peft.prior_amp_config import (
         DiscretePriorPEFTRLFTAMPAgentConfig,

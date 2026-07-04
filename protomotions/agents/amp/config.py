@@ -25,11 +25,6 @@ from dataclasses import dataclass, field
 class AMPParametersConfig:
     """Configuration for AMP-specific hyperparameters."""
 
-    conditional_discriminator: bool = field(
-        default=False,
-        metadata={"help": "Whether to use conditional discriminator based on motion state."}
-    )
-
     discriminator_reward_w: float = field(
         default=1.0,
         metadata={"help": "Weight for discriminator reward in total reward.", "min": 0.0}

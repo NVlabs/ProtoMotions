@@ -218,6 +218,7 @@ def _ase_config(**overrides):
         mi_enc_grad_penalty=0.0,
         mi_enc_weight_decay=0.0,
         latent_uniformity_weight=0.1,
+        conditional_discriminator=False,
     )
     for key, value in overrides.items():
         setattr(ase_params, key, value)
@@ -765,9 +766,9 @@ def test_ase_get_expert_disc_obs_adds_predicted_latents(monkeypatch):
 
 def test_ase_discriminator_step_adds_mi_encoder_loss_and_weight_decay(monkeypatch):
     monkeypatch.setattr(
-        AMP,
+        AMPTrainingComponent,
         "discriminator_step",
-        lambda self, batch_dict: (
+        lambda self, batch_dict, *, negative_expert_obs=None: (
             torch.tensor(1.0, requires_grad=True),
             {"base/discriminator": torch.tensor(2.0)},
         ),
@@ -799,11 +800,53 @@ def test_ase_discriminator_step_adds_mi_encoder_loss_and_weight_decay(monkeypatc
     assert log_dict["encoder/grad_penalty"].item() == 0.0
 
 
+def test_ase_discriminator_step_supplies_conditional_negative_expert_obs(monkeypatch):
+    captured = {}
+
+    def fake_component_discriminator_step(
+        self, batch_dict, *, negative_expert_obs=None
+    ):
+        captured["negative_expert_obs"] = negative_expert_obs
+        return torch.tensor(1.0, requires_grad=True), {}
+
+    monkeypatch.setattr(
+        AMPTrainingComponent,
+        "discriminator_step",
+        fake_component_discriminator_step,
+    )
+    agent = _new_ase_agent()
+    agent.device = torch.device("cpu")
+    agent.config = _ase_config(conditional_discriminator=True)
+    agent.amp_component.discriminator = _ModuleWrapper(_MIEncoderModule())
+    agent.model = SimpleNamespace(
+        _discriminator=SimpleNamespace(in_keys=["disc_obs", "latents"])
+    )
+    batch = {
+        "agent_disc_obs": torch.eye(3)[:2],
+        "expert_disc_obs": torch.flip(torch.eye(3)[:2], dims=[0]),
+        "agent_latents": torch.tensor(
+            [[0.0, 1.0, 0.0], [1.0, 0.0, 0.0]],
+        ),
+    }
+
+    ASE.discriminator_step(agent, batch)
+
+    negative_expert_obs = captured["negative_expert_obs"]
+    assert torch.equal(
+        negative_expert_obs["disc_obs"],
+        batch["expert_disc_obs"],
+    )
+    assert (
+        negative_expert_obs["latents"].shape
+        == batch["agent_latents"].shape
+    )
+
+
 def test_ase_discriminator_step_supports_mi_encoder_gradient_penalty(monkeypatch):
     monkeypatch.setattr(
-        AMP,
+        AMPTrainingComponent,
         "discriminator_step",
-        lambda self, batch_dict: (
+        lambda self, batch_dict, *, negative_expert_obs=None: (
             torch.tensor(0.25, requires_grad=True),
             {},
         ),
@@ -831,9 +874,12 @@ def test_ase_discriminator_step_supports_mi_encoder_gradient_penalty(monkeypatch
 
 def test_ase_discriminator_step_requires_latents(monkeypatch):
     monkeypatch.setattr(
-        AMP,
+        AMPTrainingComponent,
         "discriminator_step",
-        lambda self, batch_dict: (torch.tensor(0.0), {}),
+        lambda self, batch_dict, *, negative_expert_obs=None: (
+            torch.tensor(0.0),
+            {},
+        ),
     )
     agent = _new_ase_agent()
     agent.config = _ase_config()

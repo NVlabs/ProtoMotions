@@ -99,6 +99,7 @@ def agent_config(
     conditional_discriminator = False
 
     ase_parameters = ASEParametersConfig(
+        conditional_discriminator=conditional_discriminator,
         latent_dim=64,
         mi_reward_w=0.5,
         mi_hypersphere_reward_shift=True,
@@ -320,7 +321,6 @@ def agent_config(
         gradient_clip_val=50.0,
         clip_critic_loss=True,
         amp_parameters=AMPParametersConfig(
-            conditional_discriminator=conditional_discriminator,
             discriminator_reward_w=0.5,
             discriminator_reward_threshold=0.05,  # Training default (eval override in apply_inference_overrides if needed)
         ),

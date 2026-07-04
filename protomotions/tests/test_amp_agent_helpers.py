@@ -337,7 +337,6 @@ def _amp_config(**amp_overrides):
         discriminator_weight_decay=0.1,
         discriminator_logit_weight_decay=0.2,
         discriminator_optimization_ratio=1,
-        conditional_discriminator=False,
         discriminator_reward_w=0.5,
     )
     for key, value in amp_overrides.items():
@@ -1382,7 +1381,7 @@ def test_amp_discriminator_step_trains_against_expert_agent_and_replay_batches()
         "expert_disc_obs": torch.tensor([[2.0, 0.0], [0.0, 2.0], [9.0, 9.0]]),
     }
 
-    loss, log_dict = AMP.discriminator_step(agent, batch)
+    loss, log_dict = agent.amp_component.discriminator_step(batch)
 
     assert torch.isfinite(loss)
     assert "losses/discriminator_loss" in log_dict
@@ -1407,17 +1406,16 @@ def test_amp_discriminator_step_trains_against_expert_agent_and_replay_batches()
     )
 
 
-def test_amp_discriminator_step_handles_conditional_negative_and_integer_expert_obs():
+def test_amp_component_accepts_explicit_negative_and_integer_expert_obs():
     torch.manual_seed(0)
     agent = _new_amp_agent()
     agent.device = torch.device("cpu")
     agent.config = _amp_config(
-        conditional_discriminator=True,
         discriminator_weight_decay=0.0,
         discriminator_logit_weight_decay=0.0,
     )
     agent.amp_component.discriminator = _ModuleWrapper(_LinearDiscriminator())
-    agent.produce_negative_expert_obs = lambda batch_dict: {
+    negative_expert_obs = {
         "disc_obs": torch.tensor([[3.0, 3.0], [4.0, 4.0]])
     }
     batch = {
@@ -1426,7 +1424,10 @@ def test_amp_discriminator_step_handles_conditional_negative_and_integer_expert_
         "expert_disc_obs": torch.tensor([[2, 0], [0, 2]], dtype=torch.long),
     }
 
-    loss, log_dict = AMP.discriminator_step(agent, batch)
+    loss, log_dict = agent.amp_component.discriminator_step(
+        batch,
+        negative_expert_obs=negative_expert_obs,
+    )
 
     assert torch.isfinite(loss)
     assert log_dict["discriminator/l2_loss"].item() == 0.0

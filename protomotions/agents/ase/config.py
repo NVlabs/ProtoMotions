@@ -18,6 +18,12 @@ from protomotions.agents.ppo.config import OptimizerConfig
 class ASEParametersConfig:
     """Configuration for ASE-specific hyperparameters."""
 
+    conditional_discriminator: bool = field(
+        default=False,
+        metadata={
+            "help": "Train the ASE discriminator with mismatched latent-motion pairs."
+        },
+    )
     latent_dim: int = field(
         default=64,
         metadata={"help": "Dimension of the latent skill space.", "min": 1}

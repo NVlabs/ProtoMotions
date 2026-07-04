@@ -520,7 +520,12 @@ class AMPTrainingComponent:
             "disc_critic/error_std": disc_errors.std(),
         }
 
-    def discriminator_step(self, batch_dict):
+    def discriminator_step(
+        self,
+        batch_dict,
+        *,
+        negative_expert_obs: Optional[Dict[str, Tensor]] = None,
+    ):
         agent_obs = {}
         for key in batch_dict.keys():
             if "agent_" in key:
@@ -543,9 +548,6 @@ class AMPTrainingComponent:
                     val = val.float()
                 expert_obs[key.replace("expert_", "")] = val
                 expert_obs[key.replace("expert_", "")].requires_grad_(True)
-
-        if self.config.amp_parameters.conditional_discriminator:
-            negative_expert_obs = self.agent.produce_negative_expert_obs(batch_dict)
 
         expert_obs_td = TensorDict(
             expert_obs,
@@ -572,7 +574,7 @@ class AMPTrainingComponent:
         replay_obs_td = self.discriminator(replay_obs_td)
         replay_logits = replay_obs_td[self.discriminator.module.config.out_keys[0]]
 
-        if self.config.amp_parameters.conditional_discriminator:
+        if negative_expert_obs is not None:
             negative_expert_obs_td = TensorDict(
                 negative_expert_obs,
                 batch_size=self.config.amp_parameters.discriminator_batch_size,
@@ -585,7 +587,7 @@ class AMPTrainingComponent:
         expert_loss = -torch.nn.functional.logsigmoid(expert_logits).mean()
         unlabeled_loss = torch.nn.functional.softplus(agent_logits).mean()
         replay_loss = torch.nn.functional.softplus(replay_logits).mean()
-        if self.config.amp_parameters.conditional_discriminator:
+        if negative_expert_obs is not None:
             negative_loss = torch.nn.functional.softplus(
                 negative_expert_logits
             ).mean()
@@ -662,7 +664,7 @@ class AMPTrainingComponent:
                 "discriminator/agent_logit_mean": agent_logits.detach().mean(),
                 "discriminator/replay_logit_mean": replay_logits.detach().mean(),
             }
-            if self.config.amp_parameters.conditional_discriminator:
+            if negative_expert_obs is not None:
                 log_dict["discriminator/negative_expert_logit_mean"] = (
                     negative_expert_logits.detach().mean()
                 )
