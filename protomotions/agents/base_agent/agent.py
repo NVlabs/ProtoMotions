@@ -19,6 +19,7 @@ Key Features:
     - Episode statistics tracking
 """
 
+import os
 import torch
 from torch import Tensor
 import torch.distributed as dist
@@ -294,7 +295,14 @@ class BaseAgent:
                 load_training_state=load_training_state,
             )
 
-            self.just_loaded_checkpoint_should_evaluate = True
+            # 24-GiB-node memory guard: forcing an eval immediately on every
+            # resume allocates per-rank metrics sized by (num_motions /
+            # world_size), which can OOM on small GPU pools with few ranks
+            # (e.g. 4x3090). Default-on (unchanged behavior); set
+            # SKIP_RESUME_EVAL=1 to defer eval to its normal
+            # eval_metrics_every cadence instead.
+            if os.environ.get("SKIP_RESUME_EVAL", "0") != "1":
+                self.just_loaded_checkpoint_should_evaluate = True
 
             if load_env:
                 # Load env state from the same directory as the checkpoint.
