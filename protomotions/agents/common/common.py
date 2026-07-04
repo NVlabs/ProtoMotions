@@ -142,40 +142,20 @@ class NormObsBase(nn.Module):
         """
         if self.config.normalize_obs:
             norm_obs = self.running_obs_norm.normalize(obs)
-            if self.training and self._record_moments_enabled():
+            # NOTE: this gate guards record_moments' distributed collectives.
+            # `self.training` is rank-uniform (Lightning propagates it), and
+            # `_freeze_running` is rank-agreed once at every checkpoint load via
+            # sync_record_moments_gates() (see normalization.py) — the resume
+            # path was the only place it desynchronized, deadlocking DDP. Do
+            # NOT add per-forward collectives here: an in-forward all_reduce
+            # was tried and wedged NCCL/gloo ordering during lazy-module
+            # materialization (see wbc_push/hang_evidence_run2seed_futex/round2).
+            if self.training and not self._freeze_running:
                 self.running_obs_norm.record_moments(obs)
         else:
             norm_obs = obs
 
         return norm_obs
-
-    def _record_moments_enabled(self) -> bool:
-        """Rank-consistent decision for whether to update running statistics.
-
-        Only consulted while ``self.training`` is True, which Lightning
-        propagates uniformly to every DDP rank (and is False during eval /
-        inference export, so no collective is issued there). The local decision
-        ``not self._freeze_running`` can still diverge across ranks after a
-        checkpoint / ladder resume. If it does, some ranks would run
-        ``record_moments``' all_gather/broadcast collectives while others skip
-        them, deadlocking the process group (observed as ranks stranded inside
-        RunningMeanStd broadcasts while rank 0 races ahead into grad clipping).
-
-        ``all_reduce(max)`` forces every rank onto the same branch: record if
-        *any* rank would record. For single-GPU runs and normal fresh 8-rank
-        runs (where the flag is already uniform) this is behavior-preserving.
-        """
-        local_enabled = not self._freeze_running
-        fabric = getattr(self.running_obs_norm, "fabric", None)
-        if fabric is not None and getattr(fabric, "world_size", 1) > 1:
-            flag = torch.tensor(
-                1 if local_enabled else 0,
-                device=fabric.device,
-                dtype=torch.int32,
-            )
-            flag = fabric.all_reduce(flag, reduce_op="max")
-            return bool(flag.item() != 0)
-        return local_enabled
 
 
 def apply_module_operations(

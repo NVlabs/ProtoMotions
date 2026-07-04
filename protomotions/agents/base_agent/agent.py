@@ -45,6 +45,7 @@ from protomotions.agents.utils.normalization import (
     RewardRunningMeanStd,
     RunningMeanStd,
     materialize_lazy_running_stats_from_state_dict,
+    sync_record_moments_gates,
 )
 from rich.progress import track
 from protomotions.agents.evaluators.base_evaluator import BaseEvaluator
@@ -294,6 +295,12 @@ class BaseAgent:
                 state_dict,
                 load_training_state=load_training_state,
             )
+
+            # Rank-agree normalizer record/freeze gates: the resume path can
+            # desynchronize per-rank `_freeze_running`, and that flag gates
+            # record_moments' DDP collectives (divergence deadlocks the PG).
+            # Symmetric point: every rank runs load(). No-op for world_size==1.
+            sync_record_moments_gates(self.model, self.fabric)
 
             # 24-GiB-node memory guard: forcing an eval immediately on every
             # resume allocates per-rank metrics sized by (num_motions /

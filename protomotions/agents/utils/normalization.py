@@ -242,6 +242,58 @@ def materialize_lazy_running_stats_from_state_dict(
         module._initialized = True
 
 
+def sync_record_moments_gates(model: nn.Module, fabric) -> None:
+    """Rank-agree the normalizer record/freeze gates after a checkpoint load.
+
+    ``NormObsBase.forward`` gates ``RunningMeanStd.record_moments`` — which
+    issues all_gather/broadcast collectives — on the per-rank local flag
+    ``_freeze_running``. If that flag diverges across DDP ranks (observed after
+    ladder/checkpoint resume), ranks execute different collective schedules and
+    the process group deadlocks. This one-shot sync runs at a symmetric point
+    (checkpoint load, outside any forward) and forces every rank to the same
+    decision: a module records unless EVERY rank wants it frozen (i.e. record
+    if any rank would record — matching what an all_reduce(max) of the record
+    flag would decide, but with zero collectives in the hot path).
+
+    No-op for single-process runs and when torch.distributed is not initialized,
+    so single-GPU behavior is unchanged. For fresh multi-rank runs the flags are
+    already uniform, so this is behavior-preserving there too.
+    """
+    if fabric is None or getattr(fabric, "world_size", 1) <= 1:
+        return
+    import torch.distributed as dist
+
+    if not (dist.is_available() and dist.is_initialized()):
+        return
+
+    local_flags = {
+        name: bool(module._freeze_running)
+        for name, module in model.named_modules()
+        if hasattr(module, "_freeze_running")
+    }
+    gathered: List[Optional[dict]] = [None] * fabric.world_size
+    dist.all_gather_object(gathered, local_flags)
+
+    for name, module in model.named_modules():
+        if not hasattr(module, "_freeze_running"):
+            continue
+        # Freeze only if every rank that knows this module wants it frozen;
+        # a rank missing the module (shouldn't happen — identical models) is
+        # treated as frozen so it cannot force collectives on other ranks.
+        agreed_freeze = all(
+            rank_flags.get(name, True)
+            for rank_flags in gathered
+            if rank_flags is not None
+        )
+        if module._freeze_running != agreed_freeze:
+            print(
+                f"[sync_record_moments_gates] rank {fabric.global_rank}: "
+                f"module '{name}' _freeze_running {module._freeze_running} -> "
+                f"{agreed_freeze} (rank-agreed)"
+            )
+        module._freeze_running = agreed_freeze
+
+
 def combine_moments(means: List[Tensor], vars: List[Tensor], counts: List[Tensor]):
     """
     Combine moments from multiple processes robustly using a pairwise algorithm.
