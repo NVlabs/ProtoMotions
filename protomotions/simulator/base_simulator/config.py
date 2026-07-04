@@ -555,6 +555,58 @@ class WrenchDomainRandomizationConfig:
 
 
 @dataclass
+class DelayDomainRandomizationConfig:
+    """Actuation / observation latency domain randomization.
+
+    Models sim2real control-loop latency: the actuator applies a PD target from a few
+    control steps ago, and the policy observes state from a few control steps ago. A
+    per-env integer delay (in CONTROL steps) is sampled uniformly from the configured
+    inclusive range at every reset, so the cohort of delays churns across episodes.
+
+    Both ranges default to (0, 0) = exactly the previous (no-delay) behavior. The ranges
+    are the natural RAMP axis for an ADR curriculum (widen the upper bound over stages).
+    """
+
+    action_delay_steps: Tuple[int, int] = field(
+        default=(0, 0),
+        metadata={
+            "help": "Range (min,max) of control-step delay on the PD target sent to the sim."
+        },
+    )
+    observation_delay_steps: Tuple[int, int] = field(
+        default=(0, 0),
+        metadata={
+            "help": "Range (min,max) of control-step delay on the observation returned to the policy."
+        },
+    )
+
+    def __post_init__(self):
+        for name, rng in (
+            ("action_delay_steps", self.action_delay_steps),
+            ("observation_delay_steps", self.observation_delay_steps),
+        ):
+            if rng[0] < 0 or rng[1] < 0:
+                raise ValueError(f"{name} values must be non-negative.")
+            if rng[0] > rng[1]:
+                raise ValueError(f"{name}[0] must be <= {name}[1].")
+
+    def max_action_delay(self) -> int:
+        return int(self.action_delay_steps[1])
+
+    def max_observation_delay(self) -> int:
+        return int(self.observation_delay_steps[1])
+
+    def has_action_delay(self) -> bool:
+        return self.max_action_delay() > 0
+
+    def has_observation_delay(self) -> bool:
+        return self.max_observation_delay() > 0
+
+    def has_delay(self) -> bool:
+        return self.has_action_delay() or self.has_observation_delay()
+
+
+@dataclass
 class ProjectileConfig:
     """Configuration for projectile cube throwing (J-key perturbation)."""
 
@@ -609,6 +661,16 @@ class DomainRandomizationConfig:
         default=None,
         metadata={
             "help": "Random external force/torque burst randomization for sim-to-real transfer."
+        },
+    )
+    delay: Optional[DelayDomainRandomizationConfig] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Actuation / observation latency DR (control-step granularity, per-env, "
+                "sampled at reset). Default None = off; existing configs and checkpoints "
+                "are unaffected. Read via getattr(dr, 'delay', None) for pre-field pickles."
+            )
         },
     )
     sustained_wrench: Optional[WrenchDomainRandomizationConfig] = field(

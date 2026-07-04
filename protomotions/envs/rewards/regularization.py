@@ -166,6 +166,71 @@ def compute_contact_force_change_rew(
     return force_changes.sum(dim=-1)
 
 
+def compute_foot_contact_force_penalty(
+    current_contact_force_magnitudes: Tensor,
+    contact_body_ids: Tensor,
+    force_threshold: float = 400.0,
+) -> Tensor:
+    """Penalty on instantaneous foot contact-force magnitude above a threshold.
+
+    Encourages gentle foot placement (anti-stomp). Only force ABOVE force_threshold
+    is penalized, so normal weight-bearing stance (~250 N/foot for a ~50 kg robot) is
+    free and only hard stomps/impacts are penalized. Summed over the foot bodies
+    (``contact_body_ids``). Returns a per-env non-negative penalty [num_envs]; apply a
+    small NEGATIVE weight (and a min_value floor) in the factory so push-recovery
+    stomps stay affordable.
+
+    NOTE: ``force_threshold`` is deliberately NOT named ``threshold`` because
+    ``threshold`` is a reserved reward-metadata key stripped before the kernel call.
+
+    Args:
+        current_contact_force_magnitudes: Per-body contact force magnitudes
+            [num_envs, num_bodies].
+        contact_body_ids: Indices of the foot bodies to penalize [num_feet].
+        force_threshold: Force (N) below which foot forces are not penalized.
+
+    Returns:
+        Sum over feet of force in excess of force_threshold [num_envs].
+    """
+    foot_forces = current_contact_force_magnitudes[:, contact_body_ids]
+    excess = torch.clamp(foot_forces - force_threshold, min=0.0)
+    return excess.sum(dim=-1)
+
+
+def compute_fall_penalty(
+    current_anchor_pos: Tensor,
+    ref_rigid_body_pos: Tensor,
+    anchor_idx: int,
+    height_threshold: float = 0.25,
+) -> Tensor:
+    """Explicit fall penalty.
+
+    Returns 1.0 for envs whose anchor (root) height error exceeds ``height_threshold``
+    -- the SAME condition used by the anchor-height fall termination
+    (``compute_anchor_height_error_term``) -- else 0.0. Apply a NEGATIVE weight in the
+    factory. Makes falling explicitly costly (previously it was only implicitly
+    penalized via termination + zeroed bootstrap).
+
+    NOTE: ``height_threshold`` is deliberately NOT named ``threshold`` (reserved
+    reward-metadata key that would be stripped before the kernel call).
+
+    Args:
+        current_anchor_pos: Current anchor position [num_envs, 3].
+        ref_rigid_body_pos: Reference body positions [num_envs, num_bodies, 3].
+        anchor_idx: Index of the anchor body.
+        height_threshold: Max allowed anchor height error (m) before it counts as a fall.
+
+    Returns:
+        Float fall indicator [num_envs] (1.0 fallen, 0.0 otherwise).
+    """
+    from protomotions.envs.terminations import anchor_height_error_value
+
+    height_error = anchor_height_error_value(
+        current_anchor_pos, ref_rigid_body_pos, anchor_idx
+    )
+    return (height_error > height_threshold).float()
+
+
 # =============================================================================
 # Helper Functions (used by kernels or for advanced use cases)
 # =============================================================================
@@ -260,6 +325,8 @@ __all__ = [
     "compute_soft_pos_limit_rew",
     "compute_contact_match_rew",
     "compute_contact_force_change_rew",
+    "compute_foot_contact_force_penalty",
+    "compute_fall_penalty",
     # Helper functions
     "joint_limit_violation",
     "contact_mismatch_sum",

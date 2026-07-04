@@ -232,6 +232,9 @@ class BaseEnv:
             self.num_envs, num_bodies, dtype=torch.float, device=self.device
         )
 
+        # Initialize actuation/observation delay DR state (no-op unless configured).
+        self._init_delay_state()
+
         if self.config.num_state_history_steps > 0:
             # Check if observation noise is configured - if so, allocate noisy buffers
             store_noisy = (
@@ -324,6 +327,138 @@ class BaseEnv:
             Boolean indicating simulation state
         """
         return self.simulator.is_simulation_running()
+
+    ###############################################################
+    # Actuation / Observation delay DR
+    ###############################################################
+    def _get_delay_cfg(self):
+        """Return the DelayDomainRandomizationConfig or None (getattr-guarded)."""
+        dr = getattr(self.simulator.config, "domain_randomization", None)
+        if dr is None:
+            return None
+        return getattr(dr, "delay", None)
+
+    def _init_delay_state(self):
+        """Allocate per-env delay buffers/state. Pure no-op when unconfigured.
+
+        Actuation delay: the PD target sent to the sim is the commanded target from
+        d_i control steps ago (per-env d_i sampled at reset). Observation delay: the
+        obs returned to the policy is the obs from o_i control steps ago. Effective
+        delay is clamped to the number of steps elapsed since the env's last reset, so
+        freshly reset envs never read stale cross-episode data (no explicit buffer
+        clearing needed).
+        """
+        cfg = self._get_delay_cfg()
+        self._delay_cfg = cfg
+        self._has_action_delay = bool(cfg is not None and cfg.has_action_delay())
+        self._has_obs_delay = bool(cfg is not None and cfg.has_observation_delay())
+
+        # Per-env sampled delays (in control steps).
+        self._action_delay = torch.zeros(
+            self.num_envs, dtype=torch.long, device=self.device
+        )
+        self._obs_delay = torch.zeros(
+            self.num_envs, dtype=torch.long, device=self.device
+        )
+        # Global lockstep step counters (all envs advance together).
+        self._action_delay_step = 0
+        self._obs_delay_step = 0
+
+        if self._has_action_delay:
+            num_actions = self.robot_config.number_of_actions
+            length = cfg.max_action_delay() + 1
+            self._action_delay_buf = torch.zeros(
+                self.num_envs, length, num_actions, dtype=torch.float, device=self.device
+            )
+        else:
+            self._action_delay_buf = None
+
+        # Observation buffers are dict-of-tensors, allocated lazily on first use
+        # (keys/shapes are unknown until the first get_obs()).
+        self._obs_delay_buf = None
+
+        if self._delay_cfg is not None and self._delay_cfg.has_delay():
+            self._sample_delays(
+                torch.arange(self.num_envs, dtype=torch.long, device=self.device)
+            )
+
+    def _sample_delays(self, env_ids: Tensor):
+        """(Re)sample per-env integer delays for the given envs (called at reset)."""
+        cfg = self._delay_cfg
+        if cfg is None:
+            return
+        n = len(env_ids)
+        if n == 0:
+            return
+        if self._has_action_delay:
+            lo, hi = cfg.action_delay_steps
+            self._action_delay[env_ids] = torch.randint(
+                int(lo), int(hi) + 1, (n,), dtype=torch.long, device=self.device
+            )
+        if self._has_obs_delay:
+            lo, hi = cfg.observation_delay_steps
+            self._obs_delay[env_ids] = torch.randint(
+                int(lo), int(hi) + 1, (n,), dtype=torch.long, device=self.device
+            )
+
+    def _apply_action_delay(self, processed_action: Tensor) -> Tensor:
+        """Return the PD target to actually send to the sim, applying per-env delay.
+
+        Writes the current commanded target into the ring buffer, then reads back, per
+        env, the entry effective_delay steps old (clamped to steps-since-reset).
+        """
+        if not self._has_action_delay:
+            return processed_action
+        buf = self._action_delay_buf
+        length = buf.shape[1]
+        write_idx = self._action_delay_step % length
+        buf[:, write_idx, :] = processed_action
+        # Steps elapsed this episode BEFORE the current step (progress not yet bumped).
+        steps_since_reset = self.progress_buf
+        eff_delay = torch.minimum(self._action_delay, steps_since_reset)
+        read_idx = (self._action_delay_step - eff_delay) % length
+        env_ids = torch.arange(self.num_envs, device=self.device)
+        delayed = buf[env_ids, read_idx]
+        self._action_delay_step += 1
+        return delayed
+
+    def _apply_observation_delay(self, obs: dict) -> dict:
+        """Return a per-env time-delayed version of the observation dict."""
+        if not self._has_obs_delay:
+            return obs
+        length = self._delay_cfg.max_observation_delay() + 1
+        if self._obs_delay_buf is None:
+            # Lazily allocate a ring buffer per obs key now that shapes are known.
+            self._obs_delay_buf = {
+                key: torch.zeros(
+                    (self.num_envs, length) + tuple(t.shape[1:]),
+                    dtype=t.dtype,
+                    device=t.device,
+                )
+                for key, t in obs.items()
+            }
+        write_idx = self._obs_delay_step % length
+        # progress_buf has already been incremented for the current step in
+        # post_physics_step, so history available before this step is progress_buf - 1.
+        steps_hist = torch.clamp(self.progress_buf - 1, min=0)
+        eff_delay = torch.minimum(self._obs_delay, steps_hist)
+        read_idx = (self._obs_delay_step - eff_delay) % length
+        env_ids = torch.arange(self.num_envs, device=self.device)
+        delayed = {}
+        for key, t in obs.items():
+            buf = self._obs_delay_buf.get(key)
+            if buf is None or buf.shape[2:] != t.shape[1:]:
+                # Shape changed / new key — (re)allocate this key's buffer.
+                buf = torch.zeros(
+                    (self.num_envs, length) + tuple(t.shape[1:]),
+                    dtype=t.dtype,
+                    device=t.device,
+                )
+                self._obs_delay_buf[key] = buf
+            buf[:, write_idx] = t
+            delayed[key] = buf[env_ids, read_idx]
+        self._obs_delay_step += 1
+        return delayed
 
     def get_obs(self):
         """Gather observations from all components.
@@ -685,9 +820,12 @@ class BaseEnv:
         # Process action
         action_dict = self._process_action(action, self.context)
         processed_action = action_dict["processed_action"]
+        # Commanded target stays UNDELAYED for reward/obs consistency; only the target
+        # actually sent to the sim is delayed (actuation-delay DR, no-op if disabled).
         self._current_processed_action[:] = processed_action
+        applied_action = self._apply_action_delay(processed_action)
 
-        self.simulator.step(processed_action, markers_callback=self.get_markers_state)
+        self.simulator.step(applied_action, markers_callback=self.get_markers_state)
 
         self.post_physics_step()
 
@@ -695,6 +833,8 @@ class BaseEnv:
             self.user_reset()
 
         obs = self.get_obs()
+        # Observation-delay DR (no-op if disabled).
+        obs = self._apply_observation_delay(obs)
         return obs, self.rew_buf, self.reset_buf, self.terminate_buf, self.extras
 
     def on_epoch_end(self, current_epoch: int):
@@ -1203,6 +1343,10 @@ class BaseEnv:
         self.odom_yaw_cos_sin[env_ids, 0] = torch.cos(yaw_bias)
         self.odom_yaw_cos_sin[env_ids, 1] = torch.sin(yaw_bias)
 
+        # Resample per-episode actuation/observation delays (no-op if unconfigured).
+        if getattr(self, "_delay_cfg", None) is not None and self._delay_cfg.has_delay():
+            self._sample_delays(env_ids)
+
         # Update cached noisy obs for the reset envs with fresh noise
         if self._current_noisy_obs is not None:
             current_state = self.simulator.get_robot_state()
@@ -1555,6 +1699,23 @@ class BaseEnv:
             "odom_scale": self.odom_scale.clone(),
             "odom_yaw_cos_sin": self.odom_yaw_cos_sin.clone(),
         }
+        if getattr(self, "_delay_cfg", None) is not None and self._delay_cfg.has_delay():
+            snapshot["_delay_state"] = {
+                "action_delay": self._action_delay.clone(),
+                "obs_delay": self._obs_delay.clone(),
+                "action_delay_step": self._action_delay_step,
+                "obs_delay_step": self._obs_delay_step,
+                "action_delay_buf": (
+                    self._action_delay_buf.clone()
+                    if self._action_delay_buf is not None
+                    else None
+                ),
+                "obs_delay_buf": (
+                    {k: v.clone() for k, v in self._obs_delay_buf.items()}
+                    if self._obs_delay_buf is not None
+                    else None
+                ),
+            }
         if self.state_history is not None:
             snapshot["state_history"] = self.state_history.save_state()
         if self._current_noisy_obs is not None:
@@ -1594,6 +1755,22 @@ class BaseEnv:
             self.odom_yaw_cos_sin.copy_(snapshot["odom_yaw_cos_sin"])
         self._current_noisy_obs = snapshot.get("_current_noisy_obs")
         self._current_context = None
+
+        delay_state = snapshot.get("_delay_state")
+        if delay_state is not None and getattr(self, "_delay_cfg", None) is not None:
+            self._action_delay.copy_(delay_state["action_delay"])
+            self._obs_delay.copy_(delay_state["obs_delay"])
+            self._action_delay_step = delay_state["action_delay_step"]
+            self._obs_delay_step = delay_state["obs_delay_step"]
+            if (
+                delay_state["action_delay_buf"] is not None
+                and self._action_delay_buf is not None
+            ):
+                self._action_delay_buf.copy_(delay_state["action_delay_buf"])
+            if delay_state["obs_delay_buf"] is not None:
+                self._obs_delay_buf = {
+                    k: v.clone() for k, v in delay_state["obs_delay_buf"].items()
+                }
 
         # IsaacGym needs an extra step after state restore to sync internal state
         if "isaacgym" in self.simulator.config._target_.lower():

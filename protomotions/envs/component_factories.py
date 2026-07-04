@@ -877,6 +877,77 @@ def contact_force_change_rew_factory(
     )
 
 
+def foot_contact_force_penalty_factory(
+    weight: float = -1e-5,
+    min_value: Optional[float] = -0.5,
+    force_threshold: float = 400.0,
+    zero_during_grace_period: bool = True,
+) -> MdpComponent:
+    """Factory for the instantaneous foot-contact-force (anti-stomp) penalty.
+
+    Penalizes instantaneous foot contact-force magnitude in excess of
+    ``force_threshold`` N, summed over foot bodies. Keep ``weight`` small and set a
+    ``min_value`` floor so push-recovery stomps stay affordable (robustness first).
+
+    Args:
+        weight: Reward weight (negative penalty; keep gentle).
+        min_value: Optional lower clamp on the scaled penalty.
+        force_threshold: Force (N) below which foot forces are free.
+        zero_during_grace_period: Zero the penalty during the post-reset grace period.
+    """
+    from protomotions.envs.rewards import compute_foot_contact_force_penalty
+
+    static_params = {
+        "weight": weight,
+        "force_threshold": force_threshold,
+        "zero_during_grace_period": zero_during_grace_period,
+    }
+    if min_value is not None:
+        static_params["min_value"] = min_value
+
+    return MdpComponent(
+        compute_func=compute_foot_contact_force_penalty,
+        dynamic_vars={
+            "current_contact_force_magnitudes": EnvContext.current_contact_force_magnitudes,
+            "contact_body_ids": EnvContext.contact_body_ids,
+        },
+        static_params=static_params,
+    )
+
+
+def fall_penalty_factory(
+    weight: float = -2.0,
+    height_threshold: float = 0.25,
+    zero_during_grace_period: bool = True,
+) -> MdpComponent:
+    """Factory for the explicit fall penalty.
+
+    Applies a negative reward on the SAME condition as the anchor-height fall
+    termination (root height error > ``height_threshold``). Bindings mirror
+    ``anchor_height_error_term_factory``.
+
+    Args:
+        weight: Reward weight (negative penalty applied on the falling step).
+        height_threshold: Max anchor height error (m) before it counts as a fall.
+        zero_during_grace_period: Zero the penalty during the post-reset grace period.
+    """
+    from protomotions.envs.rewards import compute_fall_penalty
+
+    return MdpComponent(
+        compute_func=compute_fall_penalty,
+        dynamic_vars={
+            "current_anchor_pos": EnvContext.current.anchor_pos,
+            "ref_rigid_body_pos": EnvContext.mimic.ref_state.rigid_body_pos,
+            "anchor_idx": EnvContext.mimic.anchor_idx,
+        },
+        static_params={
+            "weight": weight,
+            "height_threshold": height_threshold,
+            "zero_during_grace_period": zero_during_grace_period,
+        },
+    )
+
+
 def target_reward_factory(
     weight: float = 1.0, pos_err_scale: float = 0.42
 ) -> MdpComponent:

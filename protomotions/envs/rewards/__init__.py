@@ -68,6 +68,8 @@ from protomotions.envs.rewards.regularization import (
     compute_soft_pos_limit_rew,
     compute_contact_match_rew,
     compute_contact_force_change_rew,
+    compute_foot_contact_force_penalty,
+    compute_fall_penalty,
     # Helper functions
     joint_limit_violation,
     contact_mismatch_sum,
@@ -118,6 +120,8 @@ __all__ = [
     "compute_soft_pos_limit_rew",
     "compute_contact_match_rew",
     "compute_contact_force_change_rew",
+    "compute_foot_contact_force_penalty",
+    "compute_fall_penalty",
     # Regularization helper functions
     "joint_limit_violation",
     "contact_mismatch_sum",
