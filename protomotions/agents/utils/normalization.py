@@ -21,6 +21,7 @@ Key Features:
 from typing import Optional, Tuple, List
 
 import torch
+import torch.distributed as dist
 from torch import Tensor, nn
 from lightning.fabric import Fabric
 
@@ -212,14 +213,34 @@ class RunningMeanStd(nn.Module):
             if self.fabric.global_rank == 0:
                 self.update_from_moments(batch_mean, batch_var, batch_count)
 
-            # Broadcast updated parameters to all ranks
-            updated_mean = self.fabric.broadcast(self.mean, src=0)
-            updated_var = self.fabric.broadcast(self.var, src=0)
-            updated_count = self.fabric.broadcast(self.count, src=0)
-
-            self.mean.copy_(updated_mean)
-            self.var.copy_(updated_var)
-            self.count.fill_(updated_count.item())
+            # Broadcast rank-0's freshly combined buffers to every rank.
+            #
+            # Use in-place NCCL *tensor* broadcasts (torch.distributed.broadcast)
+            # rather than Fabric.broadcast. Lightning's DDP strategy implements
+            # Fabric.broadcast via ``broadcast_object_list`` — a gloo/CPU,
+            # pickle-based *object* collective. The three all_gather calls above
+            # run on the NCCL/GPU backend, so mixing in gloo object-broadcasts
+            # makes record_moments a cross-backend (NCCL then gloo) sequence.
+            # Because this runs inside a DDP-wrapped module's forward — where it
+            # interleaves with DDP's own NCCL gradient/buffer collectives — the
+            # relative completion order of the gloo (CPU) and NCCL (GPU)
+            # collectives is timing-dependent across ranks and can wedge the
+            # process group on resume (evidence:
+            # wbc_push/hang_evidence_run2seed_futex — ranks stranded in
+            # fabric.broadcast/broadcast_object_list inside record_moments while
+            # peers were in the NCCL all_gather / DDP backward). Keeping the whole
+            # update on the NCCL tensor path removes the cross-backend hazard.
+            # This mirrors the advantage-normalization EMA path, which already
+            # uses torch.distributed.broadcast (see ppo/agent.py). Numerically
+            # identical: every rank ends with rank-0's combined mean/var/count.
+            if dist.is_available() and dist.is_initialized():
+                dist.broadcast(self.mean, src=0)
+                dist.broadcast(self.var, src=0)
+                dist.broadcast(self.count, src=0)
+            else:
+                # world_size>1 without a real process group only occurs under
+                # mocked-fabric unit tests; there is nothing to synchronize.
+                pass
         else:
             self.update_from_moments(batch_mean, batch_var, batch_count)
 

@@ -161,7 +161,56 @@ def test_running_mean_std_records_distributed_moments_and_broadcasts():
     assert torch.allclose(rms.mean, all_values.mean().view(1).double())
     assert torch.allclose(rms.var, all_values.var(unbiased=False).view(1).double())
     assert rms.count == 4
-    assert len(fabric.broadcasts) == 3
+    # record_moments must NOT use Fabric.broadcast: the Lightning DDP strategy
+    # implements it via gloo/CPU broadcast_object_list, which — mixed with the
+    # NCCL all_gathers and run inside a DDP forward — is the cross-backend
+    # ordering hazard that deadlocked resumes. The rank-0 combine already
+    # produced the correct buffers here (no real process group in this mock).
+    assert fabric.broadcasts == []
+
+
+def test_record_moments_uses_nccl_tensor_broadcast_not_object_broadcast(monkeypatch):
+    """The buffer sync must go through dist.broadcast (a tensor collective on
+    the same backend as the all_gathers), never broadcast_object_list (gloo/CPU
+    object collective). Mixing backends inside the DDP forward is what wedged the
+    process group on resume (wbc_push/hang_evidence_run2seed_futex)."""
+    import protomotions.agents.utils.normalization as norm_mod
+
+    fabric = _DistributedFabric()
+    rms = RunningMeanStd(fabric, shape=(1,), device="cpu")
+    rms.count.zero_()
+
+    broadcast_tensor_calls = []
+    object_broadcast_calls = []
+
+    def fake_broadcast(tensor, src=0, group=None):
+        # Emulate rank-0 as source: leave the (already rank-0-correct) tensor.
+        broadcast_tensor_calls.append((tensor, src))
+        return None
+
+    def fake_broadcast_object_list(obj_list, src=0, group=None):
+        object_broadcast_calls.append((list(obj_list), src))
+        return None
+
+    monkeypatch.setattr(norm_mod.dist, "is_available", lambda: True)
+    monkeypatch.setattr(norm_mod.dist, "is_initialized", lambda: True)
+    monkeypatch.setattr(norm_mod.dist, "broadcast", fake_broadcast)
+    monkeypatch.setattr(
+        norm_mod.dist, "broadcast_object_list", fake_broadcast_object_list
+    )
+
+    rms.record_moments(torch.tensor([[1.0], [3.0]]))
+
+    # Exactly three tensor broadcasts (mean, var, count) on the NCCL path...
+    assert len(broadcast_tensor_calls) == 3
+    assert [t is rms.mean for t, _ in broadcast_tensor_calls][0]
+    # ...and ZERO gloo object broadcasts, from either record_moments or Fabric.
+    assert object_broadcast_calls == []
+    assert fabric.broadcasts == []
+    # Result stays numerically correct (rank-0 combine of the two shards).
+    all_values = torch.tensor([1.0, 3.0, 3.0, 5.0])
+    assert torch.allclose(rms.mean, all_values.mean().view(1).double())
+    assert rms.count == 4
 
 
 def test_materialize_lazy_running_stats_from_state_dict_creates_missing_buffers():
