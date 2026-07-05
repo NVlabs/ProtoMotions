@@ -9,6 +9,7 @@ import torch
 from protomotions.simulator.base_simulator.config import (
     ActionNoiseDomainRandomizationConfig,
     CenterOfMassDomainRandomizationConfig,
+    DelayDomainRandomizationConfig,
     FrictionDomainRandomizationConfig,
     ProjectileConfig,
     PushDomainRandomizationConfig,
@@ -64,6 +65,49 @@ def _conversion(sim_w_last: bool = True) -> DataConversionMapping:
         dof_convert_to_sim=torch.tensor([1, 0]),
         sim_w_last=sim_w_last,
     )
+
+
+def test_delay_domain_randomization_ramp_epochs():
+    # Default (no ramp_epochs) = exactly the previous behavior: full configured range
+    # from epoch 0, at every epoch.
+    cfg_no_ramp = DelayDomainRandomizationConfig(
+        action_delay_steps=(0, 2), observation_delay_steps=(0, 2)
+    )
+    for epoch in (0, 1, 750, 1500, 999999):
+        assert cfg_no_ramp.effective_max_action_delay(epoch) == 2
+        assert cfg_no_ramp.effective_max_observation_delay(epoch) == 2
+
+    # ramp_epochs=1500: linear ramp of the effective max from 0 (epoch 0) up to the
+    # configured max (epoch >= ramp_epochs), min(1, epoch/ramp_epochs) fraction.
+    cfg = DelayDomainRandomizationConfig(
+        action_delay_steps=(0, 2),
+        observation_delay_steps=(0, 2),
+        ramp_epochs=1500,
+    )
+    assert cfg.effective_max_action_delay(0) == 0  # round(2 * 0/1500) = 0
+    assert cfg.effective_max_action_delay(750) == 1  # round(2 * 0.5) = 1 (halfway)
+    assert cfg.effective_max_action_delay(1500) == 2  # round(2 * 1.0) = 2 (full)
+    assert cfg.effective_max_action_delay(3000) == 2  # clamped, min(1, epoch/ramp)=1
+    # Observation delay ramps identically (independent config, same math).
+    assert cfg.effective_max_observation_delay(0) == 0
+    assert cfg.effective_max_observation_delay(750) == 1
+    assert cfg.effective_max_observation_delay(1500) == 2
+
+    # Configured min is respected even mid-ramp: effective_max never drops below the
+    # configured min (e.g. min=1 with a ramp that would otherwise compute max=0).
+    cfg_min1 = DelayDomainRandomizationConfig(
+        action_delay_steps=(1, 4),
+        observation_delay_steps=(0, 4),
+        ramp_epochs=1000,
+    )
+    assert cfg_min1.effective_max_action_delay(0) == 1  # round(4*0)=0, clamped up to min=1
+    assert cfg_min1.effective_max_action_delay(500) == 2  # round(4*0.5)=2, >= min=1
+
+    # ramp_epochs must be a positive int (or None).
+    with pytest.raises(ValueError):
+        DelayDomainRandomizationConfig(ramp_epochs=0)
+    with pytest.raises(ValueError):
+        DelayDomainRandomizationConfig(ramp_epochs=-5)
 
 
 def test_simulator_config_matching_and_domain_randomization_validation():

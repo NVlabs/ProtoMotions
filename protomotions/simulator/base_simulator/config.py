@@ -579,6 +579,27 @@ class DelayDomainRandomizationConfig:
             "help": "Range (min,max) of control-step delay on the observation returned to the policy."
         },
     )
+    ramp_epochs: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": (
+                "If set, linearly ramp the EFFECTIVE max delay (both action and "
+                "observation) in from 0 up to the configured max over this many training "
+                "epochs: effective_max(epoch) = round(configured_max * min(1, epoch / "
+                "ramp_epochs)), applied independently to action_delay_steps[1] and "
+                "observation_delay_steps[1]. The configured min (steps[0]) is left "
+                "unramped; if effective_max would fall below the configured min, it is "
+                "clamped up to the min so the sampled range stays valid. Default None = "
+                "off (full configured range from step 0, i.e. current behavior). "
+                "Epoch is supplied by BaseEnv.on_epoch_end(current_epoch), which the "
+                "agent calls once per epoch identically on every rank (see "
+                "protomotions/agents/base_agent/agent.py:845) — the ramp fraction is "
+                "therefore a pure function of a globally-lockstep counter, not any "
+                "per-rank random or wall-clock state, so all ranks compute identical "
+                "effective bounds and never diverge in the DR sampling collective."
+            )
+        },
+    )
 
     def __post_init__(self):
         for name, rng in (
@@ -589,6 +610,23 @@ class DelayDomainRandomizationConfig:
                 raise ValueError(f"{name} values must be non-negative.")
             if rng[0] > rng[1]:
                 raise ValueError(f"{name}[0] must be <= {name}[1].")
+        if self.ramp_epochs is not None and self.ramp_epochs <= 0:
+            raise ValueError("ramp_epochs must be a positive int (or None to disable).")
+
+    def effective_max_action_delay(self, current_epoch: int) -> int:
+        return self._ramp(self.max_action_delay(), self.action_delay_steps[0], current_epoch)
+
+    def effective_max_observation_delay(self, current_epoch: int) -> int:
+        return self._ramp(
+            self.max_observation_delay(), self.observation_delay_steps[0], current_epoch
+        )
+
+    def _ramp(self, configured_max: int, configured_min: int, current_epoch: int) -> int:
+        if self.ramp_epochs is None:
+            return configured_max
+        frac = min(1.0, max(0.0, current_epoch) / self.ramp_epochs)
+        eff = round(configured_max * frac)
+        return max(eff, configured_min)
 
     def max_action_delay(self) -> int:
         return int(self.action_delay_steps[1])

@@ -363,6 +363,10 @@ class BaseEnv:
         # Global lockstep step counters (all envs advance together).
         self._action_delay_step = 0
         self._obs_delay_step = 0
+        # Current training epoch, used only by the ramp (see DelayDomainRandomizationConfig
+        # .ramp_epochs). Updated once per epoch by on_epoch_end(), called identically on
+        # every rank by the agent's lockstep training loop -> rank-consistent by construction.
+        self._current_epoch = 0
 
         if self._has_action_delay:
             num_actions = self.robot_config.number_of_actions
@@ -391,12 +395,14 @@ class BaseEnv:
         if n == 0:
             return
         if self._has_action_delay:
-            lo, hi = cfg.action_delay_steps
+            lo, _ = cfg.action_delay_steps
+            hi = cfg.effective_max_action_delay(self._current_epoch)
             self._action_delay[env_ids] = torch.randint(
                 int(lo), int(hi) + 1, (n,), dtype=torch.long, device=self.device
             )
         if self._has_obs_delay:
-            lo, hi = cfg.observation_delay_steps
+            lo, _ = cfg.observation_delay_steps
+            hi = cfg.effective_max_observation_delay(self._current_epoch)
             self._obs_delay[env_ids] = torch.randint(
                 int(lo), int(hi) + 1, (n,), dtype=torch.long, device=self.device
             )
@@ -842,8 +848,18 @@ class BaseEnv:
 
         Args:
             current_epoch: Current epoch number
+
+        Also feeds the delay-DR ramp (DelayDomainRandomizationConfig.ramp_epochs), if
+        configured: self._current_epoch is read by _sample_delays() at each env reset
+        to compute the effective (ramped) max delay. Rank-consistency: current_epoch is
+        the agent's plain-Python lockstep counter (protomotions/agents/base_agent/agent.py,
+        self.current_epoch), incremented once per epoch and identical across all DDP
+        ranks — every rank calls env.on_epoch_end(self.current_epoch) with the same value
+        in the same training-loop iteration (no per-rank randomness or wall-clock input),
+        so every rank computes the identical ramp fraction/effective max and the delay-DR
+        RNG draws stay independent-but-parameterized-identically (no collective divergence).
         """
-        pass
+        self._current_epoch = current_epoch
 
     def post_physics_step(self):
         """Update environment state after physics simulation step.
