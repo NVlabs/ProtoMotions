@@ -302,6 +302,27 @@ class BaseAgent:
             # Symmetric point: every rank runs load(). No-op for world_size==1.
             sync_record_moments_gates(self.model, self.fabric)
 
+            # 2026-07-05 hang kill-switch (scratchseed_v2, 3rd recurrence of the
+            # record_moments collective-mismatch deadlock in one night despite
+            # the NCCL-broadcast + gate-sync fixes above — see
+            # wbc_push/hang_evidence_v2_20260705): FREEZE_OBS_NORM_ON_RESUME=1
+            # hard-freezes every normalizer at checkpoint load. Rank-symmetric
+            # (env var set uniformly by the launch wrapper), zero collectives,
+            # and removes record_moments' all_gather/broadcast from the hot
+            # path entirely. Numerically benign for late resumes (stats long
+            # converged); default off so fresh runs still record moments.
+            if os.environ.get("FREEZE_OBS_NORM_ON_RESUME", "0") == "1":
+                _frozen = 0
+                for _name, _mod in self.model.named_modules():
+                    if hasattr(_mod, "_freeze_running") and not _mod._freeze_running:
+                        _mod._freeze_running = True
+                        _frozen += 1
+                if _frozen:
+                    print(
+                        f"[freeze_obs_norm_on_resume] froze {_frozen} "
+                        "normalizer(s) (FREEZE_OBS_NORM_ON_RESUME=1)"
+                    )
+
             # 24-GiB-node memory guard: forcing an eval immediately on every
             # resume allocates per-rank metrics sized by (num_motions /
             # world_size), which can OOM on small GPU pools with few ranks
