@@ -150,6 +150,7 @@ def test_wbc_collective_fix_env_is_default_off(monkeypatch, tmp_path):
         "FIX_WBC_MATERIALIZE_COLLECTIVE",
         "FIX_WBC_RMS_COLLECTIVE_SCHEDULE",
         "FIX_WBC_METRIC_COLLECTIVE_SCHEDULE",
+        "FIX_WBC_GRAD_CLIP_COLLECTIVE_SCHEDULE",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -168,6 +169,8 @@ def test_wbc_collective_fix_env_enabled_for_masked_and_superdr(monkeypatch, tmp_
     ):
         for name in module["_WBC_COLLECTIVE_FIX_ENV"]:
             monkeypatch.delenv(name, raising=False)
+        for name in module["_WBC_MASKED_MIMIC_ONLY_FIX_ENV"]:
+            monkeypatch.delenv(name, raising=False)
 
         assert (
             module["_enable_wbc_collective_fixes_for_experiment"](experiment_name)
@@ -175,6 +178,12 @@ def test_wbc_collective_fix_env_enabled_for_masked_and_superdr(monkeypatch, tmp_
         )
         for name, value in module["_WBC_COLLECTIVE_FIX_ENV"].items():
             assert os.environ[name] == value
+        if experiment_name == "h1_2_masked_mimic_teleop":
+            for name, value in module["_WBC_MASKED_MIMIC_ONLY_FIX_ENV"].items():
+                assert os.environ[name] == value
+        else:
+            for name in module["_WBC_MASKED_MIMIC_ONLY_FIX_ENV"]:
+                assert name not in os.environ
 
 
 def test_detect_checkpoint_mode_handles_fresh_warm_start_and_resume(

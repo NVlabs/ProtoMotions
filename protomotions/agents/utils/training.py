@@ -31,6 +31,10 @@ def _fix_wbc_metric_collective_schedule_enabled() -> bool:
     return os.environ.get("FIX_WBC_METRIC_COLLECTIVE_SCHEDULE") == "1"
 
 
+def _fix_wbc_grad_clip_collective_schedule_enabled() -> bool:
+    return os.environ.get("FIX_WBC_GRAD_CLIP_COLLECTIVE_SCHEDULE") == "1"
+
+
 def _numeric_metric_value(value):
     if isinstance(value, (int, float)):
         return float(value)
@@ -152,6 +156,21 @@ def handle_model_grad_clipping(config, fabric, model, optimizer, model_name):
         bad_grads = torch.isnan(grad_norm_before_clip)
 
     bad_grads_count = 0
+    if (
+        _fix_wbc_grad_clip_collective_schedule_enabled()
+        and fabric is not None
+        and getattr(fabric, "world_size", 1) > 1
+        and dist.is_available()
+        and dist.is_initialized()
+    ):
+        bad_grads_tensor = torch.tensor(
+            int(bool(bad_grads)),
+            device=fabric.device,
+            dtype=torch.long,
+        )
+        dist.all_reduce(bad_grads_tensor, op=dist.ReduceOp.MAX)
+        bad_grads = bool(bad_grads_tensor.item())
+
     if bad_grads:
         if config.fail_on_bad_grads:
             all_params = torch.cat(
@@ -172,7 +191,10 @@ def handle_model_grad_clipping(config, fabric, model, optimizer, model_name):
                     p.grad.zero_()
 
     if config.gradient_clip_val > 0:
-        if fabric is not None:
+        if (
+            fabric is not None
+            and not _fix_wbc_grad_clip_collective_schedule_enabled()
+        ):
             fabric.clip_gradients(
                 model,
                 optimizer,

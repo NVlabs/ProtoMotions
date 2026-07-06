@@ -1,12 +1,16 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for training utilities that can run without distributed launch."""
+"""Tests for training utilities."""
 
+import os
+import socket
 from types import SimpleNamespace
 
 import pytest
 import torch
+import torch.distributed as dist
+import torch.multiprocessing as mp
 from torch import nn
 
 from protomotions.agents.utils import training as training_module
@@ -38,6 +42,22 @@ class _SingleFabric:
 
 
 class _ClipFabric:
+    def __init__(self):
+        self.calls = []
+
+    def clip_gradients(self, model, optimizer, max_norm, error_if_nonfinite):
+        self.calls.append((model, optimizer, max_norm, error_if_nonfinite))
+        torch.nn.utils.clip_grad_norm_(
+            model.parameters(),
+            max_norm=max_norm,
+            error_if_nonfinite=error_if_nonfinite,
+        )
+
+
+class _DistributedClipFabric:
+    world_size = 2
+    device = torch.device("cpu")
+
     def __init__(self):
         self.calls = []
 
@@ -139,6 +159,7 @@ def test_handle_model_grad_clipping_can_fail_or_ignore_large_finite_grads():
 
 
 def test_handle_model_grad_clipping_uses_fabric_when_available():
+    os.environ.pop("FIX_WBC_GRAD_CLIP_COLLECTIVE_SCHEDULE", None)
     model = nn.Linear(2, 1, bias=False)
     model.weight.grad = torch.full_like(model.weight, 5.0)
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
@@ -154,6 +175,116 @@ def test_handle_model_grad_clipping_uses_fabric_when_available():
 
     assert fabric.calls == [(model, optimizer, 0.25, True)]
     assert metrics["fabric/grad_norm_after_clip"] <= 0.2501
+
+
+def test_handle_model_grad_clipping_fix_flag_uses_local_clip_and_reduces_bad_gate(
+    monkeypatch,
+):
+    monkeypatch.setenv("FIX_WBC_GRAD_CLIP_COLLECTIVE_SCHEDULE", "1")
+    calls = []
+
+    def fake_all_reduce(tensor, op=None):
+        calls.append((tensor.detach().clone(), op))
+
+    monkeypatch.setattr(training_module.dist, "is_available", lambda: True)
+    monkeypatch.setattr(training_module.dist, "is_initialized", lambda: True)
+    monkeypatch.setattr(training_module.dist, "all_reduce", fake_all_reduce)
+
+    model = nn.Linear(2, 1, bias=False)
+    model.weight.grad = torch.full_like(model.weight, 5.0)
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+    fabric = _DistributedClipFabric()
+
+    metrics = handle_model_grad_clipping(
+        config=_grad_config(gradient_clip_val=0.25),
+        fabric=fabric,
+        model=model,
+        optimizer=optimizer,
+        model_name="fabric",
+    )
+
+    assert fabric.calls == []
+    assert len(calls) == 1
+    assert metrics["fabric/grad_norm_after_clip"] <= 0.2501
+
+
+def _free_port():
+    sock = socket.socket()
+    sock.bind(("", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    return port
+
+
+def _grad_clip_worker(rank: int, world_size: int, port: int, branch: str, ret):
+    os.environ["MASTER_ADDR"] = "127.0.0.1"
+    os.environ["MASTER_PORT"] = str(port)
+    os.environ["RANK"] = str(rank)
+    os.environ["WORLD_SIZE"] = str(world_size)
+    os.environ["FIX_WBC_GRAD_CLIP_COLLECTIVE_SCHEDULE"] = "1"
+    dist.init_process_group(backend="gloo", rank=rank, world_size=world_size)
+    try:
+        model = nn.Linear(2, 1, bias=False)
+        if branch == "bad_rank1" and rank == 1:
+            model.weight.grad = torch.full_like(model.weight, float("nan"))
+        else:
+            model.weight.grad = torch.full_like(model.weight, 5.0 + rank)
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+        fabric = _DistributedClipFabric()
+
+        metrics = handle_model_grad_clipping(
+            config=_grad_config(gradient_clip_val=0.25, fail_on_bad_grads=False),
+            fabric=fabric,
+            model=model,
+            optimizer=optimizer,
+            model_name="model",
+        )
+
+        ret[rank] = {
+            "bad": int(metrics["model/bad_grads_count"]),
+            "grad": model.weight.grad.detach().clone(),
+            "fabric_clip_calls": len(fabric.calls),
+        }
+    finally:
+        dist.destroy_process_group()
+
+
+@pytest.mark.parametrize("branch", ["clean", "bad_rank1"])
+def test_handle_model_grad_clipping_fix_flag_gloo_rank_agrees_both_branches(branch):
+    world_size = 2
+    port = _free_port()
+    manager = mp.Manager()
+    ret = manager.dict()
+
+    ctx = mp.get_context("spawn")
+    procs = [
+        ctx.Process(target=_grad_clip_worker, args=(rank, world_size, port, branch, ret))
+        for rank in range(world_size)
+    ]
+    for proc in procs:
+        proc.start()
+    for proc in procs:
+        proc.join(timeout=55)
+
+    for rank, proc in enumerate(procs):
+        if proc.is_alive():
+            proc.terminate()
+            pytest.fail(f"rank {rank} hung in grad clipping")
+        assert proc.exitcode == 0, f"rank {rank} exited with {proc.exitcode}"
+
+    assert set(ret.keys()) == {0, 1}
+    assert ret[0]["fabric_clip_calls"] == 0
+    assert ret[1]["fabric_clip_calls"] == 0
+    if branch == "clean":
+        assert ret[0]["bad"] == 0
+        assert ret[1]["bad"] == 0
+        assert torch.isfinite(ret[0]["grad"]).all()
+        assert torch.isfinite(ret[1]["grad"]).all()
+    else:
+        assert ret[0]["bad"] == 1
+        assert ret[1]["bad"] == 1
+        assert torch.equal(ret[0]["grad"], torch.zeros_like(ret[0]["grad"]))
+        assert torch.equal(ret[1]["grad"], torch.zeros_like(ret[1]["grad"]))
 
 
 def test_aggregate_scalar_metrics_default_keeps_object_key_gather(monkeypatch):

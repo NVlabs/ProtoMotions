@@ -100,6 +100,10 @@ _WBC_COLLECTIVE_FIX_ENV = {
     "SKIP_RESUME_EVAL": "1",
 }
 
+_WBC_MASKED_MIMIC_ONLY_FIX_ENV = {
+    "FIX_WBC_GRAD_CLIP_COLLECTIVE_SCHEDULE": "1",
+}
+
 
 def _enable_wbc_collective_fixes_for_experiment(experiment_name: str) -> bool:
     """Enable WBC opt-in collective fixes for the two unstable WBC lanes only."""
@@ -108,6 +112,9 @@ def _enable_wbc_collective_fixes_for_experiment(experiment_name: str) -> bool:
         return False
     for name, value in _WBC_COLLECTIVE_FIX_ENV.items():
         os.environ[name] = value
+    if experiment_name == "h1_2_masked_mimic_teleop":
+        for name, value in _WBC_MASKED_MIMIC_ONLY_FIX_ENV.items():
+            os.environ[name] = value
     return True
 
 """
