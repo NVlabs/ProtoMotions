@@ -45,6 +45,7 @@ from protomotions.agents.utils.normalization import (
     RewardRunningMeanStd,
     RunningMeanStd,
     materialize_lazy_running_stats_from_state_dict,
+    sync_running_mean_std_modules,
     sync_record_moments_gates,
 )
 from rich.progress import track
@@ -245,7 +246,61 @@ class BaseAgent:
 
     def _materialize_lazy_modules(self, dummy_obs_td: TensorDict) -> None:
         """Materialize LazyLinear/RunningMeanStd modules with a dummy forward."""
-        self.model.materialize(dummy_obs_td)
+        if os.environ.get("FIX_WBC_MATERIALIZE_COLLECTIVE", "0") != "1":
+            self.model.materialize(dummy_obs_td)
+            return
+
+        # Setup-time materialization only needs lazy parameter/buffer shapes.
+        # RunningMeanStd moment updates can issue distributed collectives in the
+        # default path. Freeze only for this dummy pass, then restore the
+        # configured training gates for rollout updates.
+        freeze_states = []
+        for module in self.model.modules():
+            if hasattr(module, "_freeze_running"):
+                freeze_states.append((module, module._freeze_running))
+                module._freeze_running = True
+        try:
+            self.model.materialize(dummy_obs_td)
+        finally:
+            for module, freeze_running in freeze_states:
+                module._freeze_running = freeze_running
+
+    def _iter_running_mean_std_sync_targets(self):
+        """Yield normalizers in deterministic training-loop sync order."""
+        seen = set()
+
+        def yield_once(name: str, module):
+            if not isinstance(module, RunningMeanStd):
+                return
+            module_id = id(module)
+            if module_id in seen:
+                return
+            seen.add(module_id)
+            yield name, module
+
+        running_reward_norm = getattr(self, "running_reward_norm", None)
+        if running_reward_norm is not None:
+            yield from yield_once("agent.running_reward_norm", running_reward_norm)
+
+        amp_component = getattr(self, "amp_component", None)
+        amp_reward_norm = getattr(amp_component, "running_reward_norm", None)
+        if amp_reward_norm is not None:
+            yield from yield_once(
+                "agent.amp_component.running_reward_norm",
+                amp_reward_norm,
+            )
+
+        model = getattr(self, "model", None)
+        if model is not None:
+            for name, module in model.named_modules():
+                if isinstance(module, RunningMeanStd):
+                    yield from yield_once(f"model.{name}" if name else "model", module)
+
+    def _sync_running_mean_std(self) -> None:
+        sync_running_mean_std_modules(
+            list(self._iter_running_mean_std_sync_targets()),
+            self.fabric,
+        )
 
     def _after_create_optimizers(self) -> None:
         """Hook after optimizers/DDP wrappers are created."""
@@ -300,7 +355,8 @@ class BaseAgent:
             # desynchronize per-rank `_freeze_running`, and that flag gates
             # record_moments' DDP collectives (divergence deadlocks the PG).
             # Symmetric point: every rank runs load(). No-op for world_size==1.
-            sync_record_moments_gates(self.model, self.fabric)
+            if hasattr(self, "model"):
+                sync_record_moments_gates(self.model, self.fabric)
 
             # 2026-07-05 hang kill-switch (scratchseed_v2, 3rd recurrence of the
             # record_moments collective-mismatch deadlock in one night despite
@@ -343,6 +399,7 @@ class BaseAgent:
                     )
                     self.env.load_state_dict(env_state_dict)
 
+            self._sync_running_mean_std()
             self.fabric.call("on_load_checkpoint_end")
 
     def load_parameters(self, state_dict, load_training_state: bool = True):
@@ -760,6 +817,7 @@ class BaseAgent:
 
                     self.step_count += self.get_step_count_increment()
 
+                self._sync_running_mean_std()
                 self.normalize_rewards_in_buffer()
 
             # Skip policy update right after eval to avoid training spikes (hacky fix)
@@ -772,6 +830,7 @@ class BaseAgent:
                 _ = self.experience_buffer.make_dict()
             else:
                 training_log_dict = self.optimize_model()
+                self._sync_running_mean_std()
 
             training_log_dict["epoch"] = self.current_epoch
             self.current_epoch += 1

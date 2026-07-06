@@ -146,7 +146,8 @@ def test_running_mean_std_ema_updates_without_accumulating_count():
     assert rms.count == 1
 
 
-def test_running_mean_std_records_distributed_moments_and_broadcasts():
+def test_running_mean_std_records_distributed_moments_and_broadcasts(monkeypatch):
+    monkeypatch.delenv("FIX_WBC_RMS_COLLECTIVE_SCHEDULE", raising=False)
     fabric = _DistributedFabric()
     rms = RunningMeanStd(
         fabric,
@@ -169,6 +170,25 @@ def test_running_mean_std_records_distributed_moments_and_broadcasts():
     assert fabric.broadcasts == []
 
 
+def test_record_moments_collective_schedule_fix_records_local_only(monkeypatch):
+    monkeypatch.setenv("FIX_WBC_RMS_COLLECTIVE_SCHEDULE", "1")
+    fabric = _DistributedFabric()
+    rms = RunningMeanStd(
+        fabric,
+        shape=(1,),
+        device="cpu",
+    )
+    rms.count.zero_()
+
+    rms.record_moments(torch.tensor([[1.0], [3.0]]))
+
+    assert fabric.gather_calls == 0
+    assert fabric.broadcasts == []
+    assert torch.allclose(rms.mean, torch.tensor([2.0], dtype=torch.float64))
+    assert torch.allclose(rms.var, torch.tensor([1.0], dtype=torch.float64))
+    assert rms.count == 2
+
+
 def test_record_moments_uses_nccl_tensor_broadcast_not_object_broadcast(monkeypatch):
     """The buffer sync must go through dist.broadcast (a tensor collective on
     the same backend as the all_gathers), never broadcast_object_list (gloo/CPU
@@ -177,6 +197,7 @@ def test_record_moments_uses_nccl_tensor_broadcast_not_object_broadcast(monkeypa
     import protomotions.agents.utils.normalization as norm_mod
 
     fabric = _DistributedFabric()
+    monkeypatch.delenv("FIX_WBC_RMS_COLLECTIVE_SCHEDULE", raising=False)
     rms = RunningMeanStd(fabric, shape=(1,), device="cpu")
     rms.count.zero_()
 

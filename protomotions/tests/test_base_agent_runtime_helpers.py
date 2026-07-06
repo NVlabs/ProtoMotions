@@ -115,12 +115,67 @@ class _PPOLogstdLoadModel(nn.Module):
         self._actor.logstd.data.copy_(state_dict["_actor.logstd"])
 
 
+class _FreezeGateModule(nn.Module):
+    def __init__(self, freeze_running: bool):
+        super().__init__()
+        self._freeze_running = freeze_running
+        self.states_seen = []
+
+    def forward(self, obs_td):
+        self.states_seen.append(self._freeze_running)
+        return obs_td
+
+
+class _MaterializeRecorder(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.open_norm = _FreezeGateModule(False)
+        self.frozen_norm = _FreezeGateModule(True)
+        self.materialized = False
+
+    def materialize(self, obs_td):
+        self.materialized = True
+        self.open_norm(obs_td)
+        self.frozen_norm(obs_td)
+        return obs_td
+
+
 def test_base_agent_has_critic_is_false_for_agents_without_critic_contract():
     agent = object.__new__(BaseAgent)
     assert BaseAgent.has_critic.fget(agent) is False
 
     agent.critic = object()
     assert BaseAgent.has_critic.fget(agent) is False
+
+
+def test_materialize_lazy_modules_default_preserves_normalizer_gates(monkeypatch):
+    monkeypatch.delenv("FIX_WBC_MATERIALIZE_COLLECTIVE", raising=False)
+    model = _MaterializeRecorder()
+    agent = object.__new__(BaseAgent)
+    agent.model = model
+
+    BaseAgent._materialize_lazy_modules(agent, TensorDict({}, batch_size=[]))
+
+    assert model.materialized is True
+    assert model.open_norm.states_seen == [False]
+    assert model.frozen_norm.states_seen == [True]
+    assert model.open_norm._freeze_running is False
+    assert model.frozen_norm._freeze_running is True
+
+
+def test_materialize_lazy_modules_fix_flag_freezes_and_restores_gates(monkeypatch):
+    monkeypatch.setenv("FIX_WBC_MATERIALIZE_COLLECTIVE", "1")
+    model = _MaterializeRecorder()
+    agent = object.__new__(BaseAgent)
+    agent.model = model
+
+    BaseAgent._materialize_lazy_modules(agent, TensorDict({}, batch_size=[]))
+
+    assert model.materialized is True
+    assert model.open_norm.states_seen == [True]
+    assert model.frozen_norm.states_seen == [True]
+    assert model.open_norm._freeze_running is False
+    assert model.frozen_norm._freeze_running is True
 
 
 class _ConcreteBaseModel(BaseModel):
