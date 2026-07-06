@@ -19,11 +19,80 @@ from torch import Tensor
 import torch.nn as nn
 from torch.nn import functional as F
 from typing import Dict
+import os
 
 from protomotions.utils import torch_utils
 from lightning.fabric import Fabric
 
 from protomotions.agents.common.common import get_params
+
+
+def _fix_wbc_metric_collective_schedule_enabled() -> bool:
+    return os.environ.get("FIX_WBC_METRIC_COLLECTIVE_SCHEDULE") == "1"
+
+
+def _numeric_metric_value(value):
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, torch.Tensor):
+        if value.numel() == 1:
+            return value.float().item()
+        return value.mean().float().item()
+    return None
+
+
+def _distributed_metric_key_union(local_keys, fabric: Fabric):
+    payload = "\n".join(sorted(local_keys)).encode("utf-8")
+    length = torch.tensor([len(payload)], device=fabric.device, dtype=torch.int64)
+    gathered_lengths = [torch.empty_like(length) for _ in range(fabric.world_size)]
+    dist.all_gather(gathered_lengths, length)
+    lengths = [int(item.cpu().item()) for item in gathered_lengths]
+    max_length = max(lengths) if lengths else 0
+
+    local_bytes = torch.zeros(max_length, device=fabric.device, dtype=torch.uint8)
+    if payload:
+        local_bytes[: len(payload)] = torch.tensor(
+            list(payload), device=fabric.device, dtype=torch.uint8
+        )
+    gathered_bytes = [torch.empty_like(local_bytes) for _ in range(fabric.world_size)]
+    dist.all_gather(gathered_bytes, local_bytes)
+
+    union_keys = set()
+    for byte_tensor, payload_length in zip(gathered_bytes, lengths):
+        if payload_length == 0:
+            continue
+        encoded = bytes(byte_tensor[:payload_length].cpu().tolist())
+        union_keys.update(key for key in encoded.decode("utf-8").split("\n") if key)
+    return sorted(union_keys)
+
+
+def _aggregate_scalar_metrics_tensor_only(
+    log_dict: Dict, fabric: Fabric, weight: int = 1
+) -> Dict:
+    union_keys = _distributed_metric_key_union(log_dict.keys(), fabric)
+    aggregated_dict = {}
+
+    value_sums = torch.zeros(len(union_keys), device=fabric.device, dtype=torch.float32)
+    weight_sums = torch.zeros_like(value_sums)
+    for index, key in enumerate(union_keys):
+        if key not in log_dict:
+            continue
+        numeric_value = _numeric_metric_value(log_dict[key])
+        if numeric_value is None:
+            aggregated_dict[key] = log_dict[key]
+            continue
+        value_sums[index] = numeric_value * float(weight)
+        weight_sums[index] = float(weight)
+
+    if len(union_keys) > 0:
+        dist.all_reduce(value_sums, op=dist.ReduceOp.SUM)
+        dist.all_reduce(weight_sums, op=dist.ReduceOp.SUM)
+
+    for index, key in enumerate(union_keys):
+        if weight_sums[index].item() > 0:
+            aggregated_dict[key] = (value_sums[index] / weight_sums[index]).item()
+
+    return aggregated_dict
 
 
 def bounds_loss(mu: Tensor) -> Tensor:
@@ -141,16 +210,15 @@ def aggregate_scalar_metrics(log_dict: Dict, fabric: Fabric, weight: int = 1) ->
     if fabric.world_size == 1:
         # Single-GPU: no collectives, behavior-preserving.
         for key, value in log_dict.items():
-            if isinstance(value, (int, float)):
-                aggregated_dict[key] = float(value)
-            elif isinstance(value, torch.Tensor):
-                if value.numel() == 1:
-                    aggregated_dict[key] = value.float().item()
-                else:
-                    aggregated_dict[key] = value.mean().float().item()
+            numeric_value = _numeric_metric_value(value)
+            if numeric_value is not None:
+                aggregated_dict[key] = numeric_value
             else:
                 aggregated_dict[key] = value
         return aggregated_dict
+
+    if _fix_wbc_metric_collective_schedule_enabled():
+        return _aggregate_scalar_metrics_tensor_only(log_dict, fabric, weight=weight)
 
     # Distributed path. Lazily-created log keys can differ across ranks; if each
     # rank iterated its own key set, ranks would issue a different number/order

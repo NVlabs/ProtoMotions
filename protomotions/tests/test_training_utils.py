@@ -9,6 +9,7 @@ import pytest
 import torch
 from torch import nn
 
+from protomotions.agents.utils import training as training_module
 from protomotions.agents.utils.training import (
     aggregate_scalar_metrics,
     bounds_loss,
@@ -21,15 +22,13 @@ class _GatherFabric:
     world_size = 2
     device = torch.device("cpu")
 
-    def __init__(self):
-        self.calls = 0
-
     def all_gather(self, tensor):
-        self.calls += 1
-        if self.calls == 1:
-            return torch.tensor([2.0, 6.0])
+        if torch.allclose(tensor.float(), torch.tensor(0.0)):
+            return torch.tensor([0.0, 0.0])
         if torch.allclose(tensor.float(), torch.tensor(4.0)):
             return torch.tensor([4.0, 8.0])
+        if torch.allclose(tensor.float(), torch.tensor(2.0)):
+            return torch.tensor([2.0, 4.0])
         return torch.tensor([1.0, 3.0])
 
 
@@ -157,10 +156,17 @@ def test_handle_model_grad_clipping_uses_fabric_when_available():
     assert metrics["fabric/grad_norm_after_clip"] <= 0.2501
 
 
-def test_aggregate_scalar_metrics_keeps_strings_and_uses_weighted_average():
+def test_aggregate_scalar_metrics_default_keeps_object_key_gather(monkeypatch):
+    monkeypatch.delenv("FIX_WBC_METRIC_COLLECTIVE_SCHEDULE", raising=False)
+
+    def fake_all_gather_object(gathered, local_keys):
+        gathered[:] = [local_keys, ["count", "loss"]]
+
+    monkeypatch.setattr(training_module.dist, "all_gather_object", fake_all_gather_object)
+
     metrics = aggregate_scalar_metrics(
         {
-            "loss": torch.tensor([0.0, 2.0]),
+            "loss": torch.tensor([1.0, 3.0]),
             "count": 4,
             "phase": "train",
         },
@@ -168,9 +174,63 @@ def test_aggregate_scalar_metrics_keeps_strings_and_uses_weighted_average():
         weight=2,
     )
 
-    assert metrics["loss"] == 2.5
-    assert metrics["count"] == 7.0
+    assert metrics["loss"] == pytest.approx((2.0 * 2 + 4.0 * 4) / 6)
+    assert metrics["count"] == pytest.approx((4.0 * 2 + 8.0 * 4) / 6)
     assert metrics["phase"] == "train"
+
+
+def test_aggregate_scalar_metrics_fix_flag_uses_tensor_collectives(monkeypatch):
+    monkeypatch.setenv("FIX_WBC_METRIC_COLLECTIVE_SCHEDULE", "1")
+    calls = []
+
+    def payload_tensor(keys):
+        payload = "\n".join(keys).encode("utf-8")
+        return torch.tensor(list(payload), dtype=torch.uint8)
+
+    rank0_payload = payload_tensor(["loss", "phase"])
+    rank1_payload = payload_tensor(["count", "loss"])
+
+    def fake_all_gather(gathered, tensor):
+        calls.append(("all_gather", tensor.dtype, tuple(tensor.shape)))
+        if tensor.dtype == torch.int64:
+            gathered[0].copy_(torch.tensor([rank0_payload.numel()], dtype=torch.int64))
+            gathered[1].copy_(torch.tensor([rank1_payload.numel()], dtype=torch.int64))
+            return
+        gathered[0].zero_()
+        gathered[1].zero_()
+        gathered[0][: rank0_payload.numel()].copy_(rank0_payload)
+        gathered[1][: rank1_payload.numel()].copy_(rank1_payload)
+
+    def fake_all_reduce(tensor, op=None):
+        calls.append(("all_reduce", tensor.detach().clone()))
+        if torch.allclose(tensor, torch.tensor([0.0, 4.0, 0.0])):
+            tensor.copy_(torch.tensor([24.0, 16.0, 0.0]))
+        elif torch.allclose(tensor, torch.tensor([0.0, 2.0, 0.0])):
+            tensor.copy_(torch.tensor([4.0, 6.0, 0.0]))
+        else:
+            raise AssertionError(f"unexpected reduction tensor {tensor}")
+
+    monkeypatch.setattr(training_module.dist, "all_gather", fake_all_gather)
+    monkeypatch.setattr(training_module.dist, "all_reduce", fake_all_reduce)
+
+    metrics = aggregate_scalar_metrics(
+        {
+            "loss": torch.tensor([1.0, 3.0]),
+            "phase": "train",
+        },
+        fabric=_GatherFabric(),
+        weight=2,
+    )
+
+    assert metrics["count"] == pytest.approx(6.0)
+    assert metrics["loss"] == pytest.approx(16.0 / 6.0)
+    assert metrics["phase"] == "train"
+    assert [call[0] for call in calls] == [
+        "all_gather",
+        "all_gather",
+        "all_reduce",
+        "all_reduce",
+    ]
 
 
 def test_aggregate_scalar_metrics_single_rank_uses_local_values():
