@@ -55,7 +55,7 @@ Quick Reference
      - Sim2sim transfer
      - Trained policy
    * - :doc:`../user_guide/gpc`
-     - GPC and PEFT adaptation
+     - GPC prior and PEFT task adaptation
      - FSQ motion tracker
    * - :doc:`workflows/custom_robot`
      - Add new robot morphology

@@ -6,40 +6,13 @@ This guide helps you run pre-trained models and start training your own agents.
 Run Pre-trained Models
 ----------------------
 
-We provide pre-trained checkpoints for various robots and tasks. Download them and run inference to see the results.
+We provide pre-trained checkpoints for several robots and controller families.
+See the :doc:`pretrained_models` catalog for a concise overview and links to
+the detailed model card stored beside each checkpoint.
 
-**Available Pre-trained Models:**
-
-The motion tracker models below are DeepMimic-style policies capable of tracking a wide variety of human motions, trained on large motion datasets (AMASS or BONES-SEED). The FSQ tracker exposes the bottleneck used for GPC prior training.
-
-.. list-table::
-   :header-rows: 1
-   :widths: 25 35 40
-
-   * - Model
-     - Description
-     - Checkpoint Path
-   * - SMPL AMASS (flat)
-     - General motion tracker: SMPL humanoid on flat terrain
-     - ``data/pretrained_models/motion_tracker/smpl/last.ckpt``
-   * - SMPL AMASS (terrain)
-     - General motion tracker: SMPL humanoid on complex terrain
-     - ``data/pretrained_models/motion_tracker/smpl-terrains/last.ckpt``
-   * - G1 BONES-SEED
-     - General motion tracker: Unitree G1 on BONES-SEED retargeted motions
-     - ``data/pretrained_models/motion_tracker/g1-bones-deploy/last.ckpt``
-   * - SOMA BONES-SEED
-     - General motion tracker: SOMA 23-body humanoid on BONES-SEED motions
-     - ``data/pretrained_models/motion_tracker/soma-bones/last.ckpt``
-   * - SOMA BONES-SEED FSQ
-     - Motion tracker with an FSQ bottleneck for GPC prior training
-     - ``data/pretrained_models/motion_tracker/soma_bones_fsq/inference_last.ckpt``
-   * - SOMA GPC prior
-     - Discrete latent prior for GPC and PEFT experiments
-     - Releasing soon
-   * - MaskedMimic SMPL
-     - MaskedMimic policy for SMPL
-     - ``data/pretrained_models/masked_mimic/smpl/last.ckpt``
+The commands below use the recommended IsaacLab checkpoints.
+Only the domain-randomized G1 deployment tracker is currently expected to
+transfer to compatible simulators or hardware.
 
 **Example Motion Data:**
 
@@ -48,7 +21,7 @@ We provide small example motion files for testing with robot models:
 * ``data/motion_for_trackers/g1_random_subset_tiny.pt`` - Small subset of retargeted AMASS for G1
 * ``data/motion_for_trackers/g1_bones_seed_mini.pt`` - Small subset of BONES-SEED retargeted motions for G1
 * ``data/motion_for_trackers/soma23_bones_seed_mini.pt`` - Small subset of BONES-SEED motions for SOMA 23-body humanoid
-* ``data/motion_for_trackers/crouch_soma23.pt`` - Small SOMA crouch dataset for GPC/PEFT examples
+* ``data/motion_for_trackers/crouch_soma23.pt`` - Small SOMA crouch dataset for GPC and PEFT examples
 * ``data/motion_for_trackers/h1_2_random_subset_tiny.pt`` - Small subset of retargeted AMASS for H1-2
 
 For SMPL motion data, see :doc:`amass_preparation` to generate your own MotionLib from AMASS.
@@ -63,7 +36,7 @@ if your local GPU memory is not enough to load the entire motion lib of AMASS.
    python protomotions/inference_agent.py \
        --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/last.ckpt \
        --motion-file data/motion_for_trackers/g1_bones_seed_mini.pt \
-       --simulator isaacgym
+       --simulator isaaclab
 
    # Headless validation on a server or VM
    python protomotions/inference_agent.py \
@@ -78,22 +51,21 @@ if your local GPU memory is not enough to load the entire motion lib of AMASS.
    python protomotions/inference_agent.py \
        --checkpoint data/pretrained_models/motion_tracker/soma-bones/last.ckpt \
        --motion-file data/motion_for_trackers/soma23_bones_seed_mini.pt \
-       --simulator isaacgym
+       --simulator isaaclab
 
    # Run SMPL on flat terrain (requires AMASS MotionLib, see amass_preparation)
    python protomotions/inference_agent.py \
        --checkpoint data/pretrained_models/motion_tracker/smpl/last.ckpt \
        --motion-file path/to/your/amass_motionlib.pt \
-       --simulator isaacgym
+       --simulator isaaclab
 
    # Run SMPL on complex terrain
    python protomotions/inference_agent.py \
        --checkpoint data/pretrained_models/motion_tracker/smpl-terrains/last.ckpt \
        --motion-file path/to/your/amass_motionlib.pt \
-       --simulator isaacgym
+       --simulator isaaclab
 
-   # Test sim2sim transfer - run IsaacLab-trained policy in MuJoco
-   # CPU-only testing (no GPU needed, single env)
+   # Test the domain-randomized G1 tracker in MuJoCo
    python protomotions/inference_agent.py \
        --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/last.ckpt \
        --motion-file data/motion_for_trackers/g1_bones_seed_mini.pt \
@@ -106,9 +78,9 @@ if your local GPU memory is not enough to load the entire motion lib of AMASS.
    it exits after evaluating the motion set and prints metrics. Without
    ``--full-eval``, inference runs continuously until interrupted.
 
-   Sim2sim transfer works for robots with hinge (revolute) joints (G1, H1, etc.)
-   but not yet for robots with spherical joints (SMPL, SMPL-X) due to differing
-   spherical joint representations across simulators.  See
+   Cross-simulator transfer should only be expected when the model card states
+   that the policy used the full transfer-oriented domain-randomization recipe.
+   See :doc:`pretrained_models` and
    :doc:`../tutorials/workflows/domain_randomization` for details.
 
 Train Your First Agent
@@ -123,7 +95,7 @@ Train a motion imitation agent using an MLP policy:
 
    python protomotions/train_agent.py \
        --robot-name smpl \
-       --simulator isaacgym \
+       --simulator isaaclab \
        --experiment-path examples/experiments/mimic/mlp.py \
        --experiment-name smpl_mimic_example \
        --motion-file path/to/your/motion_lib.pt \
@@ -141,8 +113,8 @@ Simulator Selection
 
 Use the ``--simulator`` argument:
 
-* ``isaacgym`` - NVIDIA IsaacGym (recommended for training)
-* ``isaaclab`` - NVIDIA IsaacLab/IsaacSim
+* ``isaacgym`` - NVIDIA IsaacGym legacy GPU backend
+* ``isaaclab`` - NVIDIA IsaacLab/IsaacSim (recommended for training)
 * ``newton`` - NVIDIA Newton (built on MuJoCo Warp, currently beta)
 * ``genesis`` - Genesis simulator
 * ``mujoco`` - MuJoCo CPU-only (single env, for quick testing/debugging)
@@ -219,7 +191,7 @@ Common configuration options:
 
    python protomotions/train_agent.py \
        --robot-name smpl \
-       --simulator isaacgym \
+       --simulator isaaclab \
        --experiment-path examples/experiments/mimic/mlp.py \
        --experiment-name my_experiment \
        --motion-file path/to/motions.pt \
@@ -289,31 +261,31 @@ Evaluate a trained agent:
    python protomotions/inference_agent.py \
        --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/last.ckpt \
        --motion-file data/motion_for_trackers/g1_bones_seed_mini.pt \
-       --simulator isaacgym
+       --simulator isaaclab
 
    # Evaluate SOMA pretrained model
    python protomotions/inference_agent.py \
        --checkpoint data/pretrained_models/motion_tracker/soma-bones/last.ckpt \
        --motion-file data/motion_for_trackers/soma23_bones_seed_mini.pt \
-       --simulator isaacgym
+       --simulator isaaclab
 
    # Evaluate SMPL pretrained model (flat terrain)
    python protomotions/inference_agent.py \
        --checkpoint data/pretrained_models/motion_tracker/smpl/last.ckpt \
        --motion-file path/to/your/amass_motionlib.pt \
-       --simulator isaacgym
+       --simulator isaaclab
 
    # Evaluate SMPL pretrained model (complex terrain)
    python protomotions/inference_agent.py \
        --checkpoint data/pretrained_models/motion_tracker/smpl-terrains/last.ckpt \
        --motion-file path/to/your/amass_motionlib.pt \
-       --simulator isaacgym
+       --simulator isaaclab
 
    # Or evaluate your own trained model
    python protomotions/inference_agent.py \
        --checkpoint results/my_experiment/last.ckpt \
        --motion-file data/motion_for_trackers/g1_random_subset_tiny.pt \
-       --simulator isaacgym
+       --simulator isaaclab
 
 Keyboard Controls
 ~~~~~~~~~~~~~~~~~

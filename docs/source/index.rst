@@ -70,6 +70,7 @@ Quick Links
 
 * :doc:`getting_started/installation` - Install and set up
 * :doc:`getting_started/quickstart` - Run pre-trained models and start training
+* :doc:`getting_started/pretrained_models` - Compare shipped checkpoints and runtime expectations
 * :doc:`tutorials/index` - Step-by-step tutorials and workflows
 * :doc:`user_guide/gpc` - Train a discrete GPC prior and adapt it with PEFT
 * :doc:`concepts/index` - Core abstractions and design
@@ -83,6 +84,7 @@ Quick Links
 
    getting_started/installation
    getting_started/quickstart
+   getting_started/pretrained_models
    getting_started/amass_preparation
    getting_started/phuma_preparation
    getting_started/seed_bvh_preparation
