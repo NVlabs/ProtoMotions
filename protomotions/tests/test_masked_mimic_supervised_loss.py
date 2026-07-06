@@ -136,6 +136,18 @@ class _CheckpointLinear(nn.Linear):
         pass
 
 
+class _FreezeAwareExpert(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self._freeze_running = False
+        self.freeze_states_seen = []
+
+    def forward(self, tensordict):
+        self.freeze_states_seen.append(self._freeze_running)
+        tensordict["mean_action"] = tensordict["obs"].float()
+        return tensordict
+
+
 def _mlp(in_keys, out_key, num_out):
     return MLPWithConcatConfig(in_keys=in_keys, out_keys=[out_key], num_out=num_out)
 
@@ -291,6 +303,17 @@ def test_supervised_external_expert_can_be_raw_frozen_module():
     action = SupervisedAgent._collect_external_expert_action(agent, obs_td)
 
     assert torch.equal(action, torch.tensor([[31.0], [32.0]]))
+
+
+def test_supervised_external_expert_materialization_freezes_running_stats():
+    agent = object.__new__(SupervisedAgent)
+    expert = _FreezeAwareExpert()
+    obs_td = TensorDict({"obs": torch.tensor([[1], [2]])}, batch_size=2)
+
+    SupervisedAgent._materialize_frozen_external_expert(agent, expert, obs_td)
+
+    assert expert.freeze_states_seen == [True]
+    assert expert._freeze_running is False
 
 
 def test_supervised_expert_rollout_ignores_student_privileged_action():

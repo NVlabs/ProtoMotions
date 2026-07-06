@@ -103,7 +103,10 @@ class SupervisedAgent(BaseAgent):
                 dummy_expert_obs_td = self._build_expert_obs_td(
                     dummy_obs_td, expert_actor_in_keys
                 )
-                _ = expert_actor(dummy_expert_obs_td)
+                self._materialize_frozen_external_expert(
+                    expert_actor,
+                    dummy_expert_obs_td,
+                )
 
             # Load weights before any distributed wrapper changes module keys.
             pre_trained_expert = torch.load(
@@ -152,6 +155,19 @@ class SupervisedAgent(BaseAgent):
         if expert_actor is not None:
             return expert_actor
         return self._external_expert_module_from(self.expert_model)
+
+    def _materialize_frozen_external_expert(self, expert_actor, dummy_obs_td):
+        """Materialize a frozen expert without updating distributed normalizers."""
+        freeze_states = []
+        for module in expert_actor.modules():
+            if hasattr(module, "_freeze_running"):
+                freeze_states.append((module, module._freeze_running))
+                module._freeze_running = True
+        try:
+            _ = expert_actor(dummy_obs_td)
+        finally:
+            for module, freeze_running in freeze_states:
+                module._freeze_running = freeze_running
 
     def _load_external_expert_state(self, expert_model, model_state_dict):
         expert_actor = self._external_expert_module_from(expert_model)
