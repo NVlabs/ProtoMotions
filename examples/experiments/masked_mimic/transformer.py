@@ -189,11 +189,17 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
         )
         
         if hasattr(expert_env_config, 'control_components') and expert_env_config.control_components:
+            # future_steps may be an int N (-> N frames) or an explicit List[int]
+            # of frame offsets (-> len frames). Compare/adopt by FRAME COUNT so the
+            # masked_mimic env feeds the expert exactly as many future reference
+            # frames as it was trained with (else mimic_target_poses is mis-shaped).
+            def _future_count(v):
+                return len(v) if isinstance(v, (list, tuple)) else v
             for ctrl_cfg in expert_env_config.control_components.values():
                 expert_num_future = getattr(ctrl_cfg, 'future_steps', None)
                 if expert_num_future is not None:
                     masked_mimic_cfg = control_components["masked_mimic"]
-                    if masked_mimic_cfg.future_steps < expert_num_future:
+                    if _future_count(masked_mimic_cfg.future_steps) < _future_count(expert_num_future):
                         masked_mimic_cfg.future_steps = expert_num_future
         
         expert_obs_components = get_expert_observation_components(
