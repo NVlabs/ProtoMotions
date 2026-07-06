@@ -632,7 +632,9 @@ def test_supervised_agent_uses_fabric_for_setup(monkeypatch):
 
 def test_base_agent_load_uses_explicit_training_state_and_loads_matching_env_state(
     tmp_path,
+    monkeypatch,
 ):
+    monkeypatch.delenv("SKIP_RESUME_EVAL", raising=False)
     checkpoint = tmp_path / "inference.ckpt"
     env_checkpoint = tmp_path / "env_task-a.ckpt"
     torch.save(
@@ -667,6 +669,29 @@ def test_base_agent_load_uses_explicit_training_state_and_loads_matching_env_sta
         ("on_load_checkpoint_start", ()),
         ("on_load_checkpoint_end", ()),
     ]
+
+
+def test_base_agent_load_skip_resume_eval_defers_next_eval(tmp_path, monkeypatch):
+    monkeypatch.setenv("SKIP_RESUME_EVAL", "1")
+    checkpoint = tmp_path / "inference.ckpt"
+    torch.save({"model": {"w": torch.tensor([1.0])}}, checkpoint)
+
+    fabric = _FabricRecorder()
+    loaded = {}
+    agent = object.__new__(BaseAgent)
+    agent.fabric = fabric
+    agent.device = torch.device("cpu")
+    agent.root_dir = tmp_path
+    agent.load_parameters = lambda state, load_training_state: loaded.setdefault(
+        "agent",
+        (state, load_training_state),
+    )
+
+    BaseAgent.load(agent, checkpoint, load_env=False, load_training_state=False)
+
+    assert loaded["agent"][1] is False
+    assert agent.just_loaded_checkpoint_should_evaluate is False
+    assert agent._skip_next_eval_after_resume is True
 
 
 def test_agent_training_state_hooks_do_not_thread_load_flag():

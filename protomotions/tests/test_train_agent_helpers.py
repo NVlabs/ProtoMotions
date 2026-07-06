@@ -141,6 +141,42 @@ def test_train_agent_parser_and_bool_helpers(monkeypatch, tmp_path):
     assert parsed.create_config_only is True
 
 
+def test_wbc_collective_fix_env_is_default_off(monkeypatch, tmp_path):
+    for name in (
+        "PG_TIMEOUT_SEC",
+        "TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC",
+        "TORCH_NCCL_ASYNC_ERROR_HANDLING",
+        "TORCH_NCCL_TRACE_BUFFER_SIZE",
+        "FIX_WBC_MATERIALIZE_COLLECTIVE",
+        "FIX_WBC_RMS_COLLECTIVE_SCHEDULE",
+        "FIX_WBC_METRIC_COLLECTIVE_SCHEDULE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    module = _load_train_agent_globals(monkeypatch, tmp_path)
+
+    assert module["_enable_wbc_collective_fixes_for_experiment"]("unit") is False
+    assert "FIX_WBC_RMS_COLLECTIVE_SCHEDULE" not in os.environ
+
+
+def test_wbc_collective_fix_env_enabled_for_masked_and_superdr(monkeypatch, tmp_path):
+    module = _load_train_agent_globals(monkeypatch, tmp_path)
+
+    for experiment_name in (
+        "h1_2_masked_mimic_teleop",
+        "h1_2_superdrmegaperturb_scratch",
+    ):
+        for name in module["_WBC_COLLECTIVE_FIX_ENV"]:
+            monkeypatch.delenv(name, raising=False)
+
+        assert (
+            module["_enable_wbc_collective_fixes_for_experiment"](experiment_name)
+            is True
+        )
+        for name, value in module["_WBC_COLLECTIVE_FIX_ENV"].items():
+            assert os.environ[name] == value
+
+
 def test_detect_checkpoint_mode_handles_fresh_warm_start_and_resume(
     monkeypatch,
     tmp_path,

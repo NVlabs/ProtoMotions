@@ -84,6 +84,32 @@ os.environ["WANDB_DISABLE_SENTRY"] = "true"  # Must be first environment variabl
 os.environ["WANDB_SILENT"] = "true"
 os.environ["WANDB_DISABLE_CODE"] = "true"
 
+_WBC_COLLECTIVE_FIX_EXPERIMENTS = {
+    "h1_2_masked_mimic_teleop",
+    "h1_2_superdrmegaperturb_scratch",
+}
+
+_WBC_COLLECTIVE_FIX_ENV = {
+    "PG_TIMEOUT_SEC": "3600",
+    "TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC": "1200",
+    "TORCH_NCCL_ASYNC_ERROR_HANDLING": "1",
+    "TORCH_NCCL_TRACE_BUFFER_SIZE": "1048576",
+    "FIX_WBC_MATERIALIZE_COLLECTIVE": "1",
+    "FIX_WBC_RMS_COLLECTIVE_SCHEDULE": "1",
+    "FIX_WBC_METRIC_COLLECTIVE_SCHEDULE": "1",
+    "SKIP_RESUME_EVAL": "1",
+}
+
+
+def _enable_wbc_collective_fixes_for_experiment(experiment_name: str) -> bool:
+    """Enable WBC opt-in collective fixes for the two unstable WBC lanes only."""
+
+    if experiment_name not in _WBC_COLLECTIVE_FIX_EXPERIMENTS:
+        return False
+    for name, value in _WBC_COLLECTIVE_FIX_ENV.items():
+        os.environ[name] = value
+    return True
+
 """
 ## Quick Start
 
@@ -271,6 +297,7 @@ from protomotions.utils.cli_utils import parse_bool  # noqa: E402
 
 parser = create_parser()
 args, unknown_args = parser.parse_known_args()
+_enable_wbc_collective_fixes_for_experiment(args.experiment_name)
 
 # Import simulator before torch - isaacgym/isaaclab must be imported before torch
 # This also returns AppLauncher if using isaaclab, None otherwise

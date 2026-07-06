@@ -185,6 +185,7 @@ class BaseAgent:
         )
 
         self.just_loaded_checkpoint_should_evaluate = False
+        self._skip_next_eval_after_resume = False
 
     @property
     def should_stop(self):
@@ -302,6 +303,26 @@ class BaseAgent:
             self.fabric,
         )
 
+    def _evaluation_due_this_epoch(self) -> bool:
+        cadence_due = (
+            self.evaluator is not None
+            and self.evaluator.config.eval_metrics_every is not None
+            and self.current_epoch > 0
+            and self.current_epoch % self.evaluator.config.eval_metrics_every == 0
+        )
+        return cadence_due or self.just_loaded_checkpoint_should_evaluate
+
+    def _should_evaluate_this_epoch(self) -> bool:
+        if not self._evaluation_due_this_epoch():
+            return False
+
+        if getattr(self, "_skip_next_eval_after_resume", False):
+            self._skip_next_eval_after_resume = False
+            self.just_loaded_checkpoint_should_evaluate = False
+            return False
+
+        return True
+
     def _after_create_optimizers(self) -> None:
         """Hook after optimizers/DDP wrappers are created."""
 
@@ -379,13 +400,15 @@ class BaseAgent:
                         "normalizer(s) (FREEZE_OBS_NORM_ON_RESUME=1)"
                     )
 
-            # 24-GiB-node memory guard: forcing an eval immediately on every
-            # resume allocates per-rank metrics sized by (num_motions /
-            # world_size), which can OOM on small GPU pools with few ranks
-            # (e.g. 4x3090). Default-on (unchanged behavior); set
-            # SKIP_RESUME_EVAL=1 to defer eval to its normal
-            # eval_metrics_every cadence instead.
-            if os.environ.get("SKIP_RESUME_EVAL", "0") != "1":
+            # 24-GiB-node memory guard: evaluating immediately after resume
+            # allocates per-rank metrics sized by (num_motions / world_size),
+            # which can OOM on small GPU pools with few ranks. Default-on
+            # (unchanged behavior); set SKIP_RESUME_EVAL=1 to skip exactly the
+            # next eval, including cadence-triggered eval at the loaded epoch.
+            if os.environ.get("SKIP_RESUME_EVAL", "0") == "1":
+                self.just_loaded_checkpoint_should_evaluate = False
+                self._skip_next_eval_after_resume = True
+            else:
                 self.just_loaded_checkpoint_should_evaluate = True
 
             if load_env:
@@ -848,16 +871,7 @@ class BaseAgent:
             if self.current_epoch % self.config.save_last_checkpoint_every == 0:
                 self.save(checkpoint_name="last.ckpt")
 
-            if (
-                self.evaluator is not None
-                and self.evaluator.config.eval_metrics_every is not None
-                and (
-                    self.current_epoch > 0
-                    and self.current_epoch % self.evaluator.config.eval_metrics_every
-                    == 0
-                )
-                or self.just_loaded_checkpoint_should_evaluate
-            ):
+            if self._should_evaluate_this_epoch():
                 self.fabric.call("on_eval_start", self)
 
                 eval_log_dict, evaluated_score, num_eval_items = (

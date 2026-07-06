@@ -159,6 +159,7 @@ def _fit_agent(calls, buffer, *, max_epochs=1):
     agent.step_count = 0
     agent._skip_next_policy_update = False
     agent.just_loaded_checkpoint_should_evaluate = False
+    agent._skip_next_eval_after_resume = False
     agent.best_evaluated_score = None
     agent._should_stop = False
     agent.fabric = _Fabric()
@@ -191,6 +192,37 @@ def _fit_agent(calls, buffer, *, max_epochs=1):
     )
     agent.get_step_count_increment = lambda: 7
     return agent
+
+
+def test_base_agent_evaluates_on_default_cadence():
+    calls = []
+    agent = _fit_agent(
+        calls,
+        _FitExperienceBuffer(num_envs=2, num_steps=2, device=torch.device("cpu")),
+    )
+    agent.current_epoch = 10225
+    agent.evaluator.config.eval_metrics_every = 25
+
+    assert BaseAgent._should_evaluate_this_epoch(agent) is True
+    assert agent.just_loaded_checkpoint_should_evaluate is False
+    assert agent._skip_next_eval_after_resume is False
+
+
+def test_base_agent_skip_resume_eval_defers_next_cadence_eval_once():
+    calls = []
+    agent = _fit_agent(
+        calls,
+        _FitExperienceBuffer(num_envs=2, num_steps=2, device=torch.device("cpu")),
+    )
+    agent.current_epoch = 10225
+    agent.evaluator.config.eval_metrics_every = 25
+    agent._skip_next_eval_after_resume = True
+
+    assert BaseAgent._should_evaluate_this_epoch(agent) is False
+    assert agent.just_loaded_checkpoint_should_evaluate is False
+    assert agent._skip_next_eval_after_resume is False
+
+    assert BaseAgent._should_evaluate_this_epoch(agent) is True
 
 
 def test_eval_model_for_buffer_registration_restores_nested_module_modes():
