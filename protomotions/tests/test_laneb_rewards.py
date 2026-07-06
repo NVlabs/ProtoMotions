@@ -8,11 +8,13 @@ import torch
 from protomotions.envs.rewards import (
     compute_foot_contact_force_penalty,
     compute_fall_penalty,
+    compute_reference_contact_liftoff_penalty,
 )
 from protomotions.envs.mdp_component import MdpComponent, _METADATA_KEYS
 from protomotions.envs.component_factories import (
     foot_contact_force_penalty_factory,
     fall_penalty_factory,
+    reference_contact_liftoff_penalty_factory,
 )
 from protomotions.simulator.base_simulator.config import (
     DelayDomainRandomizationConfig,
@@ -49,6 +51,50 @@ def test_fall_penalty_kernel():
     assert torch.allclose(out, torch.tensor([0.0, 1.0, 0.0])), out
 
 
+def test_reference_contact_liftoff_penalty_kernel():
+    # Feet are bodies 1 and 3. Only a simulated contact->no-contact transition
+    # during reference stance is penalized.
+    sim_contacts = torch.tensor(
+        [
+            [False, False, False, True],
+            [False, False, False, False],
+            [False, False, False, False],
+        ]
+    )
+    ref_contacts = torch.tensor(
+        [
+            [False, True, False, True],
+            [False, False, False, True],
+            [False, True, False, True],
+        ]
+    )
+    historical_contacts = torch.tensor(
+        [
+            [[True, True]],    # left foot lifts unnecessarily, right stays planted.
+            [[True, True]],    # left foot lifts during ref swing, right lifts in stance.
+            [[False, True]],   # left was already airborne, right lifts in stance.
+        ]
+    )
+    out = compute_reference_contact_liftoff_penalty(
+        sim_contacts,
+        ref_contacts,
+        contact_body_ids=torch.tensor([1, 3]),
+        historical_body_contacts=historical_contacts,
+    )
+    assert torch.allclose(out, torch.tensor([1.0, 1.0, 1.0])), out
+
+    try:
+        compute_reference_contact_liftoff_penalty(
+            sim_contacts,
+            None,
+            contact_body_ids=torch.tensor([1, 3]),
+            historical_body_contacts=historical_contacts,
+        )
+        assert False, "missing reference contacts must fail loudly"
+    except ValueError:
+        pass
+
+
 def test_factories_metadata_split():
     ff = foot_contact_force_penalty_factory(weight=-2e-5, min_value=-0.3, force_threshold=350.0)
     assert isinstance(ff, MdpComponent)
@@ -66,6 +112,17 @@ def test_factories_metadata_split():
     fp_func = {k: v for k, v in fp.static_params.items() if k not in _METADATA_KEYS}
     assert "weight" not in fp_func
     assert "height_threshold" in fp_func
+
+    rc = reference_contact_liftoff_penalty_factory(
+        weight=-0.07,
+        min_value=-0.25,
+        ref_contact_threshold=0.6,
+    )
+    assert isinstance(rc, MdpComponent)
+    assert rc.dynamic_vars["historical_body_contacts"].path == "historical.body_contacts"
+    rc_func = {k: v for k, v in rc.static_params.items() if k not in _METADATA_KEYS}
+    assert "weight" not in rc_func and "min_value" not in rc_func
+    assert rc_func["ref_contact_threshold"] == 0.6
 
 
 def test_delay_config_and_backcompat():
@@ -97,6 +154,7 @@ def test_delay_config_and_backcompat():
 if __name__ == "__main__":
     test_foot_contact_force_penalty_kernel()
     test_fall_penalty_kernel()
+    test_reference_contact_liftoff_penalty_kernel()
     test_factories_metadata_split()
     test_delay_config_and_backcompat()
     print("ALL LANEB TESTS PASSED")

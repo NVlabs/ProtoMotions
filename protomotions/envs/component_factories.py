@@ -840,6 +840,52 @@ def contact_match_rew_factory(
     )
 
 
+def reference_contact_liftoff_penalty_factory(
+    weight: float = -0.05,
+    min_value: Optional[float] = -0.2,
+    ref_contact_threshold: float = 0.5,
+    zero_during_grace_period: bool = True,
+) -> MdpComponent:
+    """Factory for reference-gated unnecessary lift-off penalty.
+
+    Penalizes foot contact transitions from stance to swing only when the
+    reference contact schedule keeps that foot planted.  Raw units are lift-off
+    events per control step, summed over configured foot contact bodies; apply a
+    negative ``weight``.  Requires reference motion contacts and
+    ``num_state_history_steps >= 1``.
+
+    Args:
+        weight: Reward weight (negative penalty). Default -0.05 per unnecessary
+            foot lift-off event.
+        min_value: Optional lower clamp on the scaled penalty.
+        ref_contact_threshold: Reference contact value where stance begins.
+        zero_during_grace_period: Zero the penalty during post-reset grace.
+    """
+    from protomotions.envs.rewards import compute_reference_contact_liftoff_penalty
+
+    if not (0.0 <= ref_contact_threshold < 1.0):
+        raise ValueError("ref_contact_threshold must be in [0, 1).")
+
+    static_params = {
+        "weight": weight,
+        "ref_contact_threshold": ref_contact_threshold,
+        "zero_during_grace_period": zero_during_grace_period,
+    }
+    if min_value is not None:
+        static_params["min_value"] = min_value
+
+    return MdpComponent(
+        compute_func=compute_reference_contact_liftoff_penalty,
+        dynamic_vars={
+            "sim_contacts": EnvContext.current.rigid_body_contacts,
+            "ref_contacts": EnvContext.mimic.ref_state.rigid_body_contacts,
+            "contact_body_ids": EnvContext.contact_body_ids,
+            "historical_body_contacts": EnvContext.historical.body_contacts,
+        },
+        static_params=static_params,
+    )
+
+
 def contact_force_change_rew_factory(
     weight: float = -1e-5,
     min_value: Optional[float] = -0.5,
@@ -1598,6 +1644,7 @@ __all__ = [
     "corrupted_xy_offset_factory",
     "pow_rew_factory",
     "contact_match_rew_factory",
+    "reference_contact_liftoff_penalty_factory",
     "contact_force_change_rew_factory",
     "target_reward_factory",
     "steering_reward_factory",

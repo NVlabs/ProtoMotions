@@ -261,6 +261,55 @@ def test_regularization_rewards_and_helpers():
         ),
         torch.tensor([1.0, 1.0]),
     )
+
+    sim_contacts_liftoff = torch.tensor(
+        [
+            [False, False, False, True],
+            [False, False, False, False],
+            [False, False, False, False],
+        ]
+    )
+    ref_contacts_liftoff = torch.tensor(
+        [
+            [False, True, False, True],
+            [False, False, False, 0.75],
+            [False, True, False, True],
+        ]
+    )
+    historical_body_contacts = torch.tensor(
+        [
+            [[True, True]],
+            [[True, True]],
+            [[False, True]],
+        ]
+    )
+    assert torch.allclose(
+        regularization.compute_reference_contact_liftoff_penalty(
+            sim_contacts_liftoff,
+            ref_contacts_liftoff,
+            contact_body_ids=torch.tensor([1, 3]),
+            historical_body_contacts=historical_body_contacts,
+            ref_contact_threshold=0.5,
+        ),
+        torch.tensor([1.0, 0.5, 1.0]),
+    )
+    persistent_air = regularization.compute_reference_contact_liftoff_penalty(
+        torch.tensor([[False, False]]),
+        torch.tensor([[False, True]]),
+        contact_body_ids=torch.tensor([1]),
+        historical_body_contacts=torch.tensor([[[False]]]),
+    )
+    assert torch.allclose(persistent_air, torch.zeros(1))
+    try:
+        regularization.compute_reference_contact_liftoff_penalty(
+            torch.tensor([[False, False]]),
+            None,
+            contact_body_ids=torch.tensor([1]),
+            historical_body_contacts=torch.tensor([[[True]]]),
+        )
+        assert False, "missing reference contacts must raise"
+    except ValueError:
+        pass
     assert torch.allclose(
         regularization.compute_contact_force_change_rew(
             torch.tensor([[10.0, 50.0], [100.0, 0.0]]),

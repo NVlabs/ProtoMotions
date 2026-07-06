@@ -144,6 +144,67 @@ def compute_contact_match_rew(
     return torch.abs(sim_contacts_subset.float() - ref_contacts_subset.float()).sum(dim=1)
 
 
+def compute_reference_contact_liftoff_penalty(
+    sim_contacts: Tensor,
+    ref_contacts: Tensor,
+    contact_body_ids: Tensor,
+    historical_body_contacts: Tensor,
+    ref_contact_threshold: float = 0.5,
+) -> Tensor:
+    """Reference-gated penalty for unnecessary foot lift-offs.
+
+    The raw unit is weighted foot-count per control step.  A foot contributes
+    only on the simulated contact transition ``prev_contact -> no_contact`` while
+    the reference contact schedule says that same foot should remain in stance.
+    This gates the penalty on locomotion necessity: reference swing phases are
+    not treated as nervous stepping.
+
+    Smoothed reference contacts in [0, 1] are supported. Contacts above
+    ``ref_contact_threshold`` scale linearly toward a full stance penalty.
+
+    Args:
+        sim_contacts: Simulated contact flags [num_envs, num_bodies].
+        ref_contacts: Reference contact labels [num_envs, num_bodies].
+        contact_body_ids: Indices of foot bodies to evaluate [num_feet].
+        historical_body_contacts: Historical simulated contacts for configured
+            contact bodies [num_envs, history_steps, num_feet]. The first history
+            slot is the previous control step.
+        ref_contact_threshold: Reference contact value where stance starts.
+
+    Returns:
+        Weighted foot-count penalty [num_envs].
+    """
+    if ref_contacts is None:
+        raise ValueError(
+            "reference_contact_liftoff_penalty requires reference motion contacts; "
+            "re-run motion conversion with contacts enabled or remove this reward."
+        )
+    if historical_body_contacts is None:
+        raise ValueError(
+            "reference_contact_liftoff_penalty requires num_state_history_steps >= 1 "
+            "so previous simulated foot contacts are available."
+        )
+    if not (0.0 <= ref_contact_threshold < 1.0):
+        raise ValueError("ref_contact_threshold must be in [0, 1).")
+
+    sim_contacts_subset = sim_contacts[:, contact_body_ids].float()
+    if historical_body_contacts.dim() == 3:
+        prev_sim_contacts_subset = historical_body_contacts[:, 0, :].float()
+    else:
+        prev_sim_contacts_subset = historical_body_contacts.float()
+    ref_contacts_subset = ref_contacts[:, contact_body_ids].float()
+
+    stance_denom = max(1.0 - ref_contact_threshold, 1e-6)
+    ref_stance_weight = torch.clamp(
+        (ref_contacts_subset - ref_contact_threshold) / stance_denom,
+        min=0.0,
+        max=1.0,
+    )
+
+    liftoffs = prev_sim_contacts_subset * (1.0 - sim_contacts_subset)
+    return (ref_stance_weight * liftoffs).sum(dim=1)
+
+
 def compute_contact_force_change_rew(
     current_contact_force_magnitudes: Tensor,
     prev_contact_force_magnitudes: Tensor,
@@ -324,6 +385,7 @@ __all__ = [
     "compute_pow_rew",
     "compute_soft_pos_limit_rew",
     "compute_contact_match_rew",
+    "compute_reference_contact_liftoff_penalty",
     "compute_contact_force_change_rew",
     "compute_foot_contact_force_penalty",
     "compute_fall_penalty",
