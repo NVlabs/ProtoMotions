@@ -247,14 +247,9 @@ class BaseAgent:
 
     def _materialize_lazy_modules(self, dummy_obs_td: TensorDict) -> None:
         """Materialize LazyLinear/RunningMeanStd modules with a dummy forward."""
-        if os.environ.get("FIX_WBC_MATERIALIZE_COLLECTIVE", "0") != "1":
-            self.model.materialize(dummy_obs_td)
-            return
-
         # Setup-time materialization only needs lazy parameter/buffer shapes.
-        # RunningMeanStd moment updates can issue distributed collectives in the
-        # default path. Freeze only for this dummy pass, then restore the
-        # configured training gates for rollout updates.
+        # Freeze only for this dummy pass, then restore the configured training
+        # gates for rollout updates.
         freeze_states = []
         for module in self.model.modules():
             if hasattr(module, "_freeze_running"):
@@ -402,14 +397,11 @@ class BaseAgent:
 
             # 24-GiB-node memory guard: evaluating immediately after resume
             # allocates per-rank metrics sized by (num_motions / world_size),
-            # which can OOM on small GPU pools with few ranks. Default-on
-            # (unchanged behavior); set SKIP_RESUME_EVAL=1 to skip exactly the
-            # next eval, including cadence-triggered eval at the loaded epoch.
-            if os.environ.get("SKIP_RESUME_EVAL", "0") == "1":
-                self.just_loaded_checkpoint_should_evaluate = False
-                self._skip_next_eval_after_resume = True
-            else:
-                self.just_loaded_checkpoint_should_evaluate = True
+            # which can OOM on small GPU pools with few ranks. Always skip
+            # exactly the next eval, including cadence-triggered eval at the
+            # loaded epoch; scheduled eval resumes on the next cadence.
+            self.just_loaded_checkpoint_should_evaluate = False
+            self._skip_next_eval_after_resume = True
 
             if load_env:
                 # Load env state from the same directory as the checkpoint.

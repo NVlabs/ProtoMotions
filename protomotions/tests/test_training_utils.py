@@ -158,8 +158,7 @@ def test_handle_model_grad_clipping_can_fail_or_ignore_large_finite_grads():
     assert large_grad_model.weight.grad.item() == 2_000_000.0
 
 
-def test_handle_model_grad_clipping_uses_fabric_when_available():
-    os.environ.pop("FIX_WBC_GRAD_CLIP_COLLECTIVE_SCHEDULE", None)
+def test_handle_model_grad_clipping_uses_local_clip_when_fabric_available():
     model = nn.Linear(2, 1, bias=False)
     model.weight.grad = torch.full_like(model.weight, 5.0)
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
@@ -173,14 +172,13 @@ def test_handle_model_grad_clipping_uses_fabric_when_available():
         model_name="fabric",
     )
 
-    assert fabric.calls == [(model, optimizer, 0.25, True)]
+    assert fabric.calls == []
     assert metrics["fabric/grad_norm_after_clip"] <= 0.2501
 
 
-def test_handle_model_grad_clipping_fix_flag_uses_local_clip_and_reduces_bad_gate(
+def test_handle_model_grad_clipping_reduces_bad_gate(
     monkeypatch,
 ):
-    monkeypatch.setenv("FIX_WBC_GRAD_CLIP_COLLECTIVE_SCHEDULE", "1")
     calls = []
 
     def fake_all_reduce(tensor, op=None):
@@ -221,7 +219,6 @@ def _grad_clip_worker(rank: int, world_size: int, port: int, branch: str, ret):
     os.environ["MASTER_PORT"] = str(port)
     os.environ["RANK"] = str(rank)
     os.environ["WORLD_SIZE"] = str(world_size)
-    os.environ["FIX_WBC_GRAD_CLIP_COLLECTIVE_SCHEDULE"] = "1"
     dist.init_process_group(backend="gloo", rank=rank, world_size=world_size)
     try:
         model = nn.Linear(2, 1, bias=False)
@@ -250,7 +247,7 @@ def _grad_clip_worker(rank: int, world_size: int, port: int, branch: str, ret):
 
 
 @pytest.mark.parametrize("branch", ["clean", "bad_rank1"])
-def test_handle_model_grad_clipping_fix_flag_gloo_rank_agrees_both_branches(branch):
+def test_handle_model_grad_clipping_gloo_rank_agrees_both_branches(branch):
     world_size = 2
     port = _free_port()
     manager = mp.Manager()
@@ -287,31 +284,7 @@ def test_handle_model_grad_clipping_fix_flag_gloo_rank_agrees_both_branches(bran
         assert torch.equal(ret[1]["grad"], torch.zeros_like(ret[1]["grad"]))
 
 
-def test_aggregate_scalar_metrics_default_keeps_object_key_gather(monkeypatch):
-    monkeypatch.delenv("FIX_WBC_METRIC_COLLECTIVE_SCHEDULE", raising=False)
-
-    def fake_all_gather_object(gathered, local_keys):
-        gathered[:] = [local_keys, ["count", "loss"]]
-
-    monkeypatch.setattr(training_module.dist, "all_gather_object", fake_all_gather_object)
-
-    metrics = aggregate_scalar_metrics(
-        {
-            "loss": torch.tensor([1.0, 3.0]),
-            "count": 4,
-            "phase": "train",
-        },
-        fabric=_GatherFabric(),
-        weight=2,
-    )
-
-    assert metrics["loss"] == pytest.approx((2.0 * 2 + 4.0 * 4) / 6)
-    assert metrics["count"] == pytest.approx((4.0 * 2 + 8.0 * 4) / 6)
-    assert metrics["phase"] == "train"
-
-
-def test_aggregate_scalar_metrics_fix_flag_uses_tensor_collectives(monkeypatch):
-    monkeypatch.setenv("FIX_WBC_METRIC_COLLECTIVE_SCHEDULE", "1")
+def test_aggregate_scalar_metrics_uses_tensor_collectives(monkeypatch):
     calls = []
 
     def payload_tensor(keys):

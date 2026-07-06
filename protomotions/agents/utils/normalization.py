@@ -18,17 +18,12 @@ Key Features:
     - State dict support for checkpointing
 """
 
-import os
 from typing import Optional, Tuple, List
 
 import torch
 import torch.distributed as dist
 from torch import Tensor, nn
 from lightning.fabric import Fabric
-
-
-def _fix_wbc_rms_collective_schedule_enabled() -> bool:
-    return os.environ.get("FIX_WBC_RMS_COLLECTIVE_SCHEDULE", "0") == "1"
 
 
 class RunningMeanStd(nn.Module):
@@ -205,33 +200,11 @@ class RunningMeanStd(nn.Module):
         batch_var = torch.var(arr, dim=0, unbiased=False)
         batch_count = arr.shape[0]
 
-        if (
-            _fix_wbc_rms_collective_schedule_enabled()
-            and self.fabric is not None
-            and self.fabric.world_size > 1
-        ):
+        if self.fabric is not None and self.fabric.world_size > 1:
             self.update_from_moments(batch_mean, batch_var, batch_count)
             return
 
-        if self.fabric is not None and self.fabric.world_size > 1:
-            all_means = self.fabric.all_gather(batch_mean)
-            all_vars = self.fabric.all_gather(batch_var)
-            all_counts = self.fabric.all_gather(batch_count)
-
-            if self.fabric.global_rank == 0:
-                batch_mean, batch_var, batch_count = combine_moments(
-                    all_means, all_vars, all_counts
-                )
-
-            if self.fabric.global_rank == 0:
-                self.update_from_moments(batch_mean, batch_var, batch_count)
-
-            if dist.is_available() and dist.is_initialized():
-                dist.broadcast(self.mean, src=0)
-                dist.broadcast(self.var, src=0)
-                dist.broadcast(self.count, src=0)
-        else:
-            self.update_from_moments(batch_mean, batch_var, batch_count)
+        self.update_from_moments(batch_mean, batch_var, batch_count)
 
 
 @torch.no_grad()
@@ -245,8 +218,6 @@ def sync_running_mean_std_modules(
     boundary on every rank. The implementation uses tensor collectives only:
     no object collectives and no Fabric broadcast wrappers.
     """
-    if not _fix_wbc_rms_collective_schedule_enabled():
-        return
     if fabric is None or getattr(fabric, "world_size", 1) <= 1:
         return
     if not (dist.is_available() and dist.is_initialized()):
@@ -348,32 +319,6 @@ def sync_record_moments_gates(model: nn.Module, fabric) -> None:
     import torch.distributed as dist
 
     if not (dist.is_available() and dist.is_initialized()):
-        return
-
-    if not _fix_wbc_rms_collective_schedule_enabled():
-        local_flags = {
-            name: bool(module._freeze_running)
-            for name, module in model.named_modules()
-            if hasattr(module, "_freeze_running")
-        }
-        gathered: List[Optional[dict]] = [None] * fabric.world_size
-        dist.all_gather_object(gathered, local_flags)
-
-        for name, module in model.named_modules():
-            if not hasattr(module, "_freeze_running"):
-                continue
-            agreed_freeze = all(
-                rank_flags.get(name, True)
-                for rank_flags in gathered
-                if rank_flags is not None
-            )
-            if module._freeze_running != agreed_freeze:
-                print(
-                    f"[sync_record_moments_gates] rank {fabric.global_rank}: "
-                    f"module '{name}' _freeze_running {module._freeze_running} -> "
-                    f"{agreed_freeze} (rank-agreed)"
-                )
-            module._freeze_running = agreed_freeze
         return
 
     for name, module in model.named_modules():

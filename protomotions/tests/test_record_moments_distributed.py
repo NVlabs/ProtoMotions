@@ -43,7 +43,6 @@ def _worker(rank: int, world_size: int, port: int, ret):
     os.environ["MASTER_PORT"] = str(port)
     os.environ["RANK"] = str(rank)
     os.environ["WORLD_SIZE"] = str(world_size)
-    os.environ["FIX_WBC_RMS_COLLECTIVE_SCHEDULE"] = "1"
     dist.init_process_group(backend="gloo", rank=rank, world_size=world_size)
     try:
         # Guard: assert we never touch the gloo object-broadcast path.

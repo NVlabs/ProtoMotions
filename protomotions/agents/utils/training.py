@@ -19,20 +19,11 @@ from torch import Tensor
 import torch.nn as nn
 from torch.nn import functional as F
 from typing import Dict
-import os
 
 from protomotions.utils import torch_utils
 from lightning.fabric import Fabric
 
 from protomotions.agents.common.common import get_params
-
-
-def _fix_wbc_metric_collective_schedule_enabled() -> bool:
-    return os.environ.get("FIX_WBC_METRIC_COLLECTIVE_SCHEDULE") == "1"
-
-
-def _fix_wbc_grad_clip_collective_schedule_enabled() -> bool:
-    return os.environ.get("FIX_WBC_GRAD_CLIP_COLLECTIVE_SCHEDULE") == "1"
 
 
 def _numeric_metric_value(value):
@@ -157,8 +148,7 @@ def handle_model_grad_clipping(config, fabric, model, optimizer, model_name):
 
     bad_grads_count = 0
     if (
-        _fix_wbc_grad_clip_collective_schedule_enabled()
-        and fabric is not None
+        fabric is not None
         and getattr(fabric, "world_size", 1) > 1
         and dist.is_available()
         and dist.is_initialized()
@@ -191,22 +181,11 @@ def handle_model_grad_clipping(config, fabric, model, optimizer, model_name):
                     p.grad.zero_()
 
     if config.gradient_clip_val > 0:
-        if (
-            fabric is not None
-            and not _fix_wbc_grad_clip_collective_schedule_enabled()
-        ):
-            fabric.clip_gradients(
-                model,
-                optimizer,
-                max_norm=config.gradient_clip_val,
-                error_if_nonfinite=True,
-            )
-        else:
-            torch.nn.utils.clip_grad_norm_(
-                params,
-                max_norm=config.gradient_clip_val,
-                error_if_nonfinite=True,
-            )
+        torch.nn.utils.clip_grad_norm_(
+            params,
+            max_norm=config.gradient_clip_val,
+            error_if_nonfinite=True,
+        )
     grad_norm_after_clip = torch_utils.grad_norm(params)
     clip_dict = {
         f"{model_name}/grad_norm_before_clip": grad_norm_before_clip.detach(),
@@ -239,58 +218,7 @@ def aggregate_scalar_metrics(log_dict: Dict, fabric: Fabric, weight: int = 1) ->
                 aggregated_dict[key] = value
         return aggregated_dict
 
-    if _fix_wbc_metric_collective_schedule_enabled():
-        return _aggregate_scalar_metrics_tensor_only(log_dict, fabric, weight=weight)
-
-    # Distributed path. Lazily-created log keys can differ across ranks; if each
-    # rank iterated its own key set, ranks would issue a different number/order
-    # of all_gather collectives and deadlock the process group. Union the keys
-    # (deterministic sorted order) so every rank runs the SAME collectives.
-    local_keys = list(log_dict.keys())
-    gathered_keys = [None] * fabric.world_size
-    dist.all_gather_object(gathered_keys, local_keys)
-    union_keys = sorted({k for rank_keys in gathered_keys for k in rank_keys})
-
-    for key in union_keys:
-        local_value = 0.0
-        has_numeric = False
-        if key in log_dict:
-            value = log_dict[key]
-            if isinstance(value, (int, float)):
-                local_value = float(value)
-                has_numeric = True
-            elif isinstance(value, torch.Tensor):
-                if value.numel() == 1:
-                    local_value = value.float().item()
-                else:
-                    local_value = value.mean().float().item()
-                has_numeric = True
-            else:
-                # Non-numeric: preserve the rank-local pass-through value. It
-                # contributes zero weight below, so every rank still issues the
-                # same collectives for this key.
-                aggregated_dict[key] = value
-
-        value_tensor = torch.tensor(
-            local_value, device=fabric.device, dtype=torch.float32
-        )
-        # Ranks missing the key (or holding a non-numeric value) contribute zero
-        # weight, so they neither bias the mean nor desynchronize collectives.
-        present_weight = torch.tensor(
-            weight if has_numeric else 0.0,
-            device=fabric.device,
-            dtype=torch.float32,
-        )
-        all_values = fabric.all_gather(value_tensor)
-        all_present_weights = fabric.all_gather(present_weight)
-        total_present = all_present_weights.sum()
-        if total_present > 0:
-            # Weighted mean over ranks that actually reported a numeric value.
-            aggregated_dict[key] = (
-                (all_values * all_present_weights).sum() / total_present
-            ).item()
-
-    return aggregated_dict
+    return _aggregate_scalar_metrics_tensor_only(log_dict, fabric, weight=weight)
 
 
 def get_activation_func(activation_name, return_type="nn"):

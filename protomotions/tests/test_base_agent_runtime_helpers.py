@@ -148,23 +148,7 @@ def test_base_agent_has_critic_is_false_for_agents_without_critic_contract():
     assert BaseAgent.has_critic.fget(agent) is False
 
 
-def test_materialize_lazy_modules_default_preserves_normalizer_gates(monkeypatch):
-    monkeypatch.delenv("FIX_WBC_MATERIALIZE_COLLECTIVE", raising=False)
-    model = _MaterializeRecorder()
-    agent = object.__new__(BaseAgent)
-    agent.model = model
-
-    BaseAgent._materialize_lazy_modules(agent, TensorDict({}, batch_size=[]))
-
-    assert model.materialized is True
-    assert model.open_norm.states_seen == [False]
-    assert model.frozen_norm.states_seen == [True]
-    assert model.open_norm._freeze_running is False
-    assert model.frozen_norm._freeze_running is True
-
-
-def test_materialize_lazy_modules_fix_flag_freezes_and_restores_gates(monkeypatch):
-    monkeypatch.setenv("FIX_WBC_MATERIALIZE_COLLECTIVE", "1")
+def test_materialize_lazy_modules_freezes_and_restores_gates():
     model = _MaterializeRecorder()
     agent = object.__new__(BaseAgent)
     agent.model = model
@@ -632,9 +616,7 @@ def test_supervised_agent_uses_fabric_for_setup(monkeypatch):
 
 def test_base_agent_load_uses_explicit_training_state_and_loads_matching_env_state(
     tmp_path,
-    monkeypatch,
 ):
-    monkeypatch.delenv("SKIP_RESUME_EVAL", raising=False)
     checkpoint = tmp_path / "inference.ckpt"
     env_checkpoint = tmp_path / "env_task-a.ckpt"
     torch.save(
@@ -664,15 +646,15 @@ def test_base_agent_load_uses_explicit_training_state_and_loads_matching_env_sta
     assert loaded["agent"][1] is False
     assert torch.equal(loaded["agent"][0]["model"]["w"], torch.tensor([1.0]))
     assert torch.equal(loaded["env"]["env"], torch.tensor([2.0]))
-    assert agent.just_loaded_checkpoint_should_evaluate is True
+    assert agent.just_loaded_checkpoint_should_evaluate is False
+    assert agent._skip_next_eval_after_resume is True
     assert fabric.calls == [
         ("on_load_checkpoint_start", ()),
         ("on_load_checkpoint_end", ()),
     ]
 
 
-def test_base_agent_load_skip_resume_eval_defers_next_eval(tmp_path, monkeypatch):
-    monkeypatch.setenv("SKIP_RESUME_EVAL", "1")
+def test_base_agent_load_defers_next_eval(tmp_path):
     checkpoint = tmp_path / "inference.ckpt"
     torch.save({"model": {"w": torch.tensor([1.0])}}, checkpoint)
 
