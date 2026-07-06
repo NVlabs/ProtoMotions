@@ -6,11 +6,14 @@
 from types import SimpleNamespace
 
 import pytest
+import torch
 
 from protomotions.agents.supervised.expert_utils import (
+    get_expert_action_config,
     get_expert_actor_in_keys,
     get_expert_observation_components,
     get_expert_observation_keys,
+    validate_expert_action_config,
 )
 
 
@@ -139,3 +142,70 @@ def test_get_expert_observation_components_returns_empty_without_observations():
         )
         == {}
     )
+
+
+def test_get_expert_action_config_deepcopies_valid_action_config():
+    def action_fn():
+        pass
+
+    action_config = {
+        "fn": action_fn,
+        "pd_action_offset": torch.tensor([1.0, 2.0]),
+        "action_scale": torch.tensor([0.1, 0.2]),
+        "stiffness": torch.tensor([10.0, 20.0]),
+        "damping": torch.tensor([1.0, 2.0]),
+    }
+    env_config = SimpleNamespace(action_config=action_config)
+    robot_config = SimpleNamespace(number_of_actions=2)
+
+    copied = get_expert_action_config(env_config, robot_config)
+    copied["action_scale"][0] = 9.0
+
+    assert copied["fn"] is action_config["fn"]
+    assert action_config["action_scale"][0] == pytest.approx(0.1)
+
+
+def test_validate_expert_action_config_rejects_vector_length_mismatch():
+    robot_config = SimpleNamespace(number_of_actions=2)
+    action_config = {
+        "fn": object(),
+        "action_scale": torch.tensor([0.1, 0.2, 0.3]),
+    }
+
+    with pytest.raises(ValueError, match="action_config.action_scale has length 3"):
+        validate_expert_action_config(action_config, robot_config)
+
+
+def test_validate_expert_action_config_rejects_missing_required_field():
+    robot_config = SimpleNamespace(number_of_actions=2)
+    action_config = {
+        "fn": SimpleNamespace(__name__="bm_pd_action"),
+        "pd_action_offset": torch.tensor([0.0, 0.0]),
+        "stiffness": torch.tensor([10.0, 20.0]),
+        "damping": torch.tensor([1.0, 2.0]),
+    }
+
+    with pytest.raises(ValueError, match="missing required field 'action_scale'"):
+        validate_expert_action_config(action_config, robot_config)
+
+
+def test_validate_expert_action_config_rejects_mismatched_dof_order():
+    action_config = {
+        "fn": object(),
+        "action_scale": torch.tensor([0.1, 0.2]),
+    }
+    student_robot = SimpleNamespace(
+        number_of_actions=2,
+        kinematic_info=SimpleNamespace(dof_names=["hip", "knee"]),
+    )
+    expert_robot = SimpleNamespace(
+        kinematic_info=SimpleNamespace(dof_names=["knee", "hip"]),
+    )
+
+    with pytest.raises(ValueError, match="DOF order"):
+        validate_expert_action_config(action_config, student_robot, expert_robot)
+
+
+def test_get_expert_action_config_requires_explicit_action_interface():
+    with pytest.raises(ValueError, match="must define action_config"):
+        get_expert_action_config(SimpleNamespace(), SimpleNamespace(number_of_actions=1))
