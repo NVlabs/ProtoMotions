@@ -42,10 +42,27 @@ def _default_ddp_strategy() -> fabric.strategies.DDPStrategy:
     # find_unused_parameters=True has the reducer mark unfired params ready
     # so backward always terminates; cost is one graph traversal per step.
     # Opt out via DDP_FIND_UNUSED_PARAMETERS=0 for graphs proven static.
+    #
+    # 2026-07-07 RCA adjudication (wbc_push/briefs/rank_stall_rca.*.md):
+    # the layer below the hang is parameter REUSE, not just unused params --
+    # MaskedMimicModel.forward() invokes self._trunk TWICE per iteration
+    # (prior latent + privileged/encoder latent decode,
+    # masked_mimic_model.py:133/152). Vanilla DDP cannot bucket reused
+    # params safely: with find_unused_parameters=False that raced into the
+    # silent futex stall; with find_unused_parameters=True alone it became
+    # the deterministic all-rank "RuntimeError: Expected to mark a variable
+    # ready only once" (ddp7 attempt-2 log). static_graph=True is the
+    # PyTorch-documented mode for graphs with reused (and unused) params
+    # that are stable across iterations: the reducer learns the true hook
+    # schedule on iteration 1 and stops mis-firing on intermediate hooks.
+    # Opt out via DDP_STATIC_GRAPH=0 if a future model genuinely changes
+    # its graph across iterations (torch then errors loudly, not silently).
     find_unused = os.environ.get("DDP_FIND_UNUSED_PARAMETERS", "1") == "1"
+    static_graph = os.environ.get("DDP_STATIC_GRAPH", "1") == "1"
     return fabric.strategies.DDPStrategy(
         timeout=timedelta(seconds=timeout_sec),
         find_unused_parameters=find_unused,
+        static_graph=static_graph,
     )
 
 
