@@ -26,7 +26,27 @@ def _default_ddp_strategy() -> fabric.strategies.DDPStrategy:
     genuine deadlock still eventually aborts, just later).
     """
     timeout_sec = int(os.environ.get("PG_TIMEOUT_SEC", "3600"))
-    return fabric.strategies.DDPStrategy(timeout=timedelta(seconds=timeout_sec))
+    # 2026-07-07 8-rank stall root-cause fix: find_unused_parameters=True.
+    # py-spy evidence (wbc_push/eval_artifacts/gpu2255_stall1_pyspy_20260707.txt
+    # and ddp7_stall_pyspy_20260707.txt; identical signature before AND after
+    # the rank-uniform Transformer mask fix 6f3037f): one rank futex-parked
+    # forever inside _engine_run_backward -- its DDP reducer never sees grads
+    # for some params, so its final gradient bucket all-reduce is never
+    # launched -- while every peer spins in a CUDA stream sync at
+    # handle_model_grad_clipping waiting on bucket all-reduces that require
+    # the parked rank's participation. That is the canonical
+    # rank-divergent-graph hang of find_unused_parameters=False: any
+    # batch-content-dependent divergence in which params receive grads
+    # (MaskedMimic's per-rank stochastic masking makes this reachable)
+    # deadlocks with no error and no timeout attribution.
+    # find_unused_parameters=True has the reducer mark unfired params ready
+    # so backward always terminates; cost is one graph traversal per step.
+    # Opt out via DDP_FIND_UNUSED_PARAMETERS=0 for graphs proven static.
+    find_unused = os.environ.get("DDP_FIND_UNUSED_PARAMETERS", "1") == "1"
+    return fabric.strategies.DDPStrategy(
+        timeout=timedelta(seconds=timeout_sec),
+        find_unused_parameters=find_unused,
+    )
 
 
 @dataclass
