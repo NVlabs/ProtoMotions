@@ -99,6 +99,45 @@ def _set_wbc_stability_env_defaults() -> None:
     for name, value in _WBC_STABILITY_ENV_DEFAULTS.items():
         os.environ.setdefault(name, value)
 
+
+def _raise_nproc_soft_limit() -> None:
+    """Raise RLIMIT_NPROC soft limit to min(desired, hard) at startup.
+
+    fix: RLIMIT_NPROC starvation wedges multi-rank Isaac+NCCL training.
+    Ranks that inherit the bare SLURM step default (soft=4096) exhaust the
+    per-UID thread budget during startup/epoch0 burst thread creation --
+    pthread_create returns EAGAIN inside NCCL, the failing rank SIGABRTs
+    holding process-group state, and every peer wedges in its next
+    collective (the ncclSystemError / "pthread_join failed" /
+    futex_wait_queue family; see wbc_push/briefs/rank_stall_rca.*.md
+    round-2). Launcher-side `ulimit -u` is fragile: it silently no-ops when
+    the request exceeds the hard cap and does not reliably survive
+    setsid/spawn boundaries (both observed live). Setting it here, in the
+    training process itself before simulator/Fabric setup, is immune to
+    launch plumbing. Never request above the hard cap -- clamp to it.
+    Override the target via NPROC_SOFT_LIMIT; opt out with
+    NPROC_SOFT_LIMIT=0.
+    """
+
+    import resource
+
+    try:
+        desired = int(os.environ.get("NPROC_SOFT_LIMIT", "16384"))
+    except ValueError:
+        desired = 16384
+    if desired <= 0:
+        return
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_NPROC)
+        target = desired if hard == resource.RLIM_INFINITY else min(desired, hard)
+        if soft != resource.RLIM_INFINITY and target > soft:
+            resource.setrlimit(resource.RLIMIT_NPROC, (target, hard))
+            print(
+                f"[train_agent] raised RLIMIT_NPROC soft {soft} -> {target} (hard={hard})"
+            )
+    except (ValueError, OSError) as exc:
+        print(f"[train_agent] WARN could not raise RLIMIT_NPROC: {exc}")
+
 """
 ## Quick Start
 
@@ -287,6 +326,7 @@ from protomotions.utils.cli_utils import parse_bool  # noqa: E402
 parser = create_parser()
 args, unknown_args = parser.parse_known_args()
 _set_wbc_stability_env_defaults()
+_raise_nproc_soft_limit()
 
 # Import simulator before torch - isaacgym/isaaclab must be imported before torch
 # This also returns AppLauncher if using isaaclab, None otherwise
