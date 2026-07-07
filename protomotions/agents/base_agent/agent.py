@@ -30,6 +30,8 @@ import torch.nn as nn
 
 import time
 import math
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Optional, Dict
 
@@ -407,10 +409,36 @@ class BaseAgent:
                 # Load env state from the same directory as the checkpoint.
                 task_id = self.env.get_task_id()
                 env_checkpoint = self.root_dir / f"env_{task_id}.ckpt"
-                if env_checkpoint.exists():
-                    print(f"Loading env checkpoint: {env_checkpoint}")
+                load_path = env_checkpoint
+                if self.fabric.world_size > 1 and dist.is_available() and dist.is_initialized():
+                    # fix: stage env_*.ckpt through node-local storage instead
+                    # of every rank re-reading the same NFS file concurrently
+                    # at resume. Mirrors the motion-pack-master staging
+                    # pattern already used by the launcher scripts (copy once
+                    # to /tmp, every rank reads the local copy). Concurrent
+                    # 8-way NFS reads of this file are dc7e0be's documented
+                    # straggler source behind BaseAgent.__init__'s world-size
+                    # all_gather timeout (crash_rootcause_20260704.md);
+                    # PG_TIMEOUT_SEC=3600 raises the ceiling but does not
+                    # remove the cause. Only local-rank-0 per node stages (so
+                    # this is correct for multi-node too); fabric.barrier()
+                    # is a native process-group barrier (no object pickling,
+                    # unlike fabric.broadcast) so it carries none of the
+                    # cross-backend hazard fixed elsewhere in this file.
+                    staged_dir = Path(tempfile.gettempdir()) / "protomotions_env_ckpt_stage"
+                    staged_path = staged_dir / f"{self.root_dir.name}_env_{task_id}.ckpt"
+                    if self.fabric.local_rank == 0 and env_checkpoint.exists():
+                        staged_dir.mkdir(parents=True, exist_ok=True)
+                        tmp_path = staged_path.with_suffix(".ckpt.part")
+                        shutil.copyfile(env_checkpoint, tmp_path)
+                        tmp_path.rename(staged_path)
+                    self.fabric.barrier()
+                    if staged_path.exists():
+                        load_path = staged_path
+                if load_path.exists():
+                    print(f"Loading env checkpoint: {load_path}")
                     env_state_dict = torch.load(
-                        env_checkpoint, map_location=self.device, weights_only=False
+                        load_path, map_location=self.device, weights_only=False
                     )
                     self.env.load_state_dict(env_state_dict)
 
