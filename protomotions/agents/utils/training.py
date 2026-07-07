@@ -147,19 +147,18 @@ def handle_model_grad_clipping(config, fabric, model, optimizer, model_name):
         bad_grads = torch.isnan(grad_norm_before_clip)
 
     bad_grads_count = 0
-    if (
-        fabric is not None
-        and getattr(fabric, "world_size", 1) > 1
-        and dist.is_available()
-        and dist.is_initialized()
-    ):
-        bad_grads_tensor = torch.tensor(
-            int(bool(bad_grads)),
-            device=fabric.device,
-            dtype=torch.long,
-        )
-        dist.all_reduce(bad_grads_tensor, op=dist.ReduceOp.MAX)
-        bad_grads = bool(bad_grads_tensor.item())
+    # fix: bad-grad agreement is LOCAL-ONLY. The explicit
+    # dist.all_reduce(MAX) that used to sit here (added 5433ca3, made
+    # unconditional 7a366a0) is redundant under DDP: gradients are already
+    # bucket-all-reduced to identical values on every rank by the time
+    # backward returns, so torch.isnan(grad_norm) is rank-uniform by
+    # construction. Worse, the collective sat in the most dangerous window
+    # (the first CPU-blocking sync after backward): py-spy captures
+    # (gpu2255_stall1_pyspy_20260707.txt, ddp7_stall_pyspy_20260707.txt)
+    # show every healthy rank spinning at exactly this point while a
+    # reducer-starved rank was parked in backward. Removing the collective
+    # removes a mid-step cross-rank dependency without changing behavior.
+    # (For fabric=None / per-group-DDP callers this was already local.)
 
     if bad_grads:
         if config.fail_on_bad_grads:

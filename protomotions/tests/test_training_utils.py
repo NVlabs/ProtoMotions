@@ -176,9 +176,14 @@ def test_handle_model_grad_clipping_uses_local_clip_when_fabric_available():
     assert metrics["fabric/grad_norm_after_clip"] <= 0.2501
 
 
-def test_handle_model_grad_clipping_reduces_bad_gate(
+def test_handle_model_grad_clipping_issues_no_collectives(
     monkeypatch,
 ):
+    # Local-only bad-grad gate: under DDP the gradients are already
+    # bucket-all-reduced to identical values on every rank, so the gate is
+    # rank-uniform without any collective. A collective here previously sat
+    # in the post-backward danger window (see py-spy stall captures
+    # gpu2255_stall1_pyspy_20260707.txt / ddp7_stall_pyspy_20260707.txt).
     calls = []
 
     def fake_all_reduce(tensor, op=None):
@@ -202,7 +207,7 @@ def test_handle_model_grad_clipping_reduces_bad_gate(
     )
 
     assert fabric.calls == []
-    assert len(calls) == 1
+    assert len(calls) == 0
     assert metrics["fabric/grad_norm_after_clip"] <= 0.2501
 
 
@@ -247,7 +252,7 @@ def _grad_clip_worker(rank: int, world_size: int, port: int, branch: str, ret):
 
 
 @pytest.mark.parametrize("branch", ["clean", "bad_rank1"])
-def test_handle_model_grad_clipping_gloo_rank_agrees_both_branches(branch):
+def test_handle_model_grad_clipping_gloo_local_gate_no_hang(branch):
     world_size = 2
     port = _free_port()
     manager = mp.Manager()
@@ -278,9 +283,13 @@ def test_handle_model_grad_clipping_gloo_rank_agrees_both_branches(branch):
         assert torch.isfinite(ret[0]["grad"]).all()
         assert torch.isfinite(ret[1]["grad"]).all()
     else:
-        assert ret[0]["bad"] == 1
+        # Local-only gate: only the rank that actually observes NaN grads
+        # zeroes them. (Under real DDP grads are pre-synced identical, so
+        # this divergence cannot occur in production; the test simulates
+        # unsynced locals to prove no rank blocks on a peer.)
+        assert ret[0]["bad"] == 0
         assert ret[1]["bad"] == 1
-        assert torch.equal(ret[0]["grad"], torch.zeros_like(ret[0]["grad"]))
+        assert torch.isfinite(ret[0]["grad"]).all()
         assert torch.equal(ret[1]["grad"], torch.zeros_like(ret[1]["grad"]))
 
 
