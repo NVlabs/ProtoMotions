@@ -120,7 +120,7 @@ class SceneCfg(InteractiveSceneCfg):
                         ),
                     ),
                     init_state=RigidObjectCfg.InitialStateCfg(
-                        pos=(0.0, 0.0, projectile_config.hide_z)
+                        pos=(0.0, 0.0, projectile_config.hidden_z_for_index(proj_idx))
                     ),
                 )
                 setattr(self, f"projectile_{proj_idx}", proj_cfg)
