@@ -843,9 +843,21 @@ class PPO(BaseAgent):
                             all_means, all_vars, all_counts
                         )
 
-                # Fabric broadcast returns a tensor on the source rank, so we need to move it to the device of the current rank.
-                updated_mean = self.fabric.broadcast(mean, src=0).to(self.device)
-                updated_var = self.fabric.broadcast(var, src=0).to(self.device)
+                # fix: use torch.distributed.broadcast (raw NCCL tensor
+                # broadcast) instead of fabric.broadcast, which routes
+                # through broadcast_object_list (a pickle/object collective).
+                # Interleaving that cross-backend call with the preceding
+                # NCCL all_gather calls above reproduces the exact hazard
+                # already root-caused and fixed once in
+                # RunningMeanStd.update() (a688e8e) but never ported to this
+                # sibling non-EMA advantage-normalization path.
+                mean = mean.to(self.device)
+                var = var.to(self.device)
+                if self.fabric.world_size > 1 and torch.distributed.is_initialized():
+                    torch.distributed.broadcast(mean, src=0)
+                    torch.distributed.broadcast(var, src=0)
+                updated_mean = mean
+                updated_var = var
 
                 if self.config.advantage_normalization.shift_mean:
                     advantages = (advantages - updated_mean) / (
