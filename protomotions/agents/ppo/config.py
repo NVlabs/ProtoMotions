@@ -172,8 +172,22 @@ class PPOAgentConfig(BaseAgentConfig):
     )
 
     # Actor update control
+    # fix: default disabled fork-wide. The early-skip path
+    # (ppo/agent.py's actor_clip_frac_threshold branch) syncs clip_frac via
+    # fabric.all_gather before the skip decision, but nothing asserts that
+    # every rank subsequently calls update_actor_critic() the same number of
+    # times for the rest of the epoch. Any rank-local minibatch-count/order
+    # divergence after that point strands a straggler rank in the next
+    # collective (grad-clip all_reduce, normalizer sync, next epoch's
+    # rollout all_gather) while other ranks have moved on -- the same
+    # "N-1 saturated, 1 idle in futex_wait_queue, then ncclSystemError"
+    # signature recorded for gpu4, Lane B, and Lane C. Every currently-stable
+    # owned lane already opts out explicitly (see
+    # wbc_push/scripts/training/mlp_bm_l2c2_*.py); make that the fork
+    # default instead of an opt-out per lane. Set to a float to re-enable
+    # for a specific experiment.
     actor_clip_frac_threshold: Optional[float] = field(
-        default=0.6,
+        default=None,
         metadata={"help": "Skip actor update if clip_frac > threshold (e.g., 0.5)."},
     )
 
