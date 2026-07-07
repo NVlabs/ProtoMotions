@@ -18,6 +18,8 @@ Key Features:
     - Flexible output heads (single or multi-headed)
 """
 
+import inspect
+
 import torch
 from torch import nn
 from tensordict import TensorDict
@@ -25,6 +27,14 @@ from tensordict import TensorDict
 from protomotions.agents.base_agent.model import ProtoMotionsTensorDictModule
 from protomotions.agents.utils.training import get_activation_func
 from protomotions.agents.common.config import TransformerConfig
+
+
+def _build_rank_uniform_transformer_encoder(layer, num_layers: int):
+    """Build a TransformerEncoder without mask-content-dependent fast paths."""
+    kwargs = {}
+    if "enable_nested_tensor" in inspect.signature(nn.TransformerEncoder).parameters:
+        kwargs["enable_nested_tensor"] = False
+    return nn.TransformerEncoder(layer, num_layers=num_layers, **kwargs)
 
 
 class Transformer(ProtoMotionsTensorDictModule):
@@ -85,8 +95,12 @@ class Transformer(ProtoMotionsTensorDictModule):
             ),
             batch_first=True,
         )
-        self.seqTransEncoder = nn.TransformerEncoder(
-            seqTransEncoderLayer, num_layers=self.config.num_layers
+        # MaskedMimic target masks are sampled per rank. PyTorch can otherwise
+        # choose nested-tensor vs dense Transformer paths from local mask
+        # structure, changing DDP autograd bucket order and wedging NCCL.
+        self.seqTransEncoder = _build_rank_uniform_transformer_encoder(
+            seqTransEncoderLayer,
+            num_layers=self.config.num_layers,
         )
 
     def forward(

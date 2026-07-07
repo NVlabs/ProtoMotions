@@ -9,6 +9,7 @@ from tensordict import TensorDict
 from torch import nn
 
 from protomotions.agents.common.config import TransformerConfig
+from protomotions.agents.common import transformer as transformer_module
 from protomotions.agents.common.transformer import Transformer
 
 
@@ -22,6 +23,37 @@ class _CaptureTransformerEncoder(nn.Module):
         self.last_tokens = tokens.detach().clone()
         self.last_mask = src_key_padding_mask.detach().clone()
         return tokens + 1.0
+
+
+def test_transformer_encoder_disables_nested_tensor_fast_path(monkeypatch):
+    calls = []
+
+    class _Encoder(nn.Module):
+        def __init__(self, layer, num_layers, enable_nested_tensor=True):
+            super().__init__()
+            self.layer = layer
+            self.num_layers = num_layers
+            calls.append(enable_nested_tensor)
+
+        def forward(self, tokens, src_key_padding_mask=None):
+            return tokens
+
+    monkeypatch.setattr(transformer_module.nn, "TransformerEncoder", _Encoder)
+
+    Transformer(
+        TransformerConfig(
+            in_keys=["tokens"],
+            out_keys=["transformer_out"],
+            latent_dim=4,
+            transformer_token_size=4,
+            num_heads=2,
+            num_layers=1,
+            ff_size=8,
+            dropout=0.0,
+        )
+    )
+
+    assert calls == [False]
 
 
 def test_transformer_concatenates_tokens_and_builds_padding_mask():
