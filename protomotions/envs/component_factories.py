@@ -1058,16 +1058,24 @@ def path_following_reward_factory(
 # =============================================================================
 
 
-def tracking_error_term_factory(threshold: float = 0.5) -> MdpComponent:
+def tracking_error_term_factory(
+    threshold: float = 0.5, settle_steps: int = 0
+) -> MdpComponent:
     """Factory for tracking error termination.
 
     Args:
         threshold: Maximum joint error threshold in meters.
+        settle_steps: Suppress tracking-error termination for this many env steps
+            after reset. 0 preserves the historical immediate-termination path.
 
     Returns:
         MdpComponent configured for tracking error termination.
     """
     from protomotions.envs.terminations import compute_tracking_error
+
+    static_params = {"threshold": threshold}
+    if settle_steps:
+        static_params["settle_steps"] = int(settle_steps)
 
     return MdpComponent(
         compute_func=compute_tracking_error,
@@ -1075,7 +1083,7 @@ def tracking_error_term_factory(threshold: float = 0.5) -> MdpComponent:
             "current_rigid_body_pos": EnvContext.current.rigid_body_pos,
             "ref_rigid_body_pos": EnvContext.mimic.ref_state.rigid_body_pos,
         },
-        static_params={"threshold": threshold},
+        static_params=static_params,
     )
 
 

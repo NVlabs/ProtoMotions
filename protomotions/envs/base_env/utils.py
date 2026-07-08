@@ -110,6 +110,7 @@ def combine_terminations(
     configs: Dict[str, Any],
     num_envs: int,
     device: torch.device,
+    progress_buf: Optional[Tensor] = None,
 ) -> Tuple[Tensor, Tensor, Dict[str, Tensor]]:
     """Combine termination conditions into reset/terminate buffers.
     
@@ -122,6 +123,8 @@ def combine_terminations(
         configs: Dict of {name: MdpComponent} where params contain metadata.
         num_envs: Number of environments.
         device: Device for tensors.
+        progress_buf: Per-env steps since reset. Required only by termination
+            components that configure a positive ``settle_steps``.
     
     Returns:
         Tuple of (reset_buf, terminate_buf, logging_dict) where:
@@ -141,7 +144,21 @@ def combine_terminations(
         # Invert if terminate_on_true is False
         if not cfg.get("terminate_on_true", True):
             should_term = ~should_term
-        
+
+        settle_steps = int(cfg.get("settle_steps", 0) or 0)
+        if settle_steps > 0:
+            if progress_buf is None:
+                raise ValueError(
+                    f"termination '{name}' configured settle_steps={settle_steps} "
+                    "but progress_buf was not provided"
+                )
+            # Cold-start tracking transients are not policy failures: give the
+            # simulator/controller a short per-env settle window, while leaving
+            # all other termination sources untouched.
+            # progress_buf is incremented before termination checks, so ``<=``
+            # here implements the 0-based env step convention step < settle_steps.
+            should_term = should_term & (progress_buf > settle_steps)
+
         # OR all conditions together
         reset_buf = reset_buf | should_term
         terminate_buf = terminate_buf | should_term

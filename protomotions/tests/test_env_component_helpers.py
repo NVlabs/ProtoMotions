@@ -242,6 +242,35 @@ def test_combine_terminations_or_reduces_and_inverts_false_conditions():
     assert torch.equal(logs["termination/healthy"], torch.tensor([0.0, 1.0, 0.0]))
 
 
+def test_combine_terminations_respects_per_component_settle_steps():
+    reset_buf, terminate_buf, logs = combine_terminations(
+        raw_terms={
+            "tracking_error": torch.tensor([True, True, True, False]),
+            "motion_end": torch.tensor([False, True, False, False]),
+        },
+        configs={
+            "tracking_error": MdpComponent(
+                compute_func=_add_value,
+                dynamic_vars={},
+                static_params={"settle_steps": 3},
+            ),
+            "motion_end": {"terminate_on_true": True},
+        },
+        num_envs=4,
+        device=torch.device("cpu"),
+        progress_buf=torch.tensor([1, 3, 4, 4]),
+    )
+
+    assert torch.equal(reset_buf, torch.tensor([False, True, True, False]))
+    assert torch.equal(terminate_buf, torch.tensor([False, True, True, False]))
+    assert torch.equal(
+        logs["termination/tracking_error"], torch.tensor([0.0, 0.0, 1.0, 0.0])
+    )
+    assert torch.equal(
+        logs["termination/motion_end"], torch.tensor([0.0, 1.0, 0.0, 0.0])
+    )
+
+
 def test_combine_evaluation_tracks_values_and_threshold_failures():
     failed_buf, values, failures = combine_evaluation(
         raw_values={

@@ -352,6 +352,11 @@ def test_termination_and_metric_factories_bind_metadata_and_wrappers():
     tracking_term = factories.tracking_error_term_factory(threshold=0.6)
     assert _bindings(tracking_term)["current_rigid_body_pos"] == "current.rigid_body_pos"
     assert _params(tracking_term)["threshold"] == 0.6
+    assert "settle_steps" not in _params(tracking_term)
+    assert (
+        _params(factories.tracking_error_term_factory(settle_steps=25))["settle_steps"]
+        == 25
+    )
 
     fall = factories.fall_termination_factory(termination_height=0.2)
     assert _bindings(fall)["progress_buf"] == "progress_buf"

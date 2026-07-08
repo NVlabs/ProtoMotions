@@ -556,6 +556,7 @@ class BaseEnv:
             configs=self.config.termination_components,
             num_envs=self.num_envs,
             device=self.device,
+            progress_buf=self.progress_buf,
         )
 
     _action_config_device_ready: bool = False
