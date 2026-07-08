@@ -54,7 +54,23 @@ def compute_action_smoothness(
     Returns:
         Smoothness penalty tensor [num_envs].
     """
-    return delta_norm(current_processed_action, previous_processed_action)
+    result = delta_norm(current_processed_action, previous_processed_action)
+    if not torch.isfinite(result).all():
+        # NaN forensics (2026-07-08 v2 resume crash): pin down whether the
+        # non-finite values enter via the current processed action (action
+        # processing chain), the previous one (state history), or both.
+        for label, t in (
+            ("current_processed_action", current_processed_action),
+            ("previous_processed_action", previous_processed_action),
+        ):
+            nb = (~torch.isfinite(t)).sum().item()
+            print(
+                f"[nan-forensics] action_smoothness {label}: {nb}/{t.numel()} "
+                f"non-finite, shape={tuple(t.shape)}, "
+                f"finite_minmax=({t[torch.isfinite(t)].min().item() if torch.isfinite(t).any() else 'NA'}, "
+                f"{t[torch.isfinite(t)].max().item() if torch.isfinite(t).any() else 'NA'})"
+            )
+    return result
 
 
 def compute_action_smoothness_logmeanexp(

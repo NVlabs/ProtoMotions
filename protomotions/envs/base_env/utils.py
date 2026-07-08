@@ -68,6 +68,13 @@ def combine_rewards(
             reward[grace_mask] = 0.0
         
         # Sanity check
+        if not torch.all(torch.isfinite(reward)):
+            # NaN forensics (2026-07-08 v2 resume crash): dump which envs and
+            # what fraction are non-finite, plus the component's dynamic
+            # inputs, before dying — the assert alone cannot distinguish a
+            # NaN action from a NaN observation from a NaN sim state.
+            bad = (~torch.isfinite(reward)).sum().item()
+            print(f"[nan-forensics] reward '{name}': {bad}/{reward.numel()} non-finite")
         assert torch.all(torch.isfinite(reward)), f"Reward '{name}' not finite"
         logging_dict[f"raw_r/{name}"] = reward.clone()
         
