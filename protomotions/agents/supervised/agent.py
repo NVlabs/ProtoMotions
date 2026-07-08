@@ -397,7 +397,74 @@ class SupervisedAgent(BaseAgent):
         return loss, log_dict
 
     def calculate_extra_loss(self, batch_dict, actions) -> Tuple[Tensor, Dict]:
-        return torch.tensor(0.0, device=self.device), {}
+        l2c2_weight = self.config.l2c2_weight
+        if l2c2_weight <= 0:
+            return torch.tensor(0.0, device=self.device), {}
+
+        l2c2_loss = self._calculate_l2c2_loss(batch_dict)
+        return l2c2_weight * l2c2_loss, {
+            "supervised/l2c2_loss": l2c2_loss.detach(),
+        }
+
+    def _calculate_l2c2_loss(self, batch_td: TensorDict) -> Tensor:
+        """L2C2 Lipschitz-ratio regularizer ported from the PPO actor path."""
+        obs_pairs = self.config.l2c2_obs_pairs
+        if not obs_pairs:
+            raise ValueError(
+                "l2c2_weight > 0 requires at least one l2c2_obs_pairs entry."
+            )
+
+        prediction_key = self.config.loss.prediction_key
+        if prediction_key not in batch_td.keys():
+            raise KeyError(
+                f"L2C2 prediction key '{prediction_key}' is missing. "
+                f"Available keys: {list(batch_td.keys())}"
+            )
+
+        clean_td = batch_td.clone()
+        prediction = batch_td[prediction_key]
+        input_ss = prediction.new_zeros(())
+        input_n = 0
+
+        for noisy_key, clean_key in obs_pairs.items():
+            if noisy_key not in batch_td.keys():
+                raise KeyError(
+                    f"L2C2 noisy observation key '{noisy_key}' is missing. "
+                    f"Available keys: {list(batch_td.keys())}"
+                )
+            if clean_key not in batch_td.keys():
+                raise KeyError(
+                    f"L2C2 clean observation key '{clean_key}' is missing. "
+                    f"Available keys: {list(batch_td.keys())}"
+                )
+
+            noisy_obs = batch_td[noisy_key]
+            clean_obs = batch_td[clean_key]
+            if noisy_obs.shape != clean_obs.shape:
+                raise ValueError(
+                    f"L2C2 observation pair '{noisy_key}'/'{clean_key}' has "
+                    f"mismatched shapes: {tuple(noisy_obs.shape)} vs "
+                    f"{tuple(clean_obs.shape)}"
+                )
+
+            clean_td[noisy_key] = clean_obs
+            diff = noisy_obs - clean_obs
+            input_ss = input_ss + diff.pow(2).sum()
+            input_n += diff.numel()
+
+        if input_n == 0:
+            raise ValueError("l2c2_obs_pairs must reference non-empty tensors.")
+
+        input_dist = (input_ss / input_n).detach()
+        clean_td = self.training_model(clean_td)
+        if prediction_key not in clean_td.keys():
+            raise KeyError(
+                f"L2C2 clean forward did not produce prediction key '{prediction_key}'. "
+                f"Available keys: {list(clean_td.keys())}"
+            )
+
+        output_dist = (prediction - clean_td[prediction_key]).pow(2).mean()
+        return output_dist / (input_dist + 1e-8)
 
     # -----------------------------
     # State Saving and Restoration

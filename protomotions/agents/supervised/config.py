@@ -5,7 +5,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from typing import Dict, Optional
 
 from protomotions.agents.base_agent.config import BaseAgentConfig, BaseModelConfig
 from protomotions.agents.common.supervision import SupervisionLossConfig
@@ -58,4 +58,15 @@ class SupervisedAgentConfig(BaseAgentConfig):
     loss: SupervisionLossConfig = field(
         default_factory=SupervisionLossConfig,
         metadata={"help": "Supervised loss over model outputs and labels."},
+    )
+    # Supervised port of PPO L2C2Config from protomotions/agents/ppo/config.py.
+    # The tracker recipe examples/experiments/mimic/mlp_bm_l2c2.py enables the
+    # term with lambda_l2c2=1.0 and explicit noisy->clean observation pairs.
+    l2c2_weight: float = field(
+        default=0.0,
+        metadata={"help": "L2C2 loss coefficient for supervised distillation."},
+    )
+    l2c2_obs_pairs: Dict[str, str] = field(
+        default_factory=dict,
+        metadata={"help": "Map from noisy supervised obs key to clean counterpart key."},
     )

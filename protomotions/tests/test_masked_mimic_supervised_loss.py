@@ -51,6 +51,26 @@ class _DummyModelLossPolicy(_DummyLatentPolicy):
         return loss, {f"{log_prefix}/dummy_loss": loss.detach()}
 
 
+class _CountingLinearL2C2Policy(nn.Module):
+    out_keys = ["action", "privileged_action"]
+
+    def __init__(self):
+        super().__init__()
+        self.linear = nn.Linear(1, 1, bias=False)
+        self.linear.weight.data.fill_(2.0)
+        self.forward_calls = 0
+
+    def forward(self, tensordict):
+        self.forward_calls += 1
+        prediction = self.linear(tensordict["obs"])
+        tensordict["action"] = prediction
+        tensordict["privileged_action"] = prediction
+        return tensordict
+
+    def compute_model_loss(self, tensordict, current_epoch, zero_loss, log_prefix):
+        return zero_loss * 0.0, {}
+
+
 class _DummyDiscretePriorPolicy(nn.Module):
     out_keys = ["action", LATENT_LOGITS_KEY]
 
@@ -436,6 +456,85 @@ def test_supervised_step_adds_model_exposed_loss_without_model_specific_config()
         log_dict["model/dummy_loss"],
         expected_model_loss.detach(),
     )
+
+
+def _make_l2c2_supervised_agent(policy, l2c2_weight, l2c2_obs_pairs):
+    agent = object.__new__(SupervisedAgent)
+    agent.config = SimpleNamespace(
+        model=SimpleNamespace(),
+        loss=SupervisionLossConfig(
+            loss_type=SupervisionLossType.MSE,
+            prediction_key="privileged_action",
+            target_key="expert_actions",
+            log_prefix="supervision",
+        ),
+        l2c2_weight=l2c2_weight,
+        l2c2_obs_pairs=l2c2_obs_pairs,
+    )
+    agent.training_model = policy
+    agent.model = policy
+    agent.device = torch.device("cpu")
+    agent.current_epoch = 0
+    return agent
+
+
+def test_supervised_l2c2_default_is_bit_exact_and_skips_extra_forward():
+    policy = _CountingLinearL2C2Policy()
+    agent = _make_l2c2_supervised_agent(
+        policy,
+        l2c2_weight=0.0,
+        l2c2_obs_pairs={"obs": "missing_clean_obs"},
+    )
+    batch = {
+        "action": torch.zeros(2, 1),
+        "obs": torch.tensor([[1.0], [3.0]]),
+        "expert_actions": torch.tensor([[2.0], [4.0]]),
+    }
+
+    loss, log_dict = agent.supervised_step(batch)
+
+    expected = torch.nn.functional.mse_loss(
+        batch["obs"] * policy.linear.weight.detach(),
+        batch["expert_actions"],
+    )
+    assert torch.equal(loss.detach(), expected.detach())
+    assert torch.equal(log_dict["supervised/loss"], expected.detach())
+    assert "supervised/l2c2_loss" not in log_dict
+    assert policy.forward_calls == 1
+
+
+def test_supervised_l2c2_weight_adds_finite_differentiable_term():
+    policy = _CountingLinearL2C2Policy()
+    agent = _make_l2c2_supervised_agent(
+        policy,
+        l2c2_weight=0.5,
+        l2c2_obs_pairs={"obs": "clean_obs"},
+    )
+    batch = {
+        "action": torch.zeros(2, 1),
+        "obs": torch.tensor([[1.0], [3.0]]),
+        "clean_obs": torch.tensor([[0.0], [1.0]]),
+        "expert_actions": torch.zeros(2, 1),
+    }
+
+    loss, log_dict = agent.supervised_step(batch)
+
+    supervised_loss = torch.nn.functional.mse_loss(
+        batch["obs"] * policy.linear.weight.detach(),
+        batch["expert_actions"],
+    )
+    l2c2_loss = torch.tensor(4.0)
+    expected = supervised_loss + 0.5 * l2c2_loss
+    assert torch.allclose(log_dict["supervised/l2c2_loss"], l2c2_loss)
+    assert torch.allclose(loss.detach(), expected)
+    assert torch.isfinite(loss)
+    assert policy.forward_calls == 2
+
+    loss.backward()
+
+    assert policy.linear.weight.grad is not None
+    assert torch.isfinite(policy.linear.weight.grad).all()
+    assert policy.linear.weight.grad.abs().item() > 0.0
 
 
 def _make_checkpoint_agent():

@@ -579,6 +579,7 @@ def test_perform_optimization_step_steps_optimizer_and_clips(monkeypatch):
 def test_default_extra_loss_returns_zero_on_agent_device():
     agent = object.__new__(SupervisedAgent)
     agent.device = torch.device("cpu")
+    agent.config = SimpleNamespace(l2c2_weight=0.0)
 
     loss, log_dict = SupervisedAgent.calculate_extra_loss(
         agent,
