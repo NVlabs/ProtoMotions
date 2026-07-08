@@ -87,8 +87,11 @@ class FabricConfig:
         metadata={"help": "Distributed training strategy (DDP, FSDP, etc)."}
     )
     precision: Union[str, int] = field(
-        default="32-true",
-        metadata={"help": "Training precision: '32-true', '16-mixed', 'bf16-mixed'."}
+        # FABRIC_PRECISION env hook (2026-07-08): lets a launcher opt a run into
+        # bf16-mixed (H100-native, fp32 master weights, no loss scaling needed)
+        # without touching call sites. Default unchanged (fp32).
+        default_factory=lambda: os.environ.get("FABRIC_PRECISION", "32-true"),
+        metadata={"help": "Training precision: '32-true', '16-mixed', 'bf16-mixed'. Env override: FABRIC_PRECISION."}
     )
     loggers: Optional[List[Union[Dict, fabric.loggers.Logger]]] = field(
         default=None,
