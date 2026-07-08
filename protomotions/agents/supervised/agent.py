@@ -464,7 +464,15 @@ class SupervisedAgent(BaseAgent):
             )
 
         output_dist = (prediction - clean_td[prediction_key]).pow(2).mean()
-        return output_dist / (input_dist + 1e-8)
+        # Stability (2026-07-08 v2 divergence RCA): the raw Lipschitz ratio
+        # exploded to inf by ep10 (TB supervised/l2c2_loss 0.25 -> 3.5 -> inf)
+        # and poisoned the weights. Two guards: (a) floor the input distance
+        # at 1e-4 (near-zero noisy-clean gaps — e.g. post-reset noisy-cache
+        # fallback steps — must not turn the ratio into a 1e8-scale loss);
+        # (b) clamp the ratio itself so one bad batch cannot dominate the
+        # gradient. Neither guard binds in the healthy regime observed
+        # upstream (ratio O(0.1-1)).
+        return (output_dist / input_dist.clamp_min(1e-4)).clamp_max(10.0)
 
     # -----------------------------
     # State Saving and Restoration
