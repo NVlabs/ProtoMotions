@@ -266,6 +266,10 @@ def create_parser():
 
 # Parse arguments first (argparse is safe, doesn't import torch)
 import argparse  # noqa: E402
+import faulthandler
+faulthandler.enable()
+import logging
+logging.basicConfig(level=logging.INFO, format="%(message)s", handlers=[logging.StreamHandler()])
 from protomotions.utils.cli_utils import parse_bool  # noqa: E402
 
 parser = create_parser()
@@ -278,15 +282,29 @@ from protomotions.utils.simulator_imports import import_simulator_before_torch  
 AppLauncher = import_simulator_before_torch(args.simulator)
 
 # Now safe to import everything else including torch
+import sys
+print("DEBUG 0: path OK", flush=True)
 from pathlib import Path  # noqa: E402
 import logging  # noqa: E402
 from protomotions.utils.hydra_replacement import get_class  # noqa: E402
 import importlib.util  # noqa: E402
 import shutil  # noqa: E402
+print("DEBUG 1: pre-wandb", flush=True)
 import wandb  # noqa: E402
+print("DEBUG 2: post-wandb", flush=True)
 from lightning.pytorch.loggers import WandbLogger  # noqa: E402
+print("DEBUG 3: post-lightning", flush=True)
 import torch  # noqa: E402
+print("DEBUG 4: post-torch", torch.__version__, torch.cuda.is_available(), flush=True)
 from utils.torch_utils import seeding  # noqa: E402
+print("DEBUG 5: post-seeding", flush=True)
+from dataclasses import asdict  # noqa: E402
+from protomotions.utils.config_utils import clean_dict_for_storage, make_json_serializable  # noqa: E402
+print("DEBUG 6: post-config_utils", flush=True)
+import glob
+import time
+from datetime import datetime
+print("DEBUG 7: post-glob/time", flush=True)
 from dataclasses import asdict  # noqa: E402
 from protomotions.utils.config_utils import clean_dict_for_storage, make_json_serializable  # noqa: E402
 
@@ -505,18 +523,26 @@ def try_log_hyperparams_to_wandb(
 
 
 def main():
-    global parser, args
+    print("DEBUG M1: main() started", flush=True)
+    import os; print("DEBUG M2: after os import", flush=True)
     torch.set_float32_matmul_precision("high")
-
-    # ===================================================================
+    print("DEBUG M3: after set_float32_matmul_precision", flush=True)
+    global parser, args
+    print("DEBUG M4: after global", flush=True)
     # 1. Setup: Detect Checkpoint Mode
     # ===================================================================
     save_dir = Path("results") / args.experiment_name
+    print(f"DEBUG M5: save_dir={save_dir}", flush=True)
     resolved_configs_path = save_dir / "resolved_configs.pt"
+    print("DEBUG M5b: after resolved_configs_path", flush=True)
     original_experiment_path = Path(args.experiment_path)
+    print("DEBUG M5c: after original_experiment_path", flush=True)
+    print(f"DEBUG M5d: create_config_only={getattr(args, 'create_config_only', 'MISSING')}", flush=True)
+    print("DEBUG M5e: before if", flush=True)
 
     # --create-config-only: Force fresh mode to just generate configs
     if args.create_config_only:
+        print("DEBUG M6: IN create_config_only branch", flush=True)
         log.info("CREATE CONFIG ONLY: Generating configs without training")
         mode, checkpoint_path, wandb_id = "fresh", None, None
     else:
