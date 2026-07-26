@@ -228,6 +228,24 @@ And you're good to go!
 
 ---
 
+## Installation
+
+ProtoMotions can also be added to a downstream [uv](https://docs.astral.sh/uv/) project as a package,
+with opt-in extras for supported simulators:
+
+```bash
+uv add protomotions                  # core library
+uv add "protomotions[mujoco]"        # MuJoCo
+uv add "protomotions[newton]"        # Newton
+```
+
+Isaac Lab needs additional NVIDIA and CUDA package indexes; Isaac Gym keeps its
+manual download and Conda workflow. See the
+[installation guide](https://protomotions.github.io/getting_started/installation.html)
+for both installation modes and simulator-specific requirements.
+
+---
+
 ## Contributing
 
 We welcome contributions! Please read our [**Contributing Guide**](CONTRIBUTING.md) before submitting pull requests.

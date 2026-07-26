@@ -1,0 +1,182 @@
+[build-system]
+requires = ["setuptools>=69.5.1", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "protomotions"
+version = "3.1.0"
+description = "GPU-accelerated simulation and learning for humanoid and character motion"
+readme = { file = "README.md", content-type = "text/markdown" }
+requires-python = ">=3.8,<3.13"
+license = { file = "LICENSE.md" }
+authors = [
+  { name = "Chen Tessler" },
+  { name = "Yifeng Jiang" },
+]
+keywords = [
+  "character-animation",
+  "humanoid-robotics",
+  "physics-simulation",
+  "reinforcement-learning",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+  "dm-control>=1.0",
+  "easydict>=1.10",
+  "lightning>=2.3,<2.6",
+  "matplotlib>=3.6",
+  "moviepy>=2,<3; python_version >= '3.9'",
+  "numpy>=1.21.1,<2",
+  "omegaconf==2.3.0",
+  "pandas>=1.5",
+  "PyYAML>=6",
+  "rich>=13",
+  "rtree>=1.2,<2",
+  "scikit-image>=0.19",
+  "scipy>=1.8",
+  "sentry-sdk>=1.9.10,<3",
+  "tensorboardX>=2.6",
+  "tensordict>=0.5,<0.10",
+  "termcolor>=1.1",
+  "torch>=2.2,<2.8",
+  "transformers>=4.40,<6",
+  "trimesh>=4.4",
+  "typer>=0.6.1",
+  "wandb>=0.15,<0.24",
+]
+
+[project.optional-dependencies]
+mujoco = [
+  "mujoco>=3.0,<4; python_version >= '3.10'",
+  "onnxruntime>=1.17; python_version >= '3.10'",
+  "openmesh==1.2.1; python_version >= '3.10'",
+  "sentry-sdk==2.0.0; python_version >= '3.10'",
+  "tensordict==0.9.0; python_version >= '3.10'",
+  "wandb==0.23.0; python_version >= '3.10'",
+]
+newton = [
+  "dm-control==1.0.37; python_version >= '3.10'",
+  "mujoco==3.5.0; python_version >= '3.10'",
+  "newton[examples]==1.0.0; python_version >= '3.10'",
+  "onnxruntime>=1.17; python_version >= '3.10'",
+  "openmesh==1.2.1; python_version >= '3.10'",
+  "sentry-sdk==2.0.0; python_version >= '3.10'",
+  "tensordict==0.9.0; python_version >= '3.10'",
+  "wandb==0.23.0; python_version >= '3.10'",
+]
+isaacgym = []
+isaaclab = [
+  "isaaclab[all,isaacsim]==2.3.2.post1; python_version == '3.11' and sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "isaacsim[all]==5.1.0.0; python_version == '3.11' and sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "onnxruntime>=1.17; python_version == '3.11' and sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "tensordict==0.9.0; python_version == '3.11'",
+  "torch==2.7.0; python_version == '3.11' and sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "torchvision==0.22.0; python_version == '3.11' and sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "wandb==0.23.0; python_version == '3.11'",
+]
+genesis = [
+  "genesis-world; python_version >= '3.10'",
+  "lightning==2.5.0.post0; python_version >= '3.10'",
+  "mink==0.0.7; python_version >= '3.10'",
+  "open3d==0.19.0; python_version >= '3.10'",
+  "PyOpenGL==3.1.4; python_version >= '3.10'",
+  "sentry-sdk==1.9.10; python_version >= '3.10'",
+  "tensordict==0.9.0; python_version >= '3.10'",
+  "torch==2.5.0; python_version >= '3.10'",
+  "wandb==0.15.12; python_version >= '3.10'",
+]
+docs = [
+  "myst-parser; python_version >= '3.10'",
+  "nvidia-sphinx-theme; python_version >= '3.10'",
+  "sphinx>=7,<9; python_version >= '3.10'",
+  "sphinx-autodoc-typehints; python_version >= '3.10'",
+  "sphinx-copybutton; python_version >= '3.10'",
+]
+dev = [
+  "build>=1.2",
+  "pytest>=8",
+  "tomli>=2; python_version < '3.11'",
+  "twine>=5",
+]
+
+[project.urls]
+Documentation = "https://protomotions.github.io/"
+Issues = "https://github.com/NVlabs/ProtoMotions/issues"
+Repository = "https://github.com/NVlabs/ProtoMotions"
+
+[project.scripts]
+protomotions = "protomotions.cli:main"
+protomotions-train-agent = "protomotions.cli:train_agent"
+protomotions-inference-agent = "protomotions.cli:inference_agent"
+protomotions-train-slurm = "protomotions.cli:train_slurm"
+
+[tool.setuptools]
+include-package-data = false
+license-files = ["LICENSE.md", "legal/*.txt"]
+
+[tool.setuptools.packages.find]
+include = ["protomotions", "protomotions.*"]
+exclude = ["protomotions.tests", "protomotions.tests.*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+protomotions = [
+  "data/assets/**/*",
+  "data/assets/**/.asset_hash",
+]
+
+[tool.uv]
+conflicts = [
+  [
+    { extra = "mujoco" },
+    { extra = "newton" },
+  ],
+  [
+    { extra = "mujoco" },
+    { extra = "isaacgym" },
+  ],
+  [
+    { extra = "mujoco" },
+    { extra = "isaaclab" },
+  ],
+  [
+    { extra = "mujoco" },
+    { extra = "genesis" },
+  ],
+  [
+    { extra = "newton" },
+    { extra = "isaacgym" },
+  ],
+  [
+    { extra = "newton" },
+    { extra = "isaaclab" },
+  ],
+  [
+    { extra = "newton" },
+    { extra = "genesis" },
+  ],
+  [
+    { extra = "isaaclab" },
+    { extra = "isaacgym" },
+  ],
+  [
+    { extra = "isaacgym" },
+    { extra = "genesis" },
+  ],
+  [
+    { extra = "isaaclab" },
+    { extra = "genesis" },
+  ],
+]

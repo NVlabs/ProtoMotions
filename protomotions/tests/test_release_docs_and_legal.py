@@ -2,7 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from pathlib import Path
-from setuptools import find_namespace_packages
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - Python 3.10 and earlier
+    import tomli as tomllib
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -125,15 +129,15 @@ def test_quickstart_pretrained_table_matches_shipped_release_artifacts():
     assert "   * - MaskedMimic G1" not in quickstart
 
 
-def test_setup_discovers_protomotions_subpackages():
-    setup_text = (REPO_ROOT / "setup.py").read_text()
-    discovered_packages = set(find_namespace_packages(where=REPO_ROOT))
+def test_pyproject_discovers_only_protomotions_code_packages():
+    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
+    package_finder = pyproject["tool"]["setuptools"]["packages"]["find"]
+    package_data = pyproject["tool"]["setuptools"]["package-data"]["protomotions"]
 
-    assert "find_namespace_packages" in setup_text
-    assert "protomotions.agents" in discovered_packages
-    assert "protomotions.envs" in discovered_packages
-    assert "protomotions.simulator" in discovered_packages
-    assert 'packages=["protomotions"]' not in setup_text
+    assert package_finder["include"] == ["protomotions", "protomotions.*"]
+    assert package_finder["namespaces"] is False
+    assert "protomotions.tests" in package_finder["exclude"]
+    assert "data/assets/**/*" in package_data
 
 
 def test_component_factories_public_exports_exist():

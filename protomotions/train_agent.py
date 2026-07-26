@@ -286,7 +286,7 @@ import shutil  # noqa: E402
 import wandb  # noqa: E402
 from lightning.pytorch.loggers import WandbLogger  # noqa: E402
 import torch  # noqa: E402
-from utils.torch_utils import seeding  # noqa: E402
+from protomotions.utils.torch_utils import seeding  # noqa: E402
 from dataclasses import asdict  # noqa: E402
 from protomotions.utils.config_utils import clean_dict_for_storage, make_json_serializable  # noqa: E402
 

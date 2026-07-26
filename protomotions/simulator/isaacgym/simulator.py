@@ -351,7 +351,7 @@ class IsaacGymSimulator(Simulator):
         return self._gym.load_asset(self._sim, asset_root, asset_file, asset_options)
 
     def _load_marker_asset(self) -> None:
-        asset_root = "protomotions/data/assets/urdf/"
+        asset_root = os.path.join(self.robot_config.asset.asset_root, "urdf")
         asset_file = "traj_marker.urdf"
         small_asset_file = "traj_marker_small.urdf"
         tiny_asset_file = "traj_marker_tiny.urdf"
