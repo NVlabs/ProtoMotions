@@ -23,6 +23,7 @@ Key Features:
 
 from dataclasses import dataclass, field
 from protomotions.components.pose_lib import ControlInfo, KinematicInfo
+from protomotions.assets import get_asset_root
 from protomotions.simulator.base_simulator.config import RobotNoiseConfig
 from protomotions.simulator.isaacgym.config import IsaacGymSimParams
 from protomotions.simulator.isaaclab.config import IsaacLabSimParams
@@ -85,7 +86,7 @@ class RobotAssetConfig:
     """Configuration for robot asset properties."""
 
     # Optional fields with defaults
-    asset_root: str = "protomotions/data/assets"
+    asset_root: str = field(default_factory=lambda: str(get_asset_root()))
     self_collisions: bool = True
 
     # Optional fields

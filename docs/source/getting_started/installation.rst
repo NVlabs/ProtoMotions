@@ -1,7 +1,7 @@
 Installation
 ============
 
-ProtoMotions supports five simulation backends: IsaacGym, IsaacLab, Genesis, Newton, and MuJoCo. 
+ProtoMotions supports five simulation backends: IsaacGym, IsaacLab, Genesis, Newton, and MuJoCo.
 You can install the simulation of your choice, and the simulation backend is selected via the configuration file.
 
 **Tested Versions:**
@@ -37,6 +37,64 @@ files are checked out and not still Git LFS pointer files. Pointer files start
 with ``version https://git-lfs.github.com/spec/v1`` and can cause errors such as
 ``is not a valid usda layer`` when IsaacLab loads robot assets.
 
+Source checkout or uv dependency
+--------------------------------
+
+The simulator sections below retain the source-checkout installation workflow.
+After a package release, a downstream project can instead add ProtoMotions as a
+dependency. Choose one simulator extra per environment:
+
+.. code-block:: bash
+
+   uv init --python 3.11 my-project
+   cd my-project
+   uv add protomotions
+
+   # Add one simulator integration when needed:
+   uv add "protomotions[mujoco]"
+   uv add "protomotions[newton]"
+
+The package contains the Python modules and runtime robot assets. Pretrained
+checkpoints, motion files, and example data remain in the repository's Git LFS
+checkout and must be supplied separately when an experiment uses them.
+
+IsaacLab projects also need NVIDIA's package index and the CUDA 12.8 PyTorch
+index. Add these entries to the downstream project's ``pyproject.toml`` before
+running ``uv sync``:
+
+.. code-block:: toml
+
+   [project]
+   requires-python = "==3.11.*"
+   dependencies = [
+     "protomotions[isaaclab]",
+     "torch==2.7.0",
+     "torchvision==0.22.0",
+   ]
+
+   [tool.uv]
+   environments = [
+     "sys_platform == 'linux' and platform_machine == 'x86_64'",
+   ]
+   index-strategy = "first-index"
+
+   [[tool.uv.index]]
+   name = "pytorch-cu128"
+   url = "https://download.pytorch.org/whl/cu128"
+   explicit = true
+
+   [[tool.uv.index]]
+   name = "nvidia"
+   url = "https://pypi.nvidia.com"
+
+   [tool.uv.sources]
+   torch = { index = "pytorch-cu128" }
+   torchvision = { index = "pytorch-cu128" }
+
+Core package metadata constrains ``torch>=2.2,<2.8`` but does not select a
+PyTorch index or CUDA build. The downstream environment remains responsible for
+choosing the wheel that matches its simulator, CUDA runtime, and driver.
+
 Choose Your Simulator(s)
 ------------------------
 
@@ -65,12 +123,13 @@ IsaacGym requires **Python 3.8**.
 
       pip install -e isaacgym/python
 
-4. Install ProtoMotions and dependencies:
+4. Install the existing requirements first, then ProtoMotions without
+   re-resolving the CUDA-sensitive environment:
 
    .. code-block:: bash
 
-      pip install -e /path/to/protomotions
       pip install -r /path/to/protomotions/requirements_isaacgym.txt
+      pip install -e /path/to/protomotions --no-deps
 
 IsaacLab
 ~~~~~~~~
@@ -98,6 +157,10 @@ For full installation details, see the `IsaacLab Pip Installation Guide <https:/
 
       uv pip install -e /path/to/protomotions
       uv pip install -r /path/to/protomotions/requirements_isaaclab.txt
+
+   To record ProtoMotions as a downstream uv dependency instead, use the
+   ``protomotions[isaaclab]`` dependency and index configuration shown in
+   `Source checkout or uv dependency`_.
 
 .. note::
 
@@ -156,6 +219,8 @@ For full installation details, see the `Newton Installation Guide <https://newto
       pip install -e /path/to/protomotions
       pip install -r /path/to/protomotions/requirements_newton.txt
 
+   A downstream uv project can use ``uv add "protomotions[newton]"`` instead.
+
 .. note::
 
    On Python 3.10, ``imgui-bundle`` (a dependency of ``newton[examples]``) has no prebuilt
@@ -188,6 +253,8 @@ MuJoCo is a CPU-only backend for quick testing and debugging without GPU. It sup
 
       pip install -e /path/to/protomotions
       pip install -r /path/to/protomotions/requirements_mujoco.txt
+
+   A downstream uv project can use ``uv add "protomotions[mujoco]"`` instead.
 
 4. Run inference with MuJoCo:
 
@@ -235,10 +302,10 @@ If you encounter ``libpython`` related errors, you need to set the ``LD_LIBRARY_
 
    # First, check your conda environment path
    conda info -e
-   
+
    # Then set LD_LIBRARY_PATH (replace with your actual conda env path)
    export LD_LIBRARY_PATH=/path/to/conda/envs/your_env/lib:$LD_LIBRARY_PATH
-   
+
    # For example:
    export LD_LIBRARY_PATH=${CONDA_PREFIX}/lib:$LD_LIBRARY_PATH
 
