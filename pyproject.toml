@@ -33,9 +33,9 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-  # Core constrains the compatible torch range without selecting a CUDA build or
-  # package index. Simulator environments remain responsible for installing the
-  # wheel that matches their CUDA/ABI combination.
+  # Core declares only the minimum torch version and does not select a CUDA
+  # build or package index. Simulator environments remain responsible for
+  # installing a tested wheel that matches their CUDA/ABI combination.
   "dm-control>=1.0",
   "easydict>=1.10",
   "lightning>=2.3,<2.6",
@@ -50,7 +50,7 @@ dependencies = [
   "scipy>=1.8",
   "tensordict>=0.5,<0.10",
   "termcolor>=1.1",
-  "torch>=2.2,<2.8",
+  "torch>=2.2",
   "trimesh>=4.4",
   "wandb>=0.15,<0.24",
 ]

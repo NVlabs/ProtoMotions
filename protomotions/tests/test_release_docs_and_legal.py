@@ -222,15 +222,15 @@ def test_smpl_assets_are_excluded_from_built_distributions():
         assert pattern in excluded, f"SMPL carve-out missing: {pattern}"
 
 
-def test_core_dependency_bounds_preserve_backend_compatibility():
-    """Keep NumPy open for modern backends and Torch within the tested range."""
+def test_core_dependency_bounds_preserve_preconfigured_environments():
+    """Core bounds must not replace preselected NumPy or Torch builds."""
 
     pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
     dependencies = pyproject["project"]["dependencies"]
     numpy_pin = next(dep for dep in dependencies if dep.startswith("numpy"))
     torch_pin = next(dep for dep in dependencies if dep.startswith("torch"))
     assert "<" not in numpy_pin
-    assert torch_pin == "torch>=2.2,<2.8"
+    assert torch_pin == "torch>=2.2"
 
 
 def test_component_factories_public_exports_exist():
