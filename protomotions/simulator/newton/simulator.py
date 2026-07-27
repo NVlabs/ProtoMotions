@@ -6,6 +6,7 @@ import torch
 import numpy as np
 from typing import Dict, List, Optional, Tuple
 
+from protomotions.assets import resolve_asset_root
 from protomotions.simulator.base_simulator.simulator import Simulator
 from protomotions.simulator.base_simulator.config import (
     MarkerState,
@@ -174,7 +175,7 @@ class NewtonSimulator(Simulator):
         Follows the Newton G1 example pattern: configure joint properties
         on the builder BEFORE finalize, then use replicate() for multi-env.
         """
-        asset_root = self.robot_config.asset.asset_root
+        asset_root = resolve_asset_root(self.robot_config.asset.asset_root)
         asset_file = self.robot_config.asset.asset_file_name
         asset_path = os.path.join(asset_root, asset_file)
 

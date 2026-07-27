@@ -91,9 +91,12 @@ running ``uv sync``:
    torch = { index = "pytorch-cu128" }
    torchvision = { index = "pytorch-cu128" }
 
-Core package metadata constrains ``torch>=2.2,<2.8`` but does not select a
-PyTorch index or CUDA build. The downstream environment remains responsible for
-choosing the wheel that matches its simulator, CUDA runtime, and driver.
+Core package metadata requires ``torch>=2.2`` with no upper bound, and does not
+select a PyTorch index or CUDA build. The upper bound is deliberately omitted so
+that installing ProtoMotions into an existing, hand-built simulator environment
+never uninstalls the CUDA-matched (or CPU-only) wheel already in place. The
+downstream environment remains responsible for choosing the wheel that matches
+its simulator, CUDA runtime, and driver.
 
 Choose Your Simulator(s)
 ------------------------
