@@ -358,11 +358,35 @@ def load_experiment_module(experiment_path):
 
     log.info(f"Loading experiment module from: {experiment_path}")
 
-    # Ensure the repo root is on sys.path so that experiment configs can import
-    # from sibling packages (e.g. `from examples.experiments.mimic... import ...`).
-    repo_root = str(Path(__file__).resolve().parent.parent)
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+    # Ensure the experiment file's own project root is on sys.path so that
+    # experiment configs can import sibling packages (e.g.
+    # `from examples.experiments.mimic... import ...`).
+    #
+    # For an installed (non-editable) distribution, the package parent is
+    # site-packages and contains no `examples/`, so anchoring only there breaks
+    # every downstream user who keeps experiments outside the ProtoMotions
+    # source tree. Walk up from the experiment file to find the directory that
+    # actually owns it, and fall back to the package parent + cwd.
+    # Only the owning project root goes on sys.path (examples/ and
+    # examples/experiments/ are regular packages with __init__.py, so the
+    # intermediate directories are unnecessary and putting them ahead of the
+    # stdlib would let an experiment file shadow a real module).
+    project_root = next(
+        (
+            ancestor
+            for ancestor in experiment_path.resolve().parents
+            if (ancestor / "examples").is_dir()
+            or (ancestor / "pyproject.toml").is_file()
+        ),
+        None,
+    )
+    if project_root is not None and str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+
+    # Fallbacks, appended so they cannot shadow anything already importable.
+    for fallback in (Path(__file__).resolve().parent.parent, Path.cwd()):
+        if str(fallback) not in sys.path:
+            sys.path.append(str(fallback))
 
     spec = importlib.util.spec_from_file_location("experiment_module", experiment_path)
     experiment_module = importlib.util.module_from_spec(spec)

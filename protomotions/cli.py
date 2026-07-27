@@ -18,10 +18,14 @@ from typing import Optional, Sequence
 from protomotions.assets import ASSET_ROOT_ENV, asset_path, get_asset_root
 
 
+# NOTE: no "train-slurm" entry. train_slurm.py resolves the repository to upload
+# from Path(__file__).parent.parent, which is site-packages for an installed
+# distribution, so exposing it here would advertise a workflow that cannot work
+# off a source checkout. See the commit message for the full rationale. Source
+# checkouts continue to use `python protomotions/train_slurm.py`.
 COMMAND_MODULES = {
     "train-agent": "protomotions.train_agent",
     "inference-agent": "protomotions.inference_agent",
-    "train-slurm": "protomotions.train_slurm",
 }
 
 
@@ -37,14 +41,29 @@ def _module_available(module_name: str) -> bool:
 
 
 def _info_payload() -> dict:
-    asset_root = get_asset_root()
-    probes = {name: asset_path(name) for name in ("mjcf", "urdf", "usd")}
+    # `info` is the command users reach for when an install is broken, so it
+    # must never raise on a missing or partial asset tree.
+    try:
+        asset_root: Optional[str] = str(get_asset_root())
+        asset_root_error = None
+    except FileNotFoundError as exc:
+        asset_root = None
+        asset_root_error = str(exc)
+
+    probes = {}
+    for name in ("mjcf", "urdf", "usd", "mesh"):
+        try:
+            probes[name] = str(asset_path(name))
+        except FileNotFoundError:
+            probes[name] = None
+
     return {
         "version": _distribution_version(),
         "package_root": str(Path(__file__).resolve().parent),
-        "asset_root": str(asset_root),
+        "asset_root": asset_root,
+        "asset_root_error": asset_root_error,
         "asset_root_override": ASSET_ROOT_ENV in os.environ,
-        "assets": {name: str(path) for name, path in probes.items()},
+        "assets": probes,
         "simulators": {
             name: _module_available(module)
             for name, module in {
@@ -78,7 +97,18 @@ def info(argv: Optional[Sequence[str]] = None) -> int:
     else:
         print(f"ProtoMotions {payload['version']}")
         print(f"Package root: {payload['package_root']}")
-        print(f"Asset root: {payload['asset_root']}")
+        if payload["asset_root"] is None:
+            print(f"Asset root: UNAVAILABLE ({payload['asset_root_error']})")
+        else:
+            print(f"Asset root: {payload['asset_root']}")
+            missing = sorted(n for n, p in payload["assets"].items() if p is None)
+            if missing:
+                print(
+                    "  missing asset trees: "
+                    + ", ".join(missing)
+                    + " (use a Git LFS checkout or set "
+                    + f"{ASSET_ROOT_ENV} to a complete asset tree)"
+                )
         print("Simulator modules:")
         for name, available in payload["simulators"].items():
             print(f"  {name}: {'available' if available else 'not installed'}")
@@ -94,8 +124,14 @@ def _run_module(command: str, argv: Optional[Sequence[str]] = None) -> int:
     forwarded_args = list(sys.argv[1:] if argv is None else argv)
     original_argv = sys.argv
     try:
-        sys.argv = [f"protomotions {command}", *forwarded_args]
-        runpy.run_module(module_name, run_name="__main__")
+        # argv[0] must stay a real, resolvable target. Lightning Fabric relaunches
+        # DDP workers by re-executing either `sys.argv[0]` or `-m __main__.__spec__.name`,
+        # so a cosmetic argv[0] such as "protomotions train-agent" makes every
+        # multi-GPU run die in the child process. `alter_sys=True` makes runpy set
+        # argv[0] to the module file and populate __main__.__spec__, so both of
+        # Lightning's relaunch strategies resolve correctly.
+        sys.argv = [module_name, *forwarded_args]
+        runpy.run_module(module_name, run_name="__main__", alter_sys=True)
     finally:
         sys.argv = original_argv
     return 0
@@ -107,10 +143,6 @@ def train_agent() -> int:
 
 def inference_agent() -> int:
     return _run_module("inference-agent")
-
-
-def train_slurm() -> int:
-    return _run_module("train-slurm")
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

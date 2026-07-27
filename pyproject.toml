@@ -7,7 +7,7 @@ name = "protomotions"
 version = "3.1.0"
 description = "GPU-accelerated simulation and learning for humanoid and character motion"
 readme = { file = "README.md", content-type = "text/markdown" }
-requires-python = ">=3.8,<3.13"
+requires-python = ">=3.8"
 license = { file = "LICENSE.md" }
 authors = [
   { name = "Chen Tessler" },
@@ -33,81 +33,90 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
+  # Core constrains the compatible torch range without selecting a CUDA build or
+  # package index. Simulator environments remain responsible for installing the
+  # wheel that matches their CUDA/ABI combination.
   "dm-control>=1.0",
   "easydict>=1.10",
   "lightning>=2.3,<2.6",
   "matplotlib>=3.6",
   "moviepy>=2,<3; python_version >= '3.9'",
-  "numpy>=1.21.1,<2",
+  "numpy>=1.21.1",
   "omegaconf==2.3.0",
-  "pandas>=1.5",
   "PyYAML>=6",
   "rich>=13",
   "rtree>=1.2,<2",
   "scikit-image>=0.19",
   "scipy>=1.8",
-  "sentry-sdk>=1.9.10,<3",
-  "tensorboardX>=2.6",
   "tensordict>=0.5,<0.10",
   "termcolor>=1.1",
   "torch>=2.2,<2.8",
-  "transformers>=4.40,<6",
   "trimesh>=4.4",
-  "typer>=0.6.1",
   "wandb>=0.15,<0.24",
 ]
 
 [project.optional-dependencies]
+# NOTE: these groups deliberately carry no `python_version` markers. A marker
+# that excludes the running interpreter makes the extra resolve to an EMPTY set,
+# so `pip install "protomotions[mujoco]"` on an unsupported Python reports
+# success while installing no simulator at all, and the failure only surfaces
+# later as a bare ModuleNotFoundError. Without the marker the underlying
+# distribution's own Requires-Python raises a real resolution error instead.
+# Each group's supported Python version is documented in installation.rst.
 mujoco = [
-  "mujoco>=3.0,<4; python_version >= '3.10'",
-  "onnxruntime>=1.17; python_version >= '3.10'",
-  "openmesh==1.2.1; python_version >= '3.10'",
-  "sentry-sdk==2.0.0; python_version >= '3.10'",
-  "tensordict==0.9.0; python_version >= '3.10'",
-  "wandb==0.23.0; python_version >= '3.10'",
+  "mujoco>=3.0,<4",
+  "onnxruntime>=1.17",
+  "openmesh==1.2.1",
+  "tensordict==0.9.0",
+  "wandb==0.23.0",
 ]
 newton = [
-  "dm-control==1.0.37; python_version >= '3.10'",
-  "mujoco==3.5.0; python_version >= '3.10'",
-  "newton[examples]==1.0.0; python_version >= '3.10'",
-  "onnxruntime>=1.17; python_version >= '3.10'",
-  "openmesh==1.2.1; python_version >= '3.10'",
-  "sentry-sdk==2.0.0; python_version >= '3.10'",
-  "tensordict==0.9.0; python_version >= '3.10'",
-  "wandb==0.23.0; python_version >= '3.10'",
+  "dm-control==1.0.37",
+  "mujoco==3.5.0",
+  "newton[examples]==1.0.0",
+  "onnxruntime>=1.17",
+  "openmesh==1.2.1",
+  "tensordict==0.9.0",
+  "wandb==0.23.0",
 ]
 isaacgym = []
+# The platform markers below are retained (unlike the python_version markers):
+# Isaac Sim publishes Linux x86_64 wheels only, and keeping them lets `uv lock`
+# resolve on non-Linux machines instead of hard-failing the whole lockfile.
 isaaclab = [
-  "isaaclab[all,isaacsim]==2.3.2.post1; python_version == '3.11' and sys_platform == 'linux' and platform_machine == 'x86_64'",
-  "isaacsim[all]==5.1.0.0; python_version == '3.11' and sys_platform == 'linux' and platform_machine == 'x86_64'",
-  "onnxruntime>=1.17; python_version == '3.11' and sys_platform == 'linux' and platform_machine == 'x86_64'",
-  "tensordict==0.9.0; python_version == '3.11'",
-  "torch==2.7.0; python_version == '3.11' and sys_platform == 'linux' and platform_machine == 'x86_64'",
-  "torchvision==0.22.0; python_version == '3.11' and sys_platform == 'linux' and platform_machine == 'x86_64'",
-  "wandb==0.23.0; python_version == '3.11'",
+  "isaaclab[all,isaacsim]==2.3.2.post1; sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "isaacsim[all]==5.1.0.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "onnxruntime>=1.17",
+  "tensordict==0.9.0",
+  "torch==2.7.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "torchvision==0.22.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "wandb==0.23.0",
 ]
 genesis = [
-  "genesis-world; python_version >= '3.10'",
-  "lightning==2.5.0.post0; python_version >= '3.10'",
-  "mink==0.0.7; python_version >= '3.10'",
-  "open3d==0.19.0; python_version >= '3.10'",
-  "PyOpenGL==3.1.4; python_version >= '3.10'",
-  "sentry-sdk==1.9.10; python_version >= '3.10'",
-  "tensordict==0.9.0; python_version >= '3.10'",
-  "torch==2.5.0; python_version >= '3.10'",
-  "wandb==0.15.12; python_version >= '3.10'",
+  "genesis-world",
+  "lightning==2.5.0.post0",
+  "mink==0.0.7",
+  "onnxruntime>=1.17",
+  "open3d==0.19.0",
+  "PyOpenGL==3.1.4",
+  "tensordict==0.9.0",
+  "torch==2.5.0",
+  "wandb==0.15.12",
 ]
 docs = [
-  "myst-parser; python_version >= '3.10'",
-  "nvidia-sphinx-theme; python_version >= '3.10'",
-  "sphinx>=7,<9; python_version >= '3.10'",
-  "sphinx-autodoc-typehints; python_version >= '3.10'",
-  "sphinx-copybutton; python_version >= '3.10'",
+  "myst-parser",
+  "nvidia-sphinx-theme",
+  "sphinx>=7,<9",
+  "sphinx-autodoc-typehints",
+  "sphinx-copybutton",
 ]
 dev = [
   "build>=1.2",
   "pytest>=8",
   "tomli>=2; python_version < '3.11'",
+  # Used by the repository's data-conversion scripts under data/scripts/ and
+  # usd_convert/, which are not part of the installed package.
+  "typer>=0.6.1",
   "twine>=5",
 ]
 
@@ -120,7 +129,6 @@ Repository = "https://github.com/NVlabs/ProtoMotions"
 protomotions = "protomotions.cli:main"
 protomotions-train-agent = "protomotions.cli:train_agent"
 protomotions-inference-agent = "protomotions.cli:inference_agent"
-protomotions-train-slurm = "protomotions.cli:train_slurm"
 
 [tool.setuptools]
 include-package-data = false
@@ -135,6 +143,20 @@ namespaces = false
 protomotions = [
   "data/assets/**/*",
   "data/assets/**/.asset_hash",
+]
+
+[tool.setuptools.exclude-package-data]
+# SMPL and SMPL-H body-model assets are NOT covered by ProtoMotions' Apache-2.0
+# licence (see legal/THIRD-PARTY SOFTWARE NOTICES AND ASSET LICENSES, section 4);
+# they are attributed to the Max Planck Institute and their use is subject to the
+# applicable SMPL/SMPL-H model terms. Redistributing them inside an
+# Apache-2.0-labelled wheel would create an unauthorised distribution channel, so
+# they are carved out of every built artifact. Users obtain them from MPI and
+# expose them via PROTOMOTIONS_ASSET_ROOT, or work from a source checkout.
+protomotions = [
+  "data/assets/mesh/smpl/**/*",
+  "data/assets/mjcf/smpl*.xml",
+  "data/assets/usd/smpl*.usda",
 ]
 
 [tool.uv]
