@@ -62,12 +62,12 @@ files are checked out and not still Git LFS pointer files. Pointer files start
 with ``version https://git-lfs.github.com/spec/v1`` and can cause errors such as
 ``is not a valid usda layer`` when IsaacLab loads robot assets.
 
-Using ProtoMotions as a dependency (uv)
----------------------------------------
+Using ProtoMotions as a dependency (pip/uv)
+-------------------------------------------
 
-ProtoMotions is not published to PyPI yet, so depend on it from Git. Robot
-meshes and USD assets are Git LFS objects, so the source must be fetched with
-LFS enabled — ``lfs = true`` requires uv 0.11.32+:
+Install ProtoMotions directly from Git. Robot meshes and USD assets are Git LFS
+objects, so the source must be fetched with LFS enabled — ``lfs = true``
+requires uv 0.11.32+:
 
 .. code-block:: bash
 
