@@ -228,24 +228,6 @@ And you're good to go!
 
 ---
 
-## Installation
-
-ProtoMotions can also be added to a downstream [uv](https://docs.astral.sh/uv/)
-project directly from Git, with opt-in extras for supported simulators. Git LFS
-and uv 0.11.32 or newer are required:
-
-```bash
-git lfs install
-uv add --lfs "protomotions[newton] @ git+https://github.com/NVlabs/ProtoMotions.git"
-```
-
-Isaac Lab needs additional NVIDIA and CUDA package indexes; Isaac Gym keeps its
-manual download and Conda workflow. See the
-[installation guide](https://protomotions.github.io/getting_started/installation.html)
-for both installation modes and simulator-specific requirements.
-
----
-
 ## Contributing
 
 We welcome contributions! Please read our [**Contributing Guide**](CONTRIBUTING.md) before submitting pull requests.
