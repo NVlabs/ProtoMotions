@@ -21,8 +21,33 @@ You can install the simulation of your choice, and the simulation backend is sel
    We recommend creating a **separate virtual environment** for each simulator to avoid dependency conflicts.
    We recommend using **conda** or **venv** for IsaacGym, Genesis, and MuJoCo, and **uv** for IsaacLab and Newton.
 
-Prerequisites
--------------
+Which installation path?
+------------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 30 48
+
+   * - Simulator
+     - Supported install
+     - Notes
+   * - MuJoCo, Newton, Genesis
+     - Source checkout **or** uv dependency
+     - Genesis is experimental.
+   * - IsaacLab
+     - Source checkout **or** uv dependency
+     - Needs NVIDIA's package index and the CUDA 12.8 PyTorch index
+       (see below). Python 3.11, Linux x86_64 only.
+   * - IsaacGym
+     - **Source checkout only**
+     - IsaacGym is not distributed on PyPI: you download it from NVIDIA and
+       install it by hand, and it requires **Python 3.8**.
+
+Use a source checkout if you want the pretrained checkpoints, motion files, or
+the ``examples/`` experiments — those live in Git LFS, not in the package.
+
+Source checkout prerequisites
+-----------------------------
 
 After cloning the repository, fetch and check out files stored in Git LFS:
 
@@ -37,26 +62,53 @@ files are checked out and not still Git LFS pointer files. Pointer files start
 with ``version https://git-lfs.github.com/spec/v1`` and can cause errors such as
 ``is not a valid usda layer`` when IsaacLab loads robot assets.
 
-Source checkout or uv dependency
---------------------------------
+Using ProtoMotions as a dependency (uv)
+---------------------------------------
 
-The simulator sections below retain the source-checkout installation workflow.
-After a package release, a downstream project can instead add ProtoMotions as a
-dependency. Choose one simulator extra per environment:
+ProtoMotions is not published to PyPI, so depend on it from Git. Robot meshes
+and USD assets are Git LFS objects, so the source must be fetched with LFS
+enabled. Install and configure Git LFS first. The ``--lfs`` option and
+``lfs = true`` source setting require uv 0.11.32 or newer:
 
 .. code-block:: bash
 
+   git lfs install
    uv init --python 3.11 my-project
    cd my-project
-   uv add protomotions
+   uv add --lfs "protomotions[newton] @ git+https://github.com/NVlabs/ProtoMotions.git"
 
-   # Add one simulator integration when needed:
-   uv add "protomotions[mujoco]"
-   uv add "protomotions[newton]"
+Equivalently, configure the dependency in the downstream ``pyproject.toml``:
 
-The package contains the Python modules and runtime robot assets. Pretrained
-checkpoints, motion files, and example data remain in the repository's Git LFS
-checkout and must be supplied separately when an experiment uses them.
+.. code-block:: toml
+
+   [project]
+   dependencies = [
+     "protomotions[newton]",
+   ] # or [mujoco] / [isaaclab] / [genesis]
+
+   [tool.uv]
+   required-version = ">=0.11.32"
+
+   [tool.uv.sources]
+   protomotions = { git = "https://github.com/NVlabs/ProtoMotions.git", lfs = true }
+
+Then run training through the installed entry point:
+
+.. code-block:: bash
+
+   uv run protomotions train-agent --robot-name g1 --simulator newton \
+       --experiment-path experiments/my_experiment.py
+
+``uv run protomotions info`` prints the resolved asset root and which simulator
+modules are importable.
+
+The package ships the Python modules and the full robot asset tree **except**
+the SMPL/SMPL-H assets, which carry their own licence terms. Pretrained
+checkpoints, motion files, and the ``examples/`` experiments are not included;
+keep a Git LFS checkout and set ``PROTOMOTIONS_ASSET_ROOT`` if you need them.
+
+IsaacLab as a dependency
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 IsaacLab projects also need NVIDIA's package index and the CUDA 12.8 PyTorch
 index. Add these entries to the downstream project's ``pyproject.toml`` before
@@ -73,6 +125,7 @@ running ``uv sync``:
    ]
 
    [tool.uv]
+   required-version = ">=0.11.32"
    environments = [
      "sys_platform == 'linux' and platform_machine == 'x86_64'",
    ]
@@ -88,6 +141,7 @@ running ``uv sync``:
    url = "https://pypi.nvidia.com"
 
    [tool.uv.sources]
+   protomotions = { git = "https://github.com/NVlabs/ProtoMotions.git", lfs = true }
    torch = { index = "pytorch-cu128" }
    torchvision = { index = "pytorch-cu128" }
 
@@ -160,7 +214,7 @@ For full installation details, see the `IsaacLab Pip Installation Guide <https:/
 
    To record ProtoMotions as a downstream uv dependency instead, use the
    ``protomotions[isaaclab]`` dependency and index configuration shown in
-   `Source checkout or uv dependency`_.
+   `IsaacLab as a dependency`_.
 
 .. note::
 
@@ -219,7 +273,8 @@ For full installation details, see the `Newton Installation Guide <https://newto
       pip install -e /path/to/protomotions
       pip install -r /path/to/protomotions/requirements_newton.txt
 
-   A downstream uv project can use ``uv add "protomotions[newton]"`` instead.
+   A downstream uv project can use the Git dependency described in
+   `Using ProtoMotions as a dependency (uv)`_ instead.
 
 .. note::
 
@@ -254,7 +309,8 @@ MuJoCo is a CPU-only backend for quick testing and debugging without GPU. It sup
       pip install -e /path/to/protomotions
       pip install -r /path/to/protomotions/requirements_mujoco.txt
 
-   A downstream uv project can use ``uv add "protomotions[mujoco]"`` instead.
+   A downstream uv project can use the Git dependency described in
+   `Using ProtoMotions as a dependency (uv)`_ instead.
 
 4. Run inference with MuJoCo:
 
