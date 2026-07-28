@@ -10,7 +10,7 @@ You can install the simulation of your choice, and the simulation backend is sel
 
    <p>
      <a href="https://pypi.org/project/newton/1.0.0/"><img src="https://img.shields.io/badge/Newton-1.0.0-brightgreen.svg" alt="Newton"></a>
-     <a href="https://github.com/isaac-sim/IsaacLab/releases/tag/v2.3.0"><img src="https://img.shields.io/badge/IsaacLab-2.3.0-blue.svg" alt="IsaacLab"></a>
+     <a href="https://github.com/isaac-sim/IsaacLab/releases/tag/v2.3.2"><img src="https://img.shields.io/badge/IsaacLab-2.3.2-blue.svg" alt="IsaacLab"></a>
      <a href="https://developer.nvidia.com/isaac-gym"><img src="https://img.shields.io/badge/IsaacGym-Preview_4-blue.svg" alt="IsaacGym"></a>
      <a href="https://github.com/Genesis-Embodied-AI/Genesis"><img src="https://img.shields.io/badge/Genesis-untested-lightgrey.svg" alt="Genesis"></a>
      <a href="https://github.com/google-deepmind/mujoco"><img src="https://img.shields.io/badge/MuJoCo-3.0+-orange.svg" alt="MuJoCo"></a>
@@ -62,8 +62,8 @@ files are checked out and not still Git LFS pointer files. Pointer files start
 with ``version https://git-lfs.github.com/spec/v1`` and can cause errors such as
 ``is not a valid usda layer`` when IsaacLab loads robot assets.
 
-Using ProtoMotions as a dependency (pip/uv)
--------------------------------------------
+Using ProtoMotions as a dependency (uv)
+---------------------------------------
 
 Install ProtoMotions directly from Git. Robot meshes and USD assets are Git LFS
 objects, so the source must be fetched with LFS enabled — ``lfs = true``
@@ -92,8 +92,12 @@ Then run training through the installed entry point:
 
 .. code-block:: bash
 
-   uv run protomotions train-agent --robot-name g1 --simulator newton \
-       --experiment-path experiments/my_experiment.py
+   uv run protomotions train-agent \
+       --robot-name g1 --simulator newton \
+       --experiment-path experiments/my_experiment.py \
+       --experiment-name my_run \
+       --motion-file data/my_motion.pt \
+       --num-envs 4096 --batch-size 16384
 
 ``uv run protomotions info`` prints the resolved asset root and which simulator
 modules are importable.
@@ -198,7 +202,7 @@ For full installation details, see the `IsaacLab Pip Installation Guide <https:/
    .. code-block:: bash
 
       uv pip install torch==2.7.0 torchvision==0.22.0
-      uv pip install isaaclab[isaacsim,all]==2.3.0 --extra-index-url https://pypi.nvidia.com
+      uv pip install isaaclab[isaacsim,all]==2.3.2.post1 --extra-index-url https://pypi.nvidia.com
 
 3. Install ProtoMotions and dependencies:
 

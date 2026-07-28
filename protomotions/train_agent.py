@@ -710,7 +710,7 @@ def main():
     if args.use_slurm:
         callbacks.append(
             {
-                "_target_": "agents.callbacks.slurm_autoresume_srun.AutoResumeCallbackSrun",
+                "_target_": "protomotions.agents.callbacks.slurm_autoresume_srun.AutoResumeCallbackSrun",
                 "autoresume_after": 12600,
             }
         )
