@@ -186,6 +186,8 @@ Once configured, launch training from your local machine:
      - Number of auto-resume attempts (default: 5)
    * - ``--use-wandb``
      - Enable Weights & Biases logging
+   * - ``--wandb-project``
+     - Weights & Biases project name (default: ``physical_animation``)
 
 Multi-Node Training
 -------------------

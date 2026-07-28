@@ -160,6 +160,12 @@ def create_parser():
     parser.add_argument("--training-max-steps", type=int, default=10000000000, help="Max training steps")
     parser.add_argument("--checkpoint", type=str, default=None, help="Resume from checkpoint")
     parser.add_argument("--use-wandb", action="store_true", help="Enable Weights & Biases logging")
+    parser.add_argument(
+        "--wandb-project",
+        type=str,
+        default="physical_animation",
+        help="Weights & Biases project name",
+    )
     parser.add_argument("--use-slurm", action="store_true", default=True, help="Enable SLURM autoresume")
     parser.add_argument("--ngpu", type=int, default=1, help="GPUs per node")
     parser.add_argument("--nodes", type=int, default=1, help="Number of nodes")
@@ -225,7 +231,7 @@ def build_job_command(args, exp_folder, python_path):
     if args.scenes_file:
         job_cmd += f"--scenes-file={args.scenes_file} "
     if args.use_wandb:
-        job_cmd += "--use-wandb "
+        job_cmd += f"--use-wandb --wandb-project={args.wandb_project} "
     if args.checkpoint:
         job_cmd += f"--checkpoint={args.checkpoint} "
     if args.overrides:

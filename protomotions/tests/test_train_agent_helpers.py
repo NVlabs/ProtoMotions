@@ -138,7 +138,47 @@ def test_train_agent_parser_and_bool_helpers(monkeypatch, tmp_path):
     )
     assert parsed.headless is False
     assert parsed.torch_deterministic is True
+    assert parsed.wandb_project == "physical_animation"
     assert parsed.create_config_only is True
+
+    parsed = parser.parse_args(
+        [
+            "--robot-name",
+            "g1",
+            "--simulator",
+            "newton",
+            "--num-envs",
+            "2",
+            "--batch-size",
+            "4",
+            "--motion-file",
+            "m.pt",
+            "--experiment-path",
+            "exp.py",
+            "--experiment-name",
+            "parser",
+            "--wandb-project",
+            "custom-project",
+        ]
+    )
+    assert parsed.wandb_project == "custom-project"
+
+
+def test_build_wandb_logger_config_uses_cli_project(monkeypatch, tmp_path):
+    module = _load_train_agent_globals(monkeypatch, tmp_path)
+    config = module["build_wandb_logger_config"](
+        SimpleNamespace(
+            experiment_name="unit-run",
+            wandb_project="custom-project",
+        ),
+        tmp_path,
+        "wandb-id",
+    )
+
+    assert config["name"] == "unit-run"
+    assert config["project"] == "custom-project"
+    assert config["save_dir"] == tmp_path
+    assert config["id"] == "wandb-id"
 
 
 def test_detect_checkpoint_mode_handles_fresh_warm_start_and_resume(
