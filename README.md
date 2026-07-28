@@ -8,7 +8,7 @@
 [![Documentation](https://img.shields.io/badge/docs-online-green.svg)](https://protomotions.github.io/)
 
 [![Newton](https://img.shields.io/badge/Newton-e7a737c-brightgreen.svg)](https://github.com/newton-physics/newton/commit/e7a737c)
-[![IsaacLab](https://img.shields.io/badge/IsaacLab-2.3.2-blue.svg)](https://github.com/isaac-sim/IsaacLab/releases/tag/v2.3.2)
+[![IsaacLab](https://img.shields.io/badge/IsaacLab-2.3.0-blue.svg)](https://github.com/isaac-sim/IsaacLab/releases/tag/v2.3.0)
 [![IsaacGym](https://img.shields.io/badge/IsaacGym-Preview_4-blue.svg)](https://developer.nvidia.com/isaac-gym)
 [![Genesis](https://img.shields.io/badge/Genesis-untested-lightgrey.svg)](https://github.com/Genesis-Embodied-AI/Genesis)
 [![MuJoCo](https://img.shields.io/badge/MuJoCo-3.0+-orange.svg)](https://github.com/google-deepmind/mujoco)

@@ -10,7 +10,7 @@ You can install the simulation of your choice, and the simulation backend is sel
 
    <p>
      <a href="https://pypi.org/project/newton/1.0.0/"><img src="https://img.shields.io/badge/Newton-1.0.0-brightgreen.svg" alt="Newton"></a>
-     <a href="https://github.com/isaac-sim/IsaacLab/releases/tag/v2.3.2"><img src="https://img.shields.io/badge/IsaacLab-2.3.2-blue.svg" alt="IsaacLab"></a>
+     <a href="https://github.com/isaac-sim/IsaacLab/releases/tag/v2.3.0"><img src="https://img.shields.io/badge/IsaacLab-2.3.0-blue.svg" alt="IsaacLab"></a>
      <a href="https://developer.nvidia.com/isaac-gym"><img src="https://img.shields.io/badge/IsaacGym-Preview_4-blue.svg" alt="IsaacGym"></a>
      <a href="https://github.com/Genesis-Embodied-AI/Genesis"><img src="https://img.shields.io/badge/Genesis-untested-lightgrey.svg" alt="Genesis"></a>
      <a href="https://github.com/google-deepmind/mujoco"><img src="https://img.shields.io/badge/MuJoCo-3.0+-orange.svg" alt="MuJoCo"></a>
@@ -130,6 +130,8 @@ running ``uv sync``:
      "sys_platform == 'linux' and platform_machine == 'x86_64'",
    ]
    index-strategy = "first-index"
+   # Required by Isaac Lab 2.3.0's legacy flatdict build.
+   build-constraint-dependencies = ["setuptools<81"]
 
    [[tool.uv.index]]
    name = "pytorch-cu128"
@@ -202,7 +204,7 @@ For full installation details, see the `IsaacLab Pip Installation Guide <https:/
    .. code-block:: bash
 
       uv pip install torch==2.7.0 torchvision==0.22.0
-      uv pip install isaaclab[isaacsim,all]==2.3.2.post1 --extra-index-url https://pypi.nvidia.com
+      uv pip install isaaclab[isaacsim,all]==2.3.0 --extra-index-url https://pypi.nvidia.com
 
 3. Install ProtoMotions and dependencies:
 
