@@ -147,6 +147,14 @@ For temporary overrides, use a new experiment name.
 """
 
 
+def positive_int(value):
+    """Parse a strictly positive integer CLI value."""
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be greater than zero")
+    return parsed
+
+
 def create_parser():
     """Create and configure the argument parser."""
     parser = argparse.ArgumentParser(
@@ -240,11 +248,21 @@ def create_parser():
         default=False,
         help="Enable deterministic PyTorch operations",
     )
-    parser.add_argument(
+    training_limit_group = parser.add_mutually_exclusive_group()
+    training_limit_group.add_argument(
         "--training-max-steps",
         type=int,
         default=10000000000000,
         help="Maximum number of training steps. Default to 'loads of steps'.",
+    )
+    training_limit_group.add_argument(
+        "--training-max-iterations",
+        type=positive_int,
+        default=None,
+        help=(
+            "Maximum number of complete training iterations. Each iteration "
+            "collects one rollout and performs its optimization updates."
+        ),
     )
     parser.add_argument(
         "--overrides",
@@ -528,6 +546,13 @@ def try_log_hyperparams_to_wandb(
                 log.warning(f"Could not log hyperparams to wandb (non-critical): {e}")
 
 
+def apply_training_iteration_limit(args, agent_config):
+    """Apply the optional CLI iteration limit to a freshly built agent config."""
+    max_iterations = getattr(args, "training_max_iterations", None)
+    if max_iterations is not None:
+        agent_config.training_max_iterations = max_iterations
+
+
 def main():
     global parser, args
     torch.set_float32_matmul_precision("high")
@@ -639,6 +664,8 @@ def main():
         motion_lib_config = configs["motion_lib"]
         env_config = configs["env"]
         agent_config = configs["agent"]
+
+        apply_training_iteration_limit(args, agent_config)
 
         # Apply CLI overrides (highest priority)
         # NOTE: These overrides are saved to resolved_configs.pt and become permanent!

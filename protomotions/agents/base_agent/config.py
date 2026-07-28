@@ -133,6 +133,15 @@ class BaseAgentConfig:
 
     batch_size: int = field(metadata={"help": "Training batch size."})
     training_max_steps: int = field(metadata={"help": "Maximum training steps."})
+    training_max_iterations: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Maximum number of complete rollout and optimization iterations. "
+                "When set, this takes precedence over training_max_steps."
+            )
+        },
+    )
 
     _target_: str = "protomotions.agents.base_agent.agent.BaseAgent"
 
