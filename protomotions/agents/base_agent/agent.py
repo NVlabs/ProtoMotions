@@ -48,6 +48,7 @@ from protomotions.agents.utils.normalization import (
 from rich.progress import track
 from protomotions.agents.evaluators.base_evaluator import BaseEvaluator
 from protomotions.agents.base_agent.config import BaseAgentConfig
+from protomotions.agents.base_agent.training_limits import resolve_training_max_epochs
 from protomotions.agents.utils.training import (
     aggregate_scalar_metrics,
     handle_model_grad_clipping,
@@ -118,8 +119,8 @@ class BaseAgent:
         all_ne = self.fabric.all_gather(local_ne)  # [world_size] or [world_size, 1]
         self._total_envs: int = int(all_ne.sum().item())
 
-        self.max_epochs: int = (
-            self.config.training_max_steps // self._total_envs // self.num_steps
+        self.max_epochs = resolve_training_max_epochs(
+            self.config, self._total_envs, self.num_steps
         )
 
         # Validate max_num_batches matches across all ranks (prevents DDP deadlock).
