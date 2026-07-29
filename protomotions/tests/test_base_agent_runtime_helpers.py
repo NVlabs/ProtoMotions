@@ -14,6 +14,7 @@ from torch import nn
 from protomotions.agents.base_agent import agent as base_agent_module
 from protomotions.agents.base_agent.agent import BaseAgent
 from protomotions.agents.base_agent.config import (
+    BaseAgentConfig,
     BaseModelConfig,
     MaxEpisodeLengthManagerConfig,
 )
@@ -278,11 +279,12 @@ def test_base_agent_init_sets_distributed_sizes_reward_norm_and_evaluator(
         motion_manager="motion-manager",
         num_envs=2,
     )
-    config = SimpleNamespace(
+    config = BaseAgentConfig(
         num_steps=3,
         num_mini_epochs=2,
         gamma=0.95,
         training_max_steps=300,
+        training_max_iterations=None,
         batch_size=4,
         normalize_rewards=True,
         normalized_reward_clamp_value=7.0,
@@ -312,11 +314,12 @@ def test_base_agent_init_rejects_mismatched_batch_counts(tmp_path):
             return torch.tensor([[1], [2]], device=value.device)
 
     env = SimpleNamespace(motion_lib=None, motion_manager=None, num_envs=2)
-    config = SimpleNamespace(
+    config = BaseAgentConfig(
         num_steps=3,
         num_mini_epochs=2,
         gamma=0.99,
         training_max_steps=100,
+        training_max_iterations=None,
         batch_size=4,
         normalize_rewards=False,
         evaluator=SimpleNamespace(_target_="unused"),

@@ -524,7 +524,7 @@ def try_log_hyperparams_to_wandb(
 
 def apply_training_iteration_limit(args, agent_config):
     """Apply the optional CLI iteration limit to a freshly built agent config."""
-    max_iterations = getattr(args, "training_max_iterations", None)
+    max_iterations = args.training_max_iterations
     if max_iterations is not None:
         agent_config.training_max_iterations = max_iterations
 
