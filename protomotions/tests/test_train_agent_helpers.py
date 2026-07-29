@@ -542,6 +542,7 @@ def test_main_create_config_only_builds_configs_and_exits_before_training(
         overrides=[],
         ngpu=1,
         nodes=1,
+        training_max_iterations=None,
     )
     fake_experiment = SimpleNamespace(
         terrain_config=lambda: "terrain",
@@ -642,6 +643,7 @@ def test_main_config_only_registers_custom_args_and_applies_cli_overrides(
         overrides=["env.value=17"],
         ngpu=1,
         nodes=1,
+        training_max_iterations=None,
     )
 
     fake_parser = SimpleNamespace(
@@ -734,6 +736,7 @@ def test_main_fresh_training_path_wires_fabric_components_agent_and_saves(
         headless=True,
         seed=10,
         torch_deterministic=True,
+        training_max_iterations=None,
     )
     robot_config = SimpleNamespace(_target_="robot.Target")
     simulator_config = SimpleNamespace(_target_="sim.Target")
