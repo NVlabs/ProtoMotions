@@ -85,11 +85,12 @@ isaacgym = []
 # Isaac Sim publishes Linux x86_64 wheels only, and keeping them lets `uv lock`
 # resolve on non-Linux machines instead of hard-failing the whole lockfile.
 isaaclab = [
-  "isaaclab[all,isaacsim]==2.3.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "isaaclab[all,isaacsim]==2.3.2.post1; sys_platform == 'linux' and platform_machine == 'x86_64'",
   "isaacsim[all]==5.1.0.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
   "onnxruntime>=1.17",
   "tensordict==0.9.0",
   "torch==2.7.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "torchaudio==2.7.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
   "torchvision==0.22.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
   "wandb==0.23.0",
 ]
