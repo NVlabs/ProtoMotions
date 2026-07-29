@@ -234,7 +234,10 @@ Then enable experiment tracking:
 
    python protomotions/train_agent.py \
        ... \
-       --use-wandb
+       --use-wandb \
+       --wandb-project my_project
+
+The default W&B project is ``physical_animation``.
 
 Key metrics to monitor:
 

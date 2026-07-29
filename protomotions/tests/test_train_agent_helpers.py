@@ -702,6 +702,7 @@ def test_main_fresh_training_path_wires_fabric_components_agent_and_saves(
         ngpu=2,
         nodes=1,
         use_wandb=True,
+        wandb_project="custom-project",
         use_slurm=True,
         simulator="isaacgym",
         headless=True,
@@ -909,6 +910,12 @@ def test_main_fresh_training_path_wires_fabric_components_agent_and_saves(
     assert build_call[1]["save_dir"] == "weights"
     fabric_call = next(call for call in calls if call[0] == "fabric_init")
     assert len(fabric_call[1]["loggers"]) == 2
+    wandb_logger = next(
+        logger
+        for logger in fabric_call[1]["loggers"]
+        if logger["_target_"].endswith("WandbLogger")
+    )
+    assert wandb_logger["project"] == "custom-project"
     assert len(fabric_call[1]["callbacks"]) == 1
 
 
