@@ -118,9 +118,7 @@ class BaseAgent:
         all_ne = self.fabric.all_gather(local_ne)  # [world_size] or [world_size, 1]
         self._total_envs: int = int(all_ne.sum().item())
 
-        self.max_epochs: int = (
-            self.config.training_max_steps // self._total_envs // self.num_steps
-        )
+        self.max_epochs = self.config.resolve_max_epochs(self._total_envs)
 
         # Validate max_num_batches matches across all ranks (prevents DDP deadlock).
         local_mnb = torch.tensor(

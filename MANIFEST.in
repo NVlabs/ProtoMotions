@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+include LICENSE.md
+include README.md
+include pyproject.toml
+recursive-include legal *.txt
+
+# Every simulator section of the installation guide still instructs users to run
+# `pip install -r requirements_<sim>.txt`, and the experiment files under
+# examples/ drive the entire config system (`--experiment-path`). Both are
+# useless to an sdist consumer if they are not shipped.
+include requirements_*.txt
+recursive-include examples/experiments *.py
+
+# SMPL/SMPL-H assets are excluded from every built artifact; see the
+# exclude-package-data note in pyproject.toml and legal/ section 4.
+recursive-exclude protomotions/data/assets/mesh/smpl *
+exclude protomotions/data/assets/mjcf/smpl*.xml
+exclude protomotions/data/assets/usd/smpl*.usda

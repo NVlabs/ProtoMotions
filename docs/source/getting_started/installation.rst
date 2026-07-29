@@ -10,7 +10,7 @@ You can install the simulation of your choice, and the simulation backend is sel
 
    <p>
      <a href="https://pypi.org/project/newton/1.0.0/"><img src="https://img.shields.io/badge/Newton-1.0.0-brightgreen.svg" alt="Newton"></a>
-     <a href="https://github.com/isaac-sim/IsaacLab/releases/tag/v2.3.0"><img src="https://img.shields.io/badge/IsaacLab-2.3.0-blue.svg" alt="IsaacLab"></a>
+     <a href="https://github.com/isaac-sim/IsaacLab/releases/tag/v2.3.2"><img src="https://img.shields.io/badge/IsaacLab-2.3.2-blue.svg" alt="IsaacLab"></a>
      <a href="https://developer.nvidia.com/isaac-gym"><img src="https://img.shields.io/badge/IsaacGym-Preview_4-blue.svg" alt="IsaacGym"></a>
      <a href="https://github.com/Genesis-Embodied-AI/Genesis"><img src="https://img.shields.io/badge/Genesis-untested-lightgrey.svg" alt="Genesis"></a>
      <a href="https://github.com/google-deepmind/mujoco"><img src="https://img.shields.io/badge/MuJoCo-3.0+-orange.svg" alt="MuJoCo"></a>
@@ -20,6 +20,31 @@ You can install the simulation of your choice, and the simulation backend is sel
 
    We recommend creating a **separate virtual environment** for each simulator to avoid dependency conflicts.
    We recommend using **conda** or **venv** for IsaacGym, Genesis, and MuJoCo, and **uv** for IsaacLab and Newton.
+
+Which installation path?
+------------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 30 48
+
+   * - Simulator
+     - Supported install
+     - Notes
+   * - MuJoCo, Newton, Genesis
+     - Source checkout **or** uv dependency
+     - Genesis is experimental.
+   * - IsaacLab
+     - Source checkout **or** uv dependency
+     - Needs NVIDIA's package index and the CUDA 12.8 PyTorch index
+       (see below). Python 3.11, Linux x86_64 only.
+   * - IsaacGym
+     - **Source checkout only**
+     - IsaacGym is not distributed on PyPI: you download it from NVIDIA and
+       install it by hand, and it requires **Python 3.8**.
+
+Use a source checkout if you want the pretrained checkpoints, motion files, or
+the ``examples/`` experiments — those live in Git LFS, not in the package.
 
 Prerequisites
 -------------
@@ -36,6 +61,95 @@ USD assets are large. If you fetch a subset of assets manually, make sure the
 files are checked out and not still Git LFS pointer files. Pointer files start
 with ``version https://git-lfs.github.com/spec/v1`` and can cause errors such as
 ``is not a valid usda layer`` when IsaacLab loads robot assets.
+
+Using ProtoMotions as a dependency (uv)
+---------------------------------------
+
+Install ProtoMotions directly from Git. Robot meshes and USD assets are Git LFS
+objects, so the source must be fetched with LFS enabled — ``lfs = true``
+requires uv 0.11.32+:
+
+.. code-block:: bash
+
+   uv init --python 3.11 my-project
+   cd my-project
+   uv add --lfs "protomotions[newton] @ git+https://github.com/NVlabs/ProtoMotions.git"
+
+Equivalently, configure the dependency in the downstream ``pyproject.toml``:
+
+.. code-block:: toml
+
+   [project]
+   dependencies = ["protomotions[newton]"] # or [mujoco] / [isaaclab] / [genesis]
+
+   [tool.uv]
+   required-version = ">=0.11.32"
+
+   [tool.uv.sources]
+   protomotions = { git = "https://github.com/NVlabs/ProtoMotions.git", lfs = true }
+
+Then run training through the installed entry point:
+
+.. code-block:: bash
+
+   uv run protomotions train-agent \
+       --robot-name g1 --simulator newton \
+       --experiment-path experiments/my_experiment.py \
+       --experiment-name my_run \
+       --motion-file data/my_motion.pt \
+       --num-envs 4096 --batch-size 16384
+
+``uv run protomotions info`` prints the resolved asset root and which simulator
+modules are importable.
+
+The package ships the Python modules and the full robot asset tree **except**
+the SMPL/SMPL-H assets, which carry their own licence terms. Pretrained
+checkpoints, motion files, and the ``examples/`` experiments are not included;
+keep a Git LFS checkout and set ``PROTOMOTIONS_ASSET_ROOT`` if you need them.
+
+IsaacLab as a dependency
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+IsaacLab projects also need NVIDIA's package index and the CUDA 12.8 PyTorch
+index. Add these entries to the downstream project's ``pyproject.toml`` before
+running ``uv sync``:
+
+.. code-block:: toml
+
+   [project]
+   requires-python = "==3.11.*"
+   dependencies = [
+     "protomotions[isaaclab]",
+     "torch==2.7.0",
+     "torchaudio==2.7.0",
+     "torchvision==0.22.0",
+   ]
+
+   [tool.uv]
+   required-version = ">=0.11.32"
+   environments = [
+     "sys_platform == 'linux' and platform_machine == 'x86_64'",
+   ]
+   index-strategy = "first-index"
+
+   [[tool.uv.index]]
+   name = "pytorch-cu128"
+   url = "https://download.pytorch.org/whl/cu128"
+   explicit = true
+
+   [[tool.uv.index]]
+   name = "nvidia"
+   url = "https://pypi.nvidia.com"
+
+   [tool.uv.sources]
+   protomotions = { git = "https://github.com/NVlabs/ProtoMotions.git", lfs = true }
+   torch = { index = "pytorch-cu128" }
+   torchaudio = { index = "pytorch-cu128" }
+   torchvision = { index = "pytorch-cu128" }
+
+Core package metadata requires ``torch>=2.2`` but does not select a PyTorch
+index or CUDA build. The downstream environment remains responsible for
+choosing the wheel that matches its simulator, CUDA runtime, and driver.
 
 Choose Your Simulator(s)
 ------------------------
@@ -89,8 +203,8 @@ For full installation details, see the `IsaacLab Pip Installation Guide <https:/
 
    .. code-block:: bash
 
-      uv pip install torch==2.7.0 torchvision==0.22.0
-      uv pip install isaaclab[isaacsim,all]==2.3.0 --extra-index-url https://pypi.nvidia.com
+      uv pip install torch==2.7.0 torchaudio==2.7.0 torchvision==0.22.0
+      uv pip install isaaclab[isaacsim,all]==2.3.2.post1 --extra-index-url https://pypi.nvidia.com
 
 3. Install ProtoMotions and dependencies:
 

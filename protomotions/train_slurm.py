@@ -157,7 +157,19 @@ def create_parser():
     # Optional arguments
     parser.add_argument("--scenes-file", type=str, default=None, help="Path to scenes file (optional)")
     parser.add_argument("--headless", default=True, help="Run headless (no GUI)")
-    parser.add_argument("--training-max-steps", type=int, default=10000000000, help="Max training steps")
+    training_limit_group = parser.add_mutually_exclusive_group()
+    training_limit_group.add_argument(
+        "--training-max-steps",
+        type=int,
+        default=10000000000,
+        help="Max training steps",
+    )
+    training_limit_group.add_argument(
+        "--training-max-iterations",
+        type=int,
+        default=None,
+        help="Max complete training iterations",
+    )
     parser.add_argument("--checkpoint", type=str, default=None, help="Resume from checkpoint")
     parser.add_argument("--use-wandb", action="store_true", help="Enable Weights & Biases logging")
     parser.add_argument(
@@ -220,13 +232,17 @@ def build_job_command(args, exp_folder, python_path):
         f"--motion-file={args.motion_file} "
         f"--ngpu={args.ngpu} "
         f"--nodes={args.nodes} "
-        f"--training-max-steps={args.training_max_steps} "
         f"--experiment-name={args.experiment_name} "
         f"--experiment-path={args.experiment_path} "
         f"--num-envs={args.num_envs} "
         f"--batch-size={args.batch_size} "
         f"--use-slurm "
     )
+
+    if args.training_max_iterations is not None:
+        job_cmd += f"--training-max-iterations={args.training_max_iterations} "
+    else:
+        job_cmd += f"--training-max-steps={args.training_max_steps} "
 
     if args.scenes_file:
         job_cmd += f"--scenes-file={args.scenes_file} "

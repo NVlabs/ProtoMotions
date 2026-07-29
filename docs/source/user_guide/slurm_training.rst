@@ -184,6 +184,8 @@ Once configured, launch training from your local machine:
      - Job time limit (HH:MM:SS)
    * - ``--array-size``
      - Number of auto-resume attempts (default: 5)
+   * - ``--training-max-iterations``
+     - Maximum complete rollout and optimization iterations
    * - ``--use-wandb``
      - Enable Weights & Biases logging
    * - ``--wandb-project``

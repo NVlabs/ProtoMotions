@@ -97,6 +97,13 @@ These eval metrics don't use prioritized sampling and give true performance.
 Train Agent Modes
 -----------------
 
+``--training-max-iterations N`` sets the absolute number of rollout and
+optimization iterations for the experiment. Each iteration collects one
+``num_steps`` rollout from every environment and performs the configured
+optimization updates. If an experiment is resumed at iteration 20 with a limit
+of 100, training continues to iteration 100; it does not run 100 additional
+iterations.
+
 ``train_agent.py`` has three modes:
 
 **1. Fresh Start:**
@@ -174,4 +181,3 @@ This plays motions kinematically (sets poses directly, no simulation). Use to ve
 * Motion data is correct
 * Scene objects are positioned correctly
 * Retargeting didn't break anything
-

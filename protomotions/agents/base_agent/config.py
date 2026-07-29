@@ -133,6 +133,15 @@ class BaseAgentConfig:
 
     batch_size: int = field(metadata={"help": "Training batch size."})
     training_max_steps: int = field(metadata={"help": "Maximum training steps."})
+    training_max_iterations: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Maximum number of complete rollout and optimization iterations. "
+                "When set, this takes precedence over training_max_steps."
+            )
+        },
+    )
 
     _target_: str = "protomotions.agents.base_agent.agent.BaseAgent"
 
@@ -210,3 +219,12 @@ class BaseAgentConfig:
             "Set to e.g. 0.99 to track non-stationary reward distributions."
         },
     )
+
+    def resolve_max_epochs(self, total_envs: int) -> int:
+        """Resolve the absolute number of whole training iterations."""
+        if self.training_max_iterations is not None:
+            if self.training_max_iterations <= 0:
+                raise ValueError("training_max_iterations must be greater than zero")
+            return self.training_max_iterations
+
+        return self.training_max_steps // total_envs // self.num_steps

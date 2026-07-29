@@ -23,6 +23,7 @@ Key Features:
 
 from dataclasses import dataclass, field
 from protomotions.components.pose_lib import ControlInfo, KinematicInfo
+from protomotions.assets import DEFAULT_ASSET_ROOT, resolve_asset_root
 from protomotions.simulator.base_simulator.config import RobotNoiseConfig
 from protomotions.simulator.isaacgym.config import IsaacGymSimParams
 from protomotions.simulator.isaaclab.config import IsaacLabSimParams
@@ -85,7 +86,10 @@ class RobotAssetConfig:
     """Configuration for robot asset properties."""
 
     # Optional fields with defaults
-    asset_root: str = "protomotions/data/assets"
+    # Stored as a portable, checkout-relative path so that configs pickled into
+    # resolved_configs*.pt stay valid when a run is moved between machines.
+    # Resolved to a concrete directory at read time by resolve_asset_root().
+    asset_root: str = DEFAULT_ASSET_ROOT
     self_collisions: bool = True
 
     # Optional fields
@@ -147,7 +151,9 @@ class ControlConfig:
             from protomotions.components.pose_lib import extract_control_info
 
             self.control_info = extract_control_info(
-                mjcf_path=os.path.join(asset.asset_root, asset.asset_file_name),
+                mjcf_path=os.path.join(
+                    resolve_asset_root(asset.asset_root), asset.asset_file_name
+                ),
                 override_control_info=self.override_control_info,
             )
 
@@ -223,7 +229,9 @@ class RobotConfig:
         from protomotions.components.pose_lib import extract_kinematic_info
 
         self.kinematic_info = extract_kinematic_info(
-            os.path.join(self.asset.asset_root, self.asset.asset_file_name)
+            os.path.join(
+                resolve_asset_root(self.asset.asset_root), self.asset.asset_file_name
+            )
         )
 
         # Resolve anchor_body_index from anchor_body_name

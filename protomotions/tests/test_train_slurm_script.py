@@ -119,6 +119,31 @@ def test_train_slurm_submission_builds_sbatch_script_and_summary(
     assert any("sbatch" in cmd for cmd, _ in calls)
 
 
+def test_train_slurm_forwards_iteration_limit(tmp_path, monkeypatch):
+    experiment = tmp_path / "agent_experiment.py"
+    experiment.write_text("# config\n")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda cmd, **kwargs: SimpleNamespace(
+            returncode=0, stdout="Submitted batch job 12345\n"
+        ),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        _base_argv(experiment) + ["--training-max-iterations", "30"],
+    )
+
+    runpy.run_path(TRAIN_SLURM_PATH, run_name="__main__")
+
+    script = next((tmp_path / "tmp").glob("slurm_*.sh")).read_text()
+    assert "--training-max-iterations=30" in script
+    assert "--training-max-steps=" not in script
+
+
 def test_train_slurm_subprocess_run_raises_on_error(tmp_path, monkeypatch):
     experiment = tmp_path / "experiment.py"
     experiment.write_text("# config\n")
