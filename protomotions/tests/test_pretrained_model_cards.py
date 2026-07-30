@@ -5,6 +5,8 @@ import re
 from pathlib import Path
 from typing import List
 
+import torch
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PRETRAINED_ROOT = REPO_ROOT / "data/pretrained_models"
@@ -35,6 +37,8 @@ PRIVATE_PATTERNS = (
 )
 G1_DEPLOY_DIR = PRETRAINED_ROOT / "motion_tracker/g1-bones-deploy"
 SOMA_CONTINUOUS_DIR = PRETRAINED_ROOT / "motion_tracker/soma-bones"
+SOMA_FSQ_DIR = PRETRAINED_ROOT / "motion_tracker/soma_bones_fsq"
+SOMA_GPC_PRIOR_DIR = PRETRAINED_ROOT / "gpc_prior/soma_bones"
 
 
 def _model_dirs() -> List[Path]:
@@ -160,9 +164,9 @@ def test_gpc_docs_reference_shipped_assets_and_current_entry_points():
     ]
     assert missing_experiments == []
     assert (
-        "agent.pretrained_modules.prior.checkpoint_path=/path/to/prior/last.ckpt"
-        in gpc_guide
-    )
+        "agent.pretrained_modules.prior.checkpoint_path="
+        "data/pretrained_models/gpc_prior/soma_bones/inference_last.ckpt"
+    ) in gpc_guide
 
     required_assets = (
         REPO_ROOT / "data/motion_for_trackers/crouch_soma23.pt",
@@ -181,6 +185,32 @@ def test_gpc_docs_reference_shipped_assets_and_current_entry_points():
     assert "GPC and PEFT guide" in readme
     assert "protomotions/data/assets/mjcf/" in readme
     assert "protomotions/data/robots/" not in readme
+
+
+def test_soma_gpc_artifacts_use_current_public_config_contracts():
+    tracker_config = torch.load(
+        SOMA_FSQ_DIR / "resolved_configs.pt", weights_only=False
+    )
+    prior_config = torch.load(
+        SOMA_GPC_PRIOR_DIR / "resolved_configs.pt", weights_only=False
+    )
+    prior_inference_config = torch.load(
+        SOMA_GPC_PRIOR_DIR / "resolved_configs_inference.pt",
+        weights_only=False,
+    )
+
+    assert not hasattr(tracker_config["env"], "recovery_reset")
+    assert prior_config["agent"].model.prior.context_encoder.in_keys == [
+        "max_coords_obs"
+    ]
+    assert prior_config["agent"].model.latent_decoder.checkpoint_path == (
+        "data/pretrained_models/motion_tracker/soma_bones_fsq/"
+        "inference_last.ckpt"
+    )
+    assert prior_inference_config["agent"].model.latent_decoder.checkpoint_path == ""
+    assert (
+        prior_inference_config["agent"].model.latent_decoder.module_config is not None
+    )
 
 
 def test_gpc_and_discrete_latent_modules_are_in_the_api_reference():

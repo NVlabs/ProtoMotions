@@ -53,6 +53,19 @@ if your local GPU memory is not enough to load the entire motion lib of AMASS.
        --motion-file data/motion_for_trackers/soma23_bones_seed_mini.pt \
        --simulator isaaclab
 
+   # Run the SOMA BONES-SEED FSQ tracker used by GPC
+   python protomotions/inference_agent.py \
+       --checkpoint data/pretrained_models/motion_tracker/soma_bones_fsq/inference_last.ckpt \
+       --motion-file data/motion_for_trackers/soma23_bones_seed_mini.pt \
+       --simulator isaaclab
+
+   # Run the SOMA GPC prior with its SOMA BONES-SEED FSQ decoder
+   python protomotions/inference_agent.py \
+       --checkpoint data/pretrained_models/gpc_prior/soma_bones/inference_last.ckpt \
+       --motion-file data/motion_for_trackers/crouch_soma23.pt \
+       --simulator isaaclab \
+       --num-envs 1
+
    # Run SMPL on flat terrain (requires AMASS MotionLib, see amass_preparation)
    python protomotions/inference_agent.py \
        --checkpoint data/pretrained_models/motion_tracker/smpl/last.ckpt \

@@ -254,7 +254,7 @@ only the prior path:
 
 .. code-block:: bash
 
-   --overrides agent.pretrained_modules.prior.checkpoint_path=/path/to/prior/last.ckpt
+   --overrides agent.pretrained_modules.prior.checkpoint_path=data/pretrained_models/gpc_prior/soma_bones/inference_last.ckpt
 
 The discrete-prior PEFT inference artifact is self-describing: ``--checkpoint``
 should point at the PEFT run's ``inference_last.ckpt``.

@@ -43,7 +43,7 @@ backend or version.
      - Discrete FSQ tracker used by GPC
      - IsaacLab only
      - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/motion_tracker/soma_bones_fsq/MODEL_CARD.md>`__
-   * - SOMA GPC prior
-     - Releasing soon
-     - Not yet released
-     - Model card will be added with the release
+   * - SOMA BONES-SEED GPC prior
+     - Unconditional discrete motion prior and PEFT base
+     - IsaacLab only
+     - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/gpc_prior/soma_bones/MODEL_CARD.md>`__

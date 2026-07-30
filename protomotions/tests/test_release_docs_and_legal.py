@@ -105,7 +105,6 @@ def test_release_docs_do_not_reference_removed_public_surfaces():
         "protomotions/data/robots/",
         "GPC Prior and PEFT",
         "arch.png",
-        "data/pretrained_models/gpc_prior",
         "TODO: Add videos",
     ]
     missing = [fragment for fragment in stale_fragments if fragment in public_text]
@@ -122,9 +121,10 @@ def test_quickstart_pretrained_table_matches_shipped_release_artifacts():
     quickstart = (REPO_ROOT / "docs/source/getting_started/quickstart.rst").read_text()
 
     assert "SOMA GPC prior" in quickstart
-    assert "Releasing soon" in quickstart
+    assert "Releasing soon" not in quickstart
     assert "SOMA BONES-SEED FSQ" in quickstart
     assert "data/pretrained_models/motion_tracker/soma_bones_fsq/inference_last.ckpt" in quickstart
+    assert "data/pretrained_models/gpc_prior/soma_bones/inference_last.ckpt" in quickstart
     assert "   * - Vaulting" not in quickstart
     assert "   * - MaskedMimic G1" not in quickstart
 
