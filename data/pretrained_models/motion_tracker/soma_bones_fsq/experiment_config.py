@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""FSQ tracker with heightless proprioception and surface vectors."""
+"""FSQ tracker over max-coordinates proprioception and target poses."""
 
 import argparse
 
@@ -20,9 +20,7 @@ def scene_lib_config(args: argparse.Namespace):
     from protomotions.components.scene_lib import SceneLibConfig
 
     scene_file = args.scenes_file if hasattr(args, "scenes_file") else None
-    return SceneLibConfig(
-        scene_file=scene_file,
-    )
+    return SceneLibConfig(scene_file=scene_file)
 
 
 def motion_lib_config(args: argparse.Namespace):
@@ -34,12 +32,12 @@ def motion_lib_config(args: argparse.Namespace):
 def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
     from protomotions.envs.action import make_pd_action_config
     from protomotions.envs.component_factories import (
+        contact_match_rew_factory,
         max_coords_obs_factory,
         mimic_target_poses_max_coords_factory,
         mimic_tracking_rewards_factory,
         pow_rew_factory,
         tracking_error_term_factory,
-        contact_match_rew_factory,
     )
     from protomotions.envs.control.mimic_control import MimicControlConfig
     from protomotions.envs.motion_manager.config import MimicMotionManagerConfig
@@ -56,9 +54,7 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
             )
         },
         observation_components={
-            "max_coords_obs": max_coords_obs_factory(
-                root_height_obs=True,
-            ),
+            "max_coords_obs": max_coords_obs_factory(root_height_obs=True),
             "mimic_target_poses": mimic_target_poses_max_coords_factory(
                 with_velocities=True,
             ),
