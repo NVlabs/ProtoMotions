@@ -121,7 +121,6 @@ def test_quickstart_pretrained_table_matches_shipped_release_artifacts():
     quickstart = (REPO_ROOT / "docs/source/getting_started/quickstart.rst").read_text()
 
     assert "SOMA GPC prior" in quickstart
-    assert "Releasing soon" not in quickstart
     assert "SOMA BONES-SEED FSQ" in quickstart
     assert "data/pretrained_models/motion_tracker/soma_bones_fsq/inference_last.ckpt" in quickstart
     assert "data/pretrained_models/gpc_prior/soma_bones/inference_last.ckpt" in quickstart

@@ -44,6 +44,6 @@ backend or version.
      - IsaacLab only
      - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/motion_tracker/soma_bones_fsq/MODEL_CARD.md>`__
    * - SOMA BONES-SEED GPC prior
-     - Unconditional discrete motion prior and PEFT base
+     - Unconditional discrete motion prior
      - IsaacLab only
      - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/gpc_prior/soma_bones/MODEL_CARD.md>`__
