@@ -54,8 +54,6 @@ transfer should not be assumed.
 
 ## Limitations
 
-- The saved configuration preserves a legacy MuJoCo target and is not evidence
-  of MuJoCo training or support. Use the documented IsaacLab invocation.
 - The compiled ONNX file is a legacy export and is not the support contract for
   the current PyTorch checkpoint.
 - The model requires the SOMA skeleton, joint ordering, PD gains, observation
@@ -66,6 +64,6 @@ transfer should not be assumed.
 
 This card was curated from the shipped checkpoint and compiled-model inventory,
 serialized configurations, the bundled experiment definition, BONES-SEED
-documentation, and the reproduced artifact limitation in issue #230.
+documentation.
 Machine-specific paths and internal experiment identifiers are intentionally
 omitted.

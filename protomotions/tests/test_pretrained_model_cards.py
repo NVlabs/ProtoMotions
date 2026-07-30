@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from dataclasses import asdict
 import re
 from pathlib import Path
 from typing import List
@@ -43,6 +44,15 @@ SOMA_GPC_PRIOR_DIR = PRETRAINED_ROOT / "gpc_prior/soma_bones"
 
 def _model_dirs() -> List[Path]:
     return sorted({checkpoint.parent for checkpoint in PRETRAINED_ROOT.glob("*/*/*.ckpt")})
+
+
+def test_pretrained_resolved_configs_use_current_dataclass_contracts():
+    config_paths = sorted(PRETRAINED_ROOT.glob("*/*/resolved_configs*.pt"))
+
+    for config_path in config_paths:
+        configs = torch.load(config_path, map_location="cpu", weights_only=False)
+        for config in configs.values():
+            asdict(config)
 
 
 def test_every_pretrained_model_directory_has_a_model_card():
