@@ -181,7 +181,8 @@ def test_train_slurm_wandb_local_key_is_passed_when_remote_missing(
     monkeypatch.setattr(
         sys,
         "argv",
-        _base_argv(experiment) + ["--use-wandb"],
+        _base_argv(experiment)
+        + ["--use-wandb", "--wandb-project", "custom-project"],
     )
 
     runpy.run_path(TRAIN_SLURM_PATH, run_name="__main__")
@@ -189,6 +190,7 @@ def test_train_slurm_wandb_local_key_is_passed_when_remote_missing(
     script = next((tmp_path / "tmp").glob("slurm_*.sh")).read_text()
     assert "WANDB_API_KEY=example-wandb-key" in script
     assert "--use-wandb" in script
+    assert "--wandb-project=custom-project" in script
 
 
 def test_train_slurm_wandb_remote_netrc_skips_api_key(

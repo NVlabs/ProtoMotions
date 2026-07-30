@@ -220,6 +220,12 @@ def create_parser():
         help="Enable Weights & Biases logging",
     )
     parser.add_argument(
+        "--wandb-project",
+        type=str,
+        default="physical_animation",
+        help="Weights & Biases project name",
+    )
+    parser.add_argument(
         "--use-slurm",
         action="store_true",
         default=False,
@@ -546,6 +552,21 @@ def try_log_hyperparams_to_wandb(
                 log.warning(f"Could not log hyperparams to wandb (non-critical): {e}")
 
 
+def build_wandb_logger_config(args, save_dir, wandb_id):
+    """Build the WandB logger configuration from CLI arguments."""
+    return {
+        "_target_": "lightning.pytorch.loggers.WandbLogger",
+        "name": args.experiment_name,
+        "save_dir": save_dir,
+        "project": args.wandb_project,
+        "tags": None,
+        "group": None,
+        "id": wandb_id,
+        "entity": None,
+        "resume": "allow",
+    }
+
+
 def apply_training_iteration_limit(args, agent_config):
     """Apply the optional CLI iteration limit to a freshly built agent config."""
     max_iterations = args.training_max_iterations
@@ -719,19 +740,7 @@ def main():
     ]
 
     if args.use_wandb:
-        loggers.append(
-            {
-                "_target_": "lightning.pytorch.loggers.WandbLogger",
-                "name": args.experiment_name,
-                "save_dir": save_dir,
-                "project": "physical_animation",
-                "tags": None,
-                "group": None,
-                "id": wandb_id,
-                "entity": None,
-                "resume": "allow",
-            }
-        )
+        loggers.append(build_wandb_logger_config(args, save_dir, wandb_id))
 
     callbacks = []
     if args.use_slurm:

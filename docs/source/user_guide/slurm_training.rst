@@ -188,6 +188,8 @@ Once configured, launch training from your local machine:
      - Maximum complete rollout and optimization iterations
    * - ``--use-wandb``
      - Enable Weights & Biases logging
+   * - ``--wandb-project``
+     - Weights & Biases project name (default: ``physical_animation``)
 
 Multi-Node Training
 -------------------
