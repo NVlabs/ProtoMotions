@@ -25,12 +25,12 @@ SOMA GPC prior.
 - Training simulator: **IsaacLab**.
 - Training method: PPO motion tracking with an FSQ actor bottleneck.
 - Training data: BONES-SEED motion represented with the SOMA skeleton.
-- Training environment: flat terrain with current state, previous actions, and
+- Training environment: flat terrain with maximum-coordinate current state and
   future tracking targets.
 
 ## Inputs and Outputs
 
-The tracker consumes the current SOMA state, previous action, and future target
+The tracker consumes the current SOMA maximum-coordinate state and future target
 poses. Its actor quantizes a latent representation into FSQ codes and decodes
 them into 66 joint actions.
 

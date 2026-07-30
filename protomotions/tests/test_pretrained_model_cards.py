@@ -210,6 +210,9 @@ def test_soma_gpc_artifacts_use_current_public_config_contracts():
     )
 
     assert not hasattr(tracker_config["env"], "recovery_reset")
+    assert tracker_config["agent"].model.actor.in_keys == [
+        "max_coords_obs", "mimic_target_poses"
+    ]
     assert prior_config["agent"].model.prior.context_encoder.in_keys == [
         "max_coords_obs"
     ]
