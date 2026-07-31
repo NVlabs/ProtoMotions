@@ -173,7 +173,7 @@ class MujocoSimulator(Simulator):
             s = str(sizes[i])
             body = ET.SubElement(worldbody, "body")
             body.set("name", f"projectile_{i}")
-            body.set("pos", f"0 0 {hide_z - hide_spacing * i}")
+            body.set("pos", f"{i} {i} {hide_z - hide_spacing * i}")
             joint = ET.SubElement(body, "joint")
             joint.set("type", "free")
             geom = ET.SubElement(body, "geom")

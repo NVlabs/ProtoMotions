@@ -477,7 +477,7 @@ class PushDomainRandomizationConfig:
 class ProjectileConfig:
     """Configuration for projectile cube throwing (J-key perturbation)."""
 
-    num_projectiles: int = 5
+    num_projectiles: int = 0
     cube_half_size_range: Tuple[float, float] = (0.05, 0.15)  # per-pool-index size
     density: float = 500.0  # kg/m^3
     speed_range: Tuple[float, float] = (30.0, 40.0)  # m/s (ASE uses 30-40)
@@ -588,7 +588,7 @@ class SimulatorConfig:
         metadata={
             "help": (
                 "Projectile cube perturbation configuration (J-key throws). "
-                "Set num_projectiles=0 to disable projectiles."
+                "Training defaults to no projectiles; inference enables one."
             )
         },
     )

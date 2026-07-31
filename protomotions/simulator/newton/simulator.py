@@ -211,7 +211,11 @@ class NewtonSimulator(Simulator):
         for i in range(self._proj_config.num_projectiles):
             s = proj_sizes[i]
             xform = wp.transform(
-                (0.0, 0.0, self._proj_config.hidden_z_for_index(i)),
+                (
+                    float(i),
+                    float(i),
+                    self._proj_config.hidden_z_for_index(i),
+                ),
                 (0.0, 0.0, 0.0, 1.0),
             )
             body = self.robot.add_body(xform=xform)
