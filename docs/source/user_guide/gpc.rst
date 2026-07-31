@@ -127,8 +127,9 @@ Common Commands
 The examples use the packaged SOMA crouch motion and FSQ tracker:
 ``data/motion_for_trackers/crouch_soma23.pt`` and
 ``data/pretrained_models/motion_tracker/soma_bones_fsq/inference_last.ckpt``.
-A packaged GPC prior is releasing soon. Until then, train the prior with the
-first command and use that run's ``last.ckpt`` for SFT and RLFT.
+A packaged GPC prior is available at
+``data/pretrained_models/gpc_prior/soma_bones/inference_last.ckpt``. Use it for
+SFT and RLFT, or train a prior with the first command below.
 
 Train the discrete GPC prior:
 
@@ -208,8 +209,8 @@ Checkpoint Roles During Training
 
 For the packaged SOMA assets, the tracker path is
 ``data/pretrained_models/motion_tracker/soma_bones_fsq/inference_last.ckpt``.
-The GPC prior is releasing soon; until then, use the ``last.ckpt`` produced by
-the prior-training command above.
+The packaged GPC prior is available at
+``data/pretrained_models/gpc_prior/soma_bones/inference_last.ckpt``.
 
 Inference
 ---------
