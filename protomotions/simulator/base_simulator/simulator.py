@@ -538,9 +538,9 @@ class Simulator(RecordingMixin, ABC):
         colocating every projectile rigid body at one world point causes a
         broadphase / actor-aliasing pathology in PhysX (issue #210) where the
         projectile's hide pose ends up stamped onto unrelated scene-object
-        bodies on a subsequent physics step. Spreading by 1m per slot keeps
-        each cube actor in a distinct world cell, breaking the aliasing while
-        leaving projectiles equally hidden from active gameplay.
+        bodies on a subsequent physics step. Spreading each slot by the
+        configured hide_spacing keeps every cube in a distinct world cell,
+        breaking the aliasing while leaving projectiles hidden from gameplay.
         """
         N = self._proj_config.num_projectiles
         num_e = len(env_ids)

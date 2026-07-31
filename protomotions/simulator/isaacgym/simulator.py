@@ -111,8 +111,6 @@ class IsaacGymSimulator(Simulator):
         are set. Creates simulation, viewer, and acquires tensors.
         """
         # Scene construction below needs _proj_config before _init_projectiles runs.
-        # The IsaacGym-specific default of 1 projectile (vs. 5 for other backends)
-        # comes from IsaacGymSimulatorConfig.projectile; see config.py for why.
         self._resolve_proj_config()
 
         # Update marker names ordering from visualization markers

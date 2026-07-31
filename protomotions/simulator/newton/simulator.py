@@ -1163,10 +1163,8 @@ class NewtonSimulator(Simulator):
 
         Newton uses xyzw quaternions natively — no conversion needed.
         """
-        # Match the IsaacGym backend: when a projectile is being "hidden" (its
-        # target z is at or below hide_z), spread it across the X/Y world plane
-        # by env_id so post-init projectile positions are consistent across
-        # simulators. Throws use z > hide_z and skip this branch.
+        # Keep hidden projectiles in distinct world-space slots. A throw has
+        # z > hide_z and therefore keeps its requested position.
         positions = positions.clone()
         hidden_mask = positions[:, 2] <= self._proj_config.hide_z
         if hidden_mask.any():
