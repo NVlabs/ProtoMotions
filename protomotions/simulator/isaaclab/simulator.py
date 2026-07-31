@@ -106,7 +106,7 @@ class IsaacLabSimulator(Simulator):
         self._sim = SimulationContext(sim_cfg)
         self._sim.set_camera_view([2.5, 0.0, 4.0], [0.0, 0.0, 2.0])
 
-        # Scene construction below needs _proj_config before _init_projectiles runs
+        # Scene construction below needs _proj_config before _init_projectiles runs.
         self._resolve_proj_config()
 
         scene_cfg = self._get_scene_cfg()
@@ -964,10 +964,8 @@ class IsaacLabSimulator(Simulator):
         # IsaacLab uses wxyz quaternion format
         rot_wxyz = rotations_xyzw[:, [3, 0, 1, 2]]
 
-        # Match the IsaacGym backend: when a projectile is being "hidden" (its
-        # target z is at or below hide_z), spread it across the X/Y world plane
-        # by env_id so post-init projectile positions are consistent across
-        # simulators. Throws use z > hide_z and skip this branch.
+        # Keep hidden projectiles in distinct world-space slots. A throw has
+        # z > hide_z and therefore keeps its requested position.
         positions = positions.clone()
         hidden_mask = positions[:, 2] <= self._proj_config.hide_z
         if hidden_mask.any():
