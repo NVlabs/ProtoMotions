@@ -290,6 +290,10 @@ def create_parser():
 
 # Parse arguments first (argparse is safe, doesn't import torch)
 import argparse  # noqa: E402
+import faulthandler  # noqa: E402
+
+faulthandler.enable()
+
 from protomotions.utils.cli_utils import parse_bool  # noqa: E402
 
 parser = create_parser()
@@ -304,6 +308,9 @@ AppLauncher = import_simulator_before_torch(args.simulator)
 # Now safe to import everything else including torch
 from pathlib import Path  # noqa: E402
 import logging  # noqa: E402
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s: %(message)s")
+
 from protomotions.utils.hydra_replacement import get_class  # noqa: E402
 import importlib.util  # noqa: E402
 import shutil  # noqa: E402
