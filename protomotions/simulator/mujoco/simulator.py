@@ -136,6 +136,7 @@ class MujocoSimulator(Simulator):
                 projectile_config.get_sizes(),
                 projectile_config.density,
                 projectile_config.hide_z,
+                projectile_config.hide_spacing,
             )
 
         # Write cleaned XML to a temp file in the same directory
@@ -161,6 +162,7 @@ class MujocoSimulator(Simulator):
         sizes: list,
         density: float,
         hide_z: float,
+        hide_spacing: float,
     ) -> None:
         """Add free-joint box bodies for projectiles to the MJCF worldbody."""
         worldbody = root.find("worldbody")
@@ -171,7 +173,7 @@ class MujocoSimulator(Simulator):
             s = str(sizes[i])
             body = ET.SubElement(worldbody, "body")
             body.set("name", f"projectile_{i}")
-            body.set("pos", f"0 0 {hide_z}")
+            body.set("pos", f"{i} {i} {hide_z - hide_spacing * i}")
             joint = ET.SubElement(body, "joint")
             joint.set("type", "free")
             geom = ET.SubElement(body, "geom")

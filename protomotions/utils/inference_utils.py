@@ -41,6 +41,13 @@ def apply_all_inference_overrides(
         args: Optional command line arguments
     """
 
+    # Projectile perturbations are disabled during training by default. Enable
+    # one projectile for inference unless the experiment or CLI requested a
+    # specific pool size.
+    projectile_config = getattr(simulator_config, "projectile", None)
+    if projectile_config is not None and projectile_config.num_projectiles == 0:
+        projectile_config.num_projectiles = 1
+
     # Apply experiment-specific inference overrides if available
     if experiment_module is not None and args is not None:
         apply_inference_overrides_fn = getattr(

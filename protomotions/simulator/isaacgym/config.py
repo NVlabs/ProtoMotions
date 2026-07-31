@@ -4,7 +4,10 @@
 """Configuration classes for IsaacGym simulator."""
 
 from dataclasses import dataclass, field
-from protomotions.simulator.base_simulator.config import SimParams, SimulatorConfig
+from protomotions.simulator.base_simulator.config import (
+    SimParams,
+    SimulatorConfig,
+)
 
 
 @dataclass

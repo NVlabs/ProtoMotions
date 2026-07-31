@@ -425,7 +425,8 @@ class Simulator(RecordingMixin, ABC):
         self._proj_sim_time = torch.zeros(self.num_envs, device=self.device)
 
         self._create_projectiles(self._proj_config)
-        self._hide_all_projectiles()
+        if N > 0:
+            self._hide_all_projectiles()
 
     def _throw_projectile(self) -> None:
         """J-key handler: launch next projectile cube at each robot.
@@ -436,6 +437,8 @@ class Simulator(RecordingMixin, ABC):
         3. Lead the target by adding robot XY velocity to launch velocity
         """
         cfg = self._proj_config
+        if cfg.num_projectiles == 0:
+            return
         all_env_ids = torch.arange(self.num_envs, device=self.device)
         cube_idx = self._proj_next_idx.clone()
 
@@ -497,7 +500,13 @@ class Simulator(RecordingMixin, ABC):
 
         env_indices, proj_indices = torch.where(expired_mask)
         hide_pos = torch.zeros(len(env_indices), 3, device=self.device)
+        hide_pos[:, 0] = env_indices.to(hide_pos.dtype) * float(
+            self._proj_config.num_projectiles
+        ) + proj_indices.to(hide_pos.dtype)
         hide_pos[:, 2] = self._proj_config.hide_z
+        hide_pos[:, 2] -= self._proj_config.hide_spacing * proj_indices.to(
+            hide_pos.dtype
+        )
         zero_rot = torch.zeros(len(env_indices), 4, device=self.device)
         zero_rot[:, 3] = 1.0
         zero_vel = torch.zeros(len(env_indices), 3, device=self.device)
@@ -512,7 +521,8 @@ class Simulator(RecordingMixin, ABC):
         self._proj_sim_time[env_ids] = 0.0
         self._proj_throw_time[env_ids] = float("-inf")
         self._proj_next_idx[env_ids] = 0
-        self._hide_projectiles_for_envs(env_ids)
+        if self._proj_config.num_projectiles > 0:
+            self._hide_projectiles_for_envs(env_ids)
 
     def _hide_all_projectiles(self) -> None:
         """Move all projectiles underground."""
@@ -542,6 +552,9 @@ class Simulator(RecordingMixin, ABC):
         hide_pos = torch.zeros(len(env_expanded), 3, device=self.device)
         hide_pos[:, 0] = env_expanded.float() * float(N) + proj_expanded.float()
         hide_pos[:, 2] = self._proj_config.hide_z
+        hide_pos[:, 2] -= self._proj_config.hide_spacing * proj_expanded.to(
+            hide_pos.dtype
+        )
         zero_rot = torch.zeros(len(env_expanded), 4, device=self.device)
         zero_rot[:, 3] = 1.0
         zero_vel = torch.zeros(len(env_expanded), 3, device=self.device)
