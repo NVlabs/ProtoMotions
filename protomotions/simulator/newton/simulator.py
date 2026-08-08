@@ -27,6 +27,9 @@ from protomotions.simulator.newton.contact_utils import (
     get_contact_sensor_body_patterns,
     validate_contact_sensor_match,
 )
+from protomotions.simulator.newton.randomization_utils import (
+    move_friction_tables_to_device,
+)
 import warp as wp
 import newton
 from newton import JointTargetMode
@@ -528,10 +531,15 @@ class NewtonSimulator(Simulator):
             current_friction = wp.to_torch(mu_wp)
             current_restitution = wp.to_torch(rest_wp)
 
-            # Get body indices that should be randomized
-            body_indices = self._domain_randomization["friction"]["body_indices"]
-            static_friction = self._domain_randomization["friction"]["static_friction"]
-            restitution = self._domain_randomization["friction"]["restitution"]
+            # Get body indices that should be randomized. The bucket tables are
+            # sampled on CPU by the base simulator; move them to the simulation
+            # device so they can be indexed with on-device bucket ids below.
+            friction_dr = move_friction_tables_to_device(
+                self._domain_randomization["friction"], current_friction.device
+            )
+            body_indices = friction_dr["body_indices"]
+            static_friction = friction_dr["static_friction"]
+            restitution = friction_dr["restitution"]
 
             num_buckets = static_friction.shape[0] if static_friction is not None else 0
 
