@@ -89,10 +89,12 @@ observations during training (e.g., contact-aware tracking rewards).
 G1 Skeleton Motions (.csv)
 --------------------------
 
-Kimodo can also generate motions for the Unitree G1 skeleton as CSV files.
-These use a different convention from the BONES-SEED retargeted CSVs: positions
-are in meters, root orientation is a wxyz quaternion, joint angles are in radians,
-and there is no header row or frame index column.
+Kimodo and `ARDY <https://github.com/nv-tlabs/ardy>`_ can generate motions for
+the Unitree G1 skeleton as CSV files. Both use a different convention from the
+BONES-SEED retargeted CSVs: positions are in meters, root orientation is a wxyz
+quaternion, joint angles are in radians, and there is no header row or frame
+index column. Kimodo generates motion at 30 fps, while ARDY generates motion at
+25 fps.
 
 .. note::
 
@@ -100,7 +102,7 @@ and there is no header row or frame index column.
    included at ``data/g1-kimodo-generated/`` so you can try the pipeline. 
    These are also the same motions on Kimodo front page showing real G1 deployment.
 
-**Convert a directory of CSV files:**
+**Convert a directory of Kimodo CSV files:**
 
 .. code-block:: bash
 
@@ -116,18 +118,41 @@ and there is no header row or frame index column.
        --no-has-frame-column \
        --force-remake
 
+**Convert a directory of ARDY CSV files:**
+
+Place ARDY-generated G1 CSV files under ``data/g1-ardy-generated/`` and run:
+
+.. code-block:: bash
+
+   python data/scripts/convert_g1_csv_to_proto.py \
+       --input-dir data/g1-ardy-generated/ \
+       --output-dir data/g1-ardy-generated/proto \
+       --input-fps 25 \
+       --output-fps 25 \
+       --pos-units m \
+       --rot-format quat_wxyz \
+       --joint-units rad \
+       --no-has-header \
+       --no-has-frame-column \
+       --force-remake
+
 **Package and verify:**
 
 .. code-block:: bash
 
-   # Package
+   # Package Kimodo motions
    python protomotions/components/motion_lib.py \
        --motion-path data/g1-kimodo-generated/proto/ \
        --output-file data/g1-kimodo-generated/kimodo_g1_motions.pt
 
-   # Visualize
+   # Package ARDY motions
+   python protomotions/components/motion_lib.py \
+       --motion-path data/g1-ardy-generated/proto/ \
+       --output-file data/g1-ardy-generated/ardy_g1_motions.pt
+
+   # Visualize ARDY motions
    python examples/motion_libs_visualizer.py \
-       --motion_files data/g1-kimodo-generated/kimodo_g1_motions.pt \
+       --motion_files data/g1-ardy-generated/ardy_g1_motions.pt \
        --robot g1 \
        --simulator isaacgym
 
@@ -136,7 +161,7 @@ Example: Text to Physics-Based Motion
 
 A typical end-to-end workflow using the G1 robot:
 
-1. **Generate** motions with Kimodo from text prompts
+1. **Generate** motions with Kimodo or ARDY from text prompts
 2. **Convert** to ProtoMotions format
 3. **Package** into a MotionLib ``.pt`` file
 4. **Train** a physics-based policy to track the generated motions
@@ -144,9 +169,10 @@ A typical end-to-end workflow using the G1 robot:
 
 .. code-block:: bash
 
-   # Step 1: Generate with Kimodo (see Kimodo docs)
-   # Output: kimodo_output/*.csv (G1 skeleton, 30 fps)
-   # Example CSVs are included at data/g1-kimodo-generated/
+   # Step 1: Generate with Kimodo or ARDY (see the respective generator docs)
+   # Kimodo output: kimodo_output/*.csv (G1 skeleton, 30 fps)
+   # ARDY output: data/g1-ardy-generated/*.csv (G1 skeleton, 25 fps)
+   # This example uses Kimodo; see the ARDY conversion command above.
 
    # Step 2: Convert (Kimodo G1 CSV format)
    python data/scripts/convert_g1_csv_to_proto.py \
@@ -196,9 +222,9 @@ Supported Skeleton Formats
      - 77
      - ``convert_soma23_npz_to_proto.py``
      - ``soma23``
-   * - Kimodo G1
+   * - Kimodo / ARDY G1
      - ``.csv``
-     - 23 DOFs
+     - 29 DOFs
      - ``convert_g1_csv_to_proto.py``
      - ``g1``
    * - BONES-SEED BVH
