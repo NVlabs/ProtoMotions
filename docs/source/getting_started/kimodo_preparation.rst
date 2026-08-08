@@ -224,7 +224,7 @@ Supported Skeleton Formats
      - ``soma23``
    * - Kimodo / ARDY G1
      - ``.csv``
-     - 23 DOFs
+     - 29 DOFs
      - ``convert_g1_csv_to_proto.py``
      - ``g1``
    * - BONES-SEED BVH
