@@ -89,7 +89,8 @@ def process_csv_file(
     Supports two CSV layouts:
       1. Original retargeted format (has_header=True, has_frame_column=True):
          Frame | root_translateX/Y/Z (cm) | root_rotateX/Y/Z (deg) | joint_dofs (deg)
-      2. Kimodo generated format (has_header=False, has_frame_column=False):
+      2. Generator-native G1 format used by Kimodo and ARDY
+         (has_header=False, has_frame_column=False):
          root_posX/Y/Z (m) | root_quat_w/x/y/z | joint_dofs (rad)
 
     Args:
