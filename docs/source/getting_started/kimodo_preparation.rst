@@ -234,7 +234,7 @@ Supported Skeleton Formats
      - ``soma23``
    * - BONES-SEED G1 CSV
      - ``.csv``
-     - 23 DOFs
+     - 29 DOFs
      - ``convert_g1_csv_to_proto.py``
      - ``g1``
 
