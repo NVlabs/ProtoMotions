@@ -932,6 +932,28 @@ class NewtonSimulator(Simulator):
 
         return contact_binary
 
+    def park_envs(
+        self,
+        env_ids: torch.Tensor,
+        hide_z: float = -50.0,
+    ) -> None:
+        """No-op on Newton: evaluation env-parking is unnecessary and harmful.
+
+        The base implementation teleports inactive envs to ``hide_z`` to keep
+        their AABBs out of PhysX's broadphase pair budget. MuJoCo-Warp has
+        fixed per-world contact buffers and no cross-env broadphase pairs, so
+        parking buys nothing here.
+
+        Worse, a parked robot free-falls with PD control still driving its
+        joints toward policy targets: energy is pumped in with no contact to
+        dissipate it, joint velocities diverge, and the resulting non-finite
+        values persist in solver warm-start memory — permanently poisoning the
+        parked envs even after their kinematic state is restored. Leaving
+        inactive envs simulating in place (exactly as they do during training)
+        is both safe and cheap.
+        """
+        return None
+
     def _get_simulator_bodies_state(
         self, env_ids: Optional[torch.Tensor] = None
     ) -> RobotState:
