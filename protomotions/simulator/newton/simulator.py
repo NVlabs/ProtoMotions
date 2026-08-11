@@ -133,6 +133,12 @@ class NewtonSimulator(Simulator):
 
     def _create_simulation(self) -> None:
         """Create the Newton simulation environment."""
+        # ModelBuilder.finalize() and other Newton allocations use Warp's current
+        # device when no explicit device is provided. Each distributed process has
+        # its own rank-local Torch device, so keep Warp on that same device before
+        # creating any simulation state.
+        wp.set_device(str(self.device))
+
         self._create_envs()
         self._zero_passive_forces()
         self._setup_robot()
