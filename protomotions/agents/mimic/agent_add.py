@@ -36,13 +36,14 @@ class MimicADD(AMP):
                 ref_state_gt
             )
         )
+        anchor_body_index = self.env.robot_config.anchor_body_index
         ref_ground_heights = self.env.terrain.get_ground_heights(
-            ref_state_gt[:, 0]
+            ref_state_gt[:, anchor_body_index]
         ).clone()
 
         current_state = self.env.simulator.get_bodies_state()
         ground_heights = self.env.terrain.get_ground_heights(
-            current_state.rigid_body_pos[:, 0]
+            current_state.rigid_body_pos[:, anchor_body_index]
         ).clone()
 
         # ADD uses local_obs=False for tracking diff observations
@@ -66,6 +67,7 @@ class MimicADD(AMP):
             root_height_obs=root_height_obs,
             observe_contacts=observe_contacts,
             w_last=True,
+            anchor_body_index=self.env.robot_config.anchor_body_index,
         )
 
         current_pose = compute_humanoid_max_coords_observations(
@@ -79,6 +81,7 @@ class MimicADD(AMP):
             root_height_obs=root_height_obs,
             observe_contacts=observe_contacts,
             w_last=True,
+            anchor_body_index=self.env.robot_config.anchor_body_index,
         )
 
         tracking_diff_obs = ref_pose - current_pose

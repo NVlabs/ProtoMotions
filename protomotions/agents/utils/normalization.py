@@ -306,8 +306,8 @@ class RewardRunningMeanStd(RunningMeanStd):
       Variance estimate freezes after many updates because the sample count
       grows without bound.
     * **EMA (ema_decay in (0, 1))** -- exponential moving average of mean and
-      variance.  Tracks non-stationary reward distributions (e.g. when
-      discriminator reward magnitudes shift during adversarial training).
+      variance.  Tracks non-stationary reward distributions (e.g. when the
+      discriminator reward magnitude shifts during AMP/DIVA training).
 
     Checkpoint compatibility: both modes store the same ``mean`` / ``var`` /
     ``count`` buffers.  Switching from Welford to EMA on resume is safe -- the

@@ -4,11 +4,12 @@
 """Newton must not park evaluation envs.
 
 Parking (teleport to z<<0) exists to relieve PhysX's broadphase pair budget.
-On Newton/MuJoCo-Warp there is no cross-env broadphase, and a parked robot
-free-falls with PD control still active: joint velocities diverge and the
-resulting non-finite values persist in solver warm-start memory, permanently
-poisoning the parked envs. NewtonSimulator therefore overrides park_envs as a
-documented no-op; these tests pin that contract.
+Newton replicates environments as separate worlds, so there is no cross-env
+broadphase to reduce. A parked robot still free-falls with PD control active:
+joint velocities diverge and the resulting non-finite values persist in solver
+warm-start memory, permanently poisoning the parked envs. NewtonSimulator
+therefore overrides park_envs as a documented no-op; these tests pin that
+contract.
 """
 
 from unittest.mock import MagicMock

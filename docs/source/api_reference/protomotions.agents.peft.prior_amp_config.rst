@@ -1,5 +1,5 @@
-protomotions.agents.peft.prior\_amp\_config module
-==================================================
+protomotions.agents.peft.prior_amp_config module
+================================================
 
 .. automodule:: protomotions.agents.peft.prior_amp_config
    :members:

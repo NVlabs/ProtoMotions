@@ -5,24 +5,6 @@ import torch
 from protomotions.utils.rotations import quaternion_to_matrix
 from typing import List, Dict, Tuple
 
-KEYPOINT_MAPPING_RIGV1 = {
-    "pelvis": "Hips",
-    "left_hip": "LeftUpLeg",
-    "right_hip": "RightUpLeg",
-    "left_knee": "LeftLeg",
-    "right_knee": "RightLeg",
-    "left_ankle": "LeftFoot",
-    "right_ankle": "RightFoot",
-    "left_foot": "LeftToeBase",
-    "right_foot": "RightToeBase",
-    "left_shoulder": "LeftArm",
-    "right_shoulder": "RightArm",
-    "left_elbow": "LeftForeArm",
-    "right_elbow": "RightForeArm",
-    "left_wrist": "LeftHand",
-    "right_wrist": "RightHand",
-}
-
 KEYPOINT_MAPPING_SOMA = {
     "pelvis": "Hips",
     "left_hip": "LeftLeg",
@@ -61,17 +43,16 @@ KEYPOINT_MAPPING_SMPL = {
 
 
 def get_keypoint_indices(
-    kinematic_info, skeleton_format: str = "rigv1"
+    kinematic_info, skeleton_format: str = "smpl"
 ) -> Tuple[List[str], List[str], List[int]]:
     """
     Get keypoint names and their indices in the MJCF body list.
 
     Args:
         kinematic_info: Kinematic info object with body_names attribute
-        skeleton_format: Either "rigv1" or "smpl" to specify the skeleton format
+        skeleton_format: "smpl" or "soma" to specify the skeleton format
     """
     mapping_lookup = {
-        "rigv1": KEYPOINT_MAPPING_RIGV1,
         "smpl": KEYPOINT_MAPPING_SMPL,
         "soma": KEYPOINT_MAPPING_SOMA,
     }
@@ -354,7 +335,7 @@ def extract_keypoints_from_motion_smpl_skel(
     return result
 
 
-def extract_keypoints_from_motion_rigv1_skel(
+def extract_keypoints_from_motion_legacy_skel(
     all_body_positions: torch.Tensor,
     all_body_rotations_quat: torch.Tensor,
     keypoint_indices_in_mjcf: List[int],
@@ -389,10 +370,10 @@ def extract_keypoints_from_motion_rigv1_skel(
         - 'right_foot_contacts': [T, 2] - right foot contact labels (ankle, toebase) if contacts provided
 
     Note:
-    feet: Rigv1 -y --> G1/H1 +x
+    feet: SOMA -y --> G1/H1 +x
     hands (since G1/H1 zero pose has bent arms instead of T pose):
-        Rigv1 -y --> G1/H1 +z
-        Rigv1 +z --> G1/H1 +y
+        SOMA -y --> G1/H1 +z
+        SOMA +z --> G1/H1 +y
     """
     # Extract keypoint positions directly
     keypoint_positions = all_body_positions[:, keypoint_indices_in_mjcf, :]
@@ -527,10 +508,10 @@ def extract_keypoints_from_motion_rigv1_skel(
     # Extract foot contact information if contacts and kinematic_info are provided
     if contacts is not None and kinematic_info is not None:
         # Find indices for foot bodies in the motion lib data
-        body_name_left_ankle = KEYPOINT_MAPPING_RIGV1["left_ankle"]
-        body_name_right_ankle = KEYPOINT_MAPPING_RIGV1["right_ankle"]
-        body_name_left_toebase = KEYPOINT_MAPPING_RIGV1["left_foot"]
-        body_name_right_toebase = KEYPOINT_MAPPING_RIGV1["right_foot"]
+        body_name_left_ankle = KEYPOINT_MAPPING_SOMA["left_ankle"]
+        body_name_right_ankle = KEYPOINT_MAPPING_SOMA["right_ankle"]
+        body_name_left_toebase = KEYPOINT_MAPPING_SOMA["left_foot"]
+        body_name_right_toebase = KEYPOINT_MAPPING_SOMA["right_foot"]
         left_ankle_idx = kinematic_info.body_names.index(body_name_left_ankle)  # ankle
         right_ankle_idx = kinematic_info.body_names.index(
             body_name_right_ankle
@@ -587,10 +568,9 @@ def extract_keypoints_from_motion_soma_skel(
 ) -> Dict[str, torch.Tensor]:
     """
     Extracts keypoints from soma23 skeleton motion data.
-    Soma23 uses the same coordinate convention as rigv1 (-y = forward, z = up).
-    Structurally similar to rigv1 with different body names and proportions.
+    SOMA23 uses the same coordinate convention as the legacy character (-y = forward, z = up).
 
-    Ankle y-offset from pelvis: +0.017 (1.7cm behind, close to rigv1's 0).
+    Ankle y-offset from pelvis: +0.017 (1.7cm behind).
     Shoulder y-offset from pelvis: -0.042 (4.2cm forward — no backward surgery needed).
     """
     keypoint_positions = all_body_positions[:, keypoint_indices_in_mjcf, :]
@@ -601,7 +581,7 @@ def extract_keypoints_from_motion_soma_skel(
     )
 
     # Pelvis offset: shift backward in local +y to create forward bias on all
-    # body keypoints relative to root (same approach as rigv1).
+    # Body keypoints relative to root.
     root_idx = conceptual_keypoint_names.index("pelvis")
     root_offset = torch.tensor(
         [0.0, 0.07, 0.0], device=device, dtype=keypoint_positions.dtype
@@ -640,7 +620,7 @@ def extract_keypoints_from_motion_soma_skel(
 
         # Ankle forward shift: -0.05 in local y (forward). Soma ankle is 1.7cm
         # behind pelvis (chain y-offsets: LeftLeg -0.026 + LeftShin +0.008 +
-        # LeftFoot +0.035 = +0.017). Same surgery as rigv1 (whose ankle is at 0).
+        # LeftFoot +0.035 = +0.017).
         p_local_ankle_mod = torch.tensor(
             [0.0, -0.05, 0.0], device=device, dtype=keypoint_positions.dtype
         )
@@ -691,8 +671,8 @@ def extract_keypoints_from_motion_soma_skel(
                 dim=1,
             )
 
-        # 0.225 * 0.8 (rigv1 x-scaling) = 0.18m, matching retargeter torso_aux x.
-        # Rigv1 uses 0.30 here but that produces 0.24m after scaling, creating
+        # 0.225 * 0.8 = 0.18m, matching retargeter torso_aux x.
+        # A 0.30m offset would produce 0.24m after scaling, creating
         # a 6cm x-mismatch with the torso_aux (0.18) that pushes pelvis backward.
         pelvis_idx = conceptual_keypoint_names.index("pelvis")
         p_local_pelvis = torch.tensor(
@@ -753,7 +733,7 @@ def extract_keypoints_from_motion(
     keypoint_indices_in_mjcf: List[int],
     conceptual_keypoint_names: List[str],
     device: torch.device,
-    skeleton_format: str = "rigv1",
+    skeleton_format: str = "smpl",
     flat_feet: bool = True,
     aux_points: bool = True,
     contacts: torch.Tensor = None,
@@ -769,7 +749,7 @@ def extract_keypoints_from_motion(
         keypoint_indices_in_mjcf: List of indices for keypoints in MJCF body order
         conceptual_keypoint_names: List of conceptual keypoint names
         device: torch device
-        skeleton_format: 'rigv1', 'smpl', or 'soma'
+        skeleton_format: 'smpl' or 'soma'
         flat_feet: Whether to apply flat feet correction
         aux_points: Whether to add auxiliary points
         contacts: Optional [T, N_bodies] - contact labels for all bodies
@@ -783,7 +763,6 @@ def extract_keypoints_from_motion(
         - 'right_foot_contacts': [T, 2] - right foot contact labels (ankle, toebase) if contacts provided
     """
     dispatch = {
-        "rigv1": extract_keypoints_from_motion_rigv1_skel,
         "smpl": extract_keypoints_from_motion_smpl_skel,
         "soma": extract_keypoints_from_motion_soma_skel,
     }
@@ -809,13 +788,12 @@ def get_mjcf_path(skeleton_format: str) -> str:
     Get the appropriate MJCF file path for the given skeleton format.
 
     Args:
-        skeleton_format: Either "rigv1" or "smpl"
+        skeleton_format: "smpl" or "soma"
 
     Returns:
         Path to the appropriate MJCF file
     """
     paths = {
-        "rigv1": "protomotions/data/assets/mjcf/rigv1_humanoid.xml",
         "smpl": "protomotions/data/assets/mjcf/smpl_humanoid.xml",
         "soma": "protomotions/data/assets/mjcf/soma23_humanoid.xml",
     }

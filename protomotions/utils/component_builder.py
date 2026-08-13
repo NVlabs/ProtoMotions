@@ -7,8 +7,11 @@ This module provides helper functions to create terrain, scene_lib, motion_lib,
 and simulator objects from their configs, reducing boilerplate in entry scripts.
 """
 
+from copy import deepcopy
+from pathlib import Path
 from typing import Optional, Dict
 import torch
+from protomotions.components.motion_lib import MotionFileSwitchMode, resolve_shard_file
 from protomotions.utils.hydra_replacement import get_class
 
 
@@ -66,7 +69,9 @@ def build_scene_lib_from_config(
     )
 
 
-def build_motion_lib_from_config(motion_lib_config, device: torch.device):
+def build_motion_lib_from_config(
+    motion_lib_config, device: torch.device, shard_cycle: int = 0
+):
     """Build MotionLib from config.
 
     Always returns a MotionLib instance. If config.motion_file is None,
@@ -78,13 +83,16 @@ def build_motion_lib_from_config(motion_lib_config, device: torch.device):
     Args:
         motion_lib_config: MotionLibConfig (required, motion_file can be None for empty)
         device: PyTorch device
+        shard_cycle: Distributed shard-selection cycle.
 
     Returns:
         MotionLib instance (empty if motion_file is None)
     """
     from protomotions.components.motion_lib import MotionLib
 
-    return MotionLib(config=motion_lib_config, device=device)
+    return MotionLib(
+        config=motion_lib_config, device=device, shard_cycle=shard_cycle
+    )
 
 
 def build_simulator_from_config(
@@ -129,6 +137,7 @@ def build_all_components(
     robot_config,
     device: torch.device,
     save_dir: Optional[str] = None,
+    motion_shard_cycle: int = 0,
     **simulator_extra_params,
 ) -> Dict:
     """Build all environment components from configs.
@@ -143,6 +152,7 @@ def build_all_components(
         robot_config: RobotConfig
         device: PyTorch device
         save_dir: Optional save directory for loading motion weights as scene weights
+        motion_shard_cycle: Distributed shard-selection cycle.
         **simulator_extra_params: Simulator-specific params (e.g., simulation_app for IsaacLab)
 
     Returns:
@@ -153,22 +163,54 @@ def build_all_components(
         terrain_config, simulator_config.num_envs, device
     )
 
-    # Load motion weights from checkpoint to use as scene weights for prioritized sampling
+    # Select motions before any paired scene geometry or weight lookup.
+    motion_lib = build_motion_lib_from_config(
+        motion_lib_config, device, shard_cycle=motion_shard_cycle
+    )
+
+    scene_config = scene_lib_config
+    scene_file = scene_lib_config.scene_file
+    scene_is_sharded = scene_file is not None and "slurmrank" in Path(scene_file).name
+    if scene_is_sharded:
+        if motion_lib.motion_file_shard_index is None:
+            raise ValueError("A sharded scene file requires a sharded motion file")
+        if motion_lib_config.motion_file_switch_mode is MotionFileSwitchMode.LIVE:
+            raise ValueError(
+                "Live motion switching cannot replace simulator scene geometry; "
+                "use restart mode"
+            )
+        scene_config = deepcopy(scene_lib_config)
+        scene_config.scene_file = resolve_shard_file(
+            scene_file, motion_lib.motion_file_shard_index
+        )
+
+    # Load motion weights from checkpoint to use as scene weights for prioritized sampling.
     scene_weights = None
-    if save_dir and motion_lib_config.motion_file:
+    if save_dir and motion_lib.motion_file:
         from protomotions.envs.base_env.env import BaseEnv
 
         scene_weights = BaseEnv.apply_motion_weights_to_scene_weights(
-            save_dir=save_dir, motion_file=motion_lib_config.motion_file, device=device
+            save_dir=save_dir, motion_file=motion_lib.motion_file, device=device
         )
 
     # Create scene_lib (always created, empty if scene_file is None)
     scene_lib = build_scene_lib_from_config(
-        scene_lib_config, simulator_config.num_envs, device, terrain, scene_weights
+        scene_config, simulator_config.num_envs, device, terrain, scene_weights
     )
 
-    # Create motion_lib (always created, empty if motion_file is None)
-    motion_lib = build_motion_lib_from_config(motion_lib_config, device)
+    if motion_lib_config.motion_file_switch_mode is not MotionFileSwitchMode.FIXED:
+        paired_motion_ids = scene_lib.get_humanoid_motion_ids()
+        if paired_motion_ids is not None:
+            if motion_lib_config.motion_file_switch_mode is MotionFileSwitchMode.LIVE:
+                raise ValueError(
+                    "Live motion switching is incompatible with motion-paired scenes; "
+                    "use restart mode"
+                )
+            if not scene_is_sharded:
+                raise ValueError(
+                    "Restart motion switching requires a matching sharded scene file "
+                    "for motion-paired scenes"
+                )
 
     # Create simulator shell
     simulator = build_simulator_from_config(

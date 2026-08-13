@@ -22,7 +22,6 @@ from protomotions.envs.obs.masked_mimic import (
     compute_target_time_offsets,
 )
 from protomotions.envs.obs.target_poses import (
-    build_corrupted_xy_offset,
     build_deploy_target_poses,
     build_max_coords_target_poses,
     build_max_coords_target_poses_future_rel,
@@ -208,6 +207,81 @@ def test_max_coords_observations_cover_local_global_height_and_contact_options()
     assert local_obs.shape == (1, 30)
     assert local_obs[0, 0].item() == pytest.approx(1.5)
     assert torch.equal(local_obs[0, -2:], torch.tensor([1.0, 0.0]))
+
+
+def test_max_coords_and_target_builders_use_a_nonzero_anchor_body():
+    current = {
+        "pos": torch.tensor([[[1.0, 0.0, 1.0], [5.0, 0.0, 2.0]]]),
+        "rot": _identity_quat(1, 2),
+        "vel": torch.zeros(1, 2, 3),
+        "ang_vel": torch.zeros(1, 2, 3),
+    }
+    future = {
+        "pos": torch.tensor([[[[2.0, 0.0, 1.5], [7.0, 0.0, 2.5]]]]),
+        "rot": _identity_quat(1, 1, 2),
+        "vel": torch.zeros(1, 1, 2, 3),
+        "ang_vel": torch.zeros(1, 1, 2, 3),
+    }
+
+    obs = compute_humanoid_max_coords_observations(
+        body_pos=current["pos"],
+        body_rot=current["rot"],
+        body_vel=current["vel"],
+        body_ang_vel=current["ang_vel"],
+        ground_height=torch.zeros(1, 1),
+        body_contacts=torch.zeros(1, 2, dtype=torch.bool),
+        local_obs=True,
+        root_height_obs=True,
+        observe_contacts=False,
+        w_last=True,
+        anchor_body_index=1,
+    )
+    translated = compute_humanoid_max_coords_observations(
+        body_pos=current["pos"] + torch.tensor([10.0, -3.0, 0.0]),
+        body_rot=current["rot"],
+        body_vel=current["vel"],
+        body_ang_vel=current["ang_vel"],
+        ground_height=torch.zeros(1, 1),
+        body_contacts=torch.zeros(1, 2, dtype=torch.bool),
+        local_obs=True,
+        root_height_obs=True,
+        observe_contacts=False,
+        w_last=True,
+        anchor_body_index=1,
+    )
+    assert torch.allclose(obs, translated)
+
+    target = build_max_coords_target_poses(
+        current["pos"],
+        current["rot"],
+        current["vel"],
+        current["ang_vel"],
+        future["pos"],
+        future["rot"],
+        future["vel"],
+        future["ang_vel"],
+        with_velocities=False,
+        with_relative=False,
+        w_last=True,
+        anchor_body_index=1,
+    )
+    assert torch.allclose(
+        target[0, :6],
+        torch.tensor([-3.0, 0.0, -0.5, 2.0, 0.0, 0.5]),
+    )
+
+    future_rel = build_max_coords_target_poses_future_rel(
+        current["pos"],
+        current["rot"],
+        future["pos"],
+        future["rot"],
+        w_last=True,
+        anchor_body_index=1,
+    )
+    assert torch.allclose(
+        future_rel[0, 6:12],
+        torch.tensor([-3.0, 0.0, -0.5, 2.0, 0.0, 0.5]),
+    )
 
 
 def test_target_pose_scalar_builders_select_steps_and_transform_identity_frames():
@@ -413,19 +487,3 @@ def test_sparse_masked_and_deploy_target_pose_builders_cover_masks_and_step_sele
     )
     assert deploy.shape == (1, 32)
     assert deploy_without_vel.shape == (1, 14)
-
-
-def test_corrupted_xy_offset_uses_shared_corruption_with_identity_noise():
-    offset = build_corrupted_xy_offset(
-        current_state_anchor_pos=torch.tensor([[1.0, 2.0, 0.0]]),
-        current_state_anchor_rot=_identity_quat(1),
-        ref_rigid_body_pos=torch.tensor([[[0.0, 0.0, 0.0], [4.0, 6.0, 0.0]]]),
-        anchor_idx=1,
-        odom_scale=torch.ones(1),
-        odom_yaw_cos_sin=torch.tensor([[1.0, 0.0]]),
-        log_noise_std=0.0,
-        soft_threshold=0.15,
-        w_last=True,
-    )
-
-    assert torch.allclose(offset, torch.tensor([[3.0, 4.0]]), atol=1e-6)

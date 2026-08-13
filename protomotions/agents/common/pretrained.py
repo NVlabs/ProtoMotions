@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """Utilities for loading frozen pretrained modules."""
-
 from __future__ import annotations
 
 from pathlib import Path

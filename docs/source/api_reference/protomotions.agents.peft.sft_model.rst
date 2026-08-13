@@ -1,5 +1,5 @@
-protomotions.agents.peft.sft\_model module
-==========================================
+protomotions.agents.peft.sft_model module
+=========================================
 
 .. automodule:: protomotions.agents.peft.sft_model
    :members:

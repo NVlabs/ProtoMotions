@@ -247,7 +247,7 @@ Activate the PyRoki environment (separate from ProtoMotions) and run batch retar
 
 * ``--keypoints-folder-path``: Input directory with keypoint ``.npy`` files
 * ``--output-dir``: Output directory for retargeted motions (``.npz`` files)
-* ``--source-type``: Source skeleton type (``smpl`` for AMASS, ``rigv1`` for custom rigs)
+* ``--source-type``: Source skeleton type (``smpl`` for AMASS)
 * ``--subsample-factor``: Temporal subsampling (1 = no subsampling)
 * ``--no-visualize``: Skip visualization (required for batch processing)
 * ``--skip-existing``: Resume interrupted runs by skipping completed files

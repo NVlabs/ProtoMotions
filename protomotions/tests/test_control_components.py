@@ -12,6 +12,10 @@ from protomotions.envs.control.external_kinematic_control import (
     ExternalKinematicControl,
     ExternalKinematicControlConfig,
 )
+from protomotions.envs.control.gpc_sft_reference_target_control import (
+    GPCSFTReferenceTargetControl,
+    GPCSFTReferenceTargetControlConfig,
+)
 from protomotions.envs.control.kinematic_replay_control import (
     KinematicReplayControl,
     KinematicReplayControlConfig,
@@ -164,6 +168,7 @@ def test_target_control_fixed_target_lifecycle_context_and_markers():
         terminate_buf=torch.tensor([False, False]),
         terrain=_FlatTerrain(ground=0.25),
         simulator=simulator,
+        robot_config=SimpleNamespace(anchor_body_index=0),
     )
     control = TargetControl(
         TargetControlConfig(
@@ -194,8 +199,48 @@ def test_target_control_fixed_target_lifecycle_context_and_markers():
     assert len(control.create_visualization_markers(headless=False)["target_markers"].markers) == 1
     assert torch.allclose(markers["target_markers"].translation[:, 0, 2], torch.tensor([0.35, 0.35]))
 
+    subset_ctx = SimpleNamespace(env_ids=torch.tensor([1]))
+    control.populate_context(subset_ctx)
+    assert torch.equal(subset_ctx.target.tar_pos, control._tar_pos[[1]])
+
     simulator.headless = True
     assert control.get_markers_state() == {}
+
+
+def test_target_control_uses_nonzero_anchor_for_support_state():
+    simulator = _FakeSimulator(
+        [[0.0, 0.0, 0.1], [1.0, 0.0, 0.2]],
+        num_bodies=2,
+    )
+    simulator.robot_state.rigid_body_pos[:, 1] = torch.tensor(
+        [[5.0, 0.0, 1.1], [6.0, 0.0, 1.2]]
+    )
+    env = SimpleNamespace(
+        num_envs=2,
+        device=torch.device("cpu"),
+        dt=0.1,
+        progress_buf=torch.tensor([0, 0]),
+        reset_buf=torch.tensor([False, False]),
+        terminate_buf=torch.tensor([False, False]),
+        terrain=_FlatTerrain(ground=0.0),
+        simulator=simulator,
+        robot_config=SimpleNamespace(anchor_body_index=1),
+    )
+    control = TargetControl(
+        TargetControlConfig(
+            command_source=RandomTargetCommandSourceConfig(
+                fixed_target_position=(2.0, 3.0),
+            ),
+            enable_fall_termination=False,
+        ),
+        env,
+    )
+
+    control.reset(torch.tensor([0, 1]))
+
+    assert torch.equal(
+        control._last_support_root_height, torch.tensor([1.1, 1.2])
+    )
 
 
 def test_target_control_resamples_on_schedule_and_clamps_bounds():
@@ -210,6 +255,7 @@ def test_target_control_resamples_on_schedule_and_clamps_bounds():
         terminate_buf=torch.tensor([False, False]),
         terrain=_FlatTerrain(ground=0.4),
         simulator=simulator,
+        robot_config=SimpleNamespace(anchor_body_index=0),
     )
     control = TargetControl(
         TargetControlConfig(
@@ -248,6 +294,7 @@ def test_target_control_keyboard_source_uses_registered_keys_for_active_env_only
         terminate_buf=torch.tensor([False, False]),
         terrain=_FlatTerrain(ground=0.0),
         simulator=simulator,
+        robot_config=SimpleNamespace(anchor_body_index=0),
     )
     control = TargetControl(
         TargetControlConfig(
@@ -286,6 +333,7 @@ def test_target_control_keyboard_source_rejects_headless_simulator_by_default():
         terminate_buf=torch.tensor([False]),
         terrain=_FlatTerrain(ground=0.0),
         simulator=simulator,
+        robot_config=SimpleNamespace(anchor_body_index=0),
     )
 
     with pytest.raises(RuntimeError, match="headless"):
@@ -318,6 +366,7 @@ def test_target_control_gap_and_stuck_termination_respect_grace_period():
         terminate_buf=torch.tensor([False, False]),
         terrain=_FlatTerrain(ground=0.0),
         simulator=simulator,
+        robot_config=SimpleNamespace(anchor_body_index=0),
     )
     control = TargetControl(
         TargetControlConfig(
@@ -371,6 +420,7 @@ def test_target_control_fall_termination_combines_contact_height_and_grace():
         terminate_buf=torch.tensor([False, False, False]),
         terrain=_FlatTerrain(ground=0.0),
         simulator=simulator,
+        robot_config=SimpleNamespace(anchor_body_index=0),
         non_termination_contact_body_ids=torch.tensor([1]),
     )
     control = TargetControl(
@@ -389,7 +439,14 @@ def test_target_control_fall_termination_combines_contact_height_and_grace():
 
 
 def test_steering_control_reset_step_context_and_marker_state_are_deterministic():
-    simulator = _FakeSimulator([[0.0, 0.0, 0.9], [2.0, 0.0, 0.9]], headless=False)
+    simulator = _FakeSimulator(
+        [[0.0, 0.0, 0.9], [2.0, 0.0, 0.9]],
+        num_bodies=2,
+        headless=False,
+    )
+    simulator.robot_state.rigid_body_pos[:, 1] = torch.tensor(
+        [[1.0, 0.0, 0.9], [3.0, 0.0, 0.9]]
+    )
     env = SimpleNamespace(
         num_envs=2,
         device=torch.device("cpu"),
@@ -397,6 +454,7 @@ def test_steering_control_reset_step_context_and_marker_state_are_deterministic(
         reset_buf=torch.tensor([True, False]),
         terminate_buf=torch.tensor([False, False]),
         simulator=simulator,
+        robot_config=SimpleNamespace(anchor_body_index=1),
     )
     control = SteeringControl(
         SteeringControlConfig(
@@ -419,20 +477,27 @@ def test_steering_control_reset_step_context_and_marker_state_are_deterministic(
     assert torch.allclose(ctx.steering.tar_dir, torch.tensor([[1.0, 0.0], [1.0, 0.0]]))
     assert torch.allclose(ctx.steering.tar_face_dir, ctx.steering.tar_dir)
     assert torch.allclose(ctx.steering.tar_speed, torch.ones(2))
-    assert torch.allclose(ctx.steering.prev_root_pos, simulator.robot_state.root_pos)
+    assert torch.allclose(
+        ctx.steering.prev_root_pos, simulator.robot_state.rigid_body_pos[:, 1]
+    )
 
-    simulator.robot_state.rigid_body_pos[:, 0, 0] += torch.tensor([0.5, 1.0])
+    subset_ctx = SimpleNamespace(env_ids=torch.tensor([1]))
+    control.populate_context(subset_ctx)
+    assert torch.equal(subset_ctx.steering.tar_dir, control._tar_dir[[1]])
+    assert torch.equal(subset_ctx.steering.prev_root_pos, control._prev_root_pos[[1]])
+
+    simulator.robot_state.rigid_body_pos[:, 1, 0] += torch.tensor([0.5, 1.0])
     env.progress_buf[:] = torch.tensor([1, 2])
     control.step()
 
-    assert torch.allclose(control._prev_root_pos, torch.tensor([[0.0, 0.0, 0.9], [3.0, 0.0, 0.9]]))
-    assert torch.allclose(control._curr_root_pos, torch.tensor([[0.5, 0.0, 0.9], [3.0, 0.0, 0.9]]))
+    assert torch.allclose(control._prev_root_pos, torch.tensor([[1.0, 0.0, 0.9], [4.0, 0.0, 0.9]]))
+    assert torch.allclose(control._curr_root_pos, torch.tensor([[1.5, 0.0, 0.9], [4.0, 0.0, 0.9]]))
     assert torch.equal(control._heading_change_steps, torch.tensor([2, 4]))
     marker_state = control.get_markers_state()
     assert set(marker_state) == {"movement_markers", "facing_markers"}
     assert torch.allclose(
         marker_state["movement_markers"].translation[:, 0],
-        torch.tensor([[1.5, 0.0, 0.9], [4.0, 0.0, 0.9]]),
+        torch.tensor([[2.5, 0.0, 0.9], [5.0, 0.0, 0.9]]),
     )
 
 
@@ -445,6 +510,7 @@ def test_steering_control_empty_reset_has_no_task_termination_and_declares_marke
         reset_buf=torch.tensor([False]),
         terminate_buf=torch.tensor([False]),
         simulator=simulator,
+        robot_config=SimpleNamespace(anchor_body_index=0),
     )
     control = SteeringControl(SteeringControlConfig(), env)
     original_speed = control._tar_speed.clone()
@@ -474,6 +540,7 @@ def test_steering_control_randomized_reset_stops_and_suppresses_headless_markers
         reset_buf=torch.tensor([False, False, False]),
         terminate_buf=torch.tensor([False, True, False]),
         simulator=simulator,
+        robot_config=SimpleNamespace(anchor_body_index=0),
     )
     control = SteeringControl(
         SteeringControlConfig(
@@ -523,6 +590,9 @@ def test_path_follower_reset_context_and_marker_samples(monkeypatch):
 
     monkeypatch.setattr(path_module, "PathGenerator", _FakePathGenerator)
     simulator = _FakeSimulator([[1.0, 2.0, 1.5], [3.0, 4.0, 1.7]], num_bodies=3)
+    simulator.robot_state.rigid_body_pos[:, 1] = torch.tensor(
+        [[5.0, 6.0, 2.5], [7.0, 8.0, 2.7]]
+    )
     simulator.robot_state.rigid_body_pos[:, 2] = torch.tensor(
         [[1.5, 2.5, 2.0], [3.5, 4.5, 2.4]]
     )
@@ -535,6 +605,7 @@ def test_path_follower_reset_context_and_marker_samples(monkeypatch):
         terrain=_FlatTerrain(ground=0.2),
         simulator=simulator,
         robot_config=SimpleNamespace(
+            anchor_body_index=1,
             kinematic_info=SimpleNamespace(body_names=["root", "spine", "head"]),
             common_naming_to_robot_body_names={"head_body_name": ["head"]},
         ),
@@ -550,7 +621,8 @@ def test_path_follower_reset_context_and_marker_samples(monkeypatch):
 
     reset_ids, reset_head_pos = control.path_generator.reset_calls[0]
     assert torch.equal(reset_ids, torch.tensor([0, 1]))
-    assert torch.allclose(reset_head_pos[:, 2], torch.tensor([1.3, 1.5]))
+    assert torch.allclose(reset_head_pos[:, :2], torch.tensor([[5.0, 6.0], [7.0, 8.0]]))
+    assert torch.allclose(reset_head_pos[:, 2], torch.tensor([2.3, 2.5]))
     assert control.head_body_id == 2
     assert ctx.path.height_conditioned is False
     assert torch.allclose(ctx.path.tar_pos, torch.tensor([[0.0, 1.0, 1.0], [1.0, 2.0, 3.0]]))
@@ -561,6 +633,26 @@ def test_path_follower_reset_context_and_marker_samples(monkeypatch):
         markers["path_markers"].orientation,
         torch.zeros(2, 3, 4),
     )
+
+    subset_ctx = SimpleNamespace(env_ids=torch.tensor([1]))
+    control.populate_context(subset_ctx)
+    assert subset_ctx.path.tar_pos.shape == (1, 3)
+    assert subset_ctx.path.traj_samples.shape == (1, 3, 3)
+    assert torch.equal(subset_ctx.path.progress_buf, env.progress_buf[[1]])
+
+
+def test_gpc_reference_target_context_selects_reset_subset():
+    env = SimpleNamespace(num_envs=3, device=torch.device("cpu"))
+    control = GPCSFTReferenceTargetControl(
+        GPCSFTReferenceTargetControlConfig(tar_proximity_threshold=0.25), env
+    )
+    control._tar_pos[:] = torch.arange(9, dtype=torch.float).reshape(3, 3)
+
+    ctx = SimpleNamespace(env_ids=torch.tensor([2, 0]))
+    control.populate_context(ctx)
+
+    assert torch.equal(ctx.target.tar_pos, control._tar_pos[[2, 0]])
+    assert ctx.target.tar_proximity_threshold == 0.25
 
 
 def test_path_follower_terminates_on_distance_and_height_only_after_min_progress(monkeypatch):
@@ -593,6 +685,7 @@ def test_path_follower_terminates_on_distance_and_height_only_after_min_progress
         terrain=_FlatTerrain(ground=0.0),
         simulator=simulator,
         robot_config=SimpleNamespace(
+            anchor_body_index=0,
             kinematic_info=SimpleNamespace(body_names=["root", "head"]),
             common_naming_to_robot_body_names={"head_body_name": ["head"]},
         ),
@@ -634,6 +727,7 @@ def test_path_follower_disabled_termination_does_not_query_path(monkeypatch):
         terrain=_FlatTerrain(ground=0.0),
         simulator=simulator,
         robot_config=SimpleNamespace(
+            anchor_body_index=0,
             kinematic_info=SimpleNamespace(body_names=["root", "head"]),
             common_naming_to_robot_body_names={"head_body_name": ["head"]},
         ),
@@ -682,6 +776,7 @@ def test_path_follower_height_conditioned_markers_and_default_queries(monkeypatc
         terrain=_FlatTerrain(ground=0.25),
         simulator=simulator,
         robot_config=SimpleNamespace(
+            anchor_body_index=0,
             kinematic_info=SimpleNamespace(body_names=["root", "head"]),
             common_naming_to_robot_body_names={"head_body_name": ["head"]},
         ),
@@ -942,7 +1037,7 @@ def test_masked_mimic_fixed_masks_context_and_colored_marker_state():
             get_done_tracks=lambda: torch.tensor([False, False]),
         ),
         motion_lib=_MotionLib(),
-        get_spawn_to_ref_pose_offset_with_terrain_height_correction=lambda ref: torch.ones(ref.shape[0], 1, 3),
+        get_spawn_to_ref_pose_offset_with_terrain_height_correction=lambda ref, env_ids=None: torch.ones(ref.shape[0], 1, 3),
         robot_config=SimpleNamespace(
             anchor_body_index=0,
             trackable_bodies_subset=["hand", "foot"],
@@ -998,6 +1093,15 @@ def test_masked_mimic_fixed_masks_context_and_colored_marker_state():
     assert torch.allclose(ctx.masked_mimic.time_offsets, torch.tensor([[1.2, 1.6], [0.4, 1.2]]))
     assert torch.equal(ctx.masked_mimic.target_poses_masks, control.masked_mimic_target_poses_masks)
     assert torch.equal(ctx.masked_mimic.target_bodies_masks, control.masked_mimic_target_bodies_masks)
+
+    subset_ctx = SimpleNamespace(env_ids=torch.tensor([1]))
+    control.populate_context(subset_ctx)
+    assert subset_ctx.mimic.ref_state.root_pos.shape[0] == 1
+    assert subset_ctx.masked_mimic.ref_pos.shape == (1, 2, 3, 3)
+    assert torch.equal(
+        subset_ctx.masked_mimic.target_times,
+        control.target_times[[1]],
+    )
 
     env.simulator.headless = True
     assert control.get_markers_state() == {}

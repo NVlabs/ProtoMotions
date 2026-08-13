@@ -1,5 +1,5 @@
-protomotions.agents.peft.prior\_setup module
-============================================
+protomotions.agents.peft.prior_setup module
+===========================================
 
 .. automodule:: protomotions.agents.peft.prior_setup
    :members:

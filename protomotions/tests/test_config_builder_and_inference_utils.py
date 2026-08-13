@@ -11,7 +11,10 @@ import pytest
 
 from protomotions.utils.config_builder import build_standard_configs
 from protomotions.utils.inference_utils import apply_all_inference_overrides
-from protomotions.utils.simulator_imports import import_simulator_before_torch
+from protomotions.utils.simulator_imports import (
+    _validate_isaaclab_version,
+    import_simulator_before_torch,
+)
 
 
 def test_build_standard_configs_calls_factories_in_order_and_includes_agent(monkeypatch):
@@ -161,6 +164,7 @@ def test_apply_all_inference_overrides_ignores_missing_inputs_and_logs_failures(
 
 def test_import_simulator_before_torch_handles_supported_names(monkeypatch):
     monkeypatch.setitem(sys.modules, "isaacgym", types.ModuleType("isaacgym"))
+    monkeypatch.setattr("importlib.metadata.version", lambda name: "12.0.0")
 
     isaaclab = types.ModuleType("isaaclab")
     isaaclab_app = types.ModuleType("isaaclab.app")
@@ -176,6 +180,13 @@ def test_import_simulator_before_torch_handles_supported_names(monkeypatch):
     assert import_simulator_before_torch("isaaclab") is _AppLauncher
     assert import_simulator_before_torch("newton") is None
     assert import_simulator_before_torch(None) is None
+
+
+def test_validate_isaaclab_version_rejects_pre_migration_runtime(monkeypatch):
+    monkeypatch.setattr("importlib.metadata.version", lambda name: "11.9.0")
+
+    with pytest.raises(RuntimeError, match="isaaclab>=12.0.0"):
+        _validate_isaaclab_version()
 
 
 def test_import_simulator_before_torch_surfaces_missing_required_packages(monkeypatch):

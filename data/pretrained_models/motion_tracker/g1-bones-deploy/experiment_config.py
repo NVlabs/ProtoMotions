@@ -3,7 +3,7 @@
 
 """BeyondMimic + L2C2 + AMP discriminator experiment.
 
-Based on mlp_bm_deploy_future_obs_norm_learned_std_torso_anchor_l2c2.py with
+Based on the BeyondMimic torso-anchor L2C2 configuration with
 an AMP discriminator added as an auxiliary naturalness reward.
 
 Reward weighting (unnormalized):

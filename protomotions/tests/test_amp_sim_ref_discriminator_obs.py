@@ -243,6 +243,7 @@ def test_amp_contact_reference_obs_matches_simulator_reference_reset_history():
     agent.motion_lib = motion_lib
     agent.num_envs = 1
     agent.env = SimpleNamespace(
+        robot_config=SimpleNamespace(anchor_body_index=0),
         simulator=SimpleNamespace(dt=dt),
         config=SimpleNamespace(num_state_history_steps=num_state_history_steps),
         contact_body_ids=contact_body_ids,
@@ -297,6 +298,7 @@ def test_amp_reference_obs_chunks_missing_lengths_and_contact_data():
     agent.motion_lib = motion_lib
     agent.num_envs = 2
     agent.env = SimpleNamespace(
+        robot_config=SimpleNamespace(anchor_body_index=0),
         simulator=SimpleNamespace(dt=dt),
         config=SimpleNamespace(num_state_history_steps=num_state_history_steps),
         contact_body_ids=contact_body_ids,

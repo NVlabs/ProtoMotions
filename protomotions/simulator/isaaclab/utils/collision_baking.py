@@ -46,7 +46,7 @@ def build_baked_collision_path(
         table.usda + boundingCube
             → table.collision_bc.usda
     """
-    p = Path(original_path)
+    p = Path(original_path).expanduser().resolve()
     abbrev = _APPROX_ABBREV.get(approximation, approximation)
     suffix_parts = [f"collision_{abbrev}"]
     if max_convex_hulls is not None:
@@ -89,7 +89,7 @@ def ensure_baked_collision_usd(
 
     log.info("Baking collision '%s' into %s ...", approximation, baked.name)
 
-    source_path = Path(original_path)
+    source_path = Path(original_path).expanduser().resolve()
     supported = (".usd", ".usda", ".usdc")
     if source_path.suffix.lower() not in supported:
         raise ValueError(

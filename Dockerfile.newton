@@ -46,7 +46,7 @@ RUN uv pip install pip
 RUN uv pip install torch>=2.2 --index-url https://download.pytorch.org/whl/cu124
 
 # Install Newton 1.0 from PyPI (includes warp-lang, mujoco, mujoco-warp, viewer deps)
-RUN uv pip install "newton[examples]"
+RUN uv pip install "newton[examples]==1.0.0"
 
 # Copy protomotions requirements
 WORKDIR /workspace/protomotions

@@ -217,6 +217,8 @@ def agent_config(
 def configure_robot_and_simulator(
     robot_cfg: RobotConfig, simulator_cfg: SimulatorConfig, args: argparse.Namespace
 ):
+    # Match IsaacLab's implicit robot material when this policy was trained.
+    simulator_cfg.default_robot_friction = 0.5
     robot_cfg.update_fields(
         contact_bodies=["all_left_foot_bodies", "all_right_foot_bodies"]
     )

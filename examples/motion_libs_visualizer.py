@@ -34,9 +34,9 @@ parser.add_argument(
 parser.add_argument(
     "--robot",
     type=str,
-    choices=["g1", "rigv1", "h1_2", "smpl", "soma23"],
+    choices=["g1", "h1_2", "smpl", "soma23"],
     default="g1",
-    help="Robot to load (g1, rigv1, h1_2, smpl, or soma23)",
+    help="Robot to load (g1, h1_2, smpl, or soma23)",
 )
 parser.add_argument("--headless", action="store_true", help="Run in headless mode")
 parser.add_argument(
@@ -126,9 +126,6 @@ class RobotSpec:
 # Define robot specifications
 ROBOT_SPECS = {
     "g1": RobotSpec(
-        viz_bodies=[],
-    ),
-    "rigv1": RobotSpec(
         viz_bodies=[],
     ),
     "h1_2": RobotSpec(
@@ -397,8 +394,11 @@ class MotionVisualizerSmoothness:
         # Initialize body markers after kinematic info is loaded
         self._initialize_body_markers()
 
-        # Create custom key handlers for speed and threshold control
+        # Create custom key handlers. R must be REGISTERED here (not left to a legacy
+        # simulator.user_requested_reset flag that the UserInterface sim layer no longer sets) — otherwise
+        # IsaacGym, which only delivers keys it subscribed via subscribe_viewer_keyboard_event, never sees it.
         custom_key_handlers = {
+            "R": self._request_next_motion,  # Key R: switch to the next motion
             "1": self.increase_speed,  # Key 1: Increase playback speed
             "2": self.decrease_speed,  # Key 2: Decrease playback speed
             "3": self.increase_smoothness_threshold,  # Key 3: Increase smoothness threshold
@@ -513,6 +513,12 @@ class MotionVisualizerSmoothness:
             color=(0.8, 0.0, 0.8),  # purple
             markers=contact_marker_configs,
         )
+
+    def _request_next_motion(self):
+        """R key press: ask the main loop to advance to the next motion. Deferred via the flag (rather than
+        switching here) so the heavy per-motion smoothness recompute runs on the loop, not in the key
+        callback fired from inside the viewer's event poll."""
+        self.simulator.user_requested_reset = True
 
     def _switch_to_next_motion(self):
         """Switch to the next motion in the dataset"""
@@ -870,7 +876,7 @@ class MotionVisualizerSmoothness:
         while True:
             frame_start = time.perf_counter()
 
-            # Check for reset request (R key press triggers this in simulator)
+            # Check for reset request (the registered R key handler sets this flag)
             if self.simulator.user_requested_reset:
                 self._switch_to_next_motion()
                 self.simulator.user_requested_reset = False

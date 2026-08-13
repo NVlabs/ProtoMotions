@@ -29,6 +29,7 @@ from protomotions.agents.supervised.masked_mimic_config import (
     MaskedMimicSupervisedAgentConfig,
     VAENoiseType,
 )
+from protomotions.components.motion_lib import MotionFileSwitchMode
 from protomotions.utils.config_utils import clean_dict_for_storage
 from protomotions.utils.hydra_replacement import get_class
 
@@ -427,6 +428,11 @@ def _make_checkpoint_agent():
     agent.fit_start_time = 13.0
     agent.best_evaluated_score = 17.0
     agent.evaluator = None
+    agent.motion_lib = SimpleNamespace(
+        config=SimpleNamespace(
+            motion_file_switch_mode=MotionFileSwitchMode.FIXED,
+        )
+    )
     agent.supervised_optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
     return agent
 

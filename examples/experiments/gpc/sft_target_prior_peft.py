@@ -18,9 +18,8 @@ from protomotions.envs.base_env.config import EnvConfig
 from protomotions.robot_configs.base import RobotConfig
 from protomotions.simulator.base_simulator.config import SimulatorConfig
 
-TRACKER_CHECKPOINT = (
-    "data/pretrained_models/motion_tracker/soma_bones_fsq/inference_last.ckpt"
-)
+TRACKER_CHECKPOINT = "results/amass_tracker/score_based.ckpt"
+PRIOR_CHECKPOINT = "results/fsq_prior_amass/last.ckpt"
 
 PRIOR_TOP_P = 0.99
 LOOKAHEAD_SECONDS_MIN = 1.0
@@ -31,7 +30,7 @@ TAR_PROXIMITY_THRESHOLD = 0.3
 
 def additional_experiment_arguments(parser: argparse.ArgumentParser):
     parser.add_argument("--tracker-checkpoint", default=TRACKER_CHECKPOINT)
-    parser.add_argument("--prior-checkpoint", required=True)
+    parser.add_argument("--prior-checkpoint", default=PRIOR_CHECKPOINT)
 
 
 def configure_robot_and_simulator(
@@ -151,7 +150,7 @@ def agent_config(
         DiscretePriorPEFTSFTModelConfig,
     )
 
-    prior_checkpoint = args.prior_checkpoint
+    prior_checkpoint = getattr(args, "prior_checkpoint", PRIOR_CHECKPOINT)
 
     return DiscretePriorPEFTSFTAgentConfig(
         pretrained_modules={

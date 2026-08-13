@@ -201,17 +201,14 @@ behavior across simulators.
 
 **How it works:**
 
-When running on MuJoCo with an ``AVERAGE`` mode config:
+When a simulator uses ``MAX`` combine mode:
 
-1. Robot shape friction is set to a minimum value (0.01)
-2. Terrain friction is set to the computed effective value
-3. Result: ``max(0.01, effective) = effective`` -- matching the intended behavior
+1. Character shape friction is set from ``simulator.default_robot_friction``
+2. Terrain friction is adjusted to preserve the configured effective value
+3. Domain-randomized character friction overrides the baseline for selected bodies
 
-When domain randomization is configured:
-
-1. Terrain friction is set to minimum (0.01)
-2. Robot friction randomization range is converted to effective values
-3. Result: ``max(robot_dr_value, 0.01) = robot_dr_value`` -- matching intended range
+This keeps the configured character friction explicit even when domain
+randomization is disabled.
 
 This conversion is transparent -- you don't need to change your config for
 different simulators.  The same experiment config works on IsaacGym, IsaacLab,

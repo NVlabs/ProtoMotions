@@ -228,14 +228,39 @@ def test_mimic_motion_sampling_weights_discount_successes_and_failures(tmp_path)
 
     evaluator._update_motion_sampling_weights()
 
+    # The discounted success would be 0.25, but min_motion_weight defaults to
+    # "1/num_motions" = 1/3 here, so it is floored. Without that floor the success
+    # discount compounds unbounded and sampling eventually collapses onto whichever
+    # motions failed most recently.
     assert torch.allclose(
         evaluator.env.motion_manager.updated_weights,
-        torch.tensor([0.25, 4.0, 4.0]),
+        torch.tensor([1.0 / 3.0, 4.0, 4.0]),
     )
     failed_file = (
         tmp_path / "failed_motions" / "failed_motions_epoch_7_rank_0.txt"
     )
     assert failed_file.read_text().splitlines() == ["1", "2"]
+
+
+def test_mimic_motion_sampling_weights_respect_explicit_min_weight(tmp_path):
+    """An explicit float min_motion_weight floors the discounted successes."""
+    evaluator = _evaluator(
+        tmp_path,
+        motion_weights_rules=MotionWeightsRulesConfig(
+            motion_weights_update_success_discount=0.5,
+            motion_weights_update_failure_discount=0.0,
+            min_motion_weight=0.4,
+        ),
+    )
+    evaluator._motion_failed = torch.tensor([False, True, False])
+
+    evaluator._update_motion_sampling_weights()
+
+    # The discounted successes land at 0.25, below the explicit 0.4 floor, so both
+    # are clamped up; the failed motion is reset to 1.0 and left alone.
+    weights = evaluator.env.motion_manager.updated_weights
+    assert torch.allclose(weights, torch.tensor([0.4, 1.0, 0.4]))
+    assert float(weights.min()) >= 0.4
 
 
 def test_mimic_motion_sampling_weights_handles_no_failures_and_zero_failure_discount(
@@ -256,9 +281,10 @@ def test_mimic_motion_sampling_weights_handles_no_failures_and_zero_failure_disc
     evaluator._motion_failed = torch.tensor([False, True, False])
     evaluator._update_motion_sampling_weights()
 
+    # Successes discount toward 0 but are floored at "1/num_motions" = 1/3.
     assert torch.allclose(
         evaluator.env.motion_manager.updated_weights,
-        torch.tensor([0.25, 1.0, 0.25]),
+        torch.tensor([1.0 / 3.0, 1.0, 1.0 / 3.0]),
     )
 
 

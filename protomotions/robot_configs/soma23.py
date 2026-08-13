@@ -16,7 +16,7 @@ from protomotions.simulator.isaaclab.config import (
 from protomotions.simulator.genesis.config import GenesisSimParams
 from protomotions.simulator.newton.config import NewtonSimParams
 from protomotions.components.pose_lib import ControlInfo
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from dataclasses import dataclass, field
 
 
@@ -39,6 +39,8 @@ class Soma23RobotConfig(RobotConfig):
 
     See mjcf/soma23_humanoid.xml for definition.
     """
+
+    semantic_forward_axis_xy: Tuple[float, float] = (0.0, -1.0)
 
     common_naming_to_robot_body_names: Dict[str, List[str]] = field(
         default_factory=lambda: {
@@ -67,8 +69,6 @@ class Soma23RobotConfig(RobotConfig):
     asset: RobotAssetConfig = field(
         default_factory=lambda: RobotAssetConfig(
             asset_file_name="mjcf/soma23_humanoid.xml",
-            usd_asset_file_name="usd/soma23_humanoid_flat/soma23_humanoid_flat.usda",
-            usd_bodies_root_prim_path="/World/envs/env_.*/Robot/Hips/",
             max_linear_velocity=1000.0,
             max_angular_velocity=1000.0,
             angular_damping=0.0,

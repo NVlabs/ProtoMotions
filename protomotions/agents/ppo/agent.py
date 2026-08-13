@@ -569,7 +569,12 @@ class PPO(BaseAgent):
 
             input_dist = (input_ss / input_n).detach()
 
-            clean_td = self.actor(clean_td)
+            # The main PPO pass already ran through the Fabric/DDP wrapper.
+            # Running this auxiliary clean pass through the wrapper a second time
+            # can mutate DDP-broadcast buffers before backward (notably FSQ
+            # quantizer buffers), invalidating the first graph. Gradients still
+            # flow to the same parameters when we call the unwrapped module here.
+            clean_td = self.actor_module(clean_td)
             mu_clean = clean_td["mean_action"]
 
             output_dist = (mu_noisy - mu_clean).pow(2).mean()

@@ -2,18 +2,26 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from typing import Optional
-from protomotions.assets import resolve_asset_root
 from protomotions.components.terrains.terrain import Terrain
 from protomotions.robot_configs.base import RobotConfig
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.actuators import ImplicitActuatorCfg, IdealPDActuatorCfg
-from isaaclab.utils import configclass
+from isaaclab.utils.configclass import configclass
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import ContactSensorCfg
 from isaaclab.terrains.terrain_importer_cfg import TerrainImporterCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from protomotions.simulator.isaaclab.utils.usd_utils import TrimeshTerrainImporter
+from protomotions.simulator.isaaclab.utils.actuator_groups import (
+    build_isaaclab_joint_name_map,
+    resolve_actuator_specs_for_control_type,
+)
+from protomotions.simulator.isaaclab.utils.mjcf_to_usd import convert_robot_mjcf_to_usd
+from protomotions.simulator.isaaclab.utils.usd_body_paths import (
+    contact_sensor_prim_path,
+    resolve_robot_prim_paths,
+)
 from protomotions.simulator.isaaclab.config import IsaacLabSimulatorConfig
 from protomotions.simulator.base_simulator.config import ProjectileConfig
 from protomotions.robot_configs.base import ControlType
@@ -136,34 +144,36 @@ class SceneCfg(InteractiveSceneCfg):
             if robot_config.control.control_type == ControlType.BUILT_IN_PD
             else IdealPDActuatorCfg
         )
-        for dof_name, control_info in robot_config.control.control_info.items():
-            stiffness = control_info.stiffness
-            damping = control_info.damping
-            if robot_config.control.control_type != ControlType.BUILT_IN_PD:
-                stiffness = 0.0
-                damping = 0.0
-            actuators[dof_name] = ActuatorConfig(
-                joint_names_expr=[dof_name],
-                # Only include non-None values in the kwargs
-                **{
-                    key: value
-                    for key, value in {
-                        "stiffness": stiffness,
-                        "damping": damping,
-                        "armature": control_info.armature,
-                        "effort_limit_sim": control_info.effort_limit,
-                        "velocity_limit_sim": control_info.velocity_limit,
-                        "friction": control_info.friction,
-                    }.items()
-                    if value is not None
-                },
+        joint_names = build_isaaclab_joint_name_map(robot_config.kinematic_info)
+        isaaclab_control_info = {
+            joint_names.semantic_to_backend[name]: control_info
+            for name, control_info in robot_config.control.control_info.items()
+        }
+        actuator_groups = resolve_actuator_specs_for_control_type(
+            isaaclab_control_info, robot_config.control.control_type
+        )
+        for actuator_group in actuator_groups:
+            actuators[actuator_group.name] = ActuatorConfig(
+                joint_names_expr=list(actuator_group.joint_names_expr),
+                **actuator_group.params,
             )
+
+        # Derive USD from the robot MJCF via IsaacLab 3 MjcfConverter.
+        robot_usd_path = convert_robot_mjcf_to_usd(robot_config.asset)
+        contact_body_names = (
+            robot_config.contact_bodies if activate_contact_sensors else []
+        )
+        articulation_root_prim_path, body_prim_paths = resolve_robot_prim_paths(
+            robot_usd_path,
+            contact_body_names,
+        )
 
         # articulation
         self.robot = ArticulationCfg(
             prim_path="/World/envs/env_.*/Robot",
+            articulation_root_prim_path=articulation_root_prim_path,
             spawn=sim_utils.UsdFileCfg(
-                usd_path=f"{resolve_asset_root(robot_config.asset.asset_root)}/{robot_config.asset.usd_asset_file_name}",
+                usd_path=robot_usd_path,
                 activate_contact_sensors=activate_contact_sensors,
                 rigid_props=sim_utils.RigidBodyPropertiesCfg(
                     disable_gravity=robot_config.asset.disable_gravity,
@@ -210,7 +220,7 @@ class SceneCfg(InteractiveSceneCfg):
                 sensing_filter.append(f"/World/envs/env_.*/Object_{obj_idx}")
             for body_name in robot_config.contact_bodies:
                 contact_sensor_cfg = ContactSensorCfg(
-                    prim_path=f"{robot_config.asset.usd_bodies_root_prim_path}{body_name}",
+                    prim_path=contact_sensor_prim_path(body_name, body_prim_paths),
                     filter_prim_paths_expr=sensing_filter,
                     history_length=config.sim.decimation,
                 )

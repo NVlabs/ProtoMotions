@@ -274,8 +274,10 @@ def test_sampling_helpers_validate_truncation_and_state_dicts(capsys):
     with pytest.raises(AssertionError):
         manager.sample_time(torch.tensor([0]), truncate_time=-0.1)
 
-    with pytest.raises(AssertionError):
-        manager.sample_time(torch.tensor([0]), truncate_time=1.1)
+    # Over-truncation (truncate_time > clip length) clamps to t=0 rather than
+    # raising, so resets on short clips degrade gracefully instead of crashing.
+    over_truncated = manager.sample_time(torch.tensor([0]), truncate_time=1.1)
+    assert torch.all(over_truncated == 0.0)
 
     state = manager.get_state_dict()
     assert state["motion_file_name"] == "motions.yaml"

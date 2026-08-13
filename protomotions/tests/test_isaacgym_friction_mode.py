@@ -3,7 +3,9 @@
 
 """Deterministic tests for IsaacGym/PhysX friction combine semantics."""
 
+from types import SimpleNamespace
 import pytest
+import torch
 
 from protomotions.components.terrains.config import (
     CombineMode,
@@ -107,3 +109,49 @@ def test_physx_average_friction_config_converts_to_newton_max_config():
     assert newton_friction.static_friction_range == pytest.approx((0.5, 1.0))
     assert newton_friction.dynamic_friction_range == pytest.approx((0.2, 0.6))
     assert newton_friction.restitution_range == pytest.approx((0.05, 0.25))
+
+
+@pytest.mark.parametrize(
+    ("friction_table", "expected_friction"),
+    [
+        (None, 0.75),
+        (torch.tensor([[0.45]]), 0.45),
+    ],
+)
+def test_isaacgym_variants_initialize_baseline_friction(
+    friction_table, expected_friction
+):
+    pytest.importorskip("isaacgym")
+    from protomotions.simulator.isaacgym.simulator import IsaacGymSimulator
+
+    class FakeGym:
+        def get_asset_rigid_shape_properties(self, asset):
+            return asset.shape_props
+
+        def set_asset_rigid_shape_properties(self, asset, shape_props):
+            asset.shape_props = shape_props
+
+    def fresh_asset():
+        return SimpleNamespace(
+            shape_props=[SimpleNamespace(friction=0.0, restitution=0.0)]
+        )
+
+    simulator = IsaacGymSimulator.__new__(IsaacGymSimulator)
+    simulator.config = SimpleNamespace(default_robot_friction=0.75)
+    simulator._gym = FakeGym()
+    simulator._load_humanoid_asset = fresh_asset
+    simulator._domain_randomization = {
+        "friction": {
+            "body_indices": [0],
+            "static_friction": friction_table,
+            "dynamic_friction": None,
+            "restitution": torch.tensor([[0.2]]),
+        }
+    }
+
+    assets = simulator._create_friction_randomized_assets(object())
+
+    assert len(assets) == 1
+    shape_prop = assets[0].shape_props[0]
+    assert shape_prop.friction == pytest.approx(expected_friction)
+    assert shape_prop.restitution == pytest.approx(0.2)

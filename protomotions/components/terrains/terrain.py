@@ -30,8 +30,9 @@ Terrain Layout (Top-Down View):
 
 """
 
-import numpy as np
 import math
+
+import numpy as np
 import torch
 from scipy import ndimage
 
@@ -150,6 +151,12 @@ class Terrain:
         self.scene_placement_map = torch.zeros(
             (self.tot_rows, self.tot_cols), dtype=torch.bool, device=self.device
         )
+        self.has_scene_placements = False
+        self._spawn_sample_index_buffer = torch.empty(
+            num_envs, dtype=torch.long, device=self.device
+        )
+        self._spawn_sample_generator = torch.Generator(device=self.device)
+        self._spawn_sample_generator.manual_seed(torch.initial_seed())
 
         if self.config.load_terrain:
             print("Loading a pre-generated terrain")
@@ -249,13 +256,19 @@ class Terrain:
         """
         Check if the terrain is completely flat.
 
-        Returns True only if terrain_proportions has flat=1.0 and all others are 0.0.
-        This is used to skip expensive terrain height calculations when unnecessary.
+        Returns True only for generated terrain when terrain_proportions has flat=1.0
+        and all others are 0.0. This is used to skip expensive terrain height
+        calculations when unnecessary.
         """
+        if self.config.load_terrain:
+            return False
+
         # Matches the terrain type order used by curriculum().
         proportions = self.config.terrain_proportions
         assert len(proportions) == 8
-        return proportions[-1] == 1.0 and sum(proportions[:-1]) == 0.0
+        return proportions[-1] == 1.0 and all(
+            proportion == 0.0 for proportion in proportions[:-1]
+        )
 
     def find_terrain_height_for_max_below_body(self, respawned_rigid_body_pos):
         """
@@ -296,30 +309,46 @@ class Terrain:
         if sample_flat:
             return self.sample_flat_locations(num_envs)
 
-        idx = np.random.randint(0, self.walkable_x_coords.shape[0], size=num_envs)
-        valid_locs = torch.stack(
-            [self.walkable_x_coords[idx], self.walkable_y_coords[idx]], dim=-1
+        valid_locs = self._sample_coordinate_pairs(
+            self.walkable_x_coords, self.walkable_y_coords, num_envs
         )
 
         # Raise an error if any position is invalid
-        assert self.is_valid_spawn_location(
-            valid_locs
-        ).all(), "Invalid spawn locations detected"
+        if self.has_scene_placements:
+            assert self.is_valid_spawn_location(
+                valid_locs
+            ).all(), "Invalid spawn locations detected"
 
         return valid_locs
 
     def sample_flat_locations(self, num_envs):
-        idx = np.random.randint(0, self.flat_x_coords.shape[0], size=num_envs)
-        flat_locs = torch.stack(
-            [self.flat_x_coords[idx], self.flat_y_coords[idx]], dim=-1
+        flat_locs = self._sample_coordinate_pairs(
+            self.flat_x_coords, self.flat_y_coords, num_envs
         )
 
         # Raise an error if any position is invalid
-        assert self.is_valid_spawn_location(
-            flat_locs
-        ).all(), "Invalid flat spawn locations detected"
+        if self.has_scene_placements:
+            assert self.is_valid_spawn_location(
+                flat_locs
+            ).all(), "Invalid flat spawn locations detected"
 
         return flat_locs
+
+    def _sample_coordinate_pairs(
+        self, x_coords: torch.Tensor, y_coords: torch.Tensor, num_envs: int
+    ) -> torch.Tensor:
+        if num_envs > self._spawn_sample_index_buffer.numel():
+            self._spawn_sample_index_buffer = torch.empty(
+                num_envs, dtype=torch.long, device=self.device
+            )
+
+        idx = self._spawn_sample_index_buffer[:num_envs]
+        idx.random_(
+            0,
+            x_coords.shape[0],
+            generator=self._spawn_sample_generator,
+        )
+        return torch.stack([x_coords[idx], y_coords[idx]], dim=-1)
 
     def curriculum(self, n_subterrains_per_level, n_levels):
         for subterrain_idx in range(n_subterrains_per_level):
@@ -425,6 +454,7 @@ class Terrain:
         y_max = min(self.tot_cols, y + radius + 1)
 
         self.scene_placement_map[x_min:x_max, y_min:y_max] = True
+        self.has_scene_placements = True
 
     def is_valid_spawn_location(self, locations: torch.Tensor) -> torch.Tensor:
         """
@@ -507,6 +537,16 @@ class Terrain:
         """
         Get the height of the terrain at the specified locations.
         """
+        if self.is_flat():
+            zero_source = (
+                locations[:, :1] if locations.dim() == 2 else locations[..., 0]
+            )
+            output_dtype = torch.promote_types(
+                locations.dtype,
+                self.height_samples.dtype,
+            )
+            return zero_source.to(dtype=output_dtype) * 0
+
         return get_heights_jit(
             locations=locations,
             height_samples=self.height_samples,
@@ -519,9 +559,9 @@ class Terrain:
         Each sample is the billinear interpolation between adjacent points.
         """
         if env_ids is not None:
-            height_points = self.height_points[env_ids].clone()
+            height_points = self.height_points[env_ids]
         else:
-            height_points = self.height_points.clone()
+            height_points = self.height_points
 
         return get_height_maps_jit(
             base_rot=root_states.root_rot,

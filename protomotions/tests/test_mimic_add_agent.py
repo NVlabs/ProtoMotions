@@ -29,6 +29,12 @@ def test_mimic_add_adds_tracking_difference_observation(monkeypatch):
         ]
     )
     cur_pos = ref_pos - 0.5
+    ground_queries = []
+
+    def get_ground_heights(positions):
+        ground_queries.append(positions.clone())
+        return positions[:, 0]
+
     env = SimpleNamespace(
         motion_manager=SimpleNamespace(
             motion_times=torch.tensor([0.1, 0.2]),
@@ -40,10 +46,9 @@ def test_mimic_add_adds_tracking_difference_observation(monkeypatch):
         get_spawn_to_ref_pose_offset_with_terrain_height_correction=lambda pos: torch.zeros_like(
             pos
         ),
-        terrain=SimpleNamespace(
-            get_ground_heights=lambda roots: roots[:, 2] * 0.0,
-        ),
+        terrain=SimpleNamespace(get_ground_heights=get_ground_heights),
         simulator=SimpleNamespace(get_bodies_state=lambda: _state(cur_pos.clone())),
+        robot_config=SimpleNamespace(anchor_body_index=1),
     )
     agent = MimicADD.__new__(MimicADD)
     agent.env = env
@@ -60,7 +65,7 @@ def test_mimic_add_adds_tracking_difference_observation(monkeypatch):
         assert kwargs["root_height_obs"] is True
         assert kwargs["observe_contacts"] is False
         assert kwargs["body_contacts"].shape == (num_envs, 0)
-        return body_pos.reshape(num_envs, -1) + ground_height[:, None]
+        return body_pos.reshape(num_envs, -1)
 
     monkeypatch.setattr(
         agent_add,
@@ -75,6 +80,8 @@ def test_mimic_add_adds_tracking_difference_observation(monkeypatch):
         obs["mimic_target_poses_diff"],
         (ref_pos - cur_pos).reshape(num_envs, -1),
     )
+    assert torch.equal(ground_queries[0], ref_pos[:, 1])
+    assert torch.equal(ground_queries[1], cur_pos[:, 1])
 
 
 def test_mimic_add_expert_disc_obs_adds_zero_tracking_diff_from_history(monkeypatch):

@@ -62,8 +62,8 @@ class IsaacLabSimulatorConfig(SimulatorConfig):
 
     _target_: str = "protomotions.simulator.isaaclab.simulator.IsaacLabSimulator"
     w_last: bool = field(
-        default=False,
-        metadata={"help": "Quaternion format: False for wxyz (IsaacLab convention)."}
+        default=True,
+        metadata={"help": "Quaternion format: True for xyzw (IsaacLab 3 convention)."}
     )
     sim: IsaacLabSimParams = field(
         default_factory=IsaacLabSimParams,

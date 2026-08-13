@@ -72,7 +72,7 @@ if [ ! -f "$AMASS_PT_FILE" ]; then
     exit 1
 fi
 
-# Output directories are in the same location as input (follows rigv1-vaulting convention)
+# Output directories are in the same location as input.
 OUTPUT_DIR="$(dirname "$AMASS_PT_FILE")"
 KEYPOINTS_DIR="${OUTPUT_DIR}/keypoints-for-retarget"
 RETARGETED_DIR="${OUTPUT_DIR}/pyroki-retargeted-${ROBOT_TYPE}"

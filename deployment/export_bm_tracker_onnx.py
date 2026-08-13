@@ -4,7 +4,8 @@
 """ONNX export for BeyondMimic tracker policies.
 
 Exports a ProtoMotions BeyondMimic tracker policy to a unified ONNX model
-**without** running a simulator. The script auto-detects actor observation
+**without** running a simulator.  Unlike ``export_tracker_onnx.py`` which
+hardcodes ``ACTOR_OBS_KEYS``, this script auto-detects actor observation
 keys from the checkpoint's agent config.
 
 Typical actor obs for BM configs::
@@ -56,6 +57,8 @@ class _MockState:
         import torch
         import torch.nn.functional as F
 
+        self.anchor_idx = anchor_idx
+
         # Actor obs fields
         self.dof_pos = torch.randn(num_envs, num_dofs)
         self.dof_vel = torch.randn(num_envs, num_dofs)
@@ -69,6 +72,17 @@ class _MockState:
         self.rigid_body_ang_vel = torch.randn(num_envs, num_bodies, 3)
 
 
+class _MockRefState:
+    """Mock for the current-step reference RobotState (ctx.mimic.ref_state)."""
+
+    def __init__(self, num_envs: int, num_bodies: int):
+        import torch
+
+        # Source of the reference anchor XY for the odometer offset the
+        # baked-FK graph derives internally (compute_odom_offset_local).
+        self.rigid_body_pos = torch.randn(num_envs, num_bodies, 3)
+
+
 class _MockMimic:
     """Mock for MimicContext."""
 
@@ -78,9 +92,12 @@ class _MockMimic:
         num_future_steps: int,
         num_dofs: int,
         num_bodies: int,
+        anchor_idx: int,
     ):
         import torch
         import torch.nn.functional as F
+
+        self.anchor_idx = anchor_idx
 
         # Full-body arrays (used by max_coords obs or older configs)
         self.future_rot     = F.normalize(
@@ -100,8 +117,14 @@ class _MockMimic:
         self.future_anchor_vel     = torch.randn(num_envs, num_future_steps, 3)
         self.future_anchor_ang_vel = torch.randn(num_envs, num_future_steps, 3)
 
-        # Current reference anchor position
+        # Current reference anchor position. With future_anchor_pos above this is
+        # all the reference position data the baked-FK tracker needs.
         self.ref_anchor_pos = torch.randn(num_envs, 3)
+
+        # Current-step reference state. The baked-FK tracker path no longer reads
+        # this; kept so configs whose observations do read every reference body
+        # still trace.
+        self.ref_state = _MockRefState(num_envs, num_bodies)
 
 
 class _MockHistorical:
@@ -128,8 +151,20 @@ class MockContext:
         import torch
 
         self.current = _MockState(num_envs, num_dofs, num_bodies, anchor_idx)
-        self.mimic   = _MockMimic(num_envs, num_future_steps, num_dofs, num_bodies)
+        self.mimic   = _MockMimic(
+            num_envs, num_future_steps, num_dofs, num_bodies, anchor_idx
+        )
         self.historical = _MockHistorical(num_envs, history_steps, num_dofs)
+        # Raw odometer sensor fields. The heading-local offset to the reference
+        # (formerly odom_offset_local_*) is derived on demand inside the graph by
+        # compute_odom_offset_local, consumed by odom_offset_factory and
+        # baked_fk_target_poses_factory from these raw ingredients plus
+        # mimic.ref_anchor_pos -- the reference ANCHOR only, not every body.
+        self.odom_start_xy = torch.randn(num_envs, 2)
+        self.odom_disp_start_corrupt = torch.randn(num_envs, 2)
+        self.odom_disp_start_clean = torch.randn(num_envs, 2)
+        self.odom_start_heading_inv = torch.zeros(num_envs, 4)
+        self.odom_start_heading_inv[:, 3] = 1.0
         # body_contacts: used by max_coords_obs observe_contacts
         self.body_contacts  = torch.zeros(num_envs, num_bodies, dtype=torch.bool)
         # ground_heights: used by max_coords_obs root_height_obs
@@ -162,7 +197,6 @@ def export_tracker(
     Path to the exported ``.onnx`` file.
     """
     import torch
-    import torch.nn.functional as F
     from tensordict import TensorDict
 
     from protomotions.utils.export_utils import (
@@ -466,6 +500,28 @@ def export_tracker(
             diff = np.abs(ort_outputs[i] - pt_out).max()
             status = "OK" if diff < 1e-4 else "WARN"
             log.info(f"  {status}  {name}: max_diff = {diff:.2e}")
+
+        # The sidecar claims joint_pos_targets = pd_action_offset + action_scale *
+        # action. Check that against what the graph actually produced, so a wrong
+        # or stale conversion is caught at export rather than on a robot.
+        _acfg_v = env_config.action_config
+        _g = (lambda c, n: c.get(n)) if isinstance(_acfg_v, dict) else (lambda c, n: getattr(c, n, None))
+        _scale, _offset = _g(_acfg_v, "action_scale"), _g(_acfg_v, "pd_action_offset")
+        if _scale is not None and _offset is not None:
+            _s = np.asarray(_scale, dtype=np.float64).reshape(-1)
+            _o = np.asarray(_offset, dtype=np.float64).reshape(-1)
+            _a = ort_outputs[0].astype(np.float64).reshape(-1)
+            _recon = _o + _s * _a
+            _d = float(np.abs(_recon - ort_outputs[1].astype(np.float64).reshape(-1)).max())
+            if _d < 1e-4:
+                log.info(f"  OK  sidecar action conversion reproduces the graph: max_diff = {_d:.2e}")
+            else:
+                raise ValueError(
+                    f"The action_scale/pd_action_offset about to be written to the sidecar do not "
+                    f"reproduce the exported graph's joint_pos_targets (max_diff {_d:.2e}). The "
+                    f"sidecar would describe a different conversion than the ONNX performs, which "
+                    f"is exactly the mismatch these fields exist to make visible."
+                )
         log.info("Validation complete")
 
     # ------------------------------------------------------------------
@@ -478,15 +534,38 @@ def export_tracker(
         float(robot_config.control.control_info[j].damping) for j in joint_names
     ]
 
-    # Effort limits (if available)
+    # Effort limits. ControlInfo.effort_limit, not .effort -- the wrong name
+    # raised AttributeError, the except below swallowed it, and every sidecar
+    # shipped effort_limits: null, so consumers fell back to their own torque
+    # limits instead of the ones the policy was trained under.
     effort_limits = None
     try:
         effort_limits = [
-            float(robot_config.control.control_info[j].effort)
+            float(robot_config.control.control_info[j].effort_limit)
             for j in joint_names
         ]
-    except (AttributeError, KeyError):
+    except (AttributeError, KeyError, TypeError):
         pass
+
+    # The action -> PD target conversion, read from this run's own action config.
+    # Not cosmetic metadata: the graph computes
+    #     joint_pos_targets = pd_action_offset + action_scale * action
+    # and a policy distilled from an FSQ decoder uses an action_scale a quarter of
+    # a normal tracker's, because its decoder was trained at that scale. Without
+    # these fields the two exports produce byte-identical-looking sidecars.
+    def _as_float_list(v):
+        if v is None:
+            return None
+        if hasattr(v, "flatten"):
+            return [float(x) for x in v.flatten().tolist()]
+        if isinstance(v, (list, tuple)):
+            return [float(x) for x in v]
+        return float(v)
+
+    _acfg = env_config.action_config
+    _get = (lambda c, n: c.get(n)) if isinstance(_acfg, dict) else (lambda c, n: getattr(c, n, None))
+    action_scale_vals = _as_float_list(_get(_acfg, "action_scale"))
+    pd_action_offset_vals = _as_float_list(_get(_acfg, "pd_action_offset"))
 
     mjcf_path = robot_config.asset.asset_file_name
 
@@ -508,6 +587,8 @@ def export_tracker(
         stiffness=stiffness_vals,
         damping=damping_vals,
         effort_limits=effort_limits,
+        action_scale=action_scale_vals,
+        pd_action_offset=pd_action_offset_vals,
         pd_target_max_accel=pd_target_max_accel,
         anchor_body_name=anchor_body_name,
         anchor_body_index=anchor_body_index,
@@ -551,6 +632,8 @@ def _build_yaml(
     stiffness,
     damping,
     effort_limits,
+    action_scale,
+    pd_action_offset,
     pd_target_max_accel,
     anchor_body_name,
     anchor_body_index,
@@ -590,12 +673,106 @@ def _build_yaml(
             entry["element_names"] = [["x", "y", "z", "w"]]
         elif "root_local_ang_vel" in key:
             entry["kind"] = "local_root_ang_vel"
+        elif key == "odom_start_xy":
+            entry["kind"] = "odom_start_xy"
+            entry["element_names"] = [["x", "y"]]
+            entry["source"] = (
+                "Robot/reference anchor XY at motion start in the deployment "
+                "world frame. For zero-start deploy frames this is [0, 0]."
+            )
+        elif key == "odom_disp_start_corrupt":
+            entry["kind"] = "odom_disp_start_corrupt"
+            entry["element_names"] = [["x", "y"]]
+            entry["source"] = (
+                "Odometer XY displacement from motion start, expressed in "
+                "the start-heading frame."
+            )
+        elif key == "odom_start_heading_inv":
+            entry["kind"] = "odom_start_heading_inv"
+            entry["element_names"] = [["x", "y", "z", "w"]]
+            entry["source"] = "Inverse yaw-only heading captured at motion start."
+        elif key == "mimic.ref_anchor_pos":
+            entry["kind"] = "reference_motion_anchor_pos"
+            entry["element_names"] = [[anchor_body_name], ["x", "y", "z"]]
+            entry["source"] = (
+                "Reference anchor position at the CURRENT step, aligned to the "
+                "robot's start frame. Two uses: it is the point the odometer "
+                "offset is measured to (supply the raw odometer ingredients "
+                "odom_disp_start, odom_start_xy, odom_start_heading_inv alongside "
+                "it), and it is the origin for the reference's own travel over "
+                "the horizon. Only the anchor is needed, no other reference body."
+            )
+        elif key == "mimic.future_anchor_pos":
+            entry["kind"] = "reference_motion_anchor_pos_future"
+            entry["future_steps"] = len(future_step_indices)
+            entry["element_names"] = [[anchor_body_name], ["x", "y", "z"]]
+            entry["source"] = (
+                "Reference anchor position at each future step, same frame as "
+                "mimic.ref_anchor_pos. Minus the current-step value, this is how "
+                "far the reference itself travels over the horizon, which is what "
+                "tells the policy how fast to move."
+            )
+        elif key == "mimic.ref_state.rigid_body_pos":
+            entry["kind"] = "reference_motion_body_pos"
+            entry["element_names"] = [body_names, ["x", "y", "z"]]
+            entry["source"] = (
+                "Current-step reference body positions, aligned to the robot's "
+                "start frame. The baked-FK tracker path does NOT request this -- "
+                "it needs mimic.ref_anchor_pos alone -- so this only appears for "
+                "observations that genuinely read every reference body."
+            )
+        elif key == "mimic.future_pos":
+            entry["kind"] = "reference_motion_body_pos_future"
+            entry["future_steps"] = len(future_step_indices)
+            entry["element_names"] = [body_names, ["x", "y", "z"]]
+            entry["source"] = (
+                "Reference body positions at each future step, in the same "
+                "frame as mimic.ref_anchor_pos. Only observations that read "
+                "every reference body need this; the baked-FK path does not."
+            )
+        elif key == "mimic.future_rot":
+            entry["kind"] = "reference_motion_body_rot"
+            entry["future_steps"] = len(future_step_indices)
+            entry["element_names"] = [body_names, ["x", "y", "z", "w"]]
+            entry["source"] = (
+                "Reference body orientations at each future step, rotated by "
+                "the start-heading offset."
+            )
+        elif key == "mimic.future_vel":
+            entry["kind"] = "reference_motion_body_vel"
+            entry["future_steps"] = len(future_step_indices)
+            entry["element_names"] = [body_names, ["x", "y", "z"]]
+        elif key == "mimic.future_ang_vel":
+            entry["kind"] = "reference_motion_body_ang_vel"
+            entry["future_steps"] = len(future_step_indices)
+            entry["element_names"] = [body_names, ["x", "y", "z"]]
+        elif key == "mimic.future_anchor_vel":
+            entry["kind"] = "reference_motion_anchor_vel"
+            entry["future_steps"] = len(future_step_indices)
+            entry["element_names"] = [[anchor_body_name], ["x", "y", "z"]]
+        elif key == "mimic.future_anchor_ang_vel":
+            entry["kind"] = "reference_motion_anchor_ang_vel"
+            entry["future_steps"] = len(future_step_indices)
+            entry["element_names"] = [[anchor_body_name], ["x", "y", "z"]]
+        elif key == "current.anchor_pos":
+            entry["kind"] = "anchor_pos"
+            entry["element_names"] = [["x", "y", "z"]]
+            entry["source"] = (
+                "Robot anchor position in the deployment world frame. This "
+                "needs a position estimate on the robot; prefer observations "
+                "that read only the anchor rotation if you do not have one."
+            )
         elif "processed_actions" in key or "historical" in key:
             entry["kind"] = "last_actions"
             # The ONNX output key this feeds back from
             entry["output_key"] = "robot_action"
         elif "mimic" in key and "anchor_rot" in key:
-            entry["kind"] = "reference_motion_body_rot"
+            # Deliberately NOT reference_motion_body_rot: this is the anchor
+            # alone, shape [1, n_future, 4], not the full
+            # [1, n_future, n_bodies, 4] array. A consumer dispatching on
+            # `kind` has to be able to tell them apart. Matches
+            # ONNX_INPUT_MAPPING in protomotions/utils/export_utils.py.
+            entry["kind"] = "reference_motion_anchor_rot"
             entry["future_steps"] = len(future_step_indices)
             entry["element_names"] = [[anchor_body_name], ["x", "y", "z", "w"]]
         elif "mimic" in key and "dof_pos" in key:
@@ -608,6 +785,19 @@ def _build_yaml(
             entry["element_names"] = [joint_names]
 
         policy_inputs.append(entry)
+
+    # An entry without a `kind` is a graph input the YAML fails to describe.
+    # Every other input and all four outputs carry one, so a metadata-driven
+    # consumer dispatches on it -- an undescribed input silently becomes an
+    # input nobody knows how to supply. Fail here rather than ship the gap.
+    undescribed = [e["key"] for e in policy_inputs if "kind" not in e]
+    if undescribed:
+        raise ValueError(
+            "The exported graph has inputs this YAML cannot describe: "
+            + ", ".join(undescribed)
+            + ". Add a descriptor branch for each in _build_yaml so deployments "
+            "know what to feed them."
+        )
 
     # Build output descriptors
     policy_outputs = [
@@ -667,6 +857,15 @@ def _build_yaml(
             "stiffness": stiffness,
             "damping": damping,
             "effort_limits": effort_limits,
+            # The action -> PD target conversion baked into the graph:
+            #     joint_pos_targets = pd_action_offset + action_scale * action
+            # Recorded here because it is otherwise invisible from outside the
+            # ONNX. Two checkpoints whose action_scale differs by 4x -- which is
+            # exactly the case between a tracker and an FSQ-decoder-derived
+            # policy -- produce sidecars that are identical without these fields,
+            # so neither a reviewer nor a deploy host can tell them apart.
+            "action_scale": action_scale,
+            "pd_action_offset": pd_action_offset,
             "pd_target_max_accel": pd_target_max_accel,
             "action_ema_alpha": 1.0,
         },

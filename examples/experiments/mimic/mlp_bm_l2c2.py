@@ -3,7 +3,7 @@
 
 """BeyondMimic experiment with torso anchor + L2C2 regularization.
 
-Extends mlp_bm_deploy_future_obs_norm_learned_std_torso_anchor.py with L2C2:
+BeyondMimic L2C2 experiment with a self-contained configuration:
 - Adds clean (noise-free) observation counterparts alongside existing noisy actor obs
 - Penalizes MSE(mu_noisy, mu_clean) to encourage policy smoothness w.r.t. sensor noise
 - Anchor uses robot config default (torso_link for G1) instead of pelvis override

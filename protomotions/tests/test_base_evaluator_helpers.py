@@ -13,7 +13,9 @@ import torch
 from tensordict import TensorDict
 
 import protomotions.agents.evaluators.base_evaluator as base_evaluator_module
-from protomotions.agents.evaluators.aggregate_metrics import ActionSmoothnessAggregateMetric
+from protomotions.agents.evaluators.aggregate_metrics import (
+    ActionSmoothnessAggregateMetric,
+)
 from protomotions.agents.evaluators.base_evaluator import BaseEvaluator
 from protomotions.agents.evaluators.config import EvaluatorConfig
 from protomotions.agents.evaluators.metrics import MotionMetrics
@@ -160,7 +162,9 @@ def test_base_evaluator_evaluate_short_circuits_without_components(tmp_path):
     assert evaluator.agent.eval_calls == 0
 
 
-def test_base_evaluator_evaluate_restores_perturbations_when_init_returns_none(tmp_path):
+def test_base_evaluator_evaluate_restores_perturbations_when_init_returns_none(
+    tmp_path,
+):
     class _NoMetricsEvaluator(BaseEvaluator):
         def initialize_eval(self):
             return None
@@ -177,7 +181,9 @@ def test_base_evaluator_evaluate_restores_perturbations_when_init_returns_none(t
     assert env.simulator._push_enabled is True
 
 
-def test_base_evaluator_evaluate_full_cycle_restores_and_logs_component_metrics(tmp_path):
+def test_base_evaluator_evaluate_full_cycle_restores_and_logs_component_metrics(
+    tmp_path,
+):
     class _FullCycleEvaluator(BaseEvaluator):
         def initialize_eval(self):
             self._init_eval_component_buffers(num_eval_ids=1)
@@ -216,8 +222,8 @@ def test_base_evaluator_evaluate_full_cycle_restores_and_logs_component_metrics(
 def test_base_evaluator_default_initialize_run_properties_and_empty_results(tmp_path):
     evaluator = _evaluator(tmp_path, components={"height": _EvalComponent()})
     calls = []
-    evaluator.evaluate_episode = (
-        lambda env_ids, max_steps: calls.append((env_ids.clone(), max_steps))
+    evaluator.evaluate_episode = lambda env_ids, max_steps: calls.append(
+        (env_ids.clone(), max_steps)
     )
 
     metrics = evaluator.initialize_eval()
@@ -253,7 +259,26 @@ def test_evaluate_episode_runs_hooks_and_steps_policy_actions(tmp_path):
     assert torch.equal(env.step_actions[0], torch.ones(2, 1))
 
 
-def test_default_episode_hooks_are_noops_and_check_short_circuits_without_component_manager(tmp_path):
+def test_policy_action_prefers_mean_action_and_falls_back_to_action(tmp_path):
+    env = _Env()
+    agent = _Agent(env, tmp_path)
+    evaluator = BaseEvaluator(agent, _Fabric(), _config())
+    mean_action = torch.ones(2, 1)
+    sampled_action = torch.zeros(2, 1)
+
+    agent.model = lambda obs_td: {
+        "mean_action": mean_action,
+        "action": sampled_action,
+    }
+    assert evaluator._policy_action(None) is mean_action
+
+    agent.model = lambda obs_td: {"action": sampled_action}
+    assert evaluator._policy_action(None) is sampled_action
+
+
+def test_default_episode_hooks_are_noops_and_check_short_circuits_without_component_manager(
+    tmp_path,
+):
     evaluator = _evaluator(tmp_path, components={"height": _EvalComponent()})
     env_ids = torch.tensor([0, 1])
 
@@ -356,7 +381,9 @@ def test_metric_creation_robot_state_metric_addition_and_generation(tmp_path):
     assert logs["eval_min/reward"] == pytest.approx(2.0)
 
 
-def test_robot_state_metric_addition_ignores_missing_or_invalid_simulator(tmp_path, caplog):
+def test_robot_state_metric_addition_ignores_missing_or_invalid_simulator(
+    tmp_path, caplog
+):
     evaluator = _evaluator(tmp_path)
     motion_lens = torch.tensor([1])
     metrics = {}
@@ -530,7 +557,9 @@ def test_plot_per_frame_metrics_filters_features_handles_empty_frames_and_saves(
     assert closed == [fake_fig]
 
 
-def test_plot_per_frame_metrics_reports_when_no_single_feature_metrics(tmp_path, capsys):
+def test_plot_per_frame_metrics_reports_when_no_single_feature_metrics(
+    tmp_path, capsys
+):
     evaluator = _evaluator(tmp_path)
     vector = MotionMetrics(
         1,
@@ -546,7 +575,9 @@ def test_plot_per_frame_metrics_reports_when_no_single_feature_metrics(tmp_path,
     assert "No single-feature metrics found for plotting" in capsys.readouterr().out
 
 
-def test_plot_per_frame_metrics_handles_missing_matplotlib(tmp_path, monkeypatch, capsys):
+def test_plot_per_frame_metrics_handles_missing_matplotlib(
+    tmp_path, monkeypatch, capsys
+):
     real_import = builtins.__import__
 
     def raising_import(name, *args, **kwargs):

@@ -31,7 +31,7 @@ from protomotions.simulator.genesis.config import GenesisSimParams
 from protomotions.simulator.newton.config import NewtonSimParams
 from protomotions.simulator.mujoco.config import MujocoSimParams
 
-from typing import List, Optional, Dict, Union
+from typing import List, Optional, Dict, Tuple, Union
 from enum import Enum
 import os
 import re
@@ -94,8 +94,6 @@ class RobotAssetConfig:
 
     # Optional fields
     asset_file_name: str = None
-    usd_asset_file_name: str = None
-    usd_bodies_root_prim_path: str = None
     replace_cylinder_with_capsule: Optional[bool] = None
     thickness: Optional[float] = None
     max_angular_velocity: Optional[float] = None
@@ -177,6 +175,7 @@ class RobotConfig:
     Example::
 
         config = RobotConfig(
+            semantic_forward_axis_xy=(1.0, 0.0),
             asset=RobotAssetConfig(asset_file_name="robot.xml"),
             control=ControlConfig(control_type=ControlType.BUILT_IN_PD)
         )
@@ -190,6 +189,21 @@ class RobotConfig:
     )
 
     default_root_height: float = 1
+    semantic_forward_axis_xy: Optional[Tuple[float, float]] = None
+    """Robot-local xy axis that points in the anatomical facing direction.
+
+    This is intentionally 2D, not 3D. ProtoMotions assumes Z-up humanoid
+    assets, so heading should only choose the horizontal anatomical forward
+    direction. Keeping the field in xy avoids using a forward vector with a
+    vertical component that would require re-orienting the robot to stand
+    upright before heading logic can be applied.
+
+    Fresh robot configs must declare this explicitly. Legacy pickled configs
+    that predate the field are handled at runtime by helper fallbacks so old
+    checkpoints keep loading with their original +X convention. To identify the
+    axis for a new robot, run ``python scripts/identify_robot_facing_axis.py
+    --robots <robot-name> --view``.
+    """
     default_dof_pos: Optional[Union[List[float], torch.Tensor, Dict[str, float]]] = (
         None  # Default joint positions for resets (if None, uses zeros).
         # Can be a Dict[str, float] mapping regex patterns to values (e.g.,
@@ -225,6 +239,8 @@ class RobotConfig:
 
     def __post_init__(self):
         """Compute derived fields after initialization."""
+
+        self._normalize_semantic_forward_axis_xy()
 
         from protomotions.components.pose_lib import extract_kinematic_info
 
@@ -297,6 +313,35 @@ class RobotConfig:
                 name in self.common_naming_to_robot_body_names.keys()
             ), f"RobotConfig.common_naming_to_robot_body_names must contain {name}"
 
+    def _normalize_semantic_forward_axis_xy(self) -> None:
+        """Validate and normalize the declared anatomical forward axis."""
+        if self.semantic_forward_axis_xy is None:
+            raise ValueError(
+                "RobotConfig.semantic_forward_axis_xy must be declared explicitly "
+                "as the robot-local xy axis that points in the anatomical "
+                "forward direction, e.g. (1.0, 0.0) or (0.0, -1.0). "
+                "The axis is 2D because ProtoMotions assumes Z-up robots and "
+                "uses this field only for horizontal heading, not upright pose "
+                "re-orientation. Run `python scripts/identify_robot_facing_axis.py "
+                "--robots <robot-name> --view` to identify and visualize it."
+            )
+        axis = torch.as_tensor(self.semantic_forward_axis_xy, dtype=torch.float32)
+        if axis.shape != (2,):
+            raise ValueError(
+                "RobotConfig.semantic_forward_axis_xy must be a non-zero 2D "
+                "axis. The field is xy-only because ProtoMotions assumes Z-up "
+                "robots and separates horizontal heading from standing upright."
+            )
+        norm = axis.norm()
+        if norm <= 1e-6:
+            raise ValueError(
+                "RobotConfig.semantic_forward_axis_xy must be a non-zero 2D "
+                "axis. The field is xy-only because ProtoMotions assumes Z-up "
+                "robots and separates horizontal heading from standing upright."
+            )
+        axis = axis / norm
+        self.semantic_forward_axis_xy = (float(axis[0]), float(axis[1]))
+
     def update_fields(self, **kwargs):
         """Update robot config fields and reprocess derived fields.
 
@@ -310,6 +355,9 @@ class RobotConfig:
             if not hasattr(self, key):
                 raise ValueError(f"RobotConfig has no field '{key}'")
             setattr(self, key, value)
+
+        if "semantic_forward_axis_xy" in kwargs:
+            self._normalize_semantic_forward_axis_xy()
 
         # Reprocess fields that depend on the updated values
         self.mimic_small_marker_bodies = abstract_names_to_body_names(

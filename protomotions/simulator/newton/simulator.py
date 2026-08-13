@@ -27,6 +27,10 @@ from protomotions.simulator.newton.contact_utils import (
     get_contact_sensor_body_patterns,
     validate_contact_sensor_match,
 )
+from protomotions.simulator.base_simulator.utils import (
+    get_friction_bucket_count,
+    get_friction_table,
+)
 from protomotions.simulator.newton.randomization_utils import (
     move_friction_tables_to_device,
 )
@@ -544,10 +548,9 @@ class NewtonSimulator(Simulator):
                 self._domain_randomization["friction"], current_friction.device
             )
             body_indices = friction_dr["body_indices"]
-            static_friction = friction_dr["static_friction"]
-            restitution = friction_dr["restitution"]
-
-            num_buckets = static_friction.shape[0] if static_friction is not None else 0
+            friction_table = get_friction_table(friction_dr)
+            restitution = friction_dr.get("restitution")
+            num_buckets = get_friction_bucket_count(friction_dr)
 
             if num_buckets > 0:
                 # Build body name → local shape indices mapping via ArticulationView
@@ -570,8 +573,8 @@ class NewtonSimulator(Simulator):
                     )
 
                     # Vectorized assignment across all envs at once
-                    if static_friction is not None:
-                        friction_values = static_friction[bucket_ids, idx]
+                    if friction_table is not None:
+                        friction_values = friction_table[bucket_ids, idx]
                         current_friction[:, 0, local_shape_indices] = (
                             friction_values.unsqueeze(1)
                         )
@@ -632,19 +635,15 @@ class NewtonSimulator(Simulator):
             self.solver.notify_model_changed(notify_flags)
 
     def _set_robot_friction_to_terrain(self) -> None:
-        """Set robot shape friction/restitution to terrain values as baseline.
+        """Set robot shape friction to its configured baseline.
 
-        This ensures a consistent friction floor before domain randomization.
-        DR will override with randomized values for specific bodies if configured.
+        Domain randomization overrides the configured friction for selected bodies
+        when enabled. Terrain restitution remains the baseline for compatibility
+        with the existing Newton material setup.
 
         Uses ArticulationView get/set_attribute API (not direct model.assign)
         to ensure Newton's internal solver state stays consistent.
         """
-        if self.terrain is None:
-            return
-
-        terrain_friction = self.terrain.sim_config.static_friction
-        terrain_restitution = self.terrain.sim_config.restitution
 
         # Get robot shape materials via ArticulationView (scoped to robot only)
         mu_wp = self.robot_view.get_attribute("shape_material_mu", self.model)
@@ -654,13 +653,15 @@ class NewtonSimulator(Simulator):
 
         # Modify values via torch (writes through to underlying warp memory)
         mu_torch = wp.to_torch(mu_wp)
-        rest_torch = wp.to_torch(rest_wp)
-        mu_torch[:] = terrain_friction
-        rest_torch[:] = terrain_restitution
+        mu_torch[:] = self.config.default_robot_friction
+        if self.terrain is not None and self.terrain.sim_config is not None:
+            rest_torch = wp.to_torch(rest_wp)
+            rest_torch[:] = self.terrain.sim_config.restitution
 
         # Write back through ArticulationView
         self.robot_view.set_attribute("shape_material_mu", self.model, mu_wp)
-        self.robot_view.set_attribute("shape_material_restitution", self.model, rest_wp)
+        if self.terrain is not None and self.terrain.sim_config is not None:
+            self.robot_view.set_attribute("shape_material_restitution", self.model, rest_wp)
         self.solver.notify_model_changed(SolverNotifyFlags.SHAPE_PROPERTIES)
 
     def _get_sim_body_ordering(self) -> SimBodyOrdering:
@@ -946,9 +947,9 @@ class NewtonSimulator(Simulator):
         """No-op on Newton: evaluation env-parking is unnecessary and harmful.
 
         The base implementation teleports inactive envs to ``hide_z`` to keep
-        their AABBs out of PhysX's broadphase pair budget. MuJoCo-Warp has
-        fixed per-world contact buffers and no cross-env broadphase pairs, so
-        parking buys nothing here.
+        their AABBs out of PhysX's broadphase pair budget. Newton replicates
+        environments as separate worlds with fixed per-world contact buffers,
+        so parking buys nothing here.
 
         Worse, a parked robot free-falls with PD control still driving its
         joints toward policy targets: energy is pumped in with no contact to

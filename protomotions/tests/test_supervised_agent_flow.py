@@ -15,6 +15,7 @@ from protomotions.agents.base_agent import agent as base_agent_module
 from protomotions.agents.supervised import agent as supervised_agent_module
 from protomotions.agents.supervised.agent import SupervisedAgent
 from protomotions.agents.supervised.config import RolloutActor
+from protomotions.components.motion_lib import MotionFileSwitchMode
 
 
 class _StudentModel(nn.Module):
@@ -598,6 +599,11 @@ def test_training_load_restores_model_weights_and_optimizer():
     agent.model = model
     agent.config = SimpleNamespace(normalize_rewards=False)
     agent.evaluator = None
+    agent.motion_lib = SimpleNamespace(
+        config=SimpleNamespace(
+            motion_file_switch_mode=MotionFileSwitchMode.FIXED,
+        )
+    )
     agent.supervised_optimizer = _OptimizerRecorder()
     agent.device = torch.device("cpu")
 
@@ -624,6 +630,11 @@ def test_training_load_accepts_previous_maskedmimic_optimizer_key():
     agent.model = model
     agent.config = SimpleNamespace(normalize_rewards=False)
     agent.evaluator = None
+    agent.motion_lib = SimpleNamespace(
+        config=SimpleNamespace(
+            motion_file_switch_mode=MotionFileSwitchMode.FIXED,
+        )
+    )
     agent.supervised_optimizer = _OptimizerRecorder()
     agent.device = torch.device("cpu")
 

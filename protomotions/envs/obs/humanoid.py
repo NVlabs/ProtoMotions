@@ -237,22 +237,32 @@ def compute_humanoid_max_coords_observations(
     root_height_obs: bool,
     observe_contacts: bool,
     w_last: bool,
+    anchor_body_index: int = 0,
 ) -> Tensor:
     """Compute humanoid max-coords observations from body state.
-    
+
+    Positions, rotations, velocities, and anchor height are expressed relative
+    to ``anchor_body_index`` when local observations are enabled.
+
     This is the helper function used for both training and ONNX export.
     """
     if ground_height.dim() == 1:
         ground_height = ground_height.unsqueeze(-1)
 
-    root_pos = body_pos[:, 0, :]
-    root_rot = body_rot[:, 0, :]
+    num_bodies = body_pos.shape[1]
+    if not 0 <= anchor_body_index < num_bodies:
+        raise ValueError(
+            f"anchor_body_index {anchor_body_index} is outside [0, {num_bodies})"
+        )
 
-    root_h = root_pos[:, 2:3]
+    anchor_pos = body_pos[:, anchor_body_index, :]
+    anchor_rot = body_rot[:, anchor_body_index, :]
+
+    anchor_h = anchor_pos[:, 2:3]
     if not root_height_obs:
-        root_h_obs = torch.zeros_like(root_h)
+        root_h_obs = torch.zeros_like(anchor_h)
     else:
-        root_h_obs = root_h - ground_height
+        root_h_obs = anchor_h - ground_height
 
     flat_body_rot = body_rot.reshape(
         body_rot.shape[0] * body_rot.shape[1], body_rot.shape[2]
@@ -265,8 +275,8 @@ def compute_humanoid_max_coords_observations(
     )
 
     if local_obs:
-        pos_normalizer = root_pos
-        rot_normalizer = rotations.calc_heading_quat_inv(root_rot, w_last)
+        pos_normalizer = anchor_pos
+        rot_normalizer = rotations.calc_heading_quat_inv(anchor_rot, w_last)
 
         rot_normalizer_expand = rot_normalizer.unsqueeze(-2)
         rot_normalizer_expand = rot_normalizer_expand.repeat((1, body_pos.shape[1], 1))
@@ -307,7 +317,16 @@ def compute_humanoid_max_coords_observations(
         full_body_pos_obs = body_pos.reshape(body_pos.shape[0], -1)
         full_body_rot_obs = flat_body_rot
 
-    body_pos_obs = full_body_pos_obs[..., 3:]  # remove root pos
+    body_pos_by_body = full_body_pos_obs.reshape(
+        body_pos.shape[0], body_pos.shape[1], 3
+    )
+    body_pos_obs = torch.cat(
+        (
+            body_pos_by_body[:, :anchor_body_index],
+            body_pos_by_body[:, anchor_body_index + 1 :],
+        ),
+        dim=1,
+    ).reshape(body_pos.shape[0], -1)
     body_rot_obs = rotations.quat_to_tan_norm(full_body_rot_obs, w_last)
     body_rot_obs = body_rot_obs.reshape(body_rot.shape[0], -1)
     body_vel_obs = flat_body_vel.reshape(

@@ -169,6 +169,7 @@ def test_friction_range_helpers_cover_combine_modes_and_validation():
     assert _compute_effective_friction_range((0.5, 1.5), 1.0, CombineMode.MIN) == (0.5, 1.0)
     assert _compute_effective_friction_range((0.5, 1.5), 1.0, CombineMode.MAX) == (1.0, 1.5)
     assert _compute_effective_friction_range((0.5, 1.5), 2.0, CombineMode.MULTIPLY) == (1.0, 3.0)
+    assert _compute_effective_friction_range(None, 1.0, CombineMode.MAX) is None
 
     with pytest.raises(ValueError, match="Unknown combine mode"):
         _compute_effective_friction_range((0.5, 1.5), 1.0, object())
@@ -323,3 +324,128 @@ def test_convert_friction_for_simulator_handles_required_and_optional_modes():
     assert convert_friction_for_simulator(None, simulator)[0] is None
     already_max = TerrainConfig(sim_config=TerrainSimConfig(combine_mode=CombineMode.MAX))
     assert convert_friction_for_simulator(already_max, simulator)[0] is already_max
+
+
+@pytest.mark.parametrize(
+    ("simulator_name", "target_mode"),
+    [("newton", CombineMode.MAX), ("isaacgym", CombineMode.AVERAGE)],
+)
+@pytest.mark.parametrize("source_mode", list(CombineMode))
+@pytest.mark.parametrize(
+    "configured_fields",
+    [
+        ("static", "dynamic", "restitution"),
+        (),
+        ("static",),
+        ("dynamic",),
+        ("restitution",),
+        ("static", "dynamic"),
+        ("static", "restitution"),
+        ("dynamic", "restitution"),
+    ],
+)
+def test_convert_friction_for_simulator_maps_partial_ranges(
+    simulator_name, target_mode, source_mode, configured_fields
+):
+    source_ranges = {
+        "static": (0.2, 0.8),
+        "dynamic": (0.3, 0.9),
+        "restitution": (0.05, 0.35),
+    }
+    ground_values = {
+        "static": 1.0,
+        "dynamic": 0.8,
+        "restitution": 0.2,
+    }
+    friction = FrictionDomainRandomizationConfig(
+        body_indices=[0],
+        static_friction_range=(
+            source_ranges["static"] if "static" in configured_fields else None
+        ),
+        dynamic_friction_range=(
+            source_ranges["dynamic"] if "dynamic" in configured_fields else None
+        ),
+        restitution_range=(
+            source_ranges["restitution"]
+            if "restitution" in configured_fields
+            else None
+        ),
+    )
+    terrain = TerrainConfig(
+        sim_config=TerrainSimConfig(
+            static_friction=ground_values["static"],
+            dynamic_friction=ground_values["dynamic"],
+            restitution=ground_values["restitution"],
+            combine_mode=source_mode,
+        )
+    )
+    simulator = SimulatorConfig(
+        _target_=f"protomotions.simulator.{simulator_name}.simulator.Simulator",
+        w_last=True,
+        headless=True,
+        num_envs=2,
+        sim=SimParams(),
+        experiment_name="unit",
+        domain_randomization=DomainRandomizationConfig(friction=friction),
+    )
+
+    adjusted_terrain, adjusted_simulator = convert_friction_for_simulator(
+        terrain, simulator
+    )
+    adjusted_friction = adjusted_simulator.domain_randomization.friction
+    assert adjusted_terrain.sim_config.combine_mode is target_mode
+
+    for field_name in ("static", "dynamic", "restitution"):
+        source_range = (
+            source_ranges[field_name] if field_name in configured_fields else None
+        )
+        target_range = getattr(adjusted_friction, f"{field_name}_friction_range", None)
+        if field_name == "restitution":
+            target_range = adjusted_friction.restitution_range
+        assert (target_range is None) is (source_range is None)
+        if source_range is None:
+            continue
+
+        source_effective = _compute_effective_friction_range(
+            source_range,
+            ground_values[field_name],
+            source_mode,
+        )
+        target_effective = _compute_effective_friction_range(
+            target_range,
+            getattr(adjusted_terrain.sim_config, f"{field_name}_friction", None)
+            if field_name != "restitution"
+            else adjusted_terrain.sim_config.restitution,
+            target_mode,
+        )
+        assert target_range[0] >= 0.0
+        assert target_effective == pytest.approx(source_effective)
+
+
+@pytest.mark.parametrize("source_mode", list(CombineMode))
+def test_isaaclab_keeps_source_combine_mode_and_partial_ranges(source_mode):
+    friction = FrictionDomainRandomizationConfig(
+        body_indices=[0],
+        static_friction_range=None,
+        dynamic_friction_range=(0.3, 0.9),
+        restitution_range=None,
+    )
+    terrain = TerrainConfig(
+        sim_config=TerrainSimConfig(combine_mode=source_mode)
+    )
+    simulator = SimulatorConfig(
+        _target_="protomotions.simulator.isaaclab.simulator.Simulator",
+        w_last=False,
+        headless=True,
+        num_envs=2,
+        sim=SimParams(),
+        experiment_name="unit",
+        domain_randomization=DomainRandomizationConfig(friction=friction),
+    )
+
+    adjusted_terrain, adjusted_simulator = convert_friction_for_simulator(
+        terrain, simulator
+    )
+
+    assert adjusted_terrain is terrain
+    assert adjusted_simulator is simulator

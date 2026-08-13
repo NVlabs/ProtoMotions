@@ -143,6 +143,7 @@ def compute_historical_max_coords_from_state(
     observe_contacts: bool = False,
     w_last: bool = True,
     history_steps: Union[int, List[int]] = None,
+    anchor_body_index: int = 0,
 ) -> Tensor:
     """Compute historical max_coords observations from state history tensors.
     
@@ -159,6 +160,7 @@ def compute_historical_max_coords_from_state(
         w_last: Whether quaternions use w-last format.
         history_steps: Steps to select. Int N for first N consecutive steps,
             list for specific step indices (e.g., [1, 3, 5]). None = use all.
+        anchor_body_index: Body index used as the anchor frame.
     
     Returns:
         Flattened historical observations [envs, history_steps * obs_dim].
@@ -211,6 +213,7 @@ def compute_historical_max_coords_from_state(
         root_height_obs=root_height_obs,
         observe_contacts=observe_contacts,
         w_last=w_last,
+        anchor_body_index=anchor_body_index,
     )
     
     obs_dim = flat_obs.shape[-1]
@@ -267,6 +270,7 @@ def compute_historical_poses_with_time(
     root_height_obs: bool,
     w_last: bool,
     dt: float,
+    anchor_body_index: int = 0,
 ) -> Tensor:
     """Compute historical pose observations with time offsets from raw state.
     
@@ -286,6 +290,7 @@ def compute_historical_poses_with_time(
         root_height_obs: Whether to include root height.
         w_last: Whether quaternions use w-last format.
         dt: Environment timestep.
+        anchor_body_index: Body index used as the anchor frame.
     
     Returns:
         Historical poses with time [num_envs, num_steps * (obs_dim + 1)].
@@ -307,6 +312,7 @@ def compute_historical_poses_with_time(
         observe_contacts=False,
         w_last=w_last,
         history_steps=history_steps,
+        anchor_body_index=anchor_body_index,
     )
     
     # Get time offsets using the modular function
@@ -408,6 +414,7 @@ def compute_historical_max_coords_from_motion_lib(
     observe_contacts: bool = False,
     contact_body_ids: Tensor = None,
     history_steps: Union[int, List[int]] = None,
+    anchor_body_index: int = 0,
 ) -> Tensor:
     """Compute historical max_coords observations from motion library reference data.
     
@@ -428,6 +435,7 @@ def compute_historical_max_coords_from_motion_lib(
         history_steps: Steps to select. Int N for first N consecutive steps (1 to N),
             list for specific step indices (e.g., [1, 4, 8, 12, 16]).
             None = use all num_state_history_steps.
+        anchor_body_index: Body index used as the anchor frame.
     
     Returns:
         Flattened historical observations [num_samples, num_steps * obs_dim].
@@ -497,6 +505,7 @@ def compute_historical_max_coords_from_motion_lib(
             root_height_obs=root_height_obs,
             observe_contacts=observe_contacts,
             w_last=True,
+            anchor_body_index=anchor_body_index,
         )
         all_obs.append(frame_obs)
     

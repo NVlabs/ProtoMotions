@@ -79,6 +79,15 @@ class NoisyObservations:
             ground_heights=self.ground_heights.clone(),
         )
 
+    def select(self, env_ids: Tensor) -> "NoisyObservations":
+        """Return rows for the requested environments."""
+        return NoisyObservations(
+            **{
+                field: getattr(self, field)[env_ids]
+                for field in self.__dataclass_fields__
+            }
+        )
+
     def update_subset(self, env_ids: Tensor, other: "NoisyObservations") -> None:
         """Update specific environment rows in-place from another NoisyObservations.
 

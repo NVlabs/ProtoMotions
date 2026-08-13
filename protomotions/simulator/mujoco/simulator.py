@@ -4,6 +4,7 @@
 """MuJoCo CPU-only simulator implementation."""
 
 import atexit
+from contextlib import nullcontext
 import logging
 import os
 import tempfile
@@ -21,6 +22,7 @@ from protomotions.simulator.base_simulator.config import (
     MarkerState,
     ProjectileConfig,
     SimBodyOrdering,
+    VisualizationMarkerConfig,
 )
 from protomotions.simulator.base_simulator.simulator import Simulator
 from protomotions.simulator.base_simulator.simulator_state import (
@@ -102,6 +104,7 @@ class MujocoSimulator(Simulator):
 
         # Debug counter
         self._step_count = 0
+        self._marker_overflow_warned = False
 
     @staticmethod
     def _load_mjcf_stripped(
@@ -289,6 +292,7 @@ class MujocoSimulator(Simulator):
         log.info("Loading MuJoCo model from: %s", asset_path)
         self.model = self._load_mjcf_stripped(asset_path, self._proj_config)
         self.data = mujoco.MjData(self.model)
+        self._set_robot_geom_friction()
 
         # Set timestep
         self.model.opt.timestep = 1.0 / self.config.sim.fps
@@ -359,6 +363,12 @@ class MujocoSimulator(Simulator):
             self._proj_qpos_start,
             self._proj_qvel_start,
         )
+
+    def _set_robot_geom_friction(self) -> None:
+        """Set sliding friction on character geoms without changing the floor."""
+        robot_body_ids = {self.model.body(name).id for name in self._body_names}
+        geom_ids = np.flatnonzero(np.isin(self.model.geom_bodyid, list(robot_body_ids)))
+        self.model.geom_friction[geom_ids, 0] = self.config.default_robot_friction
 
     def _zero_passive_forces(self) -> None:
         """Zero out passive stiffness/damping from MJCF.
@@ -611,6 +621,73 @@ class MujocoSimulator(Simulator):
 
         log.info("MuJoCo passive viewer launched (tracking body 1)")
 
+    @staticmethod
+    def _marker_radius(size: str) -> float:
+        """Map ProtoMotions marker sizes to MuJoCo debug geom radii."""
+        if size == "tiny":
+            return 0.007
+        if size == "small":
+            return 0.01
+        return 0.05
+
+    def _add_mujoco_marker_geom(
+        self,
+        scene: mujoco.MjvScene,
+        marker_type: str,
+        marker_size: str,
+        position: np.ndarray,
+        orientation: np.ndarray,
+        rgba: np.ndarray,
+    ) -> None:
+        """Append one marker debug geom to the MuJoCo viewer scene."""
+        if scene.ngeom >= scene.maxgeom:
+            if not self._marker_overflow_warned:
+                log.warning(
+                    "MuJoCo marker visualizer hit user_scn maxgeom=%d; "
+                    "some markers will be skipped.",
+                    scene.maxgeom,
+                )
+                self._marker_overflow_warned = True
+            return
+
+        geom = scene.geoms[scene.ngeom]
+        radius = self._marker_radius(marker_size)
+        identity_mat = np.eye(3, dtype=np.float64).reshape(-1)
+
+        if marker_type == "sphere":
+            mujoco.mjv_initGeom(
+                geom,
+                mujoco.mjtGeom.mjGEOM_SPHERE,
+                np.array([radius, radius, radius], dtype=np.float64),
+                position,
+                identity_mat,
+                rgba,
+            )
+        elif marker_type == "arrow":
+            direction = np.empty(3, dtype=np.float64)
+            mujoco.mju_rotVecQuat(
+                direction, np.array([1.0, 0.0, 0.0], dtype=np.float64), orientation
+            )
+            mujoco.mjv_initGeom(
+                geom,
+                mujoco.mjtGeom.mjGEOM_ARROW,
+                np.zeros(3, dtype=np.float64),
+                position,
+                identity_mat,
+                rgba,
+            )
+            mujoco.mjv_connector(
+                geom,
+                mujoco.mjtGeom.mjGEOM_ARROW,
+                radius,
+                position,
+                position + direction,
+            )
+        else:
+            raise ValueError(f"Marker type {marker_type} not supported")
+
+        scene.ngeom += 1
+
     def _close_viewer(self) -> None:
         """Close the viewer if it's still running."""
         if self.viewer is not None and self._viewer_initialized:
@@ -730,10 +807,6 @@ class MujocoSimulator(Simulator):
         # Periodic state monitoring
         if self._step_count % 100 == 1:
             self._print_state_debug()
-
-        # Sync viewer if active
-        if self.viewer is not None and self._viewer_initialized:
-            self.viewer.sync()
 
     def _print_state_debug(self) -> None:
         """Print state summary for debugging."""
@@ -1067,8 +1140,53 @@ class MujocoSimulator(Simulator):
     def _update_simulator_markers(
         self, markers_state: Optional[Dict[str, MarkerState]] = None
     ) -> None:
-        """Update visualization markers (no-op for now)."""
-        pass
+        """Update visualization markers with MuJoCo debug geoms."""
+        if self.headless or self.viewer is None or not self._viewer_initialized:
+            return
+
+        marker_configs: Dict[str, VisualizationMarkerConfig] = (
+            self._visualization_markers or {}
+        )
+        lock = self.viewer.lock() if hasattr(self.viewer, "lock") else nullcontext()
+        with lock:
+            scene = self.viewer.user_scn
+            scene.ngeom = 0
+            if markers_state is None:
+                return
+
+            for marker_name, markers_state_item in markers_state.items():
+                if markers_state_item.translation.numel() == 0:
+                    continue
+                assert marker_name in marker_configs, (
+                    f"Marker {marker_name} passed to update_markers but not defined "
+                    "at instantiation"
+                )
+
+                marker_cfg = marker_configs[marker_name]
+                marker_pos = markers_state_item.translation.view(self.num_envs, -1, 3)
+                marker_quat = markers_state_item.orientation.view(self.num_envs, -1, 4)
+                marker_color = markers_state_item.color or marker_cfg.color
+                marker_rgba = np.array([*marker_color, 1.0], dtype=np.float32)
+                num_markers = min(marker_pos.shape[1], len(marker_cfg.markers))
+
+                for env_id in range(self.num_envs):
+                    for marker_id in range(num_markers):
+                        self._add_mujoco_marker_geom(
+                            scene=scene,
+                            marker_type=marker_cfg.type,
+                            marker_size=marker_cfg.markers[marker_id].size,
+                            position=marker_pos[env_id, marker_id]
+                            .detach()
+                            .cpu()
+                            .numpy()
+                            .astype(np.float64),
+                            orientation=marker_quat[env_id, marker_id]
+                            .detach()
+                            .cpu()
+                            .numpy()
+                            .astype(np.float64),
+                            rgba=marker_rgba,
+                        )
 
     def render(self) -> None:
         """Render current simulation state."""
@@ -1080,5 +1198,6 @@ class MujocoSimulator(Simulator):
             # interactions that switch the camera mode don't lose the robot.
             self.viewer.cam.type = mujoco.mjtCamera.mjCAMERA_TRACKING
             self.viewer.cam.trackbodyid = 1
+            self.viewer.sync()
 
         super().render()

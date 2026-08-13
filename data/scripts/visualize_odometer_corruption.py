@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Visualize proposed odometer corruption for soft-tracking experiments.
+"""Visualize odometer corruption for soft-tracking experiments.
 
-Loads a packaged MotionLib (.pt), extracts root XY trajectories, applies the
-proposed per-episode affine + log-space corruption, and produces a multi-panel
-figure showing:
+Loads a packaged MotionLib (.pt), extracts root XY trajectories (treated as
+robot displacement from episode start), applies the per-episode affine +
+log-space corruption, and produces a multi-panel figure showing:
 
 1. Sampled trajectories: clean vs corrupted side-by-side
 2. Drift statistics: position error as % of true offset, bucketed by distance
@@ -386,10 +386,10 @@ def make_figure(offsets, durations, args):
         f"  soft thresh: {args.soft_threshold} m",
         "",
         "SUMMARY STATISTICS",
-        f"  Direction error:",
+        "  Direction error:",
         f"    median {med_dir:.1f}°, p90 {p90_dir:.1f}°",
         f"    {frac_20:.0%} within 20°",
-        f"  Magnitude ratio:",
+        "  Magnitude ratio:",
         f"    median {med_mr:.2f}",
         f"    IQR [{p25_mr:.2f}, {p75_mr:.2f}]",
     ]

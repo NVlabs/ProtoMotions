@@ -182,8 +182,10 @@ class GPCSFTReferenceTargetControl(ControlComponent):
         return zeros, zeros
 
     def populate_context(self, ctx: EnvContext) -> None:
+        env_ids = getattr(ctx, "env_ids", None)
+        tar_pos = self._tar_pos if env_ids is None else self._tar_pos[env_ids]
         ctx.target = TargetContext(
-            tar_pos=self._tar_pos,
+            tar_pos=tar_pos,
             tar_proximity_threshold=self.config.tar_proximity_threshold,
         )
 

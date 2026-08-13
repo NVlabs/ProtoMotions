@@ -7,7 +7,6 @@ These helpers intentionally reach into the discrete latent prior checkpoint
 layout so the PEFT agent can keep its control flow readable. If more agents
 need this behavior, move the layout-specific pieces onto the prior model.
 """
-
 from __future__ import annotations
 
 import logging

@@ -19,7 +19,7 @@ from protomotions.simulator.isaaclab.config import (
 from protomotions.simulator.genesis.config import GenesisSimParams
 from protomotions.simulator.newton.config import NewtonSimParams
 from protomotions.components.pose_lib import ControlInfo
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from dataclasses import dataclass, field
 
 
@@ -47,6 +47,8 @@ DAMPING_40 = 2.0 * DAMPING_RATIO * ARMATURE_40 * NATURAL_FREQ
 
 @dataclass
 class H1_2RobotConfig(RobotConfig):
+    semantic_forward_axis_xy: Tuple[float, float] = (1.0, 0.0)
+
     common_naming_to_robot_body_names: Dict[str, List[str]] = field(
         default_factory=lambda: {
             "all_left_foot_bodies": ["left_ankle_roll_link"],
@@ -74,8 +76,6 @@ class H1_2RobotConfig(RobotConfig):
     asset: RobotAssetConfig = field(
         default_factory=lambda: RobotAssetConfig(
             asset_file_name="mjcf/h1_2_box_feet.xml",
-            usd_asset_file_name="usd/h1_2_box_feet/h1_2_box_feet.usda",
-            usd_bodies_root_prim_path="/World/envs/env_.*/Robot/pelvis/",
             replace_cylinder_with_capsule=True,
             thickness=0.01,
             max_angular_velocity=1000.0,

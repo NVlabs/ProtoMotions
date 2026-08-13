@@ -19,6 +19,27 @@ if TYPE_CHECKING:
 
 
 @dataclass
+class RecoveryResetConfig:
+    """Reset-time sampling from a cache of physically settled fall poses."""
+
+    recovery_prob: float = field(
+        default=0.0,
+        metadata={
+            "help": "Probability that a reset uses a fall pose.",
+            "min": 0.0,
+            "max": 1.0,
+        },
+    )
+    fall_sim_steps: int = field(
+        default=150,
+        metadata={
+            "help": "Physics steps used to generate settled fall poses.",
+            "min": 0,
+        },
+    )
+
+
+@dataclass
 class EnvConfig:
     """Main environment configuration."""
 
@@ -59,6 +80,10 @@ class EnvConfig:
         default=0,
         metadata={"help": "Window length for smoothing contact labels. 0 = no smoothing.", "min": 0}
     )
+    recovery_reset: RecoveryResetConfig = field(
+        default_factory=RecoveryResetConfig,
+        metadata={"help": "Optional reset sampling from generated fall poses."},
+    )
     skip_correct_terrain_height_on_flat: bool = field(
         default=True,
         metadata={"help": "Skip terrain height correction when terrain is flat (optimization)."}
@@ -98,7 +123,7 @@ class EnvConfig:
         metadata={"help": "Single action processing config dict with 'fn' key. Use make_pd_action_config() helper."}
     )
 
-    # Odometer corruption parameters.  Used by corrupted_xy_offset_factory to
+    # Odometer corruption parameters.  Used by odom_offset_factory to
     # simulate per-session calibration error in the G1 leg-kinematics odometer.
     # The env samples odom_scale and a yaw_bias angle once per episode at reset.
     # Identity defaults mean no corruption when the factory is not used.
@@ -120,6 +145,26 @@ class EnvConfig:
                 "The actual bias is drawn from Uniform(-deg, +deg). "
                 "Default 0.0 = no yaw corruption. "
                 "Recommended for odom experiments: 6.0."
+            )
+        },
+    )
+    odom_log_noise_std: float = field(
+        default=0.0,
+        metadata={
+            "help": (
+                "Per-step odometer noise std in log(1+mag) space. "
+                "Default 0.0 = no per-step noise. "
+                "Recommended for odom experiments: 0.12."
+            )
+        },
+    )
+    odom_soft_threshold: float = field(
+        default=0.15,
+        metadata={
+            "help": (
+                "Smooth noise ramp characteristic length in metres. "
+                "Noise weight = mag / (mag + threshold). "
+                "Default 0.15."
             )
         },
     )

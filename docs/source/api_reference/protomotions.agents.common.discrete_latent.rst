@@ -1,5 +1,5 @@
-protomotions.agents.common.discrete\_latent module
-==================================================
+protomotions.agents.common.discrete_latent module
+=================================================
 
 .. automodule:: protomotions.agents.common.discrete_latent
    :members:

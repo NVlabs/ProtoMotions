@@ -15,6 +15,7 @@ from protomotions.agents.amp.agent import AMP
 from protomotions.agents.ppo.agent import PPO
 from protomotions.agents.utils.metering import TensorAverageMeterDict
 from protomotions.agents.utils.replay_buffer import ReplayBuffer
+from protomotions.components.motion_lib import MotionFileSwitchMode
 from protomotions.envs.mdp_component import MdpComponent
 from protomotions.envs.obs.humanoid_historical import (
     compute_historical_max_coords_from_motion_lib,
@@ -25,6 +26,11 @@ from protomotions.envs.obs.state_history_buffer import StateHistoryBuffer
 
 def _new_amp_agent(agent_cls=AMP):
     agent = object.__new__(agent_cls)
+    agent.motion_lib = SimpleNamespace(
+        config=SimpleNamespace(
+            motion_file_switch_mode=MotionFileSwitchMode.FIXED,
+        )
+    )
     component = object.__new__(amp_component_module.AMPTrainingComponent)
     component.agent = agent
     agent.amp_component = component
@@ -718,6 +724,7 @@ def test_amp_reference_observation_sampling_chunks_and_filters_router_inputs():
     agent.motion_lib = object()
     agent.num_envs = 2
     agent.env = SimpleNamespace(
+        robot_config=SimpleNamespace(anchor_body_index=0),
         simulator=SimpleNamespace(dt=0.25),
         config=SimpleNamespace(num_state_history_steps=4),
     )
@@ -751,6 +758,7 @@ def test_amp_reference_historical_obs_matches_simulator_reset_history_buffer():
     agent.motion_lib = motion_lib
     agent.num_envs = 2
     agent.env = SimpleNamespace(
+        robot_config=SimpleNamespace(anchor_body_index=0),
         simulator=SimpleNamespace(dt=dt),
         config=SimpleNamespace(num_state_history_steps=num_state_history_steps),
     )
@@ -808,6 +816,7 @@ def test_amp_reference_historical_obs_clamps_to_motion_lengths_like_simulator_re
     agent.motion_lib = motion_lib
     agent.num_envs = 1
     agent.env = SimpleNamespace(
+        robot_config=SimpleNamespace(anchor_body_index=0),
         simulator=SimpleNamespace(dt=dt),
         config=SimpleNamespace(num_state_history_steps=num_state_history_steps),
     )
@@ -897,6 +906,7 @@ def test_amp_process_dataset_adds_discriminator_training_views_and_stores_replay
     agent.motion_manager = _MotionManager()
     agent.motion_lib = object()
     agent.env = SimpleNamespace(
+        robot_config=SimpleNamespace(anchor_body_index=0),
         simulator=SimpleNamespace(dt=0.25),
         config=SimpleNamespace(num_state_history_steps=1),
     )
@@ -945,6 +955,7 @@ def test_amp_process_dataset_samples_existing_replay_when_available():
     agent.motion_manager = _MotionManager()
     agent.motion_lib = object()
     agent.env = SimpleNamespace(
+        robot_config=SimpleNamespace(anchor_body_index=0),
         simulator=SimpleNamespace(dt=0.25),
         config=SimpleNamespace(num_state_history_steps=1),
     )

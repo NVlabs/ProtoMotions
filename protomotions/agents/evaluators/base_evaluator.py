@@ -177,8 +177,7 @@ class BaseEvaluator:
         obs_td = self.agent.obs_dict_to_tensordict(obs)
 
         for step_idx in range(max_steps):
-            model_outs = self.agent.model(obs_td)
-            actions = model_outs.get("mean_action", model_outs.get("action"))
+            actions = self._policy_action(obs_td)
 
             obs, rewards, dones, terminated, extras = self.env.step(actions)
             self.agent.pre_collect_step(step_idx + 1)
@@ -227,6 +226,15 @@ class BaseEvaluator:
         """
         pass
 
+    def _policy_action(self, obs_td) -> Tensor:
+        """Run the policy and select the deterministic action when available."""
+        model_outs = self.agent.model(obs_td)
+        return (
+            model_outs["mean_action"]
+            if "mean_action" in model_outs
+            else model_outs["action"]
+        )
+
     def process_eval_results(self) -> Tuple[Dict, Optional[float], int]:
         """Process collected metrics and prepare for logging.
 
@@ -242,7 +250,9 @@ class BaseEvaluator:
             evaluated = self._eval_mask
             num_eval_items = evaluated.sum().item()
             if num_eval_items > 0:
-                success_rate = 1.0 - self._motion_failed[evaluated].float().mean().item()
+                success_rate = (
+                    1.0 - self._motion_failed[evaluated].float().mean().item()
+                )
             else:
                 success_rate = 1.0
             to_log["eval/success_rate"] = success_rate
@@ -252,7 +262,12 @@ class BaseEvaluator:
                 threshold = component.static_params.get("threshold", None)
                 if threshold is not None:
                     if num_eval_items > 0:
-                        failure_rate = self._per_component_failures[name][evaluated].float().mean().item()
+                        failure_rate = (
+                            self._per_component_failures[name][evaluated]
+                            .float()
+                            .mean()
+                            .item()
+                        )
                     else:
                         failure_rate = 0.0
                     to_log[f"eval/{name}/failure_rate"] = failure_rate
@@ -325,7 +340,9 @@ class BaseEvaluator:
         self._motion_failed = torch.zeros(
             num_eval_ids, dtype=torch.bool, device=self.device
         )
-        self._eval_mask = torch.zeros(num_eval_ids, dtype=torch.bool, device=self.device)
+        self._eval_mask = torch.zeros(
+            num_eval_ids, dtype=torch.bool, device=self.device
+        )
         self._per_component_failures = {
             name: torch.zeros(num_eval_ids, dtype=torch.bool, device=self.device)
             for name in self.config.evaluation_components.keys()
@@ -694,12 +711,7 @@ class BaseEvaluator:
                 obs = self.agent.add_agent_info_to_obs(obs)
                 obs_td = self.agent.obs_dict_to_tensordict(obs)
 
-                model_outs = self.agent.model(obs_td)
-                action = (
-                    model_outs["mean_action"]
-                    if "mean_action" in model_outs
-                    else model_outs["action"]
-                )
+                action = self._policy_action(obs_td)
 
                 _, _, dones, _, extras = self.env.step(action)
 

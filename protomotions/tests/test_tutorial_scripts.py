@@ -11,10 +11,9 @@ from pathlib import Path
 TUTORIAL_DIR = Path(__file__).resolve().parents[2] / "examples" / "tutorial"
 
 
-def test_direct_tutorial_robot_configs_use_current_fields():
-    """Tutorials should not pass stale RobotConfig constructor fields."""
-    stale: list[str] = []
-    stale_fields = {"semantic_forward_axis_xy"}
+def test_direct_tutorial_robot_configs_declare_semantic_forward_axis():
+    """Fresh base RobotConfig examples must declare anatomical forward."""
+    missing: list[str] = []
     for path in sorted(TUTORIAL_DIR.glob("*.py")):
         tree = ast.parse(path.read_text(), filename=str(path))
         for node in ast.walk(tree):
@@ -23,7 +22,7 @@ def test_direct_tutorial_robot_configs_use_current_fields():
             if not isinstance(node.func, ast.Name) or node.func.id != "RobotConfig":
                 continue
             keyword_names = {keyword.arg for keyword in node.keywords}
-            for keyword in sorted(keyword_names & stale_fields):
-                stale.append(f"{path.name}:{node.lineno}:{keyword}")
+            if "semantic_forward_axis_xy" not in keyword_names:
+                missing.append(f"{path.name}:{node.lineno}")
 
-    assert stale == []
+    assert missing == []

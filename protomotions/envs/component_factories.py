@@ -41,6 +41,8 @@ Example:
 
 from typing import Any, Dict, List, Optional, Union
 
+import torch
+
 from protomotions.envs.context_views import EnvContext
 from protomotions.envs.mdp_component import MdpComponent
 
@@ -81,6 +83,7 @@ def max_coords_obs_factory(
             "body_ang_vel": state.rigid_body_ang_vel,
             "ground_height": ground,
             "body_contacts": EnvContext.body_contacts,
+            "anchor_body_index": EnvContext.current.anchor_idx,
         },
         static_params={
             "local_obs": local_obs,
@@ -179,6 +182,7 @@ def historical_max_coords_obs_factory(
             "historical_rigid_body_ang_vel": hist.rigid_body_ang_vel,
             "historical_ground_heights": hist.ground_heights,
             "historical_body_contacts": hist.body_contacts,
+            "anchor_body_index": EnvContext.current.anchor_idx,
         },
         static_params=params,
     )
@@ -298,19 +302,21 @@ def mimic_target_poses_max_coords_factory(
     }
     if future_steps is not None:
         static_params["future_steps"] = future_steps
+    dynamic_vars = {
+        "current_state_body_pos": state.rigid_body_pos,
+        "current_state_body_rot": state.rigid_body_rot,
+        "current_state_body_vel": state.rigid_body_vel,
+        "current_state_body_ang_vel": state.rigid_body_ang_vel,
+        "mimic_ref_pos": EnvContext.mimic.future_pos,
+        "mimic_ref_rot": EnvContext.mimic.future_rot,
+        "mimic_ref_vel": EnvContext.mimic.future_vel,
+        "mimic_ref_ang_vel": EnvContext.mimic.future_ang_vel,
+    }
+    dynamic_vars["anchor_body_index"] = EnvContext.mimic.anchor_idx
 
     return MdpComponent(
         compute_func=build_max_coords_target_poses,
-        dynamic_vars={
-            "current_state_body_pos": state.rigid_body_pos,
-            "current_state_body_rot": state.rigid_body_rot,
-            "current_state_body_vel": state.rigid_body_vel,
-            "current_state_body_ang_vel": state.rigid_body_ang_vel,
-            "mimic_ref_pos": EnvContext.mimic.future_pos,
-            "mimic_ref_rot": EnvContext.mimic.future_rot,
-            "mimic_ref_vel": EnvContext.mimic.future_vel,
-            "mimic_ref_ang_vel": EnvContext.mimic.future_ang_vel,
-        },
+        dynamic_vars=dynamic_vars,
         static_params=static_params,
     )
 
@@ -335,15 +341,17 @@ def mimic_target_poses_future_rel_factory(
     params = {"w_last": True}
     if future_steps is not None:
         params["future_steps"] = future_steps
+    dynamic_vars = {
+        "current_state_body_pos": state.rigid_body_pos,
+        "current_state_body_rot": state.rigid_body_rot,
+        "mimic_ref_pos": EnvContext.mimic.future_pos,
+        "mimic_ref_rot": EnvContext.mimic.future_rot,
+    }
+    dynamic_vars["anchor_body_index"] = EnvContext.mimic.anchor_idx
 
     return MdpComponent(
         compute_func=build_max_coords_target_poses_future_rel,
-        dynamic_vars={
-            "current_state_body_pos": state.rigid_body_pos,
-            "current_state_body_rot": state.rigid_body_rot,
-            "mimic_ref_pos": EnvContext.mimic.future_pos,
-            "mimic_ref_rot": EnvContext.mimic.future_rot,
-        },
+        dynamic_vars=dynamic_vars,
         static_params=params,
     )
 
@@ -397,6 +405,238 @@ def mimic_target_poses_reduced_coords_factory(
             "zero_xy_offset": zero_xy_offset,
             "w_last": True,
         },
+    )
+
+
+def fk_max_coords_obs_factory(
+    use_noisy: bool = False,
+    bodies: Optional[torch.Tensor] = None,
+    kinematic_info=None,
+    anchor_idx: int = 0,
+    heading_frame: bool = True,
+) -> MdpComponent:
+    """Factory for FK max-coords current-state obs in the current heading frame.
+
+    Produces [num_envs, n_bodies * 9] where each body contributes pos(3) + 6D rot(6).
+    Always fully populated -- never masked, because the robot always has full joint
+    encoder data for its own body state at deploy time.
+
+    Builds a BakedAnchorFK callable at construction time that bakes all kinematic
+    constants (parent chain, local offsets, Rodrigues K/K² for every hinge axis).
+    FK runs with a zero root internally, so no root position sensor is needed.
+
+    The resulting MdpComponent is directly compatible with torch.onnx.export
+    (no index_put_ ops, Python-list accumulation → single Concat per tensor).
+
+    Args:
+        use_noisy: If True, use noisy state (for actor training with DR).
+        bodies: 1-D LongTensor of body indices to include. Must be provided.
+        kinematic_info: Robot kinematic structure (robot_cfg.kinematic_info).
+            Must be provided.
+        anchor_idx: Index of the anchor body (robot_cfg.anchor_body_index).
+        heading_frame: If True (default), express the obs in the current heading
+            frame, which is the frame ``baked_fk_target_poses_factory`` puts its
+            targets in. Pairing them is the point -- under perfect tracking the
+            two are equal, so the policy reads tracking error as a difference.
+            Costs one extra input, the anchor rotation, which the IMU already
+            provides. Set False for the original body-fixed anchor frame, which
+            needs joint encoders alone but does not line up with the targets.
+
+    Returns:
+        MdpComponent whose compute_func is a BakedAnchorFK instance.
+    """
+    from protomotions.utils.baked_fk import BakedAnchorFK
+
+    assert bodies is not None, "bodies must be provided"
+    assert kinematic_info is not None, "kinematic_info must be provided"
+
+    baked = BakedAnchorFK(kinematic_info, anchor_idx, bodies)
+
+    state = EnvContext.noisy if use_noisy else EnvContext.current
+
+    dynamic_vars: Dict[str, Any] = {"dof_pos": state.dof_pos}
+    if heading_frame:
+        dynamic_vars["current_anchor_rot"] = state.anchor_rot
+
+    return MdpComponent(
+        compute_func=baked,
+        dynamic_vars=dynamic_vars,
+        static_params={},
+    )
+
+
+def baked_fk_target_poses_factory(
+    use_noisy: bool = False,
+    trackable_body_indices: Optional[torch.Tensor] = None,
+    kinematic_info=None,
+    anchor_idx: int = 0,
+    future_steps: Optional[Union[int, List[int]]] = None,
+    odom_clean: bool = False,
+) -> MdpComponent:
+    """Factory for BakedFK reference target poses in the current heading frame.
+
+    Runs FK on ``future_dof_pos`` from the reference motion, then transforms the
+    result into the current robot's heading frame using the relative anchor
+    rotation **and** a heading-local odometer XY offset that ``BakedTargetFK``
+    derives internally (via ``compute_odom_offset_local``) from the raw odometer
+    readings plus the reference anchor position.
+
+    Pair it with ``fk_max_coords_obs_factory`` at its default
+    ``heading_frame=True``: both then report in the same frame, so under perfect
+    tracking they agree and the policy reads tracking error as a difference.
+
+    The XY shift uses the same corrupted odometer displacement that the odometer
+    obs channel consumes (``odom_disp_start_corrupt``), so per-body target
+    positions reflect what the policy would see from a real odometer.  The
+    derivation is deterministic — no stochastic ops inside this component
+    (``torch.compile``-safe); the corruption lives upstream at the sensor
+    boundary.
+
+    Deploy-compatible: the ONNX inputs are ``future_dof_pos``,
+    ``current_anchor_rot``, ``future_anchor_rot``, ``odom_disp_start``,
+    ``odom_start_xy``, ``odom_start_heading_inv``, ``future_ref_anchor_pos`` and
+    ``current_ref_anchor_pos``.  Note what that list does NOT contain: any
+    per-body reference pose.  The only reference data required is the anchor pose
+    and the joint angles, so deployment never has to ship the full reference body
+    array (see ``deployment.tracker_inputs``).
+
+    Args:
+        use_noisy: If True, use noisy anchor state for the frame transform.
+        trackable_body_indices: 1-D LongTensor of body indices to include.
+        kinematic_info: Robot kinematic structure (``robot_cfg.kinematic_info``).
+        anchor_idx: Index of the anchor body.
+        future_steps: Step indices to select (int, list, or None = all).
+    The reference anchor's current and future positions
+    (``ctx.mimic.ref_anchor_pos`` / ``ctx.mimic.future_anchor_pos``) are always
+    bound.  They tell the policy how far the reference itself moves over the
+    horizon — translation the anchor-relative FK would otherwise cancel out,
+    leaving the policy no sense of how fast to go.  Both come from the reference
+    motion, not from any estimate of where the robot is, so they are safe to
+    deploy.
+
+    Returns:
+        MdpComponent producing ``[envs, n_future * n_trackable * 9]``.
+    """
+    from protomotions.utils.baked_fk import BakedTargetFK
+
+    assert trackable_body_indices is not None, "trackable_body_indices must be provided"
+    assert kinematic_info is not None, "kinematic_info must be provided"
+
+    # future_steps selects from the horizon MimicControl publishes, exactly as it
+    # does for every other target-pose factory. Leave it None when the control is
+    # already configured to publish precisely the steps you want; set it when the
+    # control publishes a wider horizon that several observations carve up
+    # differently. Asking for a step the control does not publish raises.
+    baked = BakedTargetFK(
+        kinematic_info,
+        anchor_idx,
+        trackable_body_indices,
+        future_steps=future_steps,
+    )
+
+    state = EnvContext.noisy if use_noisy else EnvContext.current
+
+    # Corrupted vs clean odom displacement (the clean twin is used by the L2C2
+    # clean_fk_target_poses pair so the regularizer penalizes odom-noise
+    # sensitivity through the folded per-body target shift). BakedTargetFK derives
+    # the heading-local offset internally via compute_odom_offset_local; the keys
+    # below must match its __call__ parameter names exactly.
+    odom_disp_field = (
+        EnvContext.odom_disp_start_clean
+        if odom_clean
+        else EnvContext.odom_disp_start_corrupt
+    )
+
+    dynamic_vars: Dict[str, Any] = {
+        "future_dof_pos": EnvContext.mimic.future_dof_pos,
+        "current_anchor_rot": state.anchor_rot,
+        "future_anchor_rot": EnvContext.mimic.future_anchor_rot,
+        "odom_disp_start": odom_disp_field,
+        "odom_start_xy": EnvContext.odom_start_xy,
+        "odom_start_heading_inv": EnvContext.odom_start_heading_inv,
+        # Reference-travel feedforward (always bound). Keys must match
+        # BakedTargetFK.__call__ parameter names exactly; they are deliberately not
+        # named ``ref_anchor_pos``, which is an internal FK-frame local.
+        "future_ref_anchor_pos": EnvContext.mimic.future_anchor_pos,
+        "current_ref_anchor_pos": EnvContext.mimic.ref_anchor_pos,
+    }
+
+    return MdpComponent(
+        compute_func=baked,
+        dynamic_vars=dynamic_vars,
+        static_params={},
+        compile=False,
+    )
+
+
+def baked_fk_target_poses_no_odom_factory(
+    use_noisy: bool = False,
+    trackable_body_indices: Optional[torch.Tensor] = None,
+    kinematic_info=None,
+    anchor_idx: int = 0,
+    future_steps: Optional[Union[int, List[int]]] = None,
+) -> MdpComponent:
+    """Factory for odom-free BakedFK reference target poses in the heading frame.
+
+    Identical to :func:`baked_fk_target_poses_factory` except that **no odometer
+    XY shift is applied**: it runs FK on ``future_dof_pos`` from the reference
+    motion and transforms the result into the current robot's heading frame using
+    the relative anchor rotation only.  This is the primitive the odom variant is
+    built from, so nothing here can inherit an odometer's drift.  The output therefore carries orientation
+    plus joint-relative body positions only, with NO global XY translation — the
+    per-body targets do not encode the world-frame displacement between robot and
+    reference.  Use this to train a policy that has no odometer observation and
+    must dead-reckon global position from local motion + reward shaping.  No
+    stochastic ops inside this component (``torch.compile``-safe).
+
+    Deploy-compatible: ONNX inputs are ``future_dof_pos``, ``current_anchor_rot``,
+    and ``future_anchor_rot`` (no odometer ingredients).
+
+    Args:
+        use_noisy: If True, use noisy anchor state for the frame transform.
+        trackable_body_indices: 1-D LongTensor of body indices to include.
+        kinematic_info: Robot kinematic structure (``robot_cfg.kinematic_info``).
+        anchor_idx: Index of the anchor body.
+        future_steps: Step indices to select (int, list, or None = all).
+    The reference anchor's current and future positions are still bound.  They say
+    how far the REFERENCE moves, not where the robot is, and are read from the
+    reference motion, so they need no odometer and remain safe to deploy.
+
+    Returns:
+        MdpComponent producing ``[envs, n_future * n_trackable * 9]``.
+    """
+    from protomotions.utils.baked_fk import BakedTargetFKNoOdom
+
+    assert trackable_body_indices is not None, "trackable_body_indices must be provided"
+    assert kinematic_info is not None, "kinematic_info must be provided"
+
+    # See baked_fk_target_poses_factory: future_steps selects from the horizon
+    # MimicControl publishes; leave it None when the control already publishes
+    # precisely the steps you want.
+    baked = BakedTargetFKNoOdom(
+        kinematic_info,
+        anchor_idx,
+        trackable_body_indices,
+        future_steps=future_steps,
+    )
+
+    state = EnvContext.noisy if use_noisy else EnvContext.current
+
+    dynamic_vars: Dict[str, Any] = {
+        "future_dof_pos": EnvContext.mimic.future_dof_pos,
+        "current_anchor_rot": state.anchor_rot,
+        "future_anchor_rot": EnvContext.mimic.future_anchor_rot,
+        # Reference-travel feedforward: clip-side only, so it needs no odometer
+        # and stays valid in the odom-free setting.
+        "future_ref_anchor_pos": EnvContext.mimic.future_anchor_pos,
+        "current_ref_anchor_pos": EnvContext.mimic.ref_anchor_pos,
+    }
+
+    return MdpComponent(
+        compute_func=baked,
+        dynamic_vars=dynamic_vars,
+        static_params={},
+        compile=False,
     )
 
 
@@ -455,8 +695,8 @@ def target_obs_factory() -> MdpComponent:
     return MdpComponent(
         compute_func=compute_target_obs,
         dynamic_vars={
-            "root_pos": EnvContext.current.root_pos,
-            "root_rot": EnvContext.current.root_rot,
+            "root_pos": EnvContext.current.anchor_pos,
+            "root_rot": EnvContext.current.anchor_rot,
             "tar_pos": EnvContext.target.tar_pos,
         },
     )
@@ -469,7 +709,7 @@ def steering_obs_factory() -> MdpComponent:
     return MdpComponent(
         compute_func=compute_steering_obs,
         dynamic_vars={
-            "root_rot": EnvContext.current.root_rot,
+            "root_rot": EnvContext.current.anchor_rot,
             "tar_dir": EnvContext.steering.tar_dir,
             "tar_speed": EnvContext.steering.tar_speed,
             "tar_face_dir": EnvContext.steering.tar_face_dir,
@@ -484,7 +724,7 @@ def path_obs_factory() -> MdpComponent:
     return MdpComponent(
         compute_func=compute_path_obs,
         dynamic_vars={
-            "root_rot": EnvContext.current.root_rot,
+            "root_rot": EnvContext.current.anchor_rot,
             "head_pos": EnvContext.path.head_pos,
             "traj_samples": EnvContext.path.traj_samples,
             "height_conditioned": EnvContext.path.height_conditioned,
@@ -695,48 +935,51 @@ def anchor_xy_rew_factory(
     )
 
 
-def corrupted_xy_offset_factory(
-    log_noise_std: float = 0.12,
-    soft_threshold: float = 0.15,
-) -> MdpComponent:
-    """Factory for odometer-corrupted XY offset observation.
+def odom_offset_factory(odom_clean: bool = False) -> MdpComponent:
+    """Factory for the centralized odometer XY offset observation.
 
-    Produces a heading-local 2D vector from the robot's current position to
-    the reference anchor position, with per-episode affine corruption (scale +
-    yaw bias, sampled at reset from EnvConfig.odom_scale_range /
-    odom_yaw_range_deg) and per-step proportional log-space noise.
+    Returns the per-step centralized odometer offset — a heading-local 2D vector
+    from the believed odometer position to the reference anchor position —
+    derived on demand from the raw odometer sensor ingredients via
+    ``compute_odom_offset_local``. By default this uses the corrupted odometer
+    displacement (``EnvContext.odom_disp_start_corrupt``); when ``odom_clean=True``
+    it uses the uncorrupted L2C2 clean twin (``EnvContext.odom_disp_start_clean``).
 
-    Applied identically in simulation and on the real G1 by passing the real
-    odometer reading through the same corruption parameters — eliminating the
-    sim-to-real gap on this observation channel.
+    Corruption strength (per-episode affine scale + yaw bias and per-step
+    proportional log-space noise) is configured via
+    ``EnvConfig.odom_log_noise_std`` / ``EnvConfig.odom_soft_threshold`` (and
+    ``EnvConfig.odom_scale_range`` / ``EnvConfig.odom_yaw_range_deg``), applied
+    identically in simulation and on the real G1 to eliminate the sim-to-real gap
+    on this observation channel. See
+    ``data/scripts/visualize_odometer_corruption.py`` for interactive tuning.
 
-    See ``build_corrupted_xy_offset`` in target_poses.py for full design rationale,
-    and ``data/scripts/visualize_odometer_corruption.py`` for interactive tuning.
+    Reads ``ctx.mimic.ref_anchor_pos`` — the reference ANCHOR position — rather than
+    the full reference body array, since the anchor XY is all the offset needs.
 
     Args:
-        log_noise_std: Std of per-step noise in log(1+mag) space (default 0.12).
-        soft_threshold: Noise ramp characteristic length in metres (default 0.15).
+        odom_clean: If True, use the uncorrupted ``EnvContext.odom_disp_start_clean``
+            displacement (the L2C2 clean twin) instead of the corrupted one.
 
     Returns:
-        MdpComponent producing corrupted XY offset [envs, 2].
+        MdpComponent producing the odometer XY offset [envs, 2].
     """
-    from protomotions.envs.obs import build_corrupted_xy_offset
+    from protomotions.envs.obs.target_poses import compute_odom_offset_local
 
+    odom_disp_field = (
+        EnvContext.odom_disp_start_clean
+        if odom_clean
+        else EnvContext.odom_disp_start_corrupt
+    )
     return MdpComponent(
-        compute_func=build_corrupted_xy_offset,
+        compute_func=compute_odom_offset_local,
         dynamic_vars={
-            "current_state_anchor_pos": EnvContext.current.anchor_pos,
+            "ref_anchor_pos": EnvContext.mimic.ref_anchor_pos,
             "current_state_anchor_rot": EnvContext.current.anchor_rot,
-            "ref_rigid_body_pos": EnvContext.mimic.ref_state.rigid_body_pos,
-            "anchor_idx": EnvContext.mimic.anchor_idx,
-            "odom_scale": EnvContext.odom_scale,
-            "odom_yaw_cos_sin": EnvContext.odom_yaw_cos_sin,
+            "odom_disp_start": odom_disp_field,
+            "odom_start_xy": EnvContext.odom_start_xy,
+            "odom_start_heading_inv": EnvContext.odom_start_heading_inv,
         },
-        static_params={
-            "w_last": True,
-            "log_noise_std": log_noise_std,
-            "soft_threshold": soft_threshold,
-        },
+        static_params={"w_last": True},
     )
 
 
@@ -886,7 +1129,7 @@ def target_reward_factory(
     return MdpComponent(
         compute_func=compute_target_rew,
         dynamic_vars={
-            "root_pos": EnvContext.current.root_pos,
+            "root_pos": EnvContext.current.anchor_pos,
             "tar_pos": EnvContext.target.tar_pos,
             "tar_proximity_threshold": EnvContext.target.tar_proximity_threshold,
         },
@@ -901,9 +1144,9 @@ def steering_reward_factory(weight: float = 1.0) -> MdpComponent:
     return MdpComponent(
         compute_func=compute_heading_velocity_rew,
         dynamic_vars={
-            "root_pos": EnvContext.current.root_pos,
+            "root_pos": EnvContext.current.anchor_pos,
             "prev_root_pos": EnvContext.steering.prev_root_pos,
-            "root_rot": EnvContext.current.root_rot,
+            "root_rot": EnvContext.current.anchor_rot,
             "tar_dir": EnvContext.steering.tar_dir,
             "tar_speed": EnvContext.steering.tar_speed,
             "tar_face_dir": EnvContext.steering.tar_face_dir,
@@ -981,6 +1224,44 @@ def fall_termination_factory(termination_height: float = 0.15) -> MdpComponent:
     )
 
 
+def joint_limit_termination_factory(
+    dof_limits_lower=None,
+    dof_limits_upper=None,
+    max_violation: float = 1.0,
+) -> MdpComponent:
+    """Factory for joint-limit-violation termination.
+
+    Ends the episode when any joint is driven more than ``max_violation``
+    radians past its limit. That state is usually the first visible sign of the
+    simulator diverging, and continuing to simulate it earns an unbounded
+    soft-limit penalty whose magnitude then sets the reward-normalizer scale.
+
+    Args:
+        dof_limits_lower: Lower joint limits, from
+            ``robot_cfg.kinematic_info.dof_limits_lower``. Must be provided.
+        dof_limits_upper: Upper joint limits. Must be provided.
+        max_violation: Radians past a limit, on any single joint, that ends the
+            episode.
+
+    Returns:
+        MdpComponent producing a boolean termination flag per environment.
+    """
+    from protomotions.envs.terminations import joint_limit_termination
+
+    assert dof_limits_lower is not None, "dof_limits_lower must be provided"
+    assert dof_limits_upper is not None, "dof_limits_upper must be provided"
+
+    return MdpComponent(
+        compute_func=joint_limit_termination,
+        dynamic_vars={"dof_pos": EnvContext.current.dof_pos},
+        static_params={
+            "dof_limits_lower": dof_limits_lower,
+            "dof_limits_upper": dof_limits_upper,
+            "max_violation": max_violation,
+        },
+    )
+
+
 # =============================================================================
 # BeyondMimic Reward Factories
 # =============================================================================
@@ -1039,17 +1320,31 @@ def global_anchor_ori_rew_factory(
 def relative_body_pos_rew_factory(
     weight: float = 1.0,
     sigma: float = 0.3,
+    body_indices: Optional[torch.Tensor] = None,
 ) -> MdpComponent:
     """Factory for relative body position reward (BeyondMimic).
+
+    The kernel averages the per-body squared error INSIDE the exponent, so with
+    the default of all bodies a single limb is heavily diluted: on the G1 a
+    displaced hand carries about half the body's total squared error but enters
+    the exponent divided by 33.  Passing ``body_indices`` restricts the average to
+    those bodies, which is how you give end effectors real weight without changing
+    the reward's shape.
 
     Args:
         weight: Reward weight.
         sigma: Gaussian kernel width.
+        body_indices: Optional 1-D LongTensor selecting which bodies to score.
+            None (default) scores every body.
 
     Returns:
         MdpComponent configured for relative body position reward.
     """
     from protomotions.envs.rewards import compute_relative_body_pos_rew
+
+    static_params: Dict[str, Any] = {"weight": weight, "sigma": sigma}
+    if body_indices is not None:
+        static_params["body_indices"] = body_indices
 
     return MdpComponent(
         compute_func=compute_relative_body_pos_rew,
@@ -1061,7 +1356,7 @@ def relative_body_pos_rew_factory(
             "current_anchor_pos": EnvContext.current.anchor_pos,
             "anchor_idx": EnvContext.mimic.anchor_idx,
         },
-        static_params={"weight": weight, "sigma": sigma},
+        static_params=static_params,
     )
 
 
@@ -1484,7 +1779,7 @@ def steering_velocity_error_factory(
     return MdpComponent(
         compute_func=_check_steering_velocity_error_wrapper,
         dynamic_vars={
-            "root_pos": EnvContext.current.root_pos,
+            "root_pos": EnvContext.current.anchor_pos,
             "prev_root_pos": EnvContext.steering.prev_root_pos,
             "tar_dir": EnvContext.steering.tar_dir,
             "tar_speed": EnvContext.steering.tar_speed,
@@ -1510,6 +1805,9 @@ __all__ = [
     "mimic_target_poses_future_rel_factory",
     "mimic_target_poses_reduced_coords_factory",
     "mimic_deploy_target_poses_factory",
+    "fk_max_coords_obs_factory",
+    "baked_fk_target_poses_factory",
+    "baked_fk_target_poses_no_odom_factory",
     "target_obs_factory",
     "steering_obs_factory",
     "path_obs_factory",
@@ -1524,7 +1822,7 @@ __all__ = [
     "anchor_xy_rew_factory",
     "mimic_tracking_rewards_factory",
     # Odometer observation factory
-    "corrupted_xy_offset_factory",
+    "odom_offset_factory",
     "pow_rew_factory",
     "contact_match_rew_factory",
     "contact_force_change_rew_factory",

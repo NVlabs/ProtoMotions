@@ -13,7 +13,6 @@ Training Workflows
 
 * :doc:`workflows/amass_smpl` - Train SMPL humanoid on AMASS motion data
 * :doc:`workflows/retargeting_pyroki` - Retarget AMASS/SMPL motions to robots
-* :doc:`workflows/vaulting` - Scene interaction with vaulting motions
 * :doc:`workflows/domain_randomization` - Sim2sim transfer techniques
 * :doc:`../user_guide/gpc` - Train GPC and adapt it with PEFT
 
@@ -48,9 +47,6 @@ Quick Reference
    * - :doc:`workflows/retargeting_pyroki`
      - Retarget AMASS/SMPL to robots
      - Packaged AMASS .pt
-   * - :doc:`workflows/vaulting`
-     - Full scene interaction workflow
-     - Motion + scene data
    * - :doc:`workflows/domain_randomization`
      - Sim2sim transfer
      - Trained policy

@@ -12,12 +12,14 @@ from protomotions.simulator.isaacgym.config import IsaacGymSimParams
 from protomotions.simulator.isaaclab.config import IsaacLabSimParams
 from protomotions.simulator.genesis.config import GenesisSimParams
 from protomotions.simulator.newton.config import NewtonSimParams
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from dataclasses import dataclass, field
 
 
 @dataclass
 class AMPRobotConfig(RobotConfig):
+    semantic_forward_axis_xy: Tuple[float, float] = (1.0, 0.0)
+
     common_naming_to_robot_body_names: Dict[str, List[str]] = field(
         default_factory=lambda: {
             "all_right_foot_bodies": ["right_foot"],
@@ -45,8 +47,6 @@ class AMPRobotConfig(RobotConfig):
     asset: RobotAssetConfig = field(
         default_factory=lambda: RobotAssetConfig(
             asset_file_name="mjcf/amp_humanoid.xml",
-            usd_asset_file_name="usd/amp_humanoid.usda",
-            usd_bodies_root_prim_path="/World/envs/env_.*/Robot/bodies/",
         )
     )
 

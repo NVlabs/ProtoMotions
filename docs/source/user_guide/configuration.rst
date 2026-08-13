@@ -86,6 +86,8 @@ Robot configs in ``protomotions/robot_configs/`` define the robot:
 
    @dataclass
    class G1RobotConfig(RobotConfig):
+       semantic_forward_axis_xy: Tuple[float, float] = (1.0, 0.0)
+
        # Map common names to robot-specific body names
        common_naming_to_robot_body_names: Dict[str, List[str]] = field(
            default_factory=lambda: {
@@ -96,10 +98,9 @@ Robot configs in ``protomotions/robot_configs/`` define the robot:
            }
        )
        
-       # Asset configuration
+       # Asset configuration (IsaacLab derives USD from MJCF at scene build)
        asset: RobotAssetConfig = field(default_factory=lambda: RobotAssetConfig(
            asset_file_name="mjcf/g1_bm_no_mesh_box_feet.xml",
-           usd_asset_file_name="usd/g1_bm/g1_bm.usda",
        ))
        
        # PD control parameters per joint (regex patterns)
@@ -216,7 +217,7 @@ artifacts instead of adding hidden inference-time migration hooks.
 Component Configuration (Observations, Rewards, Terminations)
 --------------------------------------------------------------
 
-Components use ``MdpComponent`` to bind pure tensor kernels to context paths:
+All components use ``MdpComponent`` to bind pure tensor kernels to context paths:
 
 .. code-block:: python
 

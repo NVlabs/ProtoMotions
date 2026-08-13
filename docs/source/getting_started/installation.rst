@@ -10,7 +10,7 @@ You can install the simulation of your choice, and the simulation backend is sel
 
    <p>
      <a href="https://pypi.org/project/newton/1.0.0/"><img src="https://img.shields.io/badge/Newton-1.0.0-brightgreen.svg" alt="Newton"></a>
-     <a href="https://github.com/isaac-sim/IsaacLab/releases/tag/v2.3.2"><img src="https://img.shields.io/badge/IsaacLab-2.3.2-blue.svg" alt="IsaacLab"></a>
+     <a href="https://github.com/isaac-sim/IsaacLab/commit/4ecd0b036da19ff6ad2bb4d621f886b63e9f6db8"><img src="https://img.shields.io/badge/IsaacLab-12.0.0-blue.svg" alt="IsaacLab"></a>
      <a href="https://developer.nvidia.com/isaac-gym"><img src="https://img.shields.io/badge/IsaacGym-Preview_4-blue.svg" alt="IsaacGym"></a>
      <a href="https://github.com/Genesis-Embodied-AI/Genesis"><img src="https://img.shields.io/badge/Genesis-untested-lightgrey.svg" alt="Genesis"></a>
      <a href="https://github.com/google-deepmind/mujoco"><img src="https://img.shields.io/badge/MuJoCo-3.0+-orange.svg" alt="MuJoCo"></a>
@@ -35,9 +35,8 @@ Which installation path?
      - Source checkout **or** uv dependency
      - Genesis is experimental.
    * - IsaacLab
-     - Source checkout **or** uv dependency
-     - Needs NVIDIA's package index and the CUDA 12.8 PyTorch index
-       (see below). Python 3.11, Linux x86_64 only.
+     - **Pinned source checkout**
+     - IsaacLab 12.0.0 with Isaac Sim 6.0 requires Python 3.12 and Linux x86_64.
    * - IsaacGym
      - **Source checkout only**
      - IsaacGym is not distributed on PyPI: you download it from NVIDIA and
@@ -110,46 +109,11 @@ keep a Git LFS checkout and set ``PROTOMOTIONS_ASSET_ROOT`` if you need them.
 IsaacLab as a dependency
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-IsaacLab projects also need NVIDIA's package index and the CUDA 12.8 PyTorch
-index. Add these entries to the downstream project's ``pyproject.toml`` before
-running ``uv sync``:
-
-.. code-block:: toml
-
-   [project]
-   requires-python = "==3.11.*"
-   dependencies = [
-     "protomotions[isaaclab]",
-     "torch==2.7.0",
-     "torchaudio==2.7.0",
-     "torchvision==0.22.0",
-   ]
-
-   [tool.uv]
-   required-version = ">=0.11.32"
-   environments = [
-     "sys_platform == 'linux' and platform_machine == 'x86_64'",
-   ]
-   index-strategy = "first-index"
-
-   [[tool.uv.index]]
-   name = "pytorch-cu128"
-   url = "https://download.pytorch.org/whl/cu128"
-   explicit = true
-
-   [[tool.uv.index]]
-   name = "nvidia"
-   url = "https://pypi.nvidia.com"
-
-   [tool.uv.sources]
-   protomotions = { git = "https://github.com/NVlabs/ProtoMotions.git", lfs = true }
-   torch = { index = "pytorch-cu128" }
-   torchaudio = { index = "pytorch-cu128" }
-   torchvision = { index = "pytorch-cu128" }
-
-Core package metadata requires ``torch>=2.2`` but does not select a PyTorch
-index or CUDA build. The downstream environment remains responsible for
-choosing the wheel that matches its simulator, CUDA runtime, and driver.
+The supported IsaacLab stack is a pinned source workspace rather than a
+standalone ProtoMotions dependency resolution. Follow the IsaacLab procedure
+below to create its Python 3.12 ``.venv``, then install ProtoMotions into that
+environment. A plain ``uv add protomotions[isaaclab]`` in a separate project
+does not install the required IsaacLab source revision.
 
 Choose Your Simulator(s)
 ------------------------
@@ -189,28 +153,32 @@ IsaacGym requires **Python 3.8**.
 IsaacLab
 ~~~~~~~~
 
-We recommend using **uv** for IsaacLab installation. IsaacLab 2.x requires **Python 3.11**.
-For full installation details, see the `IsaacLab Pip Installation Guide <https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/isaaclab_pip_installation.html>`__.
+ProtoMotions targets IsaacLab 12.0.0 and Isaac Sim 6.0 from public IsaacLab
+commit ``4ecd0b036da19ff6ad2bb4d621f886b63e9f6db8``. This stack requires
+**Python 3.12**. Install the pinned IsaacLab source checkout before
+ProtoMotions so its workspace packages and simulator dependencies are present.
 
-1. Create a virtual environment with uv:
-
-   .. code-block:: bash
-
-      uv venv --python 3.11 env_isaaclab
-      source env_isaaclab/bin/activate
-
-2. Install PyTorch and IsaacLab:
+1. Clone and select the supported IsaacLab revision:
 
    .. code-block:: bash
 
-      uv pip install torch==2.7.0 torchaudio==2.7.0 torchvision==0.22.0
-      uv pip install isaaclab[isaacsim,all]==2.3.2.post1 --extra-index-url https://pypi.nvidia.com
+      git clone https://github.com/isaac-sim/IsaacLab.git
+      cd IsaacLab
+      git checkout 4ecd0b036da19ff6ad2bb4d621f886b63e9f6db8
+
+2. Create the pinned IsaacLab environment and install its Isaac Sim extra:
+
+   .. code-block:: bash
+
+      uv sync --extra isaacsim
+      source .venv/bin/activate
 
 3. Install ProtoMotions and dependencies:
 
    .. code-block:: bash
 
-      uv pip install -e /path/to/protomotions
+      uv pip install -e "/path/to/protomotions[isaaclab]" \
+        --extra-index-url https://pypi.nvidia.com
       uv pip install -r /path/to/protomotions/requirements_isaaclab.txt
 
 .. note::
@@ -259,9 +227,9 @@ For full installation details, see the `Newton Installation Guide <https://newto
    .. code-block:: bash
 
       pip install torch --index-url https://download.pytorch.org/whl/cu124
-      pip install "newton[examples]"
+      pip install "newton[examples]==1.0.0"
 
-   Use ``newton[sim]`` instead of ``newton[examples]`` if you only need headless mode (no viewer).
+   Use ``newton[sim]==1.0.0`` instead of ``newton[examples]==1.0.0`` if you only need headless mode (no viewer).
 
 3. Install ProtoMotions and dependencies:
 

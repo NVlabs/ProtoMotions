@@ -159,6 +159,7 @@ class GenesisSimulator(Simulator):
         )
 
         self._scene.build(n_envs=self.num_envs)
+        self._robot.set_friction(self.config.default_robot_friction)
 
     def _get_sim_body_ordering(self) -> SimBodyOrdering:
         """Returns the ordering of bodies and DOFs in the simulation."""

@@ -54,12 +54,21 @@ def test_noisy_observations_properties_clone_and_subset_update():
 
     replacement = _make_noisy_observations(offset=10.0)
     single_replacement = NoisyObservations(
-        **{field: getattr(replacement, field)[:1] for field in replacement.__dataclass_fields__}
+        **{
+            field: getattr(replacement, field)[:1]
+            for field in replacement.__dataclass_fields__
+        }
     )
     obs.update_subset(torch.tensor([1]), single_replacement)
+    selected = replacement.select(torch.tensor([1, 0]))
 
     assert torch.equal(obs.rigid_body_pos[1], replacement.rigid_body_pos[0])
     assert torch.equal(obs.ground_heights[1:2], replacement.ground_heights[:1])
+    for field in replacement.__dataclass_fields__:
+        assert torch.equal(
+            getattr(selected, field),
+            getattr(replacement, field)[torch.tensor([1, 0])],
+        )
 
 
 def test_noise_helpers_return_identity_for_zero_scales_and_normalize_quats():

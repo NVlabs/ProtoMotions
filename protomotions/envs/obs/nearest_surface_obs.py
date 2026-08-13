@@ -45,7 +45,7 @@ def compute_nearest_surface_vectors(
         terrain_world = get_height_maps_jit(
             base_rot=root_rot,
             base_pos=root_pos,
-            height_points=height_points.clone(),
+            height_points=height_points,
             height_samples=height_samples,
             num_height_points=num_terrain_points,
             terrain_horizontal_scale=terrain_horizontal_scale,

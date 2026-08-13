@@ -1,5 +1,5 @@
-protomotions.agents.common.autoencoder package
-==============================================
+protomotions.agents.common.autoencoder module
+=============================================
 
 .. automodule:: protomotions.agents.common.autoencoder
    :members:

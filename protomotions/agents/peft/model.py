@@ -6,7 +6,6 @@
 The pretrained prior is passed in by the agent. This class only wires the
 PEFT actor to the optional PPO critic. Rollout is the module forward path.
 """
-
 from __future__ import annotations
 
 from protomotions.agents.base_agent.model import BaseModel

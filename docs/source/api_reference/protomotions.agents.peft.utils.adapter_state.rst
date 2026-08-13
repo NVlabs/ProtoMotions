@@ -1,5 +1,5 @@
-protomotions.agents.peft.utils.adapter\_state module
-====================================================
+protomotions.agents.peft.utils.adapter_state module
+===================================================
 
 .. automodule:: protomotions.agents.peft.utils.adapter_state
    :members:

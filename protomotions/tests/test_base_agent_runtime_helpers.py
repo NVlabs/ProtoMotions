@@ -13,6 +13,9 @@ from torch import nn
 
 from protomotions.agents.base_agent import agent as base_agent_module
 from protomotions.agents.base_agent.agent import BaseAgent
+from protomotions.agents.base_agent.motion_shards import (
+    advance_motion_shard_after_evaluation,
+)
 from protomotions.agents.base_agent.config import (
     BaseAgentConfig,
     BaseModelConfig,
@@ -23,6 +26,15 @@ from protomotions.agents.utils.data import ExperienceBuffer
 from protomotions.agents.amp.component import AMPTrainingComponent
 from protomotions.agents.utils.metering import TensorAverageMeterDict
 from protomotions.agents.utils.normalization import RunningMeanStd
+from protomotions.agents.utils.distributed import raise_if_any_rank_failed
+from protomotions.components.motion_lib import MotionFileSwitchMode
+
+
+def _fixed_motion_lib():
+    return SimpleNamespace(
+        config=SimpleNamespace(motion_file_switch_mode=MotionFileSwitchMode.FIXED),
+        motion_file_shard_cycle=0,
+    )
 
 
 def _new_amp_agent(agent_cls=None):
@@ -244,14 +256,23 @@ class _SetupModel(nn.Module):
     def __init__(self):
         super().__init__()
         self.normalizer = RunningMeanStd(None, shape=(1,), device=torch.device("cpu"))
+        self.dropout = nn.Dropout()
+        self.frozen_head = nn.Linear(1, 1)
+        self.frozen_head.eval()
         self.reset_args = None
         self.materialized_obs = None
+        self.training_during_materialize = None
+        self.materialize_modes = None
 
     def reset_rollout_context(self, num_envs: int, device):
         self.reset_args = (num_envs, device)
 
     def materialize(self, obs_td):
+        self.training_during_materialize = self.training
         self.materialized_obs = obs_td.clone()
+        self.materialize_modes = {
+            name: module.training for name, module in self.named_modules()
+        }
         return obs_td
 
 
@@ -275,7 +296,7 @@ def test_base_agent_init_sets_distributed_sizes_reward_norm_and_evaluator(
     monkeypatch.setattr(base_agent_module, "get_class", lambda target: _Evaluator)
 
     env = SimpleNamespace(
-        motion_lib="motion-lib",
+        motion_lib=_fixed_motion_lib(),
         motion_manager="motion-manager",
         num_envs=2,
     )
@@ -294,7 +315,8 @@ def test_base_agent_init_sets_distributed_sizes_reward_norm_and_evaluator(
 
     agent = BaseAgent(_FabricRecorder(), env, config, root_dir=tmp_path)
 
-    assert agent.motion_lib == "motion-lib"
+    assert agent.motion_lib is env.motion_lib
+    assert agent.motion_shard_cycle == 0
     assert agent.motion_manager == "motion-manager"
     assert agent._total_envs == 5
     assert agent.max_epochs == 20
@@ -313,7 +335,9 @@ def test_base_agent_init_rejects_mismatched_batch_counts(tmp_path):
                 return torch.tensor([[2], [2]], device=value.device)
             return torch.tensor([[1], [2]], device=value.device)
 
-    env = SimpleNamespace(motion_lib=None, motion_manager=None, num_envs=2)
+    env = SimpleNamespace(
+        motion_lib=_fixed_motion_lib(), motion_manager=None, num_envs=2
+    )
     config = BaseAgentConfig(
         num_steps=3,
         num_mini_epochs=2,
@@ -361,6 +385,11 @@ def test_base_agent_setup_materializes_model_and_initializes_optimizers():
     assert model.fabric_during_after_model_reset is fabric
     assert model.normalizer.fabric is fabric
     assert torch.equal(model.materialized_obs["obs"], torch.ones(2, 1))
+    assert model.training_during_materialize is False
+    assert all(not training for training in model.materialize_modes.values())
+    assert model.training is True
+    assert model.dropout.training is True
+    assert model.frozen_head.training is False
     assert optimizer_models == [model]
 
 
@@ -702,18 +731,354 @@ def test_base_agent_save_writes_rank_and_score_checkpoints_without_real_dist(
 
     assert barriers == [True]
     assert [name for _, name in saved] == [
+        "env_task-a.ckpt",
         "last.ckpt",
         "custom_last.ckpt",
-        "env_task-a.ckpt",
         "score_based.ckpt",
         "custom_score_based.ckpt",
     ]
     assert inference_calls == [model_state]
-    assert saved[1][0] is saved[4][0]
+    assert saved[2][0] is saved[4][0]
     assert agent.fabric.calls == [
         ("on_save_checkpoint_start", (agent,)),
         ("on_save_checkpoint_end", (agent,)),
     ]
+
+
+def test_base_agent_save_coordinates_inference_state_generation_after_env_save(
+    tmp_path,
+    monkeypatch,
+):
+    saved = []
+    barriers = []
+    monkeypatch.setattr(
+        base_agent_module.torch,
+        "save",
+        lambda state, path: saved.append(path.name),
+    )
+    monkeypatch.setattr(
+        base_agent_module.dist,
+        "all_gather_object",
+        lambda target, value: target.__setitem__(slice(None), [value, "other-task"]),
+    )
+    monkeypatch.setattr(base_agent_module.dist, "barrier", lambda: barriers.append(True))
+
+    agent = object.__new__(BaseAgent)
+    agent.fabric = _FabricRecorder()
+    agent.device = torch.device("cpu")
+    agent.root_dir = tmp_path
+    agent.config = SimpleNamespace(save_inference_checkpoint=True)
+    agent.env = SimpleNamespace(
+        get_task_id=lambda: "task-a",
+        get_state_dict=lambda: {"env": torch.tensor([3.0])},
+    )
+    agent.get_state_dict = lambda state: state | {"model": {}}
+
+    preparation_error = ValueError("cannot prepare inference checkpoint")
+    agent.get_inference_state_dict = lambda *args, **kwargs: (_ for _ in ()).throw(
+        preparation_error
+    )
+
+    with pytest.raises(
+        RuntimeError, match="Agent checkpoint save failed"
+    ) as raised:
+        BaseAgent.save(agent)
+
+    assert raised.value.__cause__ is preparation_error
+    assert saved == ["env_task-a.ckpt"]
+    assert barriers == []
+    assert agent.fabric.calls == [("on_save_checkpoint_start", (agent,))]
+
+
+def test_base_agent_save_coordinates_score_checkpoint_write_failure(
+    tmp_path,
+    monkeypatch,
+):
+    saved = []
+    barriers = []
+
+    def fake_save(state, path):
+        saved.append(path.name)
+        if path.name == "score_based.ckpt":
+            raise OSError("cannot write score checkpoint")
+
+    def fake_all_gather_object(target, value):
+        target[:] = [value, "other-task"]
+
+    def fake_all_gather(target, value):
+        for item in target:
+            item.copy_(value)
+
+    monkeypatch.setattr(base_agent_module.torch, "save", fake_save)
+    monkeypatch.setattr(
+        base_agent_module.dist,
+        "all_gather_object",
+        fake_all_gather_object,
+    )
+    monkeypatch.setattr(base_agent_module.dist, "barrier", lambda: barriers.append(True))
+    monkeypatch.setattr(base_agent_module.dist, "get_world_size", lambda: 2)
+    monkeypatch.setattr(base_agent_module.dist, "all_gather", fake_all_gather)
+
+    agent = object.__new__(BaseAgent)
+    agent.fabric = _FabricRecorder()
+    agent.device = torch.device("cpu")
+    agent.root_dir = tmp_path
+    agent.config = SimpleNamespace(save_inference_checkpoint=False)
+    agent.env = SimpleNamespace(
+        get_task_id=lambda: "task-a",
+        get_state_dict=lambda: {"env": torch.tensor([3.0])},
+    )
+    agent.best_evaluated_score = 10.0
+    agent.get_state_dict = lambda state: state | {"model": {}}
+
+    with pytest.raises(RuntimeError, match="High-score checkpoint save failed") as raised:
+        BaseAgent.save(agent, new_high_score=True)
+
+    assert isinstance(raised.value.__cause__, OSError)
+    assert saved == ["env_task-a.ckpt", "last.ckpt", "score_based.ckpt"]
+    assert barriers == []
+    assert agent.fabric.calls == [("on_save_checkpoint_start", (agent,))]
+
+
+def test_base_agent_save_coordinates_score_inference_checkpoint_failure(
+    tmp_path,
+    monkeypatch,
+):
+    saved = []
+    barriers = []
+    inference_checkpoint_names = []
+
+    def fake_all_gather_object(target, value):
+        target[:] = [value, "other-task"]
+
+    def fake_all_gather(target, value):
+        for item in target:
+            item.copy_(value)
+
+    monkeypatch.setattr(
+        base_agent_module.torch,
+        "save",
+        lambda state, path: saved.append(path.name),
+    )
+    monkeypatch.setattr(
+        base_agent_module.dist,
+        "all_gather_object",
+        fake_all_gather_object,
+    )
+    monkeypatch.setattr(base_agent_module.dist, "barrier", lambda: barriers.append(True))
+    monkeypatch.setattr(base_agent_module.dist, "get_world_size", lambda: 2)
+    monkeypatch.setattr(base_agent_module.dist, "all_gather", fake_all_gather)
+
+    agent = object.__new__(BaseAgent)
+    agent.fabric = _FabricRecorder()
+    agent.device = torch.device("cpu")
+    agent.root_dir = tmp_path
+    agent.config = SimpleNamespace(save_inference_checkpoint=True)
+    agent.env = SimpleNamespace(
+        get_task_id=lambda: "task-a",
+        get_state_dict=lambda: {"env": torch.tensor([3.0])},
+    )
+    agent.best_evaluated_score = 10.0
+    agent.get_state_dict = lambda state: state | {"model": {}}
+    agent.get_inference_state_dict = lambda state, model_state_dict: state | {
+        "model": model_state_dict
+    }
+
+    score_inference_error = OSError("cannot write score inference checkpoint")
+
+    def save_inference_checkpoint(checkpoint_name, state):
+        inference_checkpoint_names.append(checkpoint_name)
+        if checkpoint_name == "score_based.ckpt":
+            raise score_inference_error
+
+    agent.save_inference_checkpoint = save_inference_checkpoint
+
+    with pytest.raises(RuntimeError, match="High-score checkpoint save failed") as raised:
+        BaseAgent.save(agent, new_high_score=True)
+
+    assert raised.value.__cause__ is score_inference_error
+    assert saved == ["env_task-a.ckpt", "last.ckpt", "score_based.ckpt"]
+    assert inference_checkpoint_names == ["last.ckpt", "score_based.ckpt"]
+    assert barriers == []
+
+
+def test_raise_if_any_rank_failed_preserves_the_local_exception_as_cause():
+    local_error = ValueError("cannot write checkpoint")
+
+    with pytest.raises(RuntimeError, match="checkpoint save failed") as raised:
+        raise_if_any_rank_failed(
+            local_error,
+            operation="checkpoint save",
+            device=torch.device("cpu"),
+        )
+
+    assert raised.value.__cause__ is local_error
+
+
+def test_raise_if_any_rank_failed_raises_when_a_healthy_rank_sees_remote_failure(
+    monkeypatch,
+):
+    from protomotions.agents.utils import distributed as distributed_module
+
+    monkeypatch.setattr(distributed_module.dist, "is_initialized", lambda: True)
+
+    def report_remote_failure(value, op=None):
+        value.fill_(1)
+
+    monkeypatch.setattr(distributed_module.dist, "all_reduce", report_remote_failure)
+
+    with pytest.raises(RuntimeError, match="motion transition failed on another rank"):
+        raise_if_any_rank_failed(
+            None,
+            operation="motion transition",
+            device=torch.device("cpu"),
+        )
+
+
+def _motion_shard_agent(mode, selection, events):
+    agent = object.__new__(BaseAgent)
+    agent.device = torch.device("cpu")
+    agent.num_envs = 2
+    agent.motion_shard_cycle = 0
+    agent.current_rewards = torch.ones(2)
+    agent.current_lengths = torch.ones(2, dtype=torch.long)
+    old_motion_lib = SimpleNamespace(
+        config=SimpleNamespace(motion_file_switch_mode=mode),
+        motion_file="motions_0.pt",
+        motion_file_shard_index=0,
+        selection_for_cycle=lambda cycle: selection(cycle),
+    )
+    agent.motion_lib = old_motion_lib
+    agent.motion_manager = "old-manager"
+    agent.env = SimpleNamespace(
+        motion_lib=old_motion_lib,
+        motion_manager="old-manager",
+    )
+    agent.model = SimpleNamespace(
+        reset_rollout_context=lambda env_ids: events.append(("reset_context", env_ids))
+    )
+    agent.save = lambda checkpoint_name: events.append(("save", checkpoint_name))
+    agent._load_environment_checkpoint = lambda: events.append(("load_env",))
+    return agent
+
+
+def test_motion_shard_fixed_mode_is_a_no_op():
+    events = []
+    agent = _motion_shard_agent(
+        MotionFileSwitchMode.FIXED,
+        lambda cycle: (_ for _ in ()).throw(AssertionError("must not select")),
+        events,
+    )
+
+    assert advance_motion_shard_after_evaluation(agent) == (False, False)
+    assert agent.motion_shard_cycle == 0
+    assert events == []
+
+
+def test_motion_shard_live_replaces_only_after_releasing_old_references(monkeypatch):
+    from protomotions.agents.base_agent import motion_shards
+
+    events = []
+    agent = _motion_shard_agent(
+        MotionFileSwitchMode.LIVE,
+        lambda cycle: ("motions_1.pt", 1),
+        events,
+    )
+    replacement = SimpleNamespace(
+        motion_file="motions_1.pt",
+        motion_file_shard_index=1,
+    )
+
+    def build(config, device, shard_cycle):
+        assert agent.motion_lib is None
+        assert agent.motion_manager is None
+        assert agent.env.motion_lib is None
+        assert agent.env.motion_manager is None
+        assert config is replacement_config
+        assert device == torch.device("cpu")
+        assert shard_cycle == 1
+        return replacement
+
+    replacement_config = agent.motion_lib.config
+    monkeypatch.setattr(motion_shards, "_build_motion_lib_from_config", build)
+
+    def install(motion_lib):
+        assert motion_lib is replacement
+        agent.env.motion_lib = motion_lib
+        agent.env.motion_manager = "new-manager"
+        events.append(("install", motion_lib))
+
+    agent.env.install_motion_lib = install
+
+    assert advance_motion_shard_after_evaluation(agent) == (False, True)
+    assert agent.motion_shard_cycle == 1
+    assert agent.motion_lib is replacement
+    assert agent.motion_manager == "new-manager"
+    assert torch.equal(agent.current_rewards, torch.zeros(2))
+    assert torch.equal(agent.current_lengths, torch.zeros(2, dtype=torch.long))
+    assert events[:3] == [
+        ("save", "last.ckpt"),
+        ("install", replacement),
+        ("load_env",),
+    ]
+    assert events[3][0] == "reset_context"
+    assert torch.equal(events[3][1], torch.tensor([0, 1]))
+
+
+def test_motion_shard_unchanged_assignment_does_not_save_or_rebuild(monkeypatch):
+    from protomotions.agents.base_agent import motion_shards
+
+    events = []
+    agent = _motion_shard_agent(
+        MotionFileSwitchMode.LIVE,
+        lambda cycle: ("motions_0.pt", 0),
+        events,
+    )
+    monkeypatch.setattr(
+        motion_shards,
+            "_build_motion_lib_from_config",
+        lambda *args, **kwargs: pytest.fail("must not rebuild"),
+    )
+
+    assert advance_motion_shard_after_evaluation(agent) == (False, False)
+    assert agent.motion_shard_cycle == 0
+    assert events == []
+
+
+def test_motion_shard_restart_saves_the_next_cycle_without_live_replacement():
+    events = []
+    agent = _motion_shard_agent(
+        MotionFileSwitchMode.RESTART,
+        lambda cycle: ("motions_1.pt", 1),
+        events,
+    )
+
+    assert advance_motion_shard_after_evaluation(agent) == (True, False)
+    assert agent.motion_shard_cycle == 1
+    assert events == [("save", "last.ckpt")]
+
+
+def test_motion_shard_live_transition_error_is_raised_on_every_rank(monkeypatch):
+    from protomotions.agents.base_agent import motion_shards
+
+    events = []
+    agent = _motion_shard_agent(
+        MotionFileSwitchMode.LIVE,
+        lambda cycle: ("motions_1.pt", 1),
+        events,
+    )
+    monkeypatch.setattr(motion_shards.dist, "is_initialized", lambda: True)
+    monkeypatch.setattr(motion_shards.dist, "all_reduce", lambda value, op=None: None)
+    monkeypatch.setattr(
+        motion_shards,
+            "_build_motion_lib_from_config",
+        lambda *args, **kwargs: (_ for _ in ()).throw(ValueError("bad shard")),
+    )
+
+    with pytest.raises(RuntimeError, match="Live motion shard switch failed") as raised:
+        advance_motion_shard_after_evaluation(agent)
+
+    assert isinstance(raised.value.__cause__, ValueError)
 
 
 def test_post_env_step_modifications_resets_model_done_envs():
@@ -915,6 +1280,7 @@ def test_base_training_state_load_restores_metadata_norm_and_evaluator():
     agent.evaluator = SimpleNamespace(
         load_state_dict=lambda state: loaded.setdefault("evaluator", state)
     )
+    agent.motion_lib = _fixed_motion_lib()
     state_dict = {
         "epoch": 3,
         "step_count": 7,
@@ -970,6 +1336,7 @@ def test_amp_non_amp_warm_start_training_state_skips_discriminator_optimizers():
     agent.discriminator_optimizer = SimpleNamespace(
         load_state_dict=lambda state: calls.append(("disc", state))
     )
+    agent.motion_lib = _fixed_motion_lib()
     state = {"epoch": 5, "discriminator_optimizer": {"disc": 1}}
 
     AMP._load_training_state(agent, state)
@@ -1000,6 +1367,7 @@ def test_amp_full_training_state_loads_discriminator_optimizer():
     component.discriminator_optimizer = _OptimizerRecorder()
     component.use_disc_critic = False
     agent.amp_component = component
+    agent.motion_lib = _fixed_motion_lib()
     state = {
         "epoch": 5,
         "actor_optimizer": {"actor": 1},
@@ -1167,6 +1535,7 @@ def test_base_agent_state_dicts_preserve_training_and_inference_state():
     agent.evaluator = SimpleNamespace(
         get_state_dict=lambda: {"evaluated": torch.tensor(1)}
     )
+    agent.motion_lib = _fixed_motion_lib()
 
     state = BaseAgent.get_state_dict(agent, {"existing": True})
     inference = BaseAgent.get_inference_state_dict(agent, {})
@@ -1179,6 +1548,56 @@ def test_base_agent_state_dicts_preserve_training_and_inference_state():
     assert inference["model"]["weight"].device.type == "cpu"
     assert inference["model"]["weight"].data_ptr() != agent.model.weight.data_ptr()
     assert BaseAgent.inference_checkpoint_name("last.ckpt") == "inference_last.ckpt"
+
+
+@pytest.mark.parametrize(
+    ("mode", "includes_cycle"),
+    [
+        (MotionFileSwitchMode.FIXED, False),
+        (MotionFileSwitchMode.LIVE, True),
+        (MotionFileSwitchMode.RESTART, True),
+    ],
+)
+def test_base_agent_checkpoint_includes_cycle_only_for_switching_modes(
+    mode, includes_cycle
+):
+    agent = object.__new__(BaseAgent)
+    agent.model = nn.Linear(1, 1)
+    agent.current_epoch = 0
+    agent.step_count = 0
+    agent.fit_start_time = None
+    agent.best_evaluated_score = None
+    agent.config = SimpleNamespace(normalize_rewards=False)
+    agent.evaluator = None
+    agent.motion_lib = SimpleNamespace(config=SimpleNamespace(motion_file_switch_mode=mode))
+    agent.motion_shard_cycle = 5
+
+    training_state = BaseAgent.get_state_dict(agent, {})
+    inference_state = BaseAgent.get_inference_state_dict(agent, {})
+
+    assert ("motion_shard_cycle" in training_state) is includes_cycle
+    assert training_state.get("motion_shard_cycle") == (5 if includes_cycle else None)
+    assert "motion_shard_cycle" not in inference_state
+
+
+def test_base_agent_restores_switching_motion_shard_cycle_strictly():
+    agent = object.__new__(BaseAgent)
+    agent.current_epoch = 0
+    agent.step_count = 0
+    agent.fit_start_time = None
+    agent.best_evaluated_score = None
+    agent.config = SimpleNamespace(normalize_rewards=False)
+    agent.evaluator = None
+    agent.motion_lib = SimpleNamespace(
+        config=SimpleNamespace(motion_file_switch_mode=MotionFileSwitchMode.LIVE)
+    )
+    agent.motion_shard_cycle = 0
+
+    BaseAgent._load_training_state(agent, {"motion_shard_cycle": 3})
+
+    assert agent.motion_shard_cycle == 3
+    with pytest.raises(KeyError, match="motion_shard_cycle"):
+        BaseAgent._load_training_state(agent, {})
 
 
 def test_base_agent_observation_helpers_and_nan_checks_use_tensordicts():
@@ -1403,6 +1822,8 @@ def test_base_agent_noop_hooks_dataset_helpers_and_mode_switching():
     agent.num_steps = 3
     agent.num_mini_epochs = 2
     agent.model = nn.Linear(1, 1)
+    agent.experience_buffer = SimpleNamespace()
+    agent.model.pre_process_experience_buffer = lambda experience_buffer: None
 
     BaseAgent.pre_collect_step(agent, step=0)
     BaseAgent.pre_process_dataset(agent)

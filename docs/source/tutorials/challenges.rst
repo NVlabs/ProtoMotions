@@ -54,7 +54,7 @@ motion, forcing the character to navigate through a narrow passage.
 
 **Hints:**
 
-1. See ``examples/data/rigv1-vaulting/rigv1-obstacle.py`` for scene creation
+1. See ``examples/tutorial/3_scene_creation.py`` for scene creation
 2. Use ``SceneObject`` with ``object_type="box"`` for walls
 3. Test with ``env_kinematic_playback.py`` before training
 
@@ -149,7 +149,7 @@ Challenge 5: Agent Class Extension
 
 **Starting point:**
 
-1. Study how ADD-style motion imitation is implemented in ``protomotions/agents/mimic/agent_add.py``
+1. Study how ADD is implemented in ``protomotions/agents/mimic/agent_add.py``
 2. Look at how other agents extend BaseAgent
 
 Challenge 6: OMOMO Dataset Loader
@@ -182,7 +182,7 @@ OMOMO contains human-object interaction data with:
 2. Use ``MeshSceneObject`` for object shapes from OBJ files
 3. SceneLib supports moving objects - provide translation/rotation as sequences
 4. Match object motion FPS with humanoid motion FPS
-5. See ``examples/data/rigv1-vaulting/rigv1-obstacle.py`` for scene creation patterns
+5. See ``examples/tutorial/3_scene_creation.py`` for scene creation patterns
 
 **Example scene structure:**
 
@@ -229,4 +229,3 @@ OMOMO contains human-object interaction data with:
 1. Visualize with ``env_kinematic_playback.py`` to verify alignment
 2. Check object motion matches human contact timing
 3. Ensure consistent coordinate frames between human and object data
-

@@ -3,25 +3,35 @@
 
 """Shared odometer corruption utility for training and deployment.
 
-Single source of truth for the corruption transform applied to the XY offset
-observation.  Both the torch (GPU, batched) and numpy (single-env, deployment)
-implementations execute the identical algorithm so there is zero risk of
-sim-to-real mismatch from reimplementation.
+Single source of truth for corrupting a 2D displacement vector to simulate
+odometer noise.  Both the torch (GPU, batched) and numpy (single-env,
+deployment) implementations execute the identical algorithm so there is zero
+risk of sim-to-real mismatch from reimplementation.
+
+The input is the robot's **displacement from episode start** (in training) or
+the odometer position reading minus start position (at deployment).  The
+corruption models the G1's leg-kinematics odometer: noise is proportional to
+how far the robot has moved, not to the displacement to the reference.
 
 Algorithm (per-step):
-    1. Apply per-episode affine: scale * Rotate2D(yaw_bias) @ xy_local
+    1. Apply per-episode affine: scale * Rotate2D(yaw_bias) @ displacement
     2. Decompose into direction + magnitude
     3. Add proportional log-space noise: log(1+mag) + N(0, σ) * mag/(mag+threshold)
     4. Reconstruct: direction * max(exp(noisy_log) - 1, 0)
+
+The result is a corrupted displacement.  In ``BaseEnv._build_global_context``,
+this is added back to the start position to get a believed world position, and
+the offset to the reference is derived from that.
 
 Design rationale — see ``data/scripts/visualize_odometer_corruption.py`` for
 interactive parameter tuning and ``protomotions/tests/test_odom_corruption.py``
 for the torch-numpy equivalence test.
 
-Training usage::
+Training usage (inside BaseEnv)::
 
-    from protomotions.utils.odom_corruption import apply_odom_corruption_torch
-    xy_corrupted = apply_odom_corruption_torch(xy_local, scale, yaw_cs, ...)
+    robot_disp = cur_anchor_xy - odom_start_xy
+    corrupted_disp = apply_odom_corruption_torch(robot_disp, scale, yaw_cs, ...)
+    odom_pos = odom_start_xy + corrupted_disp
 
 Deployment usage::
 
@@ -29,7 +39,8 @@ Deployment usage::
         apply_odom_corruption_np, sample_odom_params_np,
     )
     scale, yaw_cs = sample_odom_params_np(scale_range=(0.7, 1.3), yaw_range_deg=6.0)
-    xy_corrupted = apply_odom_corruption_np(xy_local, scale, yaw_cs, ...)
+    odom_disp = odom_position - start_position
+    corrupted_disp = apply_odom_corruption_np(odom_disp, scale, yaw_cs, ...)
 """
 
 from __future__ import annotations
@@ -54,17 +65,21 @@ def apply_odom_corruption_torch(
     log_noise_std: float = 0.12,
     soft_threshold: float = 0.15,
 ) -> Tensor:
-    """Apply odometer corruption to a heading-local XY offset (batched GPU).
+    """Apply odometer corruption to a 2D displacement vector (batched GPU).
+
+    The input should be the robot's displacement from episode start
+    (``cur_anchor_xy - odom_start_xy``).  The corruption models proportional
+    drift: larger displacement → more noise.
 
     Args:
-        xy_local: Heading-local XY offset [envs, 2].
+        xy_local: Displacement vector [envs, 2] (e.g. robot pos - start pos).
         odom_scale: Per-episode multiplicative scale [envs].
         odom_yaw_cos_sin: Per-episode yaw bias as (cos, sin) [envs, 2].
         log_noise_std: Std of per-step noise in log(1+mag) space.
         soft_threshold: Smooth noise ramp characteristic length (metres).
 
     Returns:
-        Corrupted XY offset [envs, 2].
+        Corrupted displacement [envs, 2].
     """
     # Step 1: per-episode affine — scale * Rotate2D(yaw) @ xy
     cos_y = odom_yaw_cos_sin[:, 0]
@@ -99,20 +114,20 @@ def apply_odom_corruption_np(
     log_noise_std: float = 0.12,
     soft_threshold: float = 0.15,
 ) -> np.ndarray:
-    """Apply odometer corruption to a heading-local XY offset (single-env numpy).
+    """Apply odometer corruption to a 2D displacement vector (single-env numpy).
 
     Identical algorithm to ``apply_odom_corruption_torch`` — import this in
     deployment code (RoboJuDo, test_tracker_mujoco) to avoid reimplementation.
 
     Args:
-        xy_local: Heading-local XY offset [2].
+        xy_local: Displacement vector [2] (e.g. odom pos - start pos).
         odom_scale: Per-session multiplicative scale (scalar).
         odom_yaw_cos_sin: Per-session yaw bias as (cos, sin) array [2].
         log_noise_std: Std of per-step noise in log(1+mag) space.
         soft_threshold: Smooth noise ramp characteristic length (metres).
 
     Returns:
-        Corrupted XY offset [2].
+        Corrupted displacement [2].
     """
     cos_y, sin_y = float(odom_yaw_cos_sin[0]), float(odom_yaw_cos_sin[1])
 

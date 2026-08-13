@@ -34,6 +34,10 @@ from protomotions.simulator.base_simulator.simulator_state import (
     ResetState,
 )
 from protomotions.simulator.base_simulator.simulator import Simulator, ControlType
+from protomotions.simulator.base_simulator.utils import (
+    get_friction_bucket_count,
+    get_friction_table,
+)
 from protomotions.simulator.base_simulator.config import (
     MarkerState,
     VisualizationMarkerConfig,
@@ -478,6 +482,7 @@ class IsaacGymSimulator(Simulator):
 
         # Load the base humanoid asset
         self._humanoid_asset = humanoid_asset = self._load_humanoid_asset()
+        self._set_robot_friction_on_asset(humanoid_asset)
 
         # Create multiple asset variants for friction domain randomization if needed
         self._humanoid_assets_for_friction = self._create_friction_randomized_assets(
@@ -1425,6 +1430,13 @@ class IsaacGymSimulator(Simulator):
     # - IsaacGym: Must set friction on asset before actor creation
     #   Solution: Create min(num_buckets, num_envs) assets, evenly distribute to environments
 
+    def _set_robot_friction_on_asset(self, asset) -> None:
+        """Set the configured baseline friction on every character collision shape."""
+        shape_props = self._gym.get_asset_rigid_shape_properties(asset)
+        for shape_prop in shape_props:
+            shape_prop.friction = self.config.default_robot_friction
+        self._gym.set_asset_rigid_shape_properties(asset, shape_props)
+
     def _create_friction_randomized_assets(self, base_asset) -> List:
         """Create multiple asset copies with different friction/restitution values for domain randomization.
 
@@ -1449,10 +1461,15 @@ class IsaacGymSimulator(Simulator):
         ):
             return [base_asset]  # No friction randomization, use single asset
 
+        friction_dr = self._domain_randomization["friction"]
+        friction_table = get_friction_table(friction_dr)
+        restitution = friction_dr.get("restitution")
         # Note: base simulator already creates min(num_buckets, num_envs) samples
-        num_assets_to_create = self._domain_randomization["friction"][
-            "static_friction"
-        ].shape[0]
+        num_assets_to_create = get_friction_bucket_count(friction_dr)
+        if num_assets_to_create == 0 or (
+            friction_table is None and restitution is None
+        ):
+            return [base_asset]
         # body_indices stored for reference but not used (we apply friction to all shapes)
         # body_indices = self._domain_randomization["friction"]["body_indices"]
 
@@ -1476,18 +1493,16 @@ class IsaacGymSimulator(Simulator):
 
             # Use the first body's randomized values for all shapes (simplified approach)
             # For most configs like body_names=[".*"], all bodies get the same randomization anyway
-            sampled_friction = self._domain_randomization["friction"][
-                "static_friction"
-            ][i, 0].item()
-            sampled_restitution = self._domain_randomization["friction"]["restitution"][
-                i, 0
-            ].item()
-
             for shape_prop in shape_props:
                 # Use pre-randomized friction value directly (no adjustment needed - both sims use average mode)
                 # Note: IsaacGym only has single friction property, not separate static/dynamic
-                shape_prop.friction = sampled_friction
-                shape_prop.restitution = sampled_restitution
+                shape_prop.friction = (
+                    friction_table[i, 0].item()
+                    if friction_table is not None
+                    else self.config.default_robot_friction
+                )
+                if restitution is not None:
+                    shape_prop.restitution = restitution[i, 0].item()
 
             self._gym.set_asset_rigid_shape_properties(asset, shape_props)
             assets.append(asset)

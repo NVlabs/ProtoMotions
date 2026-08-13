@@ -13,10 +13,7 @@ import torch
 from torch import Tensor
 
 from protomotions.utils import rotations
-from protomotions.envs.obs.utils import (
-    heading_local_xy_delta,
-    select_step_indices,
-)
+from protomotions.envs.obs.utils import select_step_indices
 
 
 def build_max_coords_target_poses_future_rel(
@@ -26,6 +23,7 @@ def build_max_coords_target_poses_future_rel(
     mimic_ref_rot: Tensor,
     w_last: bool,
     future_steps: Union[int, List[int]] = None,
+    anchor_body_index: int = 0,
 ):
     """Build target pose observations with relative deltas between consecutive future frames.
 
@@ -40,13 +38,18 @@ def build_max_coords_target_poses_future_rel(
         w_last: If True, quaternions are in XYZW format, else WXYZ
         future_steps: Steps to select. Int N for first N consecutive steps,
             list for specific step indices (e.g., [1, 3, 5]). None = use all.
+        anchor_body_index: Body index used as the current/reference anchor frame.
 
     Returns:
-        Target pose observations [envs, features] in root-relative coordinates
+        Target pose observations [envs, features] in anchor-relative coordinates
     """
 
     num_envs = current_state_body_pos.shape[0]
     num_bodies = mimic_ref_pos.shape[2]
+    if not 0 <= anchor_body_index < num_bodies:
+        raise ValueError(
+            f"anchor_body_index {anchor_body_index} is outside [0, {num_bodies})"
+        )
 
     # Slice to requested number of future steps if specified
     if future_steps is not None:
@@ -67,8 +70,8 @@ def build_max_coords_target_poses_future_rel(
     reference_rot[:, 0] = current_state_body_rot
     flat_reference_rot = reference_rot.reshape(ref_state_body_rot.shape)
 
-    reference_root_pos = flat_reference_pos[:, 0, :]
-    reference_root_rot = flat_reference_rot[:, 0, :]
+    reference_root_pos = flat_reference_pos[:, anchor_body_index, :]
+    reference_root_rot = flat_reference_rot[:, anchor_body_index, :]
 
     heading_inv_rot = rotations.calc_heading_quat_inv(reference_root_rot, w_last)
 
@@ -159,11 +162,12 @@ def build_max_coords_target_poses(
     w_last: bool,
     future_steps: Union[int, List[int]] = None,
     with_relative: bool = True,
+    anchor_body_index: int = 0,
 ):
-    """Build target pose observations in root-relative coordinates.
+    """Build target pose observations in anchor-relative coordinates.
 
-    Computes future target poses represented as both absolute (from root) and optionally
-    relative (from current pose) transformations, in the root's heading-aligned frame.
+    Computes future target poses represented as both absolute (from the anchor) and optionally
+    relative (from current pose) transformations, in the anchor's heading-aligned frame.
 
     Args:
         current_state_body_pos: Current body positions [envs, bodies, 3]
@@ -179,12 +183,17 @@ def build_max_coords_target_poses(
         future_steps: Steps to select. Int N for first N consecutive steps,
             list for specific step indices (e.g., [1, 3, 5]). None = use all.
         with_relative: If True, include relative pose observations (pos_rel, rot_rel)
+        anchor_body_index: Body index used as the current/reference anchor frame.
 
     Returns:
         Target pose observations [envs, features] with absolute and optionally relative pose info
     """
     num_envs = current_state_body_pos.shape[0]
     num_bodies = mimic_ref_pos.shape[2]
+    if not 0 <= anchor_body_index < num_bodies:
+        raise ValueError(
+            f"anchor_body_index {anchor_body_index} is outside [0, {num_bodies})"
+        )
 
     # Slice to requested number of future steps if specified
     if future_steps is not None:
@@ -211,8 +220,8 @@ def build_max_coords_target_poses(
     flat_current_state_body_pos = expanded_body_pos.reshape(ref_state_body_pos.shape)
     flat_current_state_body_rot = expanded_body_rot.reshape(ref_state_body_rot.shape)
 
-    root_pos = flat_current_state_body_pos[:, 0, :]
-    root_rot = flat_current_state_body_rot[:, 0, :]
+    root_pos = flat_current_state_body_pos[:, anchor_body_index, :]
+    root_rot = flat_current_state_body_rot[:, anchor_body_index, :]
 
     heading_inv_rot = rotations.calc_heading_quat_inv(root_rot, w_last)
 
@@ -972,60 +981,50 @@ def build_deploy_target_poses(
     return obs.view(num_envs, -1)
 
 
-def build_corrupted_xy_offset(
-    current_state_anchor_pos: Tensor,
-    current_state_anchor_rot: Tensor,
-    ref_rigid_body_pos: Tensor,
-    anchor_idx: int,
-    odom_scale: Tensor,
-    odom_yaw_cos_sin: Tensor,
+def compute_odom_offset_local(
+    ref_anchor_pos: Tensor,  # [B, 3] reference ANCHOR position (current step)
+    current_state_anchor_rot: Tensor,  # [B, 4] robot current anchor rotation (IMU heading source)
+    odom_disp_start: Tensor,  # [B, 2] believed displacement from start, start-heading frame
+    odom_start_xy: Tensor,  # [B, 2] anchor XY at episode start
+    odom_start_heading_inv: Tensor,  # [B, 4] inverse start-heading quat
     w_last: bool = True,
-    log_noise_std: float = 0.12,
-    soft_threshold: float = 0.15,
-) -> Tensor:
-    """Heading-local XY offset from robot to reference, with odometer corruption.
+) -> Tensor:  # [B, 2] heading-local offset to reference anchor
+    """Derive the heading-local odometer offset from raw sensor ingredients.
 
-    Two-phase design matching the deployment data flow:
+    Reconstructs the believed odometer position from the raw ``odom_disp_start``
+    reading (the stochastic corruption boundary), then expresses the vector from
+    that believed position to the current reference anchor XY in the live anchor's
+    heading-aligned (yaw-only, z-dropped) frame.  Reproduces exactly the
+    corrupted heading-local offset that ``BaseEnv._build_context`` used to store
+    (feed ``odom_disp_start_corrupt``); feeding ``odom_disp_start_clean`` yields the
+    clean twin, since the clean displacement reconstructs the true position.
 
-    **Phase 1 — sensor reading** (heading-local XY offset):
-        Computes ``heading_inv @ (ref_anchor_xy - robot_anchor_xy)``.
-        At deployment this is what the odometer + IMU heading math produces.
+    Deterministic (only quat ops) → ONNX/torch.compile-safe.
 
-    **Phase 2 — shared corruption** (``apply_odom_corruption_torch``):
-        Per-episode affine + per-step proportional log-space noise.
-        The **same algorithm** runs at deployment via ``apply_odom_corruption_np``
-        from ``protomotions.utils.odom_corruption`` — single source of truth,
-        zero reimplementation risk.
-
-    Design rationale — see ``data/scripts/visualize_odometer_corruption.py`` for
-    interactive tuning and ``protomotions/utils/odom_corruption.py`` for the
-    shared implementation.
+    Takes the reference ANCHOR position only, not the full reference body array:
+    the anchor XY is all this needs, so deployment does not have to ship every
+    reference body pose.
 
     Args:
-        current_state_anchor_pos: Current robot anchor position [envs, 3].
-        current_state_anchor_rot: Current robot anchor rotation [envs, 4] (IMU).
-        ref_rigid_body_pos: Current-time reference body positions [envs, num_bodies, 3].
-        anchor_idx: Body index of the anchor body.
-        odom_scale: Per-episode scale factor [envs], sampled at reset.
-        odom_yaw_cos_sin: Per-episode yaw bias as (cos, sin) [envs, 2], sampled at reset.
-        w_last: If True, quaternions are in XYZW format.
-        log_noise_std: Std of per-step additive noise in log(1+mag) space.
-        soft_threshold: Characteristic length (m) for smooth noise weight ramp-up.
+        ref_anchor_pos: Reference anchor position [B, 3] at the current step
+            (``ctx.mimic.ref_anchor_pos``).
+        current_state_anchor_rot: Robot current anchor rotation [B, 4] (IMU heading).
+        odom_disp_start: Believed displacement from start [B, 2], start-heading frame.
+        odom_start_xy: Anchor XY at episode start [B, 2].
+        odom_start_heading_inv: Inverse start-heading quaternion [B, 4].
+        w_last: If True, quaternions are XYZW; else WXYZ.
 
     Returns:
-        Corrupted heading-local XY offset [envs, 2].
+        Heading-local offset to reference anchor [B, 2].
     """
-    from protomotions.utils.odom_corruption import apply_odom_corruption_torch
-
-    # Phase 1: compute clean heading-local XY offset (same as deployment sensor reading)
-    xy_local = heading_local_xy_delta(
-        current_state_anchor_pos,
-        current_state_anchor_rot,
-        ref_rigid_body_pos[:, anchor_idx],
-        w_last,
+    # believed current position = start_xy + rotate(start_heading, disp)
+    start_heading = rotations.quat_conjugate(odom_start_heading_inv, w_last)
+    disp_3d = torch.cat(
+        [odom_disp_start, torch.zeros_like(odom_disp_start[:, :1])], dim=-1
     )
-
-    # Phase 2: shared corruption transform (same code as deployment numpy version)
-    return apply_odom_corruption_torch(
-        xy_local, odom_scale, odom_yaw_cos_sin, log_noise_std, soft_threshold
-    )
+    disp_world = rotations.quat_rotate(start_heading, disp_3d, w_last)[:, :2]
+    believed_pos = odom_start_xy + disp_world
+    xy_world = ref_anchor_pos[:, :2] - believed_pos
+    heading_inv = rotations.calc_heading_quat_inv(current_state_anchor_rot, w_last)
+    xy_3d = torch.cat([xy_world, torch.zeros_like(xy_world[:, :1])], dim=-1)
+    return rotations.quat_rotate(heading_inv, xy_3d, w_last)[:, :2]

@@ -1,5 +1,5 @@
-protomotions.agents.peft.utils.frozen\_prior\_contract module
-===============================================================
+protomotions.agents.peft.utils.frozen_prior_contract module
+===========================================================
 
 .. automodule:: protomotions.agents.peft.utils.frozen_prior_contract
    :members:

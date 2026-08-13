@@ -1,6 +1,10 @@
-# Newton simulator: tested against Newton 1.0.0 (PyPI)
-# Install newton before these requirements: pip install "newton[examples]"
+# Newton simulator stack: tested against Newton 1.0.0 (PyPI).
+# Keep these pins together so Newton 1.0 cannot resolve a newer incompatible runtime.
+newton[examples]==1.0.0
+warp-lang==1.12.0
+mujoco-warp==3.5.0.2
 mujoco==3.5.0
+newton-actuators==0.1.0
 wheel
 tensordict==0.9.0
 lightning
