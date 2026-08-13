@@ -26,8 +26,6 @@ terms before use.
    - protomotions/data/assets/mjcf/h1_2*.xml
    - protomotions/data/assets/urdf/for_retargeting/g1.urdf
    - protomotions/data/assets/urdf/for_retargeting/h1_2.urdf
-   - protomotions/data/assets/usd/g1_*/
-   - protomotions/data/assets/usd/h1_2*/
 
    Copyright:
    - Copyright (c) 2016-2023 HangZhou YuShu TECHNOLOGY CO.,LTD.
@@ -54,7 +52,6 @@ terms before use.
    - data/smpl/
    - protomotions/data/assets/mesh/smpl/
    - protomotions/data/assets/mjcf/smpl*.xml
-   - protomotions/data/assets/usd/smpl*.usda
 
    Attribution:
    - SMPL/SMPL-H body model assets are attributed to the Max Planck Institute
