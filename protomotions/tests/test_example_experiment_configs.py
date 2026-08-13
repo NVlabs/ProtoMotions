@@ -8,6 +8,7 @@ without starting training or loading real checkpoints.
 """
 
 import argparse
+import importlib
 import inspect
 from dataclasses import fields
 from types import SimpleNamespace
@@ -16,10 +17,9 @@ import pytest
 import torch
 
 from examples.experiments.gpc import prior as gpc_prior
-from examples.experiments.gpc import task_steering_headvel_prior_peft
+from examples.experiments.gpc import steering_prior_peft
 from examples.experiments.gpc import sft_target_prior_peft
-from examples.experiments.gpc import task_target_prior_peft
-from examples.experiments.gpc import task_steering_headvel_prior_peft_amp
+from examples.experiments.gpc import target_prior_peft
 from examples.experiments.gpc import task_target_prior_peft_amp
 from examples.experiments.mimic import fsq as mimic_fsq
 from protomotions.agents.common.latent import LATENT_KEY, LATENT_LOGITS_KEY
@@ -39,9 +39,12 @@ class _RobotConfig:
             body_names=["pelvis", "left_hand", "right_hand"],
         )
         self.trackable_bodies_subset = ["pelvis", "left_hand"]
+        self.default_dof_pos = torch.zeros(1)
         self.control = SimpleNamespace(
             control_info={
-                "hinge": SimpleNamespace(stiffness=10.0, damping=1.0),
+                "hinge": SimpleNamespace(
+                    stiffness=10.0, damping=1.0, effort_limit=20.0
+                ),
             }
         )
 
@@ -115,6 +118,7 @@ def test_mimic_fsq_basic_config_factories_and_inference_overrides():
     assert agent_cfg.model.actor.actor_logstd == pytest.approx(-2.9)
 
     mimic_fsq.configure_robot_and_simulator(robot_cfg, simulator_cfg, args)
+    assert simulator_cfg.default_robot_friction == 0.5
     assert robot_cfg.updated == [
         {"contact_bodies": ["all_left_foot_bodies", "all_right_foot_bodies"]}
     ]
@@ -190,6 +194,8 @@ def test_gpc_prior_parser_and_checkpoint_dependent_config(monkeypatch):
     assert agent_cfg.model.prior.generated_tokens_key == LATENT_KEY
     assert agent_cfg.model.fsq_scalars_per_prior_token == 5
     assert agent_cfg.loss.label_smoothing == pytest.approx(0.01)
+    gpc_prior.configure_robot_and_simulator(robot_cfg, simulator_cfg, args)
+    assert simulator_cfg.default_robot_friction == 0.5
     assert robot_cfg.updated == []
 
 
@@ -276,10 +282,9 @@ def _assert_custom_actor_peft_model(actor_cfg, expected_in_keys):
     "module",
     [
         sft_target_prior_peft,
-        task_steering_headvel_prior_peft,
-        task_target_prior_peft,
+        steering_prior_peft,
+        target_prior_peft,
         task_target_prior_peft_amp,
-        task_steering_headvel_prior_peft_amp,
     ],
 )
 def test_gpc_peft_inference_overrides_preserve_prior_only_pretrained_module(module):
@@ -324,8 +329,8 @@ def test_gpc_target_peft_config_uses_explicit_pretrained_modules(monkeypatch):
     )
 
     args = _args(prior_checkpoint="prior.ckpt")
-    env_cfg = task_target_prior_peft.env_config(_RobotConfig(), args)
-    agent_cfg = task_target_prior_peft.agent_config(
+    env_cfg = target_prior_peft.env_config(_RobotConfig(), args)
+    agent_cfg = target_prior_peft.agent_config(
         _RobotConfig(),
         env_cfg,
         args,
@@ -338,10 +343,10 @@ def test_gpc_target_peft_config_uses_explicit_pretrained_modules(monkeypatch):
     assert set(agent_cfg.pretrained_modules) == {"prior"}
     assert agent_cfg.pretrained_modules["prior"].checkpoint_path == "prior.ckpt"
     assert agent_cfg.pretrained_modules["prior"].module_path == ""
-    assert "PEFT_ADAPTER_CONFIG" not in inspect.getsource(task_target_prior_peft)
-    assert "PEFT_CONDITIONING_OBS_KEYS" not in inspect.getsource(task_target_prior_peft)
-    assert "PEFT_PRIOR_CONTEXT_OBS_KEY" not in inspect.getsource(task_target_prior_peft)
-    assert "PriorPEFTConditioningConfig" not in inspect.getsource(task_target_prior_peft)
+    assert "PEFT_ADAPTER_CONFIG" not in inspect.getsource(target_prior_peft)
+    assert "PEFT_CONDITIONING_OBS_KEYS" not in inspect.getsource(target_prior_peft)
+    assert "PEFT_PRIOR_CONTEXT_OBS_KEY" not in inspect.getsource(target_prior_peft)
+    assert "PriorPEFTConditioningConfig" not in inspect.getsource(target_prior_peft)
     actor_cfg = agent_cfg.model.actor
     assert actor_cfg.in_keys == ["task_obs"]
     assert actor_cfg.out_keys == [
@@ -372,7 +377,7 @@ def test_gpc_target_peft_config_uses_explicit_pretrained_modules(monkeypatch):
 
 
 def test_gpc_target_peft_config_declares_prior_nearest_surface_context():
-    env_cfg = task_target_prior_peft.env_config(
+    env_cfg = target_prior_peft.env_config(
         _RobotConfig(),
         _args(prior_checkpoint="prior.ckpt"),
     )
@@ -385,19 +390,18 @@ def test_gpc_target_peft_config_declares_prior_nearest_surface_context():
 
 
 @pytest.mark.parametrize(
-    "module",
+    "module_name",
     [
-        task_steering_headvel_prior_peft,
-        task_target_prior_peft,
+        "examples.experiments.gpc.steering_prior_peft",
+        "examples.experiments.gpc.target_prior_peft",
     ],
 )
-def test_gpc_task_peft_configs_switch_sampling_mode(module):
+def test_gpc_task_peft_configs_switch_sampling_mode(module_name):
+    module = importlib.import_module(module_name)
     parser = argparse.ArgumentParser()
     module.additional_experiment_arguments(parser)
 
-    default_args = _args(
-        **vars(parser.parse_args(["--prior-checkpoint", "prior.ckpt"]))
-    )
+    default_args = _args(**vars(parser.parse_args([])))
     default_agent = module.agent_config(_RobotConfig(), SimpleNamespace(), default_args)
     default_peft = default_agent.model.actor.peft
     assert default_peft.sampling_mode == "prior_constraint"
@@ -407,16 +411,7 @@ def test_gpc_task_peft_configs_switch_sampling_mode(module):
     assert default_peft.film_input_norm is True
 
     nucleus_args = _args(
-        **vars(
-            parser.parse_args(
-                [
-                    "--prior-checkpoint",
-                    "prior.ckpt",
-                    "--peft-sampling-mode",
-                    "nucleus",
-                ]
-            )
-        )
+        **vars(parser.parse_args(["--peft-sampling-mode", "nucleus"]))
     )
     nucleus_agent = module.agent_config(_RobotConfig(), SimpleNamespace(), nucleus_args)
     nucleus_peft = nucleus_agent.model.actor.peft
@@ -427,8 +422,42 @@ def test_gpc_task_peft_configs_switch_sampling_mode(module):
     assert nucleus_peft.film_input_norm is True
 
 
+@pytest.mark.parametrize(
+    ("alias_name", "clean_name"),
+    [
+        (
+            "examples.experiments.gpc.task_steering_headvel_prior_peft",
+            "examples.experiments.gpc.steering_prior_peft",
+        ),
+        (
+            "examples.experiments.gpc.task_target_prior_peft",
+            "examples.experiments.gpc.target_prior_peft",
+        ),
+    ],
+)
+def test_gpc_task_peft_compatibility_paths_alias_clean_configs(
+    alias_name,
+    clean_name,
+):
+    alias = importlib.import_module(alias_name)
+    clean = importlib.import_module(clean_name)
+
+    for name in (
+        "PRIOR_CHECKPOINT",
+        "additional_experiment_arguments",
+        "configure_robot_and_simulator",
+        "terrain_config",
+        "scene_lib_config",
+        "motion_lib_config",
+        "env_config",
+        "agent_config",
+        "apply_inference_overrides",
+    ):
+        assert getattr(alias, name) is getattr(clean, name)
+
+
 def test_gpc_steering_peft_config_declares_prior_nearest_surface_context():
-    env_cfg = task_steering_headvel_prior_peft.env_config(
+    env_cfg = steering_prior_peft.env_config(
         _RobotConfig(),
         _args(prior_checkpoint="prior.ckpt"),
     )
@@ -499,35 +528,28 @@ def test_gpc_sft_target_peft_config_uses_tracker_rollout_env(monkeypatch):
     assert agent_cfg.normalize_rewards is False
 
 
-@pytest.mark.parametrize(
-    ("amp_module", "base_module"),
-    [
-        (task_target_prior_peft_amp, task_target_prior_peft),
-        (task_steering_headvel_prior_peft_amp, task_steering_headvel_prior_peft),
-    ],
-)
-def test_gpc_peft_amp_configs_add_discriminator_components(amp_module, base_module):
+def test_gpc_target_peft_amp_config_adds_discriminator_components():
     args = _args(prior_checkpoint="prior.ckpt")
     robot_cfg = _RobotConfig()
-    env_cfg = amp_module.env_config(robot_cfg, args)
-    agent_cfg = amp_module.agent_config(robot_cfg, env_cfg, args)
+    env_cfg = task_target_prior_peft_amp.env_config(robot_cfg, args)
+    agent_cfg = task_target_prior_peft_amp.agent_config(robot_cfg, env_cfg, args)
 
-    assert amp_module.DISC_HISTORY_STEPS == [1, 2, 4, 8, 16]
+    assert task_target_prior_peft_amp.DISC_HISTORY_STEPS == [1, 2, 4, 8, 16]
     assert (
-        amp_module.additional_experiment_arguments
-        is not base_module.additional_experiment_arguments
+        task_target_prior_peft_amp.additional_experiment_arguments
+        is not target_prior_peft.additional_experiment_arguments
     )
     assert (
-        amp_module.configure_robot_and_simulator
-        is not base_module.configure_robot_and_simulator
+        task_target_prior_peft_amp.configure_robot_and_simulator
+        is not target_prior_peft.configure_robot_and_simulator
     )
-    assert amp_module.env_config is not base_module.env_config
+    assert task_target_prior_peft_amp.env_config is not target_prior_peft.env_config
     assert (
-        amp_module.agent_config is not base_module.agent_config
+        task_target_prior_peft_amp.agent_config is not target_prior_peft.agent_config
     )
     assert (
-        amp_module.apply_inference_overrides
-        is not base_module.apply_inference_overrides
+        task_target_prior_peft_amp.apply_inference_overrides
+        is not target_prior_peft.apply_inference_overrides
     )
     assert env_cfg.num_state_history_steps == 16
     assert "historical_max_coords_obs" in env_cfg.observation_components
@@ -552,7 +574,10 @@ def test_gpc_peft_amp_configs_add_discriminator_components(amp_module, base_modu
     assert peft_cfg.peft_type == "dora"
     assert peft_cfg.rank == 32
     assert peft_cfg.alpha == 64
-    assert peft_cfg.sampling_mode == "prior_constraint"
+    assert peft_cfg.sampling_mode == "nucleus"
+    assert peft_cfg.top_p == pytest.approx(0.9)
+    assert peft_cfg.prior_top_p == pytest.approx(1.0)
+    assert peft_cfg.kl_coeff == pytest.approx(0.0)
     assert agent_cfg.model.discriminator.in_keys == ["historical_max_coords_obs"]
     assert agent_cfg.model.disc_critic.in_keys == [
         "max_coords_obs",
@@ -561,6 +586,10 @@ def test_gpc_peft_amp_configs_add_discriminator_components(amp_module, base_modu
     assert agent_cfg.amp_parameters.discriminator_batch_size == (
         agent_cfg.batch_size // agent_cfg.num_mini_epochs
     )
+    assert agent_cfg.amp_parameters.discriminator_reward_w == pytest.approx(0.05)
+    assert agent_cfg.amp_parameters.discriminator_reward_threshold == pytest.approx(
+        0.01
+    )
     assert set(agent_cfg.reference_obs_components) == {"historical_max_coords_obs"}
     reference_obs_params = agent_cfg.reference_obs_components[
         "historical_max_coords_obs"
@@ -568,7 +597,7 @@ def test_gpc_peft_amp_configs_add_discriminator_components(amp_module, base_modu
     assert reference_obs_params["history_steps"] == [1, 2, 4, 8, 16]
     assert reference_obs_params["num_state_history_steps"] == 16
 
-    amp_module.apply_inference_overrides(
+    task_target_prior_peft_amp.apply_inference_overrides(
         robot_cfg,
         SimpleNamespace(),
         env_cfg,
@@ -585,10 +614,9 @@ def test_gpc_peft_amp_configs_add_discriminator_components(amp_module, base_modu
 @pytest.mark.parametrize(
     "experiment_module",
     [
-        task_steering_headvel_prior_peft,
-        task_target_prior_peft,
+        steering_prior_peft,
+        target_prior_peft,
         task_target_prior_peft_amp,
-        task_steering_headvel_prior_peft_amp,
         sft_target_prior_peft,
     ],
 )

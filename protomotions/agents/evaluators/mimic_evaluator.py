@@ -119,7 +119,27 @@ class MimicEvaluator(BaseEvaluator):
             new_weights[failed_motions] /= failure_discount
         else:
             new_weights[failed_motions] = 1.0
+        new_weights.clamp_(min=self._resolved_min_motion_weight(new_weights.shape[0]))
         self.env.motion_manager.update_sampling_weights(new_weights)
+
+    def _resolved_min_motion_weight(self, num_motions: int) -> float:
+        """Resolve ``min_motion_weight``, which may be the string '1/num_motions'.
+
+        Without this floor the success discount compounds without bound: at the
+        default 0.999 with ``eval_metrics_every=200`` each update multiplies a
+        succeeding motion's weight by 0.82, so after ~80 updates it sits at ~1e-7
+        while any motion that failed once is reset to 1.0. Sampling then collapses
+        onto whichever handful of clips failed most recently, and every
+        distribution-sensitive metric starts tracking that churn rather than the
+        policy. The floor keeps the curriculum a re-weighting rather than a
+        replacement of the training set.
+        """
+        min_weight = self.config.motion_weights_rules.min_motion_weight
+        if isinstance(min_weight, str):
+            if min_weight == "1/num_motions":
+                return 1.0 / max(num_motions, 1)
+            return float(min_weight)
+        return float(min_weight)
 
     def _park_inactive_envs(self, active_env_ids: Tensor) -> None:
         """Move envs not in ``active_env_ids`` far below the terrain.
@@ -168,8 +188,7 @@ class MimicEvaluator(BaseEvaluator):
         prev_actions = None
 
         for step_idx in range(max_steps):
-            model_outs = self.agent.model(obs_td)
-            actions = model_outs.get("mean_action", model_outs.get("action"))
+            actions = self._policy_action(obs_td)
 
             # Apply EMA smoothing (deployment simulation)
             if ema_alpha is not None:
@@ -368,6 +387,24 @@ class MimicEvaluator(BaseEvaluator):
             motion_num_frames.shape[0] == num_motions
         ), "motion_num_frames size mismatch"
 
+        # Mask motions that were never rolled out, so the saved lib doesn't
+        # contain zero-filled phantom frames that trip the playback assertion.
+        # frame_counts is incremented by MotionMetrics.update; zero here means
+        # no env ever wrote a frame for this motion.  Motion IDs stay aligned
+        # with the GT lib; un-rolled motions simply have length 0 in the saved file.
+        rolled_out = metrics["dof_pos"].frame_counts.to(device=device) > 0
+        num_skipped = int((~rolled_out).sum().item())
+        if num_skipped > 0:
+            print(
+                f"Predicted MotionLib: masking {num_skipped} / {num_motions} "
+                f"un-rolled-out motions (length set to 0)"
+            )
+        motion_num_frames = torch.where(
+            rolled_out,
+            motion_num_frames,
+            torch.zeros_like(motion_num_frames),
+        )
+
         lengths_shifted = motion_num_frames.roll(1)
         lengths_shifted[0] = 0
         length_starts = lengths_shifted.cumsum(0)
@@ -431,16 +468,16 @@ class MimicEvaluator(BaseEvaluator):
         # baked into ``gts[0, root, z]`` so playback renders the "drop from
         # 5 cm, then settle" trajectory the policy actually experienced.
         # Velocities/rotations are invariant under a constant translation.
-        per_motion_offset = torch.zeros(
-            num_motions, 3, device=device, dtype=gts.dtype
-        )
+        per_motion_offset = torch.zeros(num_motions, 3, device=device, dtype=gts.dtype)
         unique_motion_ids, first_env_indices = (
             self.motion_manager.get_unique_fixed_motions()
         )
         if unique_motion_ids.numel() > 0:
-            env_offsets = self.env.respawn_root_offset[first_env_indices].to(
-                device=device, dtype=gts.dtype
-            ).clone()
+            env_offsets = (
+                self.env.respawn_root_offset[first_env_indices]
+                .to(device=device, dtype=gts.dtype)
+                .clone()
+            )
             # Strip the spawn-only ref_respawn_offset from z; keep terrain
             # correction and scene xy.
             env_offsets[:, 2] -= float(self.env.config.ref_respawn_offset)

@@ -18,7 +18,13 @@ from pathlib import Path
 import pytest
 import torch
 
-from protomotions.components.motion_lib import MotionLib, MotionLibConfig
+from protomotions.components.motion_lib import (
+    MotionFileSwitchMode,
+    MotionLib,
+    MotionLibConfig,
+    resolve_shard_file,
+    select_motion_shard,
+)
 from protomotions.utils.motion_interpolation_utils import calc_frame_blend
 
 
@@ -125,6 +131,69 @@ def test_empty_motion_lib_default_config_init_round_trip():
     assert direct.motion_files == ()
 
 
+def test_motion_lib_config_normalizes_switch_mode_and_validates_shard_subset():
+    config = MotionLibConfig(
+        motion_file="/tmp/motions_slurmrank.pt",
+        motion_file_switch_mode="live",
+        motion_file_shard_indices=[7, 2],
+    )
+
+    assert config.motion_file_switch_mode is MotionFileSwitchMode.LIVE
+    assert config.motion_file_shard_indices == [7, 2]
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"motion_file_switch_mode": "unknown"}, "motion_file_switch_mode"),
+        ({"motion_file_shard_indices": []}, "nonempty"),
+        ({"motion_file_shard_indices": [1, 1]}, "unique"),
+        ({"motion_file_shard_indices": [-1]}, "nonnegative"),
+        ({"motion_file_shard_indices": [True]}, "plain ints"),
+        ({"motion_file_shard_indices": [1]}, "slurmrank"),
+        ({"motion_file_switch_mode": "live"}, "slurmrank"),
+        (
+            {
+                "motion_file": "/tmp/motions_slurmrank_slurmrank.pt",
+                "motion_file_switch_mode": "restart",
+            },
+            "exactly one",
+        ),
+    ],
+)
+def test_motion_lib_config_rejects_invalid_switching_inputs(kwargs, match):
+    with pytest.raises(ValueError, match=match):
+        MotionLibConfig(**({"motion_file": "/tmp/motions.pt"} | kwargs))
+
+
+def test_motion_lib_inference_preparation_fixes_mode_and_retains_shard_subset():
+    config = MotionLibConfig(
+        motion_file="/tmp/motions_slurmrank.pt",
+        motion_file_switch_mode=MotionFileSwitchMode.RESTART,
+        motion_file_shard_indices=[4, 1],
+    )
+
+    config.prepare_inference_config_for_save()
+
+    assert config.motion_file_switch_mode is MotionFileSwitchMode.FIXED
+    assert config.motion_file_shard_indices == [4, 1]
+
+
+def test_select_motion_shard_rejects_negative_runtime_cycle():
+    config = MotionLibConfig(
+        motion_file="/tmp/motions_slurmrank.pt",
+        motion_file_switch_mode=MotionFileSwitchMode.LIVE,
+    )
+
+    with pytest.raises(ValueError, match="cycle must be non-negative"):
+        select_motion_shard(
+            config.motion_file,
+            rank=0,
+            world_size=1,
+            cycle=-1,
+        )
+
+
 # ---------- Hand-populated MotionLib query paths -------------------------------
 
 
@@ -133,7 +202,10 @@ def _populate_motion_lib(motion_lib, motion_lengths, motion_num_frames):
     motion_lib.motion_lengths = torch.tensor(motion_lengths, dtype=torch.float32)
     motion_lib.motion_num_frames = torch.tensor(motion_num_frames, dtype=torch.long)
     motion_lib.motion_dt = torch.tensor(
-        [length / max(n - 1, 1) for length, n in zip(motion_lengths, motion_num_frames)],
+        [
+            length / max(n - 1, 1)
+            for length, n in zip(motion_lengths, motion_num_frames)
+        ],
         dtype=torch.float32,
     )
     motion_lib.length_starts = torch.tensor(
@@ -150,7 +222,9 @@ def _identity_quat(num_frames: int, num_bodies: int) -> torch.Tensor:
 
 def _populated_motion_lib(*, contacts: str | None = "bool", include_lrs: bool = False):
     motion_lib = MotionLib.empty(device="cpu")
-    _populate_motion_lib(motion_lib, motion_lengths=[0.2, 0.1], motion_num_frames=[3, 2])
+    _populate_motion_lib(
+        motion_lib, motion_lengths=[0.2, 0.1], motion_num_frames=[3, 2]
+    )
     motion_lib.motion_weights = torch.tensor([0.25, 0.75], dtype=torch.float32)
     motion_lib.motion_files = ("walk.motion", "turn.motion")
 
@@ -158,9 +232,9 @@ def _populated_motion_lib(*, contacts: str | None = "bool", include_lrs: bool = 
     num_bodies = 2
     dof_dim = 3
 
-    base_pos = torch.arange(
-        total_frames * num_bodies * 3, dtype=torch.float32
-    ).reshape(total_frames, num_bodies, 3)
+    base_pos = torch.arange(total_frames * num_bodies * 3, dtype=torch.float32).reshape(
+        total_frames, num_bodies, 3
+    )
     base_dof = torch.arange(total_frames * dof_dim, dtype=torch.float32).reshape(
         total_frames, dof_dim
     )
@@ -241,18 +315,24 @@ def _motion_file_payload(
 
 def test_get_motion_length_indexes_specific_motion_ids():
     motion_lib = MotionLib.empty(device="cpu")
-    _populate_motion_lib(motion_lib, motion_lengths=[1.0, 2.0, 3.0], motion_num_frames=[4, 6, 10])
+    _populate_motion_lib(
+        motion_lib, motion_lengths=[1.0, 2.0, 3.0], motion_num_frames=[4, 6, 10]
+    )
 
     lengths = motion_lib.get_motion_length(torch.tensor([0, 2]))
 
     assert torch.allclose(lengths, torch.tensor([1.0, 3.0]))
     # Pass-through with None returns the full tensor.
-    assert torch.allclose(motion_lib.get_motion_length(None), torch.tensor([1.0, 2.0, 3.0]))
+    assert torch.allclose(
+        motion_lib.get_motion_length(None), torch.tensor([1.0, 2.0, 3.0])
+    )
 
 
 def test_get_motion_num_frames_indexes_specific_motion_ids():
     motion_lib = MotionLib.empty(device="cpu")
-    _populate_motion_lib(motion_lib, motion_lengths=[1.0, 2.0], motion_num_frames=[5, 9])
+    _populate_motion_lib(
+        motion_lib, motion_lengths=[1.0, 2.0], motion_num_frames=[5, 9]
+    )
 
     n_frames = motion_lib.get_motion_num_frames(torch.tensor([1]))
     assert n_frames.tolist() == [9]
@@ -293,12 +373,12 @@ def test_calc_closest_frame_clips_negative_and_overshoot_times():
 
 def test_calc_frame_blend_from_id_and_time_consistent_with_pure_helper():
     """The MotionLib-level _calc_frame_blend_from_id_and_time should agree with
-    the standalone calc_frame_blend on a clipped time inside the motion."""
+    the standalone calc_frame_blend, including out-of-bounds clipping."""
     motion_lib = MotionLib.empty(device="cpu")
     _populate_motion_lib(motion_lib, motion_lengths=[1.0], motion_num_frames=[5])
 
-    times = torch.tensor([0.5])
-    motion_ids = torch.tensor([0])
+    times = torch.tensor([-0.5, 0.0, 0.5, 1.0, 5.0])
+    motion_ids = torch.zeros_like(times, dtype=torch.long)
 
     idx0, idx1, blend = motion_lib._calc_frame_blend_from_id_and_time(motion_ids, times)
     expected = calc_frame_blend(
@@ -329,6 +409,41 @@ def test_motion_state_exact_frame_uses_motion_offsets_and_optional_fields():
     assert torch.equal(state.dof_vel, motion_lib.dvs[sample_indices])
     assert torch.equal(state.local_rigid_body_rot, motion_lib.lrs[sample_indices])
     assert torch.equal(state.rigid_body_contacts, motion_lib.contacts[sample_indices])
+
+    original_contact = motion_lib.contacts[sample_indices[0], 0].clone()
+    state.rigid_body_pos[0, 0, 0] = -1.0
+    state.rigid_body_rot[0, 0, 0] = -2.0
+    state.rigid_body_contacts[0, 0] = False
+    state.local_rigid_body_rot[0, 0, 0] = -3.0
+
+    assert motion_lib.gts[sample_indices[0], 0, 0] != -1.0
+    assert motion_lib.grs[sample_indices[0], 0, 0] != -2.0
+    assert motion_lib.contacts[sample_indices[0], 0] == original_contact
+    assert motion_lib.lrs[sample_indices[0], 0, 0] != -3.0
+
+
+def test_motion_state_exact_frame_scalar_lookup_does_not_alias_storage():
+    motion_lib = _populated_motion_lib(include_lrs=True)
+    storage = {
+        field: getattr(motion_lib, field).clone()
+        for field in ("gts", "grs", "gvs", "gavs", "dps", "dvs", "lrs", "contacts")
+    }
+
+    state = motion_lib.get_motion_state_exact_frame(torch.tensor(0), torch.tensor(2))
+    for field in (
+        "rigid_body_pos",
+        "rigid_body_rot",
+        "rigid_body_vel",
+        "rigid_body_ang_vel",
+        "dof_pos",
+        "dof_vel",
+        "local_rigid_body_rot",
+        "rigid_body_contacts",
+    ):
+        getattr(state, field).fill_(0)
+
+    for field, expected in storage.items():
+        assert torch.equal(getattr(motion_lib, field), expected)
 
 
 def test_get_motion_state_interpolates_positions_dofs_and_bool_contacts():
@@ -393,24 +508,159 @@ def test_goal_state_times_and_batched_cache():
     assert torch.allclose(cached_again, torch.tensor([0.2, -1.0]))
 
 
-def test_process_packaged_motion_file_name_multi_gpu_selects_rank_file(
-    tmp_path, monkeypatch
+def _create_motion_shards(tmp_path, count: int, prefix: str = "chunk"):
+    tmp_path.mkdir(exist_ok=True)
+    for index in range(count):
+        (tmp_path / f"{prefix}_{index}.pt").write_text(str(index))
+    return str(tmp_path / f"{prefix}_slurmrank.pt")
+
+
+def _selected_shard_indices(pattern, *, world_size: int, cycle: int):
+    return [
+        select_motion_shard(
+            pattern, rank=rank, world_size=world_size, cycle=cycle
+        )[1]
+        for rank in range(world_size)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("cycle", "expected_indices"),
+    [(0, list(range(8))), (1, list(range(8, 16)))],
+)
+def test_select_motion_shard_rotates_full_assignments_when_shards_exceed_ranks(
+    tmp_path, cycle, expected_indices
 ):
-    (tmp_path / "chunk_0.pt").write_text("rank0")
-    (tmp_path / "chunk_2.pt").write_text("rank2")
-    motion_lib = MotionLib.empty(device="cpu")
+    pattern = _create_motion_shards(tmp_path, 16)
 
-    monkeypatch.setattr(torch.distributed, "is_initialized", lambda: True)
-    monkeypatch.setattr(torch.distributed, "get_rank", lambda: 3)
+    assert _selected_shard_indices(
+        pattern, world_size=8, cycle=cycle
+    ) == expected_indices
 
-    selected = motion_lib.process_packaged_motion_file_name_multi_gpu(
-        str(tmp_path / "chunk_slurmrank.pt")
+
+def test_select_motion_shard_keeps_full_assignment_when_shards_equal_ranks(tmp_path):
+    pattern = _create_motion_shards(tmp_path, 8)
+
+    assert _selected_shard_indices(pattern, world_size=8, cycle=3) == list(range(8))
+
+
+@pytest.mark.parametrize(
+    ("cycle", "expected_indices"),
+    [
+        (0, list(range(8)) + list(range(8))),
+        (1, list(range(8)) + list(range(1, 8)) + [0]),
+    ],
+)
+def test_select_motion_shard_pins_initial_ranks_and_rotates_extra_ranks(
+    tmp_path, cycle, expected_indices
+):
+    pattern = _create_motion_shards(tmp_path, 8)
+
+    assert _selected_shard_indices(
+        pattern, world_size=16, cycle=cycle
+    ) == expected_indices
+
+
+def test_select_motion_shard_preserves_explicit_shard_index_order(tmp_path):
+    pattern = _create_motion_shards(tmp_path, 16)
+
+    selected_path, selected_index = select_motion_shard(
+        pattern,
+        rank=1,
+        world_size=2,
+        cycle=1,
+        shard_indices=[13, 2, 7],
     )
 
-    assert selected == str(tmp_path / "chunk_2.pt")
-    assert motion_lib.different_motion_files_across_ranks is True
-    assert motion_lib.process_packaged_motion_file_name_multi_gpu("plain.pt") == "plain.pt"
+    assert (selected_path, selected_index) == (str(tmp_path / "chunk_13.pt"), 13)
 
+
+def test_resolve_shard_file_finds_exact_index_across_zero_padded_paired_files(tmp_path):
+    motion_pattern = str(tmp_path / "motion_slurmrank.pt")
+    scene_pattern = str(tmp_path / "scene_slurmrank.yaml")
+    (tmp_path / "motion_0007.pt").write_text("motion")
+    (tmp_path / "scene_07.yaml").write_text("scene")
+
+    motion_path, index = select_motion_shard(
+        motion_pattern, rank=0, world_size=1, cycle=0
+    )
+    scene_path = resolve_shard_file(scene_pattern, index)
+
+    assert (motion_path, index, scene_path) == (
+        str(tmp_path / "motion_0007.pt"),
+        7,
+        str(tmp_path / "scene_07.yaml"),
+    )
+
+
+def test_resolve_shard_file_ignores_non_numeric_siblings_and_directories(tmp_path):
+    pattern = str(tmp_path / "chunk_slurmrank.pt")
+    (tmp_path / "chunk_0.pt").write_text("zero")
+    (tmp_path / "chunk_alpha.pt").write_text("alpha")
+    (tmp_path / "chunk_1.pt").mkdir()
+
+    assert resolve_shard_file(pattern, 0) == str(tmp_path / "chunk_0.pt")
+    with pytest.raises(ValueError, match="No shard"):
+        resolve_shard_file(pattern, 1)
+
+
+def test_select_motion_shard_rejects_duplicate_numeric_indices(tmp_path):
+    pattern = str(tmp_path / "chunk_slurmrank.pt")
+    (tmp_path / "chunk_1.pt").write_text("one")
+    (tmp_path / "chunk_01.pt").write_text("also one")
+
+    with pytest.raises(ValueError, match="Duplicate"):
+        select_motion_shard(pattern, rank=0, world_size=1, cycle=0)
+
+
+def test_selection_for_cycle_uses_distributed_rank_and_world_size(tmp_path, monkeypatch):
+    pattern = _create_motion_shards(tmp_path, 16)
+    motion_lib = MotionLib.empty(device="cpu")
+    motion_lib.config.motion_file = pattern
+    monkeypatch.setattr(torch.distributed, "is_initialized", lambda: True)
+    monkeypatch.setattr(torch.distributed, "get_rank", lambda: 3)
+    monkeypatch.setattr(torch.distributed, "get_world_size", lambda: 8)
+
+    selected_path, selected_index = motion_lib.selection_for_cycle(cycle=1)
+
+    assert (selected_path, selected_index) == (str(tmp_path / "chunk_11.pt"), 11)
+
+
+def test_selection_for_cycle_rejects_uninitialized_distributed_runtime(tmp_path, monkeypatch):
+    motion_lib = MotionLib.empty(device="cpu")
+    motion_lib.config.motion_file = _create_motion_shards(tmp_path, 1)
+    monkeypatch.setattr(torch.distributed, "is_initialized", lambda: False)
+
+    with pytest.raises(RuntimeError, match="distributed training"):
+        motion_lib.selection_for_cycle(cycle=0)
+
+
+def test_process_packaged_motion_file_uses_passed_pattern_and_passes_through_plain(
+    tmp_path, monkeypatch
+):
+    configured_pattern = _create_motion_shards(tmp_path / "configured", 1)
+    passed_pattern = _create_motion_shards(tmp_path / "passed", 8)
+    motion_lib = MotionLib.empty(device="cpu")
+    motion_lib.config.motion_file = configured_pattern
+    monkeypatch.setattr(torch.distributed, "is_initialized", lambda: True)
+    monkeypatch.setattr(torch.distributed, "get_rank", lambda: 3)
+    monkeypatch.setattr(torch.distributed, "get_world_size", lambda: 8)
+
+    assert motion_lib.process_packaged_motion_file_name_multi_gpu("plain.pt") == "plain.pt"
+    assert motion_lib.process_packaged_motion_file_name_multi_gpu(passed_pattern) == str(
+        tmp_path / "passed" / "chunk_3.pt"
+    )
+    assert motion_lib.motion_file_shard_index == 3
+
+
+def test_motion_lib_initializes_shard_index_for_empty_and_unsharded(tmp_path):
+    empty = MotionLib.empty(device="cpu")
+    package_path = tmp_path / "package.pt"
+    torch.save(_motion_file_payload(2), package_path)
+    unsharded = MotionLib(MotionLibConfig(motion_file=str(package_path)), device="cpu")
+
+    assert empty.motion_file_shard_index is None
+    assert unsharded.motion_file_shard_index is None
 
 def test_fetch_motion_files_handles_yaml_single_files_directories_and_invalid(
     tmp_path,
@@ -480,7 +730,9 @@ def test_packaged_motion_lib_save_load_constructor_and_zero_contact_discard(
     assert loaded.lrs is None
     assert loaded.goal_states is None
 
-    constructed = MotionLib(MotionLibConfig(motion_file=str(package_path)), device="cpu")
+    constructed = MotionLib(
+        MotionLibConfig(motion_file=str(package_path)), device="cpu"
+    )
     assert torch.equal(constructed.gts, motion_lib.gts)
     assert constructed.contacts is None
     assert constructed.motion_file == str(package_path)
@@ -516,7 +768,9 @@ def test_smooth_contacts_validates_inputs_and_respects_motion_boundaries():
 
     assert smooth.contacts.dtype == torch.float32
     assert torch.all((smooth.contacts >= 0.0) & (smooth.contacts <= 1.0))
-    assert torch.allclose(smooth.contacts[:3, 0], torch.tensor([0.0, 1.0 / 3.0, 2.0 / 3.0]))
+    assert torch.allclose(
+        smooth.contacts[:3, 0], torch.tensor([0.0, 1.0 / 3.0, 2.0 / 3.0])
+    )
     assert torch.equal(smooth.contacts[3:, 0], torch.zeros(2))
 
 
@@ -529,7 +783,9 @@ def test_translate_all_motions_to_origin_moves_each_motion_independently():
 
     motion_lib.translate_all_motions_to_origin(target_xy)
 
-    for start, num_frames in zip(motion_lib.length_starts, motion_lib.motion_num_frames):
+    for start, num_frames in zip(
+        motion_lib.length_starts, motion_lib.motion_num_frames
+    ):
         start_idx = start.item()
         end_idx = start_idx + num_frames.item()
         translation_xy = target_xy - before[start_idx, 0, :2]

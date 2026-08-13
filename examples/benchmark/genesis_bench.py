@@ -88,6 +88,7 @@ override_control_info = {
 
 # Create robot configuration
 robot_config = RobotConfig(
+    semantic_forward_axis_xy=(1.0, 0.0),
     kinematic_info=kinematic_info,
     number_of_actions=kinematic_info.num_dofs,
     common_naming_to_robot_body_names={

@@ -424,10 +424,21 @@ class MaskedMimicControl(MimicControl):
         super().populate_context(ctx)
         
         # Query motion library for poses at target times
-        num_envs = self.env.num_envs
+        env_ids = getattr(ctx, "env_ids", None)
         num_future_steps = self.config.num_masked_future_steps
-        motion_ids = self.env.motion_manager.motion_ids
-        motion_times = self.env.motion_manager.motion_times
+        if env_ids is None:
+            motion_ids = self.env.motion_manager.motion_ids
+            motion_times = self.env.motion_manager.motion_times
+            target_times = self.target_times
+            target_poses_masks = self.masked_mimic_target_poses_masks
+            target_bodies_masks = self.masked_mimic_target_bodies_masks
+        else:
+            motion_ids = self.env.motion_manager.motion_ids[env_ids]
+            motion_times = self.env.motion_manager.motion_times[env_ids]
+            target_times = self.target_times[env_ids]
+            target_poses_masks = self.masked_mimic_target_poses_masks[env_ids]
+            target_bodies_masks = self.masked_mimic_target_bodies_masks[env_ids]
+        num_envs = motion_ids.shape[0]
         
         # Expand motion_ids for all future steps
         flat_motion_ids = motion_ids.unsqueeze(-1).expand(
@@ -436,7 +447,7 @@ class MaskedMimicControl(MimicControl):
         
         # Clip target times to motion lengths
         motion_lengths = self.env.motion_lib.get_motion_length(flat_motion_ids)
-        flat_target_times = torch.minimum(self.target_times.reshape(-1), motion_lengths)
+        flat_target_times = torch.minimum(target_times.reshape(-1), motion_lengths)
         
         # Query motion lib for poses at target times
         target_state = self.env.motion_lib.get_motion_state(flat_motion_ids, flat_target_times)
@@ -447,9 +458,14 @@ class MaskedMimicControl(MimicControl):
         masked_mimic_ref_pos = target_state.rigid_body_pos.view(
             num_envs, num_future_steps, num_bodies, 3
         ).clone()
-        offset = self.env.get_spawn_to_ref_pose_offset_with_terrain_height_correction(
-            masked_mimic_ref_pos[:, 0, :, :]  # Use first step for offset
-        )
+        if env_ids is None:
+            offset = self.env.get_spawn_to_ref_pose_offset_with_terrain_height_correction(
+                masked_mimic_ref_pos[:, 0, :, :]  # Use first step for offset
+            )
+        else:
+            offset = self.env.get_spawn_to_ref_pose_offset_with_terrain_height_correction(
+                masked_mimic_ref_pos[:, 0, :, :], env_ids=env_ids
+            )
         masked_mimic_ref_pos += offset.unsqueeze(1)
         
         masked_mimic_ref_rot = target_state.rigid_body_rot.view(
@@ -457,17 +473,17 @@ class MaskedMimicControl(MimicControl):
         )
         
         # Compute time offsets from current time
-        masked_mimic_time_offsets = self.target_times - motion_times.unsqueeze(-1)
+        masked_mimic_time_offsets = target_times - motion_times.unsqueeze(-1)
         
         # Populate the masked_mimic view
         ctx.masked_mimic = MaskedMimicContext(
             mimic=ctx.mimic,
             ref_pos=masked_mimic_ref_pos,
             ref_rot=masked_mimic_ref_rot,
-            target_times=self.target_times,
+            target_times=target_times,
             time_offsets=masked_mimic_time_offsets,
-            target_poses_masks=self.masked_mimic_target_poses_masks,
-            target_bodies_masks=self.masked_mimic_target_bodies_masks,
+            target_poses_masks=target_poses_masks,
+            target_bodies_masks=target_bodies_masks,
         )
     
     def create_visualization_markers(self, headless: bool) -> Dict[str, VisualizationMarkerConfig]:

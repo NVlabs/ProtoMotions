@@ -19,7 +19,7 @@ python data/scripts/extract_keypoints_from_single_motion.py /path/to/motion.moti
 ## Parameters
 
 - `motion_file`: Path to the .motion file to process.
-- `--skeleton-format`: Skeleton format: 'rigv1' or 'smpl' (default: smpl).
+- `--skeleton-format`: Skeleton format: 'smpl' or 'soma' (default: smpl).
 - `--output-path`: Directory to save the extracted keypoints. If not provided,
                    defaults to the same directory as the input file.
 
@@ -64,7 +64,7 @@ def main(
         help="Directory to save the extracted keypoints. If not provided, uses the same directory as the input file.",
     ),
     skeleton_format: str = typer.Option(
-        "smpl", "--skeleton-format", help="Skeleton format: 'rigv1' or 'smpl'."
+        "smpl", "--skeleton-format", help="Skeleton format: 'smpl' or 'soma'."
     ),
     force_remake: bool = typer.Option(
         False, "--force-remake", help="Force reprocessing even if output exists."
@@ -82,9 +82,9 @@ def main(
         print(f"Error: Input must be a .motion file. Got: {motion_file}")
         raise typer.Exit(code=1)
 
-    if skeleton_format not in ["rigv1", "smpl"]:
+    if skeleton_format not in ["smpl", "soma"]:
         print(
-            f"Error: skeleton_format must be 'rigv1' or 'smpl'. Got: {skeleton_format}"
+            f"Error: skeleton_format must be 'smpl' or 'soma'. Got: {skeleton_format}"
         )
         raise typer.Exit(code=1)
 
@@ -203,4 +203,3 @@ def main(
 
 if __name__ == "__main__":
     app()
-

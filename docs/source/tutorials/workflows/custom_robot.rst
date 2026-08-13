@@ -86,8 +86,7 @@ Bodies used for MaskedMimic:
 
    asset: RobotAssetConfig = field(
        default_factory=lambda: RobotAssetConfig(
-           asset_file_name="mjcf/your_robot.xml",
-           usd_asset_file_name="usd/your_robot/your_robot.usda",  # For IsaacLab
+           asset_file_name="mjcf/your_robot.xml",  # MJCF is the source of truth; IsaacLab converts to USD
            self_collisions=False,  # Enable if needed
        )
    )

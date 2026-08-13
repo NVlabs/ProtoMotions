@@ -26,6 +26,14 @@ class MotionManagerConfig:
         }
     )
 
+    sample_time_truncate_s: Optional[float] = field(
+        default=None,
+        metadata={
+            "help": "Optional extra seconds to remove from the end of random reset time sampling.",
+            "min": 0.0,
+        },
+    )
+
     subset_method: Optional[Union[str, List[int]]] = field(
         default=None,
         metadata={

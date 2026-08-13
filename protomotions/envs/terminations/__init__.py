@@ -25,6 +25,7 @@ from protomotions.envs.terminations.base import (
     fall_termination,
     height_termination,
     contact_termination,
+    joint_limit_termination,
 )
 
 # Tracking termination kernels
@@ -64,6 +65,7 @@ __all__ = [
     "fall_termination",
     "height_termination",
     "contact_termination",
+    "joint_limit_termination",
     # Tracking termination kernels
     "compute_tracking_error",
     "compute_anchor_pos_error_term",

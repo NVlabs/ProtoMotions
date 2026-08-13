@@ -298,7 +298,7 @@ def parse_cli_overrides(override_strings: list) -> Dict[str, Any]:
         if "=" not in override_str:
             raise ValueError(
                 f"Invalid override format (required key=value): {override_str!r}. "
-                "Use e.g. robot.asset.usd_asset_file_name=usd/g1_holo_compat/g1_holo_compat.usda"
+                "Use e.g. robot.asset.asset_file_name=mjcf/g1_holo_compat.xml"
             )
 
         key, value_str = override_str.split("=", 1)
@@ -308,7 +308,7 @@ def parse_cli_overrides(override_strings: list) -> Dict[str, Any]:
         if not key:
             raise ValueError(
                 f"Invalid override: key is empty in {override_str!r}. "
-                "Use format key=value (e.g. robot.asset.usd_asset_file_name=path.usda)."
+                "Use format key=value (e.g. robot.asset.asset_file_name=path.xml)."
             )
 
         try:

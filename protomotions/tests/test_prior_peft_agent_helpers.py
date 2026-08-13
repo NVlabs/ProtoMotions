@@ -43,6 +43,7 @@ from protomotions.agents.peft.prior_config import (
     DiscretePriorPEFTRLFTAgentConfig,
     DiscretePriorPEFTSFTAgentConfig,
 )
+from protomotions.components.motion_lib import MotionFileSwitchMode
 from protomotions.agents.ppo import agent as ppo_agent_module
 from protomotions.agents.ppo.utils import discount_values
 from protomotions.agents.utils.metering import TensorAverageMeterDict
@@ -225,6 +226,11 @@ def _config(token_perturb_rate=0.0, token_perturb_mode="replace"):
 
 def _agent(has_critic=True, token_perturb_rate=0.0, token_perturb_mode="replace"):
     agent = object.__new__(DiscretePriorPEFTRLFTAgent)
+    agent.motion_lib = SimpleNamespace(
+        config=SimpleNamespace(
+            motion_file_switch_mode=MotionFileSwitchMode.FIXED,
+        )
+    )
     actor = _Actor()
     critic = _Critic() if has_critic else None
 
@@ -727,6 +733,11 @@ def test_prior_peft_amp_warm_starts_from_peft_checkpoint_without_amp_state(
         "critic_optimizer": {"critic": 2},
     }
     agent = object.__new__(DiscretePriorPEFTRLFTAMPAgent)
+    agent.motion_lib = SimpleNamespace(
+        config=SimpleNamespace(
+            motion_file_switch_mode=MotionFileSwitchMode.FIXED,
+        )
+    )
     agent.model = model
     agent.config = _config()
     agent.actor_optimizer = _OptimizerRecorder()
@@ -1205,6 +1216,11 @@ def test_prior_peft_fit_runs_one_epoch_rollout_eval_and_checkpoint_branches(
             return ["action"]
 
     agent = object.__new__(DiscretePriorPEFTRLFTAgent)
+    agent.motion_lib = SimpleNamespace(
+        config=SimpleNamespace(
+            motion_file_switch_mode=MotionFileSwitchMode.FIXED,
+        )
+    )
     agent.num_envs = 2
     agent.num_steps = 2
     agent.device = torch.device("cpu")

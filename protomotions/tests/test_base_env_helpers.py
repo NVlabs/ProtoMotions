@@ -9,7 +9,7 @@ import pytest
 import torch
 
 import protomotions.envs.base_env.env as base_env_module
-from protomotions.envs.base_env.config import EnvConfig
+from protomotions.envs.base_env.config import EnvConfig, RecoveryResetConfig
 from protomotions.envs.base_env.env import BaseEnv
 from protomotions.simulator.base_simulator.config import (
     MarkerConfig,
@@ -23,6 +23,7 @@ from protomotions.simulator.base_simulator.simulator_state import (
     StateConversion,
 )
 from protomotions.envs.obs.observation_noise import NoisyObservations
+from protomotions.utils.rotations import calc_heading_quat_inv
 
 
 def _identity_quat(*shape: int) -> torch.Tensor:
@@ -235,8 +236,8 @@ class _FakeSimulator:
     def _initialize_with_markers(self, markers):
         self.initialized_markers = markers
 
-    def get_robot_state(self):
-        return self.state
+    def get_robot_state(self, env_ids=None):
+        return self.state if env_ids is None else self.state[env_ids]
 
     def get_root_state(self):
         return self.state
@@ -252,8 +253,9 @@ class _FakeSimulator:
     def get_current_actions(self):
         return torch.ones(self.num_envs, self.num_act) * 0.7
 
-    def get_object_root_state(self):
-        return _object_state(self.num_envs, base=80.0)
+    def get_object_root_state(self, env_ids=None):
+        state = _object_state(self.num_envs, base=80.0)
+        return state if env_ids is None else state[env_ids]
 
     def close(self):
         self.closed = True
@@ -459,6 +461,10 @@ def _make_env(
     env.odom_scale = torch.ones(num_envs)
     env.odom_yaw_cos_sin = torch.zeros(num_envs, 2)
     env.odom_yaw_cos_sin[:, 0] = 1.0
+    # Mirrors BaseEnv.__init__: the odometer's episode-start reference pose.
+    env.odom_start_xy = torch.zeros(num_envs, 2)
+    env.odom_start_heading_inv = torch.zeros(num_envs, 4)
+    env.odom_start_heading_inv[:, 3] = 1.0
     env.prev_contact_force_magnitudes = torch.zeros(num_envs, 2)
     env._current_raw_action = torch.zeros(num_envs, 2)
     env._current_processed_action = torch.zeros(num_envs, 2)
@@ -477,6 +483,158 @@ def _make_env(
     return env
 
 
+def test_recovery_reset_config_defaults_to_disabled():
+    config = RecoveryResetConfig()
+
+    assert config.recovery_prob == pytest.approx(0.0)
+    assert config.fall_sim_steps == 150
+
+
+def test_base_env_recovery_reset_is_noop_for_legacy_config():
+    env = _make_env()
+    del env.config.recovery_reset
+    env._fall_reset_states = None
+    new_states = _reset_state()
+    original = new_states.clone()
+
+    returned_states, recovery_mask = BaseEnv._apply_recovery_reset_states(
+        env, torch.arange(env.num_envs), new_states
+    )
+
+    assert not recovery_mask.any()
+    assert torch.equal(returned_states.root_pos, original.root_pos)
+    assert torch.equal(returned_states.dof_pos, original.dof_pos)
+
+
+def test_base_env_generates_grounded_fall_reset_states():
+    env = _make_env()
+    env.config.recovery_reset = RecoveryResetConfig(
+        recovery_prob=1.0,
+        fall_sim_steps=2,
+    )
+    env._fall_reset_states = None
+    default_state = env.default_reset_state.clone()
+    snapshot = {"saved": True}
+    restored = []
+    env.save_state = lambda: snapshot
+    env.restore_state = restored.append
+
+    torch.manual_seed(7)
+    BaseEnv._generate_fall_reset_states(env)
+
+    assert restored == [snapshot]
+    assert env.terrain.sample_calls == [(env.num_envs, True)]
+    assert len(env.simulator.reset_calls) == 1
+    initial_state, object_state, env_ids = env.simulator.reset_calls[0]
+    expected_xy = torch.tensor(
+        [[10.0, 21.0], [12.0, 23.0], [14.0, 25.0]]
+    )
+    assert torch.equal(env_ids, torch.arange(env.num_envs))
+    assert object_state is env.default_object_state
+    assert torch.equal(initial_state.root_pos[:, :2], expected_xy)
+    assert torch.allclose(
+        initial_state.root_pos[:, 2], default_state.root_pos[:, 2] + 0.5
+    )
+    assert torch.allclose(
+        initial_state.root_rot.norm(dim=-1), torch.ones(env.num_envs)
+    )
+    assert torch.count_nonzero(initial_state.root_vel) == 0
+    assert torch.count_nonzero(initial_state.root_ang_vel) == 0
+    assert torch.count_nonzero(initial_state.dof_vel) == 0
+
+    assert len(env.simulator.steps) == 2
+    first_targets = env.simulator.steps[0][0]
+    assert torch.equal(env.simulator.steps[1][0], first_targets)
+    assert torch.all(first_targets >= env.robot_config.kinematic_info.dof_limits_lower)
+    assert torch.all(first_targets <= env.robot_config.kinematic_info.dof_limits_upper)
+
+    assert env._fall_reset_states is not None
+    assert torch.count_nonzero(env._fall_reset_states.root_vel) == 0
+    assert torch.count_nonzero(env._fall_reset_states.root_ang_vel) == 0
+    assert torch.count_nonzero(env._fall_reset_states.dof_vel) == 0
+
+
+def test_base_env_samples_recovery_reset_states_by_probability(monkeypatch):
+    env = _make_env()
+    env.config.recovery_reset = RecoveryResetConfig(
+        recovery_prob=0.5,
+        fall_sim_steps=2,
+    )
+    env.respawn_root_offset[:, 2] = torch.tensor([1.0, 2.0, 3.0])
+    env._fall_reset_states = _reset_state(base=100.0)
+    env._fall_reset_states.dof_pos = torch.tensor(
+        [[10.0, 11.0], [20.0, 21.0], [30.0, 31.0]]
+    )
+    env._fall_reset_states.root_rot = torch.tensor(
+        [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+        ]
+    )
+    new_states = _reset_state()
+    original = new_states.clone()
+
+    monkeypatch.setattr(
+        base_env_module.torch,
+        "rand",
+        lambda count, device=None: torch.tensor(
+            [0.2, 0.8, 0.1], device=device
+        )[:count],
+    )
+
+    def fake_randint(low, high, size, device=None):
+        assert (low, high, size) == (0, 3, (2,))
+        return torch.tensor([2, 0], device=device)
+
+    monkeypatch.setattr(base_env_module.torch, "randint", fake_randint)
+
+    returned_states, recovery_mask = BaseEnv._apply_recovery_reset_states(
+        env,
+        torch.arange(env.num_envs),
+        new_states,
+    )
+
+    assert torch.equal(recovery_mask, torch.tensor([True, False, True]))
+    assert torch.equal(returned_states.root_pos[:, :2], original.root_pos[:, :2])
+    assert torch.equal(
+        returned_states.root_pos[:, 2],
+        torch.tensor([109.0, 5.0, 105.0]),
+    )
+    assert torch.equal(
+        returned_states.root_rot[[0, 2]],
+        env._fall_reset_states.root_rot[[2, 0]],
+    )
+    assert torch.equal(
+        returned_states.dof_pos[[0, 2]],
+        env._fall_reset_states.dof_pos[[2, 0]],
+    )
+    assert torch.equal(returned_states.root_pos[1], original.root_pos[1])
+    assert torch.equal(returned_states.root_rot[1], original.root_rot[1])
+    assert torch.equal(returned_states.dof_pos[1], original.dof_pos[1])
+    assert torch.count_nonzero(returned_states.root_vel[[0, 2]]) == 0
+    assert torch.count_nonzero(returned_states.root_ang_vel[[0, 2]]) == 0
+    assert torch.count_nonzero(returned_states.dof_vel[[0, 2]]) == 0
+
+
+def test_base_env_recovery_resets_use_current_state_for_history():
+    env = _make_env(motions=2, history=True)
+    env.config.recovery_reset = RecoveryResetConfig(recovery_prob=1.0)
+    env._apply_recovery_reset_states = lambda env_ids, reset_states: (
+        reset_states,
+        torch.tensor([False, True, False], device=env.device),
+    )
+
+    BaseEnv.reset(env, env_ids=torch.arange(env.num_envs))
+
+    assert torch.equal(
+        env.state_history.single_reset_calls[-1]["env_ids"], torch.tensor([1])
+    )
+    assert torch.equal(
+        env.state_history.state_reset_calls[-1]["env_ids"], torch.tensor([0, 2])
+    )
+
+
 def test_base_env_scene_surface_context_ignores_objects_without_pointclouds():
     env = _make_env(num_envs=2, scenes=1)
 
@@ -493,6 +651,74 @@ def test_base_env_scene_surface_context_ignores_objects_without_pointclouds():
     assert context.object_rot.shape == (2, 0, 4)
     assert context.neutral_pointclouds.shape == (2, 0, 0, 3)
     assert context.object_valid_mask.shape == (2, 0)
+
+
+def test_base_env_build_context_selects_subset_without_caching_it():
+    env = _make_env(num_envs=3, scenes=0, history=True)
+    env.control_manager.populate_context = lambda ctx: setattr(ctx, "mimic", object())
+    env.odom_start_xy = torch.tensor([[0.0, 0.0], [10.0, 20.0], [30.0, 40.0]])
+    env_ids = torch.tensor([2, 0])
+
+    context = env._build_context(env_ids)
+
+    assert torch.equal(context.env_ids, env_ids)
+    assert torch.equal(context.current.root_pos, env.simulator.state.root_pos[env_ids])
+    assert context.noisy is context.current
+    assert torch.equal(
+        context.historical.actions,
+        env.state_history.historical_actions[env_ids],
+    )
+    assert context.terrain.height_points.shape[0] == len(env_ids)
+    assert context.scene.object_pos.shape == (len(env_ids), 0, 3)
+    assert torch.equal(context.progress_buf, env.progress_buf[env_ids])
+    assert torch.equal(context.odom_start_xy, env.odom_start_xy[env_ids])
+    assert context.odom_disp_start_clean.shape == (len(env_ids), 2)
+    assert env._current_context is None
+
+
+def test_process_observations_accepts_subset_and_multidimensional_outputs():
+    env = _make_env(num_envs=3)
+    env_ids = torch.tensor([0, 2])
+    values = torch.arange(12, dtype=torch.float).reshape(2, 2, 3)
+    env.config.observation_components = {"grid": object()}
+    env._component_manager.observations = {"grid": values}
+
+    env._process_observations(
+        context=SimpleNamespace(env_ids=env_ids),
+        env_ids=env_ids,
+    )
+
+    assert env._observation_buffer["grid"].shape == (3, 2, 3)
+    assert torch.equal(env._observation_buffer["grid"][env_ids], values)
+    assert torch.equal(env._observation_buffer["grid"][1], torch.zeros(2, 3))
+
+
+def test_process_observations_preserves_global_order_for_reordered_full_batch():
+    env = _make_env(num_envs=3)
+    env_ids = torch.tensor([2, 0, 1])
+    values = torch.tensor([[10.0], [20.0], [30.0]])
+    env.config.observation_components = {"ordered": object()}
+    env._component_manager.observations = {"ordered": values}
+
+    env._process_observations(
+        context=SimpleNamespace(env_ids=None),
+        env_ids=env_ids,
+    )
+
+    assert torch.equal(env._observation_buffer["ordered"], values)
+
+
+def test_process_observations_rejects_rows_that_do_not_match_context():
+    env = _make_env(num_envs=3)
+    env_ids = torch.tensor([2, 0])
+    env.config.observation_components = {"bad": object()}
+    env._component_manager.observations = {"bad": torch.zeros(3, 1)}
+
+    with pytest.raises(ValueError, match="bad.*2 rows.*got 3"):
+        env._process_observations(
+            context=SimpleNamespace(env_ids=env_ids),
+            env_ids=env_ids,
+        )
 
 
 def test_base_env_close_releases_ui_handles_and_component_resources():
@@ -757,12 +983,53 @@ def test_base_env_reset_flow_mixes_default_and_reference_resets():
     assert torch.equal(env._current_processed_action, torch.zeros(3, 2))
     assert torch.equal(env.odom_scale, torch.full((3,), 2.0))
     assert torch.equal(env.odom_yaw_cos_sin, torch.tensor([[1.0, 0.0]]).repeat(3, 1))
+    # The odometer's start pose is re-sampled from the post-reset robot state, so
+    # displacement-from-start reads zero on the first step of a new episode.
+    anchor_idx = env.robot_config.anchor_body_index
+    reset_state = env.simulator.get_robot_state()
+    assert torch.equal(env.odom_start_xy, reset_state.rigid_body_pos[:, anchor_idx, :2])
+    expected_heading_inv = calc_heading_quat_inv(
+        reset_state.rigid_body_rot[:, anchor_idx], w_last=True
+    )
+    assert torch.allclose(env.odom_start_heading_inv, expected_heading_inv)
     assert env.state_history.single_reset_calls
     assert env.state_history.state_reset_calls
 
     empty_obs, empty_info = BaseEnv.reset(env, env_ids=[])
     assert empty_info == {}
     assert set(empty_obs) == {"terrain", "scene"}
+
+
+def test_base_env_reference_only_reset_skips_default_state_construction(monkeypatch):
+    env = _make_env(scenes=2, motions=2, history=False)
+
+    def fail_default(*args, **kwargs):
+        raise AssertionError("reference-only reset should not build default states")
+
+    monkeypatch.setattr(env, "compute_default_reset_state", fail_default)
+
+    BaseEnv.reset(env, env_ids=[0, 2])
+
+    reset_state, object_state, reset_ids = env.simulator.reset_calls[-1]
+    assert torch.equal(reset_ids, torch.tensor([0, 2]))
+    assert reset_state.root_pos.shape[0] == 2
+    assert object_state.root_pos.shape[0] == 2
+
+
+def test_compute_ref_reset_state_does_not_mutate_motion_state():
+    env = _make_env(scenes=1, motions=1, history=False)
+    source_state = _robot_state(num_envs=1, base=3.0)
+    original_root_pos = source_state.root_pos.clone()
+    env.motion_lib.get_motion_state = lambda motion_ids, motion_times: source_state
+
+    BaseEnv.compute_ref_reset_state(
+        env,
+        torch.tensor([0]),
+        torch.tensor([0]),
+        torch.tensor([0.1]),
+    )
+
+    assert torch.equal(source_state.root_pos, original_root_pos)
 
 
 def test_base_env_reset_all_defaults_can_apply_reset_noise_without_ref_resample(
@@ -800,6 +1067,11 @@ def test_base_env_reset_all_defaults_can_apply_reset_noise_without_ref_resample(
 
 def test_base_env_reset_updates_noisy_cache_subset(monkeypatch):
     env = _make_env(history=True)
+    env.robot_config.anchor_body_index = 1
+    env.simulator.state.rigid_body_pos[:, 0, 0] = 10.0
+    env.simulator.state.rigid_body_pos[:, 1, 0] = 20.0
+    env.terrain.get_ground_heights = lambda positions: positions[:, :1] + 0.5
+    ground_height_calls = []
     env._current_noisy_obs = NoisyObservations(
         rigid_body_pos=torch.zeros(3, 2, 3),
         rigid_body_rot=_identity_quat(3, 2),
@@ -815,8 +1087,9 @@ def test_base_env_reset_updates_noisy_cache_subset(monkeypatch):
     )
 
     def fake_apply_observation_noise(**kwargs):
-        env_ids = kwargs["env_ids"]
-        n = len(env_ids)
+        ground_height_calls.append(kwargs["ground_heights"].clone())
+        assert "env_ids" not in kwargs
+        n = kwargs["robot_state"].root_pos.shape[0]
         return NoisyObservations(
             rigid_body_pos=torch.ones(n, 2, 3) * 9.0,
             rigid_body_rot=_identity_quat(n, 2),
@@ -843,9 +1116,10 @@ def test_base_env_reset_updates_noisy_cache_subset(monkeypatch):
     assert torch.equal(
         env._current_noisy_obs.ground_heights, torch.tensor([2.0, 0.0, 2.0])
     )
+    assert torch.equal(ground_height_calls[0], torch.tensor([20.5, 20.5]))
 
 
-def test_base_env_reset_state_history_from_default_and_reference_states():
+def test_base_env_reset_state_history_from_current_and_reference_states():
     env = _make_env(motions=2, history=True)
     env_ids = torch.tensor([0, 1, 2])
     ref_env_ids = torch.tensor([1, 2])
@@ -855,7 +1129,7 @@ def test_base_env_reset_state_history_from_default_and_reference_states():
     BaseEnv._reset_state_history(
         env,
         env_ids=env_ids,
-        default_mask=torch.tensor([True, False, False]),
+        current_state_history_mask=torch.tensor([True, False, False]),
         ref_env_ids=ref_env_ids,
         motion_ids=motion_ids,
         motion_times=motion_times,
@@ -878,7 +1152,7 @@ def test_base_env_reset_state_history_from_default_and_reference_states():
     BaseEnv._reset_state_history(
         env_no_contacts,
         env_ids=torch.tensor([1]),
-        default_mask=torch.tensor([False]),
+        current_state_history_mask=torch.tensor([False]),
         ref_env_ids=torch.tensor([1]),
         motion_ids=torch.tensor([0]),
         motion_times=torch.tensor([0.1]),
@@ -886,8 +1160,48 @@ def test_base_env_reset_state_history_from_default_and_reference_states():
     assert not env_no_contacts.state_history.state_reset_calls[-1]["body_contacts"].any()
 
 
+def test_base_env_ground_height_uses_configured_anchor_body():
+    env = _make_env(history=False)
+    env.robot_config.anchor_body_index = 1
+    env.simulator.state.rigid_body_pos[:, 0, 0] = 10.0
+    env.simulator.state.rigid_body_pos[:, 1, 0] = 20.0
+    env.terrain.get_ground_heights = lambda positions: positions[:, :1] + 0.5
+
+    context = BaseEnv._build_global_context(env)
+
+    expected = torch.full((3,), 20.5)
+    assert torch.equal(context.ground_heights, expected)
+    assert torch.equal(context.noisy_ground_heights, expected)
+
+
+def test_base_env_history_ground_height_uses_configured_anchor_body():
+    env = _make_env(history=True)
+    env.robot_config.anchor_body_index = 1
+    env.simulator.state.rigid_body_pos[:, 0, 0] = 10.0
+    env.simulator.state.rigid_body_pos[:, 1, 0] = 20.0
+    env.terrain.get_ground_heights = lambda positions: positions[:, :1] + 0.5
+
+    BaseEnv._reset_state_history(
+        env,
+        env_ids=torch.arange(3),
+        current_state_history_mask=torch.ones(3, dtype=torch.bool),
+        ref_env_ids=torch.empty(0, dtype=torch.long),
+        motion_ids=None,
+        motion_times=None,
+    )
+
+    assert torch.equal(
+        env.state_history.single_reset_calls[-1]["ground_heights"],
+        torch.full((3,), 20.5),
+    )
+
+
 def test_base_env_post_physics_step_builds_context_and_raw_extras():
     env = _make_env(motions=2, history=True)
+    env.robot_config.anchor_body_index = 1
+    env.simulator.state.rigid_body_pos[:, 0, 0] = 10.0
+    env.simulator.state.rigid_body_pos[:, 1, 0] = 20.0
+    env.terrain.get_ground_heights = lambda positions: positions[:, :1] + 0.5
     env.motion_manager.config.realign_motion_with_humanoid_on_each_step = True
     observations = []
     rewards = []
@@ -906,6 +1220,10 @@ def test_base_env_post_physics_step_builds_context_and_raw_extras():
 
     assert torch.equal(env.progress_buf, torch.ones(3, dtype=torch.long))
     assert env.state_history.rotate_calls
+    assert torch.equal(
+        env.state_history.rotate_calls[-1]["ground_heights"],
+        torch.full((3,), 20.5),
+    )
     assert env.motion_manager.post_physics_called is True
     assert env.control_manager.step_calls == 1
     assert observations and rewards and resets
@@ -1059,14 +1377,29 @@ def test_base_env_motion_manager_markers_state_save_restore_and_close(monkeypatc
     env.reset_buf = torch.tensor([False, True, False])
     env.terminate_buf = torch.tensor([False, False, True])
     env.respawn_root_offset[:] = 3.0
+    env.odom_start_xy[:] = torch.tensor([[1.0, 2.0]])
+    env.odom_start_heading_inv[:] = torch.tensor([[0.0, 0.0, 0.5, 0.866]])
     snapshot = BaseEnv.save_state(env)
     assert "state_history" in snapshot
     assert "object_state" in snapshot
     assert snapshot["_current_noisy_obs"] is not noisy
+    # The odometer start pose has to round-trip: it is the reference the
+    # displacement-from-start reading is measured against, so losing it across a
+    # save/restore would silently teleport the believed position.
+    assert torch.equal(snapshot["odom_start_xy"], env.odom_start_xy)
+    assert snapshot["odom_start_xy"] is not env.odom_start_xy
+    assert torch.equal(snapshot["odom_start_heading_inv"], env.odom_start_heading_inv)
 
     env.progress_buf.zero_()
+    env.odom_start_xy.zero_()
+    env.odom_start_heading_inv.zero_()
     BaseEnv.restore_state(env, snapshot)
     assert torch.equal(env.progress_buf, torch.tensor([1, 2, 3]))
+    assert torch.equal(env.odom_start_xy, torch.tensor([[1.0, 2.0]]).repeat(3, 1))
+    assert torch.equal(
+        env.odom_start_heading_inv,
+        torch.tensor([[0.0, 0.0, 0.5, 0.866]]).repeat(3, 1),
+    )
     assert torch.equal(env.state_history.loaded_state["history"], torch.tensor([1.0]))
     assert env.simulator.steps[-1][1] is None
     assert env._current_context is None
@@ -1155,6 +1488,75 @@ def test_base_env_constructor_initializes_lightweight_dependencies(monkeypatch):
     assert no_motion_env.state_history is None
     assert no_motion_lib.smooth_windows == []
     assert no_motion_simulator.initialized_markers == {}
+
+
+def test_install_motion_lib_uses_prebuilt_candidate_without_constructing(monkeypatch):
+    env = object.__new__(BaseEnv)
+    candidate = _MotionLib(num_motions=2, num_envs=2)
+    env.motion_lib = _MotionLib(num_motions=1, num_envs=2)
+    env.motion_manager = "old-manager"
+    env.config = SimpleNamespace(ref_contact_smooth_window=3)
+    env._current_context = {"stale": True}
+    events = []
+
+    env._validate_motion_lib_compatibility = lambda motion_lib: events.append(
+        ("validate", motion_lib)
+    )
+
+    def create_motion_manager():
+        events.append(("manager", env.motion_lib))
+        env.motion_manager = "new-manager"
+
+    env.create_motion_manager = create_motion_manager
+
+    class _MustNotConstructMotionLib:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("install_motion_lib must not construct MotionLib")
+
+    monkeypatch.setattr(
+        base_env_module, "MotionLib", _MustNotConstructMotionLib, raising=False
+    )
+
+    assert BaseEnv.install_motion_lib(env, candidate) is None
+    assert candidate.smooth_windows == [3]
+    assert env.motion_lib is candidate
+    assert env.motion_manager == "new-manager"
+    assert env._current_context is None
+    assert events == [("validate", candidate), ("manager", candidate)]
+
+
+def test_install_motion_lib_keeps_current_state_when_candidate_is_incompatible():
+    env = object.__new__(BaseEnv)
+    old_motion_lib = _MotionLib(num_motions=1, num_envs=2)
+    env.motion_lib = old_motion_lib
+    env.motion_manager = "old-manager"
+    env.config = SimpleNamespace(ref_contact_smooth_window=3)
+    env._current_context = {"current": True}
+    candidate = _MotionLib(num_motions=2, num_envs=2)
+    env._validate_motion_lib_compatibility = lambda motion_lib: (_ for _ in ()).throw(
+        ValueError("incompatible")
+    )
+
+    with pytest.raises(ValueError, match="incompatible"):
+        BaseEnv.install_motion_lib(env, candidate)
+
+    assert env.motion_lib is old_motion_lib
+    assert env.motion_manager == "old-manager"
+    assert env._current_context == {"current": True}
+    assert candidate.smooth_windows == []
+
+
+def test_install_motion_lib_clears_manager_for_empty_prebuilt_library():
+    env = object.__new__(BaseEnv)
+    env.motion_lib = _MotionLib(num_motions=1, num_envs=2)
+    env.motion_manager = "old-manager"
+    env.config = SimpleNamespace(ref_contact_smooth_window=3)
+    env._current_context = {"stale": True}
+
+    BaseEnv.install_motion_lib(env, _MotionLib(num_motions=0, num_envs=2))
+
+    assert env.motion_manager is None
+    assert env._current_context is None
 
 
 def test_apply_motion_weights_to_scene_weights_loads_expected_checkpoint(tmp_path):

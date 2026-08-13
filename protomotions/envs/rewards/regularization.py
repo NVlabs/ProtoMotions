@@ -103,22 +103,36 @@ def compute_soft_pos_limit_rew(
     dof_pos: Tensor,
     dof_limits_lower: Tensor,
     dof_limits_upper: Tensor,
+    max_violation: float = None,
 ) -> Tensor:
     """Soft joint position limit penalty.
-    
+
     Penalizes when joints approach or exceed limits.
-    
+
+    The penalty is linear in the violation and summed over every DOF, so it has
+    no floor. That is harmless while the simulator is healthy and unbounded when
+    it is not: joint positions that blow up produce an arbitrarily large negative
+    reward, which then sets the reward-normalizer scale for many epochs
+    afterwards. A raw task reward of -7.9e7 was traced to this term.
+
     Args:
         dof_pos: Joint positions [num_envs, num_dofs].
         dof_limits_lower: Lower joint limits [num_dofs].
         dof_limits_upper: Upper joint limits [num_dofs].
-    
+        max_violation: If set, clamp the summed violation (in radians) before it
+            is weighted, which puts a floor on the penalty. Past the clamp the
+            state is broken rather than merely bad, and a larger number carries
+            no useful gradient. ``None`` (default) keeps the unbounded behaviour.
+
     Returns:
         Penalty tensor [num_envs].
     """
     out_of_limits = -(dof_pos - dof_limits_lower).clip(max=0.0)
     out_of_limits += (dof_pos - dof_limits_upper).clip(min=0.0)
-    return torch.sum(out_of_limits, dim=1)
+    total = torch.sum(out_of_limits, dim=1)
+    if max_violation is not None:
+        total = total.clip(max=max_violation)
+    return total
 
 
 def compute_contact_match_rew(

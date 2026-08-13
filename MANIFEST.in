@@ -17,4 +17,3 @@ recursive-include examples/experiments *.py
 # exclude-package-data note in pyproject.toml and legal/ section 4.
 recursive-exclude protomotions/data/assets/mesh/smpl *
 exclude protomotions/data/assets/mjcf/smpl*.xml
-exclude protomotions/data/assets/usd/smpl*.usda

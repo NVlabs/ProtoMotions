@@ -5,7 +5,7 @@
 Random Pose Visualizer for Humanoid Robots
 
 This tool visualizes random humanoid poses by:
-1. Loading a specified robot (e.g., g1, rigv1, smpl)
+1. Loading a specified robot (e.g., g1 or smpl)
 2. Generating random joint configurations within joint limits
 3. Displaying the poses with visualization markers on key body parts
 """
@@ -29,9 +29,9 @@ parser.add_argument(
 parser.add_argument(
     "--robot",
     type=str,
-    choices=["g1", "rigv1", "smpl"],
+    choices=["g1", "smpl"],
     default="g1",
-    help="Robot to load (g1, rigv1, or smpl)",
+    help="Robot to load (g1 or smpl)",
 )
 parser.add_argument("--num_envs", type=int, default=1, help="Number of environments")
 parser.add_argument("--headless", action="store_true", help="Run in headless mode")
@@ -82,9 +82,6 @@ ROBOT_SPECS = {
             "left_ankle_roll_link",
             "right_ankle_roll_link",
         ],
-    ),
-    "rigv1": RobotSpec(
-        viz_bodies=["Hips", "Spine2", "LeftLeg", "RightLeg", "LeftFoot", "RightFoot"],
     ),
     "smpl": RobotSpec(
         viz_bodies=["Pelvis", "L_Knee", "R_Knee", "L_Ankle", "R_Ankle"],

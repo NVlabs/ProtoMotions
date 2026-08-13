@@ -16,12 +16,14 @@ from protomotions.simulator.isaaclab.config import (
 from protomotions.simulator.genesis.config import GenesisSimParams
 from protomotions.simulator.newton.config import NewtonSimParams
 from protomotions.components.pose_lib import ControlInfo
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from dataclasses import dataclass, field
 
 
 @dataclass
 class SmplRobotConfig(RobotConfig):
+    semantic_forward_axis_xy: Tuple[float, float] = (1.0, 0.0)
+
     trackable_bodies_subset: List[str] = field(
         default_factory=lambda: [
             "Pelvis",
@@ -51,8 +53,6 @@ class SmplRobotConfig(RobotConfig):
     asset: RobotAssetConfig = field(
         default_factory=lambda: RobotAssetConfig(
             asset_file_name="mjcf/smpl_humanoid.xml",
-            usd_asset_file_name="usd/smpl_humanoid.usda",
-            usd_bodies_root_prim_path="/World/envs/env_.*/Robot/bodies/",
             max_linear_velocity=1000.0,
             max_angular_velocity=1000.0,
             angular_damping=0.0,

@@ -16,6 +16,7 @@ def compute_prior_historical_max_coords(
     local_obs: bool = True,
     root_height_obs: bool = True,
     w_last: bool = True,
+    anchor_body_index: int = 0,
 ) -> Tensor:
     """Compute historical max_coords observations for prior dataset."""
     num_envs = historical_rigid_body_pos.shape[0]
@@ -43,6 +44,7 @@ def compute_prior_historical_max_coords(
         root_height_obs=root_height_obs,
         observe_contacts=False,
         w_last=w_last,
+        anchor_body_index=anchor_body_index,
     )
     
     obs_dim = flat_obs.shape[-1]

@@ -58,10 +58,9 @@ from protomotions.simulator.genesis.config import GenesisSimParams  # noqa: E402
 from protomotions.simulator.newton.config import NewtonSimParams  # noqa: E402
 
 robot_cfg = RobotConfig(
+    semantic_forward_axis_xy=(1.0, 0.0),
     asset=RobotAssetConfig(
         asset_file_name="mjcf/g1_bm.xml",
-        usd_asset_file_name="usd/g1_bm/g1_bm.usda",
-        usd_bodies_root_prim_path="/World/envs/env_.*/Robot/",
     ),
     common_naming_to_robot_body_names={
         "all_left_foot_bodies": ["left_ankle_roll_link"],
@@ -99,6 +98,12 @@ print(f"Number of actions: {robot_cfg.number_of_actions}")
 print(f"Number of DOFs: {robot_cfg.kinematic_info.num_dofs}")
 print(f"Number of bodies: {robot_cfg.kinematic_info.num_bodies}")
 print(f"Contact bodies: {robot_cfg.contact_bodies}")
+print(f"Semantic forward axis (robot-local xy): {robot_cfg.semantic_forward_axis_xy}")
+print(
+    "Semantic forward is xy-only because ProtoMotions assumes Z-up robots: "
+    "heading is horizontal, while standing upright is handled by the robot "
+    "asset/config rather than by a 3D forward vector."
+)
 
 # Extra simulator parameters allow you to pass in additional parameters to the simulator constructor.
 # For example, if you use IsaacLab, you need to pass in the simulation app.

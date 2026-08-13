@@ -62,16 +62,33 @@ Action post-processing (NOT baked into ONNX)
 - **EMA action filter** (``action_ema_alpha``): exponential moving average on
   PD targets.  Matches ``MujocoSimulator._action_filter_alpha``.
 
+Reference frames
+----------------
+A motion clip lives wherever it was captured, which is generally nowhere near
+where the robot happens to be standing.  ``init_tracker_alignment`` captures
+the transform between the two at motion start, and ``align_future_motion_refs``
+applies it to *every* reference quantity, positions included.
+
+This is not an optimisation to skip.  The policy subtracts the current
+reference anchor from the future reference anchor to recover how far the
+reference travels, and it subtracts that same current reference anchor from
+the robot's own odometer reading to recover the tracking offset.  Neither
+subtraction means anything unless both operands are in the same frame.
+
+Note that this runner starts the robot exactly on the motion's first frame,
+which makes that transform the identity — so it cannot, on its own, tell you
+whether the alignment is correct.  The case where the robot starts somewhere
+else, as real hardware does, is covered by
+``protomotions/tests/test_deploy_tracker_inputs.py``.
+
 Motion realignment
 ------------------
 During training, ``realign_motion_with_humanoid_on_each_step`` snaps the
-reference motion's XY to the robot's XY each step.  This only affects body
-*positions* (``mimic.future_pos``).  The actor obs
-(``build_deploy_target_poses``) uses only body *rotations* + DOF
-positions/velocities — all position-invariant.  Therefore realignment is
-**not needed** for this config.  If a future config uses position-dependent
-obs (e.g. enriched target poses with ``xy_offset``), realignment must be
-added here.
+reference motion's XY to the robot's XY each step, which changes reference
+*positions* only.  Every config exported through this path so far sets it to
+False, so there is nothing to replicate here.  If you export a checkpoint
+trained with it True whose policy also reads reference positions, add
+realignment to this runner first.
 
 MuJoCo model setup
 -------------------
@@ -138,13 +155,15 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from deployment.state_utils import (
-    mujoco_wxyz_to_xyzw,
-    compute_anchor_rot_np,
-    compute_yaw_offset_np,
-    apply_heading_offset_np,
-)
 from deployment.motion_utils import MotionPlayer
+from deployment.state_utils import mujoco_wxyz_to_xyzw, quat_rotate_np
+from deployment.tracker_inputs import (
+    align_future_motion_refs,
+    build_tracker_onnx_inputs,
+    compute_odom_disp_start,
+    get_tracker_input_requirements,
+    init_tracker_alignment,
+)
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
@@ -340,6 +359,7 @@ def read_robot_state(data, anchor_body_index: int, root_body_index: int = 0):
     # xquat provides FK-computed orientations for all bodies.
     body_rot_wxyz = data.xquat[1:].copy()          # [num_bodies, 4] wxyz
     body_rot = mujoco_wxyz_to_xyzw(body_rot_wxyz)  # [num_bodies, 4] xyzw
+    body_pos = data.xpos[1:].copy().astype(np.float32)  # [num_bodies, 3]
 
     # For the root body, prefer the canonical free-joint quaternion from qpos
     # (matches robojudo's base_quat path and avoids any FK rounding).
@@ -353,6 +373,7 @@ def read_robot_state(data, anchor_body_index: int, root_body_index: int = 0):
     return {
         "dof_pos":            data.qpos[7:].copy().astype(np.float32),  # [num_dofs]
         "dof_vel":            data.qvel[6:].copy().astype(np.float32),  # [num_dofs]
+        "body_pos":           body_pos,
         "body_rot":           body_rot.astype(np.float32),               # [nb, 4]
         "root_local_ang_vel": root_local_ang_vel,                        # [3]
     }
@@ -381,63 +402,6 @@ def set_initial_pose(model, data, motion_player: MotionPlayer) -> None:
 
 
 # ---------------------------------------------------------------------------
-# ONNX inference
-# ---------------------------------------------------------------------------
-
-
-def build_onnx_inputs(
-    robot_state: dict,
-    future_refs: dict,
-    onnx_name_to_key: dict,
-    anchor_body_index: int,
-    num_dofs: int,
-    prev_actions: np.ndarray | None = None,
-) -> dict:
-    """Assemble ONNX input dict from raw MuJoCo state + motion futures.
-
-    Maps semantic context keys to NumPy arrays with the batch dimension
-    (size 1) added.
-    """
-    dof_pos = robot_state["dof_pos"]                      # [num_dofs]
-    dof_vel = robot_state["dof_vel"]                      # [num_dofs]
-    body_rot = robot_state["body_rot"]                    # [nb, 4]
-    root_local_ang_vel = robot_state["root_local_ang_vel"]  # [3]
-
-    # Anchor rotation: works for any anchor body (pelvis, torso, etc.)
-    anchor_rot = compute_anchor_rot_np(body_rot, anchor_body_index)  # [4]
-
-    # Historical actions (previous step's raw actions); zero on first step.
-    if prev_actions is None:
-        prev_actions = np.zeros(num_dofs, dtype=np.float32)
-
-    # Future anchor rotation: extract anchor body from full future body rots.
-    future_anchor_rot = future_refs["body_rot"][:, anchor_body_index, :]  # [nsteps, 4]
-
-    # Build a lookup from semantic key -> array[with batch dim]
-    key_to_array = {
-        "current.dof_pos":             dof_pos[None],                # [1, ndofs]
-        "current.dof_vel":             dof_vel[None],                # [1, ndofs]
-        "current.anchor_rot":          anchor_rot[None],             # [1, 4]
-        "current.root_local_ang_vel":  root_local_ang_vel[None],     # [1, 3]
-        "historical.processed_actions": prev_actions[None, None],    # [1, 1, ndofs]
-        # Future references: [n_steps, ndofs/nbodies/4] -> [1, n_steps, ...]
-        "mimic.future_anchor_rot": future_anchor_rot[None],          # [1, nsteps, 4]
-        "mimic.future_rot":     future_refs["body_rot"][None],       # [1, nsteps, nb, 4]
-        "mimic.future_dof_pos": future_refs["dof_pos"][None],        # [1, nsteps, ndofs]
-        "mimic.future_dof_vel": future_refs["dof_vel"][None],        # [1, nsteps, ndofs]
-    }
-
-    onnx_inputs: dict[str, np.ndarray] = {}
-    for onnx_name, sem_key in onnx_name_to_key.items():
-        if sem_key in key_to_array:
-            onnx_inputs[onnx_name] = key_to_array[sem_key].astype(np.float32)
-        else:
-            log.warning(f"No value for ONNX input '{onnx_name}' (key='{sem_key}')")
-
-    return onnx_inputs
-
-
-# ---------------------------------------------------------------------------
 # Main loop
 # ---------------------------------------------------------------------------
 
@@ -445,11 +409,17 @@ def build_onnx_inputs(
 def run(
     onnx_path: str,
     motion_file: str,
+    motion_index: int = 0,
     cache_motion: bool = False,
     num_loops: int = 1,
     render: bool = False,
     realtime: bool = True,
     action_ema_alpha: float | None = None,
+    synthetic_odom_corruption: bool = False,
+    odom_scale_range: tuple[float, float] = (0.7, 1.3),
+    odom_yaw_range_deg: float = 6.0,
+    odom_log_noise_std: float = 0.12,
+    odom_soft_threshold: float = 0.15,
 ) -> None:
     """Run the tracker policy in a MuJoCo simulation loop.
 
@@ -459,6 +429,10 @@ def run(
         Path to the exported ``unified_pipeline.onnx``.
     motion_file:
         Path to a ProtoMotions ``.pt`` motion file (raw or cached).
+    motion_index:
+        Which clip to play from a multi-motion library. Lets a packaged set such
+        as ``g1_bones_seed_mini.pt`` be replayed clip by clip without extracting
+        single-motion files first. Matches RoboJuDo's ``--motion-index``.
     cache_motion:
         If True and *motion_file* is a raw ProtoMotions file, write a
         pre-resampled cache next to the input file after loading.
@@ -499,13 +473,13 @@ def run(
     control_dt        = timing["control_dt"]
     decimation        = timing["decimation"]
     future_step_indices = motion_meta["future_step_indices"]
-    num_future_steps    = len(future_step_indices)
     stiffness           = control["stiffness"]
     damping             = control["damping"]
     pd_target_max_accel = control.get("pd_target_max_accel")
     if action_ema_alpha is None:
         action_ema_alpha = control.get("action_ema_alpha", 1.0)
     onnx_name_to_key    = runtime["onnx_name_to_in_key"]
+    requirements = get_tracker_input_requirements(onnx_name_to_key)
     # onnx_out_names are read from the session directly (actual_out_names)
 
     anchor_body_name = robot_meta.get("anchor_body_name", f"body_{anchor_body_index}")
@@ -520,7 +494,11 @@ def run(
     )
     log.info(f"control_dt={control_dt}s, decimation={decimation}")
     log.info(f"Future steps: {future_step_indices}")
-
+    if requirements.needs_spatial_start:
+        log.info(
+            "Odom input enabled"
+            + (" with synthetic corruption" if synthetic_odom_corruption else "")
+        )
     # ------------------------------------------------------------------
     # Load ONNX session
     # ------------------------------------------------------------------
@@ -546,15 +524,19 @@ def run(
     # ------------------------------------------------------------------
     # Load motion
     # ------------------------------------------------------------------
-    player = MotionPlayer(motion_file, control_dt=control_dt)
+    player = MotionPlayer(motion_file, motion_index=motion_index, control_dt=control_dt)
 
     if cache_motion:
         motion_p = Path(motion_file)
-        cache_p  = motion_p.parent / (motion_p.stem + ".50fps.pt")
+        # The index goes in the filename: a cache holds one clip, so without it
+        # clip 5 would silently overwrite clip 0's cache and every later run
+        # would replay the wrong motion.
+        suffix = ".50fps.pt" if motion_index == 0 else f".m{motion_index}.50fps.pt"
+        cache_p = motion_p.parent / (motion_p.stem + suffix)
         # If the parent dir is not writable, write next to the ONNX model instead
         if not os.access(str(cache_p.parent), os.W_OK):
             onnx_dir = Path(onnx_path).parent
-            cache_p  = onnx_dir / (motion_p.stem + ".50fps.pt")
+            cache_p = onnx_dir / (motion_p.stem + suffix)
         if not cache_p.exists():
             player.cache_to_file(str(cache_p))
         else:
@@ -615,14 +597,15 @@ def run(
     #
     # During training, ``realign_motion_with_humanoid_on_each_step=True``
     # snaps the reference motion's XY position to the robot's current XY
-    # each step.  This only affects ``mimic.future_pos`` (body positions).
-    # The actor's ``build_deploy_target_poses`` obs function uses only
-    # body *rotations* + DOF positions/velocities -- all of which are
-    # position-invariant.  Therefore realignment does NOT affect the ONNX
-    # inputs for this config and is not implemented here.
+    # each step.  That changes reference *positions* only, so it matters
+    # here exactly when ``requirements.needs_reference_positions`` is True.
+    # It is NOT implemented in this runner.
     #
-    # If a future config uses position-dependent obs (e.g., enriched
-    # target poses with xy_offset), realignment must be added.
+    # Every config exported through this path so far sets it to False (the
+    # baked-FK trackers included), so there is nothing to replicate.  If you
+    # export a checkpoint trained with it True whose policy also reads
+    # reference positions, add realignment here first -- otherwise the
+    # reference travel the policy sees at deploy will not match training.
     # ------------------------------------------------------------------
 
     # ------------------------------------------------------------------
@@ -658,7 +641,17 @@ def run(
         prev_prev_pd = None
         ema_prev_targets = None
         prev_actions = None
-        heading_offset = None
+        alignment = None
+        motion_anchor_start = player.get_state_at_frame(0)["body_pos"][anchor_body_index]
+        odom_scale = 1.0
+        odom_yaw_cos_sin = np.array([1.0, 0.0], dtype=np.float32)
+        if synthetic_odom_corruption:
+            from protomotions.utils.odom_corruption import sample_odom_params_np
+
+            odom_scale, odom_yaw_cos_sin = sample_odom_params_np(
+                scale_range=odom_scale_range,
+                yaw_range_deg=odom_yaw_range_deg,
+            )
         loop_wall_start = time.perf_counter()
 
         for frame_idx in range(player.total_frames):
@@ -667,28 +660,84 @@ def run(
             # ---- read robot state ----
             robot_state = read_robot_state(data, anchor_body_index, root_body_index)
 
-            # ---- compute heading offset on first step ----
-            if heading_offset is None:
+            # ---- compute spatial alignment on first step ----
+            if alignment is None:
                 robot_anchor_rot = robot_state["body_rot"][anchor_body_index]
                 motion_anchor_rot = player.get_state_at_frame(0)["body_rot"][anchor_body_index]
-                heading_offset = compute_yaw_offset_np(robot_anchor_rot, motion_anchor_rot)
+                alignment = init_tracker_alignment(
+                    robot_anchor_pos=robot_state["body_pos"][anchor_body_index],
+                    robot_anchor_rot=robot_anchor_rot,
+                    motion_anchor_pos=motion_anchor_start,
+                    motion_anchor_rot=motion_anchor_rot,
+                )
 
             # ---- get future motion references ----
             future_refs = player.get_future_references(frame_idx, future_step_indices)
 
-            # ---- apply heading alignment to future body rotations ----
-            future_refs["body_rot"] = apply_heading_offset_np(
-                heading_offset, future_refs["body_rot"]
-            )
+            future_refs = align_future_motion_refs(future_refs, alignment)
+
+            odom_disp_start = None
+            if requirements.odom_from_start or requirements.odom_start_xy:
+                corruption_fn = None
+                if synthetic_odom_corruption:
+                    from protomotions.utils.odom_corruption import apply_odom_corruption_np
+
+                    def corruption_fn(xy):
+                        return apply_odom_corruption_np(
+                            xy,
+                            odom_scale,
+                            odom_yaw_cos_sin,
+                            log_noise_std=odom_log_noise_std,
+                            soft_threshold=odom_soft_threshold,
+                        )
+
+                odom_disp_start = compute_odom_disp_start(
+                    robot_state["body_pos"][anchor_body_index, :2],
+                    alignment,
+                    corruption_fn=corruption_fn,
+                )
+
+            # ---- current-step reference position, aligned to the robot's start
+            # frame (same alignment as the future refs above).
+            # The baked-FK graph derives the odometer offset internally and only
+            # needs the reference ANCHOR (mimic.ref_anchor_pos). The full body
+            # array is computed only for observations that genuinely read every
+            # reference body.
+            ref_rigid_body_pos = None
+            ref_anchor_pos = None
+            if requirements.ref_rigid_body_pos or requirements.ref_anchor_pos:
+                cur_ref_body_pos = player.get_state_at_frame(frame_idx)["body_pos"]
+                motion_disp = cur_ref_body_pos - alignment.motion_anchor_start_pos
+                aligned = (
+                    alignment.robot_anchor_start_pos
+                    + quat_rotate_np(alignment.heading_offset, motion_disp)
+                ).astype(np.float32)
+                if requirements.ref_rigid_body_pos:
+                    ref_rigid_body_pos = aligned
+                if requirements.ref_anchor_pos:
+                    ref_anchor_pos = aligned[anchor_body_index]
 
             # ---- build ONNX inputs ----
-            onnx_inputs = build_onnx_inputs(
-                robot_state=robot_state,
+            onnx_inputs = build_tracker_onnx_inputs(
+                onnx_input_names=actual_in_names,
+                dof_pos=robot_state["dof_pos"],
+                dof_vel=robot_state["dof_vel"],
+                anchor_rot=robot_state["body_rot"][anchor_body_index],
+                root_local_ang_vel=robot_state["root_local_ang_vel"],
                 future_refs=future_refs,
                 onnx_name_to_key=onnx_name_to_key,
                 anchor_body_index=anchor_body_index,
                 num_dofs=num_dofs,
                 prev_actions=prev_actions,
+                odom_start_xy=alignment.odom_start_xy
+                if requirements.odom_start_xy
+                else None,
+                odom_disp_start=odom_disp_start,
+                odom_start_heading_inv=alignment.odom_start_heading_inv
+                if requirements.start_heading
+                else None,
+                ref_rigid_body_pos=ref_rigid_body_pos,
+                ref_anchor_pos=ref_anchor_pos,
             )
 
             # ---- ONNX inference ----
@@ -715,7 +764,10 @@ def run(
             if use_ema:
                 if ema_prev_targets is None:
                     ema_prev_targets = pd_targets.copy()
-                pd_targets = action_ema_alpha * pd_targets + (1.0 - action_ema_alpha) * ema_prev_targets
+                pd_targets = (
+                    action_ema_alpha * pd_targets
+                    + (1.0 - action_ema_alpha) * ema_prev_targets
+                )
                 ema_prev_targets = pd_targets.copy()
 
             # ---- feedback for next step's historical.processed_actions ----
@@ -808,6 +860,13 @@ def _parse_args():
         help="Path to motion .pt file (raw ProtoMotions or pre-cached)",
     )
     p.add_argument(
+        "--motion-index",
+        type=int,
+        default=0,
+        help="Index of the clip within a multi-motion .pt library. Ignored for "
+        "single-clip files and for pre-cached motions, which hold one clip.",
+    )
+    p.add_argument(
         "--cache-motion",
         action="store_true",
         default=False,
@@ -843,6 +902,38 @@ def _parse_args():
             "(control.action_ema_alpha). 1.0 = no filtering, lower = more smoothing."
         ),
     )
+    p.add_argument(
+        "--synthetic-odom-corruption",
+        action="store_true",
+        default=False,
+        help="Apply training-style synthetic odom corruption to clean MuJoCo odom.",
+    )
+    p.add_argument(
+        "--odom-scale-range",
+        type=float,
+        nargs=2,
+        default=(0.7, 1.3),
+        metavar=("LO", "HI"),
+        help="Synthetic odom Uniform scale range.",
+    )
+    p.add_argument(
+        "--odom-yaw-range-deg",
+        type=float,
+        default=6.0,
+        help="Synthetic odom yaw-bias half-range in degrees.",
+    )
+    p.add_argument(
+        "--odom-log-noise-std",
+        type=float,
+        default=0.12,
+        help="Synthetic odom proportional log-noise std.",
+    )
+    p.add_argument(
+        "--odom-soft-threshold",
+        type=float,
+        default=0.15,
+        help="Synthetic odom noise soft threshold in metres.",
+    )
     return p.parse_args()
 
 
@@ -853,11 +944,17 @@ if __name__ == "__main__":
     run(
         onnx_path=args.onnx,
         motion_file=args.motion,
+        motion_index=args.motion_index,
         cache_motion=args.cache_motion,
         num_loops=num_loops,
         render=args.render,
         realtime=not args.no_realtime,
         action_ema_alpha=args.action_ema_alpha,
+        synthetic_odom_corruption=args.synthetic_odom_corruption,
+        odom_scale_range=tuple(args.odom_scale_range),
+        odom_yaw_range_deg=args.odom_yaw_range_deg,
+        odom_log_noise_std=args.odom_log_noise_std,
+        odom_soft_threshold=args.odom_soft_threshold,
     )
     # Force clean exit — avoids GLXBadContext segfault from MuJoCo's
     # atexit GL context teardown on some Linux drivers.

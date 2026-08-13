@@ -78,13 +78,11 @@ def test_gpc_peft_modules_are_in_api_reference_toctrees():
 
 def test_release_legal_metadata_is_current():
     conf_text = (REPO_ROOT / "docs/source/conf.py").read_text()
-    create_video_lines = (REPO_ROOT / "scripts/create_video.sh").read_text().splitlines()
     legal_text = LEGAL_NOTICE.read_text()
 
     assert 'copyright = "2025-2026, NVIDIA CORPORATION & AFFILIATES"' in conf_text
     assert 'author = "NVIDIA CORPORATION & AFFILIATES"' in conf_text
     assert "ProtoMotions Developers" not in conf_text
-    assert create_video_lines[1:3] == CANONICAL_SPDX
     assert "- protomotions/data/assets/mesh/smpl/" in legal_text
 
 
@@ -250,6 +248,23 @@ def test_public_release_surfaces_do_not_reference_nonportable_infrastructure():
 
     assert not (REPO_ROOT / "Dockerfile.isaaclab").exists()
     assert "omniverse" + "://" not in terrain_material
+
+
+def test_packaged_motion_metadata_has_no_private_source_paths():
+    """Packed public motions must not expose internal dataset provenance."""
+
+    private_markers = (
+        b"/lustre/",
+        b"/scratch/",
+        b"/home/",
+        b"gitlab-master",
+        b"protomotions-recovery",
+        b"@nvidia.com",
+    )
+    motion_dir = REPO_ROOT / "data/motion_for_trackers"
+    for motion_path in motion_dir.glob("*.pt"):
+        data = motion_path.read_bytes()
+        assert not any(marker in data for marker in private_markers), motion_path
 
 
 def test_g1_deployment_docs_match_public_script_contract():

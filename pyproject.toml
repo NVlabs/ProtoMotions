@@ -75,23 +75,28 @@ newton = [
   "dm-control==1.0.37",
   "mujoco==3.5.0",
   "newton[examples]==1.0.0",
+  "warp-lang==1.12.0",
+  "mujoco-warp==3.5.0.2",
+  "newton-actuators==0.1.0",
   "onnxruntime>=1.17",
   "openmesh==1.2.1",
   "tensordict==0.9.0",
   "wandb==0.23.0",
 ]
 isaacgym = []
-# The platform markers below are retained (unlike the python_version markers):
-# Isaac Sim publishes Linux x86_64 wheels only, and keeping them lets `uv lock`
-# resolve on non-Linux machines instead of hard-failing the whole lockfile.
+# Install the pinned IsaacLab source checkout first, as documented in
+# installation.rst. These constraints prevent ProtoMotions from silently
+# downgrading that environment to the incompatible IsaacLab 2 / Isaac Sim 5
+# stack. Platform markers remain because Isaac Sim publishes Linux x86_64
+# wheels only.
 isaaclab = [
-  "isaaclab[all,isaacsim]==2.3.2.post1; sys_platform == 'linux' and platform_machine == 'x86_64'",
-  "isaacsim[all]==5.1.0.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "isaaclab==12.0.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "isaacsim[all,extscache]==6.0.0.1; sys_platform == 'linux' and platform_machine == 'x86_64'",
   "onnxruntime>=1.17",
   "tensordict==0.9.0",
-  "torch==2.7.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
-  "torchaudio==2.7.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
-  "torchvision==0.22.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "torch>=2.11,<2.12; sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "torchaudio>=2.11,<2.12; sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "torchvision>=0.26,<0.27; sys_platform == 'linux' and platform_machine == 'x86_64'",
   "wandb==0.23.0",
 ]
 genesis = [

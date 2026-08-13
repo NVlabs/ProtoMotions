@@ -260,3 +260,36 @@ def contact_termination(
         progress_buf=progress_buf,
     )
 
+
+
+def joint_limit_termination(
+    dof_pos: Tensor,
+    dof_limits_lower: Tensor,
+    dof_limits_upper: Tensor,
+    max_violation: float = 1.0,
+) -> Tensor:
+    """End the episode once joints are driven far past their limits.
+
+    A humanoid whose joints are a radian outside their range is not in a state
+    worth continuing to simulate or to learn from -- it is usually the first
+    visible sign of the simulator diverging. Left alone the episode keeps
+    running, the soft-limit penalty grows without bound, and the resulting
+    reward sets the reward-normalizer scale for many epochs afterwards.
+
+    Terminating instead keeps the damage inside one episode: the environment
+    resets, and the penalty for the steps that did happen stays small.
+
+    Args:
+        dof_pos: Joint positions [num_envs, num_dofs].
+        dof_limits_lower: Lower joint limits [num_dofs].
+        dof_limits_upper: Upper joint limits [num_dofs].
+        max_violation: Radians past a limit, on any single joint, that ends the
+            episode. Per-joint rather than summed so one badly diverged joint is
+            caught without needing the whole body to be broken.
+
+    Returns:
+        Boolean tensor [num_envs].
+    """
+    out_of_limits = -(dof_pos - dof_limits_lower).clip(max=0.0)
+    out_of_limits += (dof_pos - dof_limits_upper).clip(min=0.0)
+    return out_of_limits.max(dim=-1).values > max_violation

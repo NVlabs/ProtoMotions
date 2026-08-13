@@ -5,8 +5,11 @@ __pycache__/
 *.so
 .Python
 
-# Virtual environments
+# Virtual environments (no Dockerfile COPYs these; keep them out of the build context)
 env_isaaclab/
+env_isaaclab3/
+.venv_newton/
+.venv/
 venv/
 ENV/
 env/
@@ -49,4 +52,14 @@ Thumbs.db
 
 # Newton source (if not needed)
 newton_source/
+
+# Large data + local scratch clones (Dockerfiles only COPY requirements_*.txt, never these)
+data/
+retargeted_output_motions/
+robojudo/
+whole_body_tracking/
+MUJOCO_LOG.TXT
+*.sqsh
+*.pt
+*.motion
 

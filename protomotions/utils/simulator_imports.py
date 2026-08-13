@@ -9,6 +9,51 @@ before torch. This module provides a utility to handle that import order correct
 """
 
 
+_MINIMUM_ISAACLAB_VERSION = "12.0.0"
+_ISAACLAB_PIN = "4ecd0b036da19ff6ad2bb4d621f886b63e9f6db8"
+
+
+def _set_openblas_single_thread() -> None:
+    """Prevent OpenBLAS thread shutdown crashes when Isaac Sim's Kit kernel forks.
+
+    scipy can bundle OpenBLAS whose thread shutdown handler segfaults during
+    fork(). Single-thread mode avoids that failure mode.
+    """
+    import os
+
+    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+
+
+def _validate_isaaclab_version() -> None:
+    """Fail early when the installed IsaacLab predates the supported API."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    from packaging.version import InvalidVersion, Version
+
+    try:
+        installed_version = version("isaaclab")
+    except PackageNotFoundError as exc:
+        raise RuntimeError(
+            "IsaacLab is not installed. ProtoMotions requires "
+            f"isaaclab>={_MINIMUM_ISAACLAB_VERSION} from commit {_ISAACLAB_PIN}."
+        ) from exc
+
+    try:
+        is_supported = Version(installed_version) >= Version(
+            _MINIMUM_ISAACLAB_VERSION
+        )
+    except InvalidVersion as exc:
+        raise RuntimeError(
+            f"Cannot validate unsupported IsaacLab version {installed_version!r}."
+        ) from exc
+
+    if not is_supported:
+        raise RuntimeError(
+            f"ProtoMotions requires isaaclab>={_MINIMUM_ISAACLAB_VERSION} "
+            f"from commit {_ISAACLAB_PIN}; found {installed_version}."
+        )
+
+
 def import_simulator_before_torch(simulator_name):
     """
     Conditionally import isaacgym or isaaclab based on the simulator name.
@@ -39,6 +84,8 @@ def import_simulator_before_torch(simulator_name):
 
         return None
     elif simulator_name == "isaaclab":
+        _set_openblas_single_thread()
+        _validate_isaaclab_version()
         # Import isaaclab base module to ensure it's loaded before torch
         from isaaclab.app import AppLauncher
 

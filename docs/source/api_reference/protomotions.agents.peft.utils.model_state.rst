@@ -1,5 +1,5 @@
-protomotions.agents.peft.utils.model\_state module
-==================================================
+protomotions.agents.peft.utils.model_state module
+=================================================
 
 .. automodule:: protomotions.agents.peft.utils.model_state
    :members:

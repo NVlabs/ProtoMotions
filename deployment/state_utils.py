@@ -65,17 +65,26 @@ from __future__ import annotations
 import numpy as np
 
 __all__ = [
+    "G1_PELVIS_TO_IMU",
     # NumPy versions -- used in cached-mode deploy (no PyTorch computation)
     "mujoco_wxyz_to_xyzw",
+    "quat_rotate_np",
     "compute_anchor_rot_np",
     "compute_root_local_ang_vel_np",
+    "correct_imu_pos_to_pelvis_np",
     # Heading alignment (NumPy)
+    "compute_heading_quat_inv_np",
     "compute_yaw_offset_np",
     "apply_heading_offset_np",
+    "quat_conjugate_np",
     # PyTorch versions -- used during ONNX export / first-run deploy
     "compute_anchor_rot",
     "compute_root_local_ang_vel",
 ]
+
+# G1 pelvis-origin -> pelvis-IMU-site translation in the pelvis frame, from
+# `g1_holo_compat.xml` site `imu_in_pelvis`.
+G1_PELVIS_TO_IMU = np.array([0.04525, 0.0, -0.08339], dtype=np.float32)
 
 # ---------------------------------------------------------------------------
 # NumPy helpers (no PyTorch required)
@@ -113,6 +122,46 @@ def compute_anchor_rot_np(
         Anchor body orientation, shape ``[4,]`` (xyzw).
     """
     return rigid_body_rot[anchor_body_index]
+
+
+def quat_rotate_np(q_xyzw: np.ndarray, v: np.ndarray) -> np.ndarray:
+    """Rotate vector(s) by quaternion(s), using xyzw convention.
+
+    Args:
+        q_xyzw: Unit quaternion(s), shape ``(..., 4)``.
+        v: Vector(s), shape ``(..., 3)``. NumPy broadcasting is supported.
+
+    Returns:
+        Rotated vector(s), same broadcast shape as ``v``.
+    """
+    q_w = q_xyzw[..., 3:4]
+    q_vec = q_xyzw[..., :3]
+    a = v * (2.0 * q_w**2 - 1.0)
+    b = np.cross(q_vec, v) * q_w * 2.0
+    c = q_vec * np.sum(q_vec * v, axis=-1, keepdims=True) * 2.0
+    return (a + b + c).astype(np.float32)
+
+
+def correct_imu_pos_to_pelvis_np(
+    imu_pos: np.ndarray,
+    pelvis_quat: np.ndarray,
+    pelvis_to_imu: np.ndarray = G1_PELVIS_TO_IMU,
+    enabled: bool = True,
+) -> np.ndarray:
+    """Convert a G1 pelvis-IMU world position to the pelvis-origin position.
+
+    Unitree odometry is believed to report the state estimator's IMU point.  FK
+    expects the MuJoCo free-joint body origin (`pelvis`), so subtract the
+    rotated static pelvis->IMU offset when enabled.
+    """
+    imu_pos = np.asarray(imu_pos, dtype=np.float32)
+    if not enabled:
+        return imu_pos.copy()
+    offset_world = quat_rotate_np(
+        np.asarray(pelvis_quat, dtype=np.float32),
+        np.asarray(pelvis_to_imu, dtype=np.float32),
+    )
+    return (imu_pos - offset_world).astype(np.float32)
 
 
 def compute_root_local_ang_vel_np(
@@ -227,6 +276,21 @@ def _quat_conjugate_np(q_xyzw: np.ndarray) -> np.ndarray:
     result = q_xyzw.copy()
     result[..., :3] *= -1.0
     return result
+
+
+def compute_heading_quat_inv_np(q_xyzw: np.ndarray) -> np.ndarray:
+    """Extract inverse yaw-only heading quaternion from a full orientation."""
+    return _quat_conjugate_np(_extract_yaw_quat_np(q_xyzw))
+
+
+def quat_conjugate_np(q_xyzw: np.ndarray) -> np.ndarray:
+    """Public conjugate (inverse for unit quats) of an xyzw quaternion.
+
+    Used by the deploy ONNX input assembly to invert the captured
+    ``odom_start_heading_inv`` back to the forward start-heading quaternion,
+    mirroring ``rotations.quat_conjugate`` in ``BaseEnv._build_context``.
+    """
+    return _quat_conjugate_np(np.asarray(q_xyzw, dtype=np.float32))
 
 
 def compute_yaw_offset_np(

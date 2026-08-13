@@ -10,6 +10,7 @@ from tensordict import TensorDict
 
 from protomotions.agents.base_agent import agent as base_agent_module
 from protomotions.agents.base_agent.agent import BaseAgent
+from protomotions.components.motion_lib import MotionFileSwitchMode
 from protomotions.agents.utils.metering import TensorAverageMeterDict
 
 
@@ -67,6 +68,12 @@ class _FitModel(torch.nn.Module):
 
     def experience_buffer_keys(self):
         return ["action", "value"]
+
+    def register_preprocessed_experience_buffer_keys(self, experience_buffer):
+        pass
+
+    def pre_process_experience_buffer(self, experience_buffer):
+        pass
 
     def reset_rollout_context(self, env_ids=None):
         self.reset_calls.append(
@@ -163,6 +170,10 @@ def _fit_agent(calls, buffer, *, max_epochs=1):
     agent._should_stop = False
     agent.fabric = _Fabric()
     agent.env = _FitEnv()
+    agent.motion_shard_cycle = 0
+    agent.motion_lib = SimpleNamespace(
+        config=SimpleNamespace(motion_file_switch_mode=MotionFileSwitchMode.FIXED)
+    )
     agent.model = _FitModel()
     agent.evaluator = _Evaluator(calls)
     agent.config = SimpleNamespace(
@@ -327,3 +338,33 @@ def test_base_agent_fit_skip_update_branch_preprocesses_and_stops_cleanly(
     assert agent.fabric.calls[-1] == ("on_training_stop", 1)
     assert calls[-1] == ("save", "last.ckpt", False)
     assert ("time_report",) not in calls
+
+
+def test_checkpoint_evaluation_does_not_advance_a_scheduled_motion_shard(
+    monkeypatch,
+):
+    calls = []
+    monkeypatch.setattr(base_agent_module, "ExperienceBuffer", _FitExperienceBuffer)
+    monkeypatch.setattr(base_agent_module, "track", lambda iterable, description=None: iterable)
+    monkeypatch.setattr(
+        base_agent_module,
+        "aggregate_scalar_metrics",
+        lambda metrics, fabric, weight=1: dict(metrics),
+    )
+    agent = _fit_agent(calls, buffer=None)
+    agent.just_loaded_checkpoint_should_evaluate = True
+    agent._should_stop = True
+    agent.config.save_epoch_checkpoint_every = None
+    agent.config.save_last_checkpoint_every = 10
+    agent.config.max_episode_length_manager = None
+
+    monkeypatch.setattr(
+        base_agent_module,
+        "advance_motion_shard_after_evaluation",
+        lambda *args, **kwargs: calls.append(("unexpected_shard_advance",)),
+    )
+
+    BaseAgent.fit(agent)
+
+    assert ("evaluate",) in calls
+    assert ("unexpected_shard_advance",) not in calls

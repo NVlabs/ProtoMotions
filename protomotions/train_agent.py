@@ -581,6 +581,36 @@ def apply_training_iteration_limit(args, agent_config):
         agent_config.training_max_iterations = max_iterations
 
 
+def load_motion_shard_cycle(checkpoint_path: Path) -> int:
+    """Read the required packaged-motion shard cycle from a training checkpoint."""
+    state_dict = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    motion_shard_cycle = state_dict["motion_shard_cycle"]
+    if type(motion_shard_cycle) is not int:
+        raise TypeError("motion_shard_cycle must be a plain Python int")
+    return motion_shard_cycle
+
+
+def resolve_resume_motion_shard_cycle(fabric, checkpoint_path: Path, motion_lib_config) -> int:
+    """Restore a switching run's shard cycle before constructing components."""
+    from protomotions.agents.utils.distributed import raise_if_any_rank_failed
+    from protomotions.components.motion_lib import MotionFileSwitchMode
+
+    if motion_lib_config.motion_file_switch_mode is MotionFileSwitchMode.FIXED:
+        return 0
+
+    motion_shard_cycle = 0
+    load_error = None
+    if fabric.global_rank == 0:
+        try:
+            motion_shard_cycle = load_motion_shard_cycle(checkpoint_path)
+        except Exception as error:
+            load_error = error
+    raise_if_any_rank_failed(
+        load_error, "Motion shard cycle checkpoint load", fabric.device
+    )
+    return fabric.broadcast(motion_shard_cycle)
+
+
 def main():
     global parser, args
     torch.set_float32_matmul_precision("high")
@@ -626,6 +656,7 @@ def main():
         motion_lib_config = resolved_configs["motion_lib"]
         env_config = resolved_configs["env"]
         agent_config = resolved_configs["agent"]
+        motion_lib_config.validate()
 
         args.checkpoint = checkpoint_path
         experiment_module = (
@@ -720,6 +751,14 @@ def main():
                     scene_lib_config=scene_lib_config,
                 )
 
+        motion_lib_config.validate()
+
+    # IsaacLab 3 uses xyzw quaternions. Old resolved configs may still carry
+    # the IsaacLab 2 wxyz flag, including true resume checkpoints.
+    if args.simulator == "isaaclab" and hasattr(simulator_config, "w_last") and not simulator_config.w_last:
+        log.info("Overriding w_last=False -> True for IsaacLab 3 (xyzw quaternions)")
+        simulator_config.w_last = True
+
     # ===================================================================
     # 2b. Create Config Only Mode: Save configs and exit early
     # ===================================================================
@@ -778,6 +817,8 @@ def main():
     simulator_extra_params = {}
     if args.simulator == "isaaclab":
         app_launcher_flags = {"headless": args.headless, "device": str(fabric.device)}
+        if not args.headless:
+            app_launcher_flags["visualizer"] = ["kit"]
         if fabric.world_size > 1:
             # This is needed when running with SLURM.
             # When launching multi-GPU/node jobs without SLURM, or differently, maybe this needs to be adapted accordingly.
@@ -798,7 +839,11 @@ def main():
         import omni.log
 
         _omni_log = omni.log.get_log()
-        for _channel in ["omni.physx.plugin", "isaaclab.sim.utils"]:
+        for _channel in [
+            "omni.physx.plugin",
+            "omni.physx.tensors.plugin",
+            "isaaclab.sim.utils",
+        ]:
             _omni_log.set_channel_enabled(
                 _channel, False, omni.log.SettingBehavior.OVERRIDE
             )
@@ -807,6 +852,12 @@ def main():
         rank = fabric.global_rank if fabric.global_rank is not None else 0
         fabric.seed_everything(args.seed + rank)
         seeding(args.seed + rank, torch_deterministic=args.torch_deterministic)
+
+    motion_shard_cycle = 0
+    if mode == "resume":
+        motion_shard_cycle = resolve_resume_motion_shard_cycle(
+            fabric, checkpoint_path, motion_lib_config
+        )
 
     # ===================================================================
     # 5. Create Environment and Agent
@@ -853,6 +904,7 @@ def main():
         robot_config=robot_config,
         device=fabric.device,
         save_dir=save_dir_for_weights,
+        motion_shard_cycle=motion_shard_cycle,
         **simulator_extra_params,  # simulation_app for IsaacLab
     )
 

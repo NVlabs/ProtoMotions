@@ -127,13 +127,13 @@ class FrictionDomainRandomizationConfig:
         default=10,
         metadata={"help": "Number of friction buckets for environments.", "min": 1},
     )
-    static_friction_range: Tuple[float, float] = field(
+    static_friction_range: Optional[Tuple[float, float]] = field(
         default=(0.5, 1.5), metadata={"help": "Range (min, max) for static friction."}
     )
-    dynamic_friction_range: Tuple[float, float] = field(
+    dynamic_friction_range: Optional[Tuple[float, float]] = field(
         default=(0.5, 1.5), metadata={"help": "Range (min, max) for dynamic friction."}
     )
-    restitution_range: Tuple[float, float] = field(
+    restitution_range: Optional[Tuple[float, float]] = field(
         default=(0.0, 0.1), metadata={"help": "Range (min, max) for restitution."}
     )
     body_names: Optional[List[str]] = field(
@@ -554,6 +554,13 @@ class SimulatorConfig:
     w_last: bool = field(
         default=None,
         metadata={"help": "Quaternion format: True for xyzw, False for wxyz."},
+    )
+    default_robot_friction: float = field(
+        default=1.0,
+        metadata={
+            "help": "Friction coefficient assigned to character collision shapes.",
+            "min": 0.0,
+        },
     )
     headless: bool = field(
         default=None, metadata={"help": "Run without GUI visualization."}

@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """Discrete-prior PEFT RLFT model with AMP discriminator outputs."""
-
 from __future__ import annotations
 
 from tensordict import TensorDict

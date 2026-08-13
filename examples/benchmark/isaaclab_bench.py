@@ -33,9 +33,7 @@ import os  # noqa: E402
 # Create robot asset configuration
 robot_asset_config = RobotAssetConfig(
     asset_file_name="mjcf/h1.xml",
-    usd_asset_file_name="usd/h1.usd",
     self_collisions=False,
-    usd_bodies_root_prim_path="/World/envs/env_.*/Robot/",
 )
 
 kinematic_info = extract_kinematic_info(
@@ -94,6 +92,7 @@ override_control_info = {
 }
 
 robot_config = RobotConfig(
+    semantic_forward_axis_xy=(1.0, 0.0),
     kinematic_info=kinematic_info,
     number_of_actions=kinematic_info.num_dofs,
     common_naming_to_robot_body_names={
@@ -131,7 +130,7 @@ simulator_config = IsaacLabSimulatorConfig(
     robot=robot_config,
     num_envs=4096,  # Number of parallel environments
     experiment_name="h1_isaaclab_example",
-    w_last=False,  # IsaacLab uses wxyz quaternions
+    w_last=True,  # IsaacLab 3 uses xyzw quaternions
 )
 
 device = torch.device("cuda")

@@ -19,6 +19,7 @@ from protomotions.envs.motion_manager.motion_manager import MotionManager
 from protomotions.simulator.base_simulator.simulator_state import RobotState
 from protomotions.utils import component_builder
 from protomotions.utils.hydra_replacement import get_class, instantiate
+from protomotions.components.motion_lib import MotionFileSwitchMode
 
 
 class _RecordingControl(ControlComponent):
@@ -123,7 +124,9 @@ def test_control_manager_orchestrates_component_lifecycle(monkeypatch):
         "second": "state-second",
     }
     assert _RecordingControl.instances[0].events[0] == ("step", None)
-    assert torch.equal(_RecordingControl.instances[1].events[1][1], torch.tensor([0, 2]))
+    assert torch.equal(
+        _RecordingControl.instances[1].events[1][1], torch.tensor([0, 2])
+    )
 
 
 def test_mimic_control_populates_context_with_clamped_future_reference_data():
@@ -169,6 +172,11 @@ def test_mimic_control_populates_context_with_clamped_future_reference_data():
         num_envs=2,
         device=torch.device("cpu"),
         dt=0.1,
+        config=SimpleNamespace(
+            observation_components={},
+            reward_components={},
+            termination_components={},
+        ),
         motion_manager=SimpleNamespace(
             motion_ids=torch.tensor([3, 5]),
             motion_times=torch.tensor([0.8, 0.25]),
@@ -187,12 +195,12 @@ def test_mimic_control_populates_context_with_clamped_future_reference_data():
 
     control.populate_context(ctx)
 
-    current_ids, current_times = motion_lib.state_queries[0]
-    future_ids, future_times = motion_lib.state_queries[1]
-    assert torch.equal(current_ids, torch.tensor([3, 5]))
-    assert torch.allclose(current_times, torch.tensor([0.8, 0.25]))
-    assert torch.equal(future_ids, torch.tensor([3, 3, 5, 5]))
-    assert torch.allclose(future_times, torch.tensor([0.9, 1.0, 0.35, 0.4]))
+    assert len(motion_lib.state_queries) == 1
+    combined_ids, combined_times = motion_lib.state_queries[0]
+    assert torch.equal(combined_ids, torch.tensor([3, 5, 3, 3, 5, 5]))
+    assert torch.allclose(
+        combined_times, torch.tensor([0.8, 0.25, 0.9, 1.0, 0.35, 0.4])
+    )
     assert torch.equal(motion_lib.length_queries[0], torch.tensor([3, 5]))
 
     assert len(offsets) == 2
@@ -211,6 +219,17 @@ def test_mimic_control_populates_context_with_clamped_future_reference_data():
         ctx.mimic.future_root_pos[:, :, :2],
         torch.tensor([[[13.0, 0.9], [13.0, 1.0]], [[25.0, 0.35], [25.0, 0.4]]]),
     )
+
+
+def test_mimic_control_caches_future_time_offsets():
+    env = SimpleNamespace(device=torch.device("cpu"), dt=0.1)
+    control = MimicControl(MimicControlConfig(future_steps=[1, 3]), env)
+
+    first = control._future_time_offsets()
+    second = control._future_time_offsets()
+
+    assert first.data_ptr() == second.data_ptr()
+    assert torch.allclose(first, torch.tensor([0.1, 0.3]))
 
 
 def test_mimic_control_int_future_steps_and_reset_bootstrap_modes():
@@ -265,8 +284,8 @@ def test_mimic_control_int_future_steps_and_reset_bootstrap_modes():
     assert torch.equal(reset_buf, done_tracks)
     assert torch.equal(terminate_buf, torch.tensor([False, False]))
     assert torch.allclose(
-        env.motion_lib.state_queries[1][1],
-        torch.tensor([0.3, 0.5, 0.6, 0.8]),
+        env.motion_lib.state_queries[0][1],
+        torch.tensor([0.1, 0.4, 0.3, 0.5, 0.6, 0.8]),
     )
     assert ctx.mimic.future_dof_pos.shape == (2, 2, 1)
 
@@ -384,11 +403,18 @@ def test_component_builder_builds_simulator_and_orchestrates_all(monkeypatch):
         "device": torch.device("cpu"),
         "extra_flag": True,
     }
-    assert component_builder.build_terrain_from_config(None, 4, torch.device("cpu")) is None
+    assert (
+        component_builder.build_terrain_from_config(None, 4, torch.device("cpu"))
+        is None
+    )
 
     calls = []
     sim_cfg = SimpleNamespace(num_envs=4)
-    motion_cfg = SimpleNamespace(motion_file=None)
+    motion_cfg = SimpleNamespace(
+        motion_file=None,
+        motion_file_switch_mode=MotionFileSwitchMode.FIXED,
+    )
+    scene_cfg = SimpleNamespace(scene_file=None)
     monkeypatch.setattr(
         component_builder,
         "build_terrain_from_config",
@@ -406,7 +432,10 @@ def test_component_builder_builds_simulator_and_orchestrates_all(monkeypatch):
     monkeypatch.setattr(
         component_builder,
         "build_motion_lib_from_config",
-        lambda cfg, device: calls.append(("motion", cfg, device)) or "motion",
+        lambda cfg, device, shard_cycle=0: calls.append(
+            ("motion", cfg, device, shard_cycle)
+        )
+        or "motion",
     )
     monkeypatch.setattr(
         component_builder,
@@ -419,12 +448,13 @@ def test_component_builder_builds_simulator_and_orchestrates_all(monkeypatch):
 
     result = component_builder.build_all_components(
         terrain_config="terrain_cfg",
-        scene_lib_config="scene_cfg",
+        scene_lib_config=scene_cfg,
         motion_lib_config=motion_cfg,
         simulator_config=sim_cfg,
         robot_config="robot_cfg",
         device=torch.device("cpu"),
         custom="value",
+        motion_shard_cycle=5,
     )
 
     assert result == {
@@ -435,8 +465,8 @@ def test_component_builder_builds_simulator_and_orchestrates_all(monkeypatch):
     }
     assert calls == [
         ("terrain", "terrain_cfg", 4, torch.device("cpu")),
-        ("scene", "scene_cfg", 4, torch.device("cpu"), "terrain", None),
-        ("motion", motion_cfg, torch.device("cpu")),
+        ("motion", motion_cfg, torch.device("cpu"), 5),
+        ("scene", scene_cfg, 4, torch.device("cpu"), "terrain", None),
         (
             "simulator",
             sim_cfg,
@@ -465,6 +495,7 @@ def test_component_builder_constructs_dependency_classes_and_scene_weights(monke
     class _MotionLib:
         def __init__(self, **kwargs):
             self.kwargs = kwargs
+            self.motion_file = kwargs["config"].motion_file
             built.append(("motion", kwargs))
 
     class _BaseEnv:
@@ -485,7 +516,9 @@ def test_component_builder_constructs_dependency_classes_and_scene_weights(monke
         sys.modules, "protomotions.components.terrains.terrain", terrain_module
     )
     monkeypatch.setitem(sys.modules, "protomotions.components.scene_lib", scene_module)
-    monkeypatch.setitem(sys.modules, "protomotions.components.motion_lib", motion_module)
+    monkeypatch.setitem(
+        sys.modules, "protomotions.components.motion_lib", motion_module
+    )
     monkeypatch.setitem(sys.modules, "protomotions.envs.base_env.env", env_module)
 
     class _Simulator:
@@ -496,7 +529,10 @@ def test_component_builder_constructs_dependency_classes_and_scene_weights(monke
     device = torch.device("cpu")
     terrain_cfg = SimpleNamespace(name="terrain")
     scene_cfg = SimpleNamespace(scene_file=None, inline_scenes=None)
-    motion_cfg = SimpleNamespace(motion_file="motions.yaml")
+    motion_cfg = SimpleNamespace(
+        motion_file="motions.yaml",
+        motion_file_switch_mode=MotionFileSwitchMode.FIXED,
+    )
     simulator_cfg = SimpleNamespace(num_envs=2, _target_="unused.Simulator")
 
     result = component_builder.build_all_components(
@@ -514,12 +550,182 @@ def test_component_builder_constructs_dependency_classes_and_scene_weights(monke
     assert isinstance(result["scene_lib"], _SceneLib)
     assert isinstance(result["motion_lib"], _MotionLib)
     assert isinstance(result["simulator"], _Simulator)
-    assert built[0] == ("terrain", {"config": terrain_cfg, "num_envs": 2, "device": device})
-    assert built[1] == ("weights", "/tmp/checkpoint", "motions.yaml", device)
-    assert built[2][0] == "scene"
-    assert built[2][1]["scene_weights"] == [0.1, 0.9]
-    assert built[2][1]["scenes"] is None
-    assert built[3] == ("motion", {"config": motion_cfg, "device": device})
+    assert built[0] == (
+        "terrain",
+        {"config": terrain_cfg, "num_envs": 2, "device": device},
+    )
+    assert built[1] == (
+        "motion",
+        {"config": motion_cfg, "device": device, "shard_cycle": 0},
+    )
+    assert built[2] == ("weights", "/tmp/checkpoint", "motions.yaml", device)
+    assert built[3][0] == "scene"
+    assert built[3][1]["scene_weights"] == [0.1, 0.9]
+    assert built[3][1]["scenes"] is None
+
+
+class _ShardBuilderScene:
+    def __init__(self, humanoid_motion_ids=None):
+        self.humanoid_motion_ids = humanoid_motion_ids
+
+    def get_humanoid_motion_ids(self):
+        return self.humanoid_motion_ids
+
+
+def _patch_shard_builder(monkeypatch, motion_lib, scene_lib, captured):
+    monkeypatch.setattr(
+        component_builder,
+        "build_terrain_from_config",
+        lambda config, num_envs, device: "terrain",
+    )
+    monkeypatch.setattr(
+        component_builder,
+        "build_motion_lib_from_config",
+        lambda config, device, shard_cycle=0: captured.setdefault(
+            "motion_cycles", []
+        ).append(shard_cycle)
+        or motion_lib,
+    )
+
+    def build_scene(config, *args):
+        captured["scene_config"] = config
+        return scene_lib
+
+    monkeypatch.setattr(component_builder, "build_scene_lib_from_config", build_scene)
+    monkeypatch.setattr(
+        component_builder,
+        "build_simulator_from_config",
+        lambda *args, **kwargs: "simulator",
+    )
+
+
+def test_component_builder_uses_selected_shard_for_paired_scene_and_weights(
+    tmp_path, monkeypatch
+):
+    scene_pattern = tmp_path / "scenes_slurmrank.pt"
+    selected_scene = tmp_path / "scenes_003.pt"
+    selected_scene.touch()
+    motion_lib = SimpleNamespace(
+        motion_file=str(tmp_path / "motions_003.pt"),
+        motion_file_shard_index=3,
+    )
+    scene_lib = _ShardBuilderScene()
+    captured = {}
+    _patch_shard_builder(monkeypatch, motion_lib, scene_lib, captured)
+
+    class _BaseEnv:
+        @staticmethod
+        def apply_motion_weights_to_scene_weights(save_dir, motion_file, device):
+            captured["weight_motion_file"] = motion_file
+            return [1.0]
+
+    env_module = types.ModuleType("protomotions.envs.base_env.env")
+    env_module.BaseEnv = _BaseEnv
+    monkeypatch.setitem(sys.modules, "protomotions.envs.base_env.env", env_module)
+    scene_config = SimpleNamespace(scene_file=str(scene_pattern), inline_scenes=None)
+    motion_config = SimpleNamespace(
+        motion_file="motions_slurmrank.pt",
+        motion_file_switch_mode=MotionFileSwitchMode.RESTART,
+    )
+
+    component_builder.build_all_components(
+        terrain_config=None,
+        scene_lib_config=scene_config,
+        motion_lib_config=motion_config,
+        simulator_config=SimpleNamespace(num_envs=1),
+        robot_config=SimpleNamespace(),
+        device=torch.device("cpu"),
+        save_dir="checkpoint",
+        motion_shard_cycle=7,
+    )
+
+    assert captured["motion_cycles"] == [7]
+    assert captured["scene_config"] is not scene_config
+    assert captured["scene_config"].scene_file == str(selected_scene)
+    assert scene_config.scene_file == str(scene_pattern)
+    assert captured["weight_motion_file"] == str(tmp_path / "motions_003.pt")
+
+
+def test_component_builder_rejects_incompatible_paired_scene_switching(monkeypatch):
+    motion_lib = SimpleNamespace(motion_file="motions_0.pt", motion_file_shard_index=0)
+    captured = {}
+    _patch_shard_builder(monkeypatch, motion_lib, _ShardBuilderScene([0]), captured)
+
+    with pytest.raises(ValueError, match="matching sharded scene file"):
+        component_builder.build_all_components(
+            terrain_config=None,
+            scene_lib_config=SimpleNamespace(scene_file="scenes.pt", inline_scenes=None),
+            motion_lib_config=SimpleNamespace(
+                motion_file_switch_mode=MotionFileSwitchMode.RESTART
+            ),
+            simulator_config=SimpleNamespace(num_envs=1),
+            robot_config=SimpleNamespace(),
+            device=torch.device("cpu"),
+        )
+
+    with pytest.raises(ValueError, match="motion-paired scenes"):
+        component_builder.build_all_components(
+            terrain_config=None,
+            scene_lib_config=SimpleNamespace(scene_file=None, inline_scenes=None),
+            motion_lib_config=SimpleNamespace(
+                motion_file_switch_mode=MotionFileSwitchMode.LIVE
+            ),
+            simulator_config=SimpleNamespace(num_envs=1),
+            robot_config=SimpleNamespace(),
+            device=torch.device("cpu"),
+        )
+
+
+def test_component_builder_rejects_live_sharded_scene_geometry(
+    tmp_path, monkeypatch
+):
+    captured = {}
+    _patch_shard_builder(
+        monkeypatch,
+        SimpleNamespace(motion_file="motions_0.pt", motion_file_shard_index=0),
+        _ShardBuilderScene(),
+        captured,
+    )
+
+    with pytest.raises(ValueError, match="cannot replace simulator scene geometry"):
+        component_builder.build_all_components(
+            terrain_config=None,
+            scene_lib_config=SimpleNamespace(
+                scene_file=str(tmp_path / "scenes_slurmrank.pt"), inline_scenes=None
+            ),
+            motion_lib_config=SimpleNamespace(
+                motion_file_switch_mode=MotionFileSwitchMode.LIVE
+            ),
+            simulator_config=SimpleNamespace(num_envs=1),
+            robot_config=SimpleNamespace(),
+            device=torch.device("cpu"),
+        )
+
+
+def test_component_builder_rejects_sharded_scene_without_selected_motion(
+    tmp_path, monkeypatch
+):
+    captured = {}
+    _patch_shard_builder(
+        monkeypatch,
+        SimpleNamespace(motion_file="motions.pt", motion_file_shard_index=None),
+        _ShardBuilderScene(),
+        captured,
+    )
+
+    with pytest.raises(ValueError, match="requires a sharded motion file"):
+        component_builder.build_all_components(
+            terrain_config=None,
+            scene_lib_config=SimpleNamespace(
+                scene_file=str(tmp_path / "scenes_slurmrank.pt"), inline_scenes=None
+            ),
+            motion_lib_config=SimpleNamespace(
+                motion_file_switch_mode=MotionFileSwitchMode.FIXED
+            ),
+            simulator_config=SimpleNamespace(num_envs=1),
+            robot_config=SimpleNamespace(),
+            device=torch.device("cpu"),
+        )
 
 
 def test_motion_manager_ignores_exclusion_file_that_disappears_after_probe(

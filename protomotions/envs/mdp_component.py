@@ -114,6 +114,7 @@ class MdpComponent:
                       These become ONNX inputs at export time.
         static_params: Compile-time constants (not from context, e.g., local_obs=True).
                        These are baked into the ONNX graph.
+        compile: Whether ComponentManager should compile the compute function.
     
     Example:
         router = MdpComponent(
@@ -134,11 +135,14 @@ class MdpComponent:
         paths = router.get_bindings_dict()  # {"a": "current.dof_pos", "b": "mimic.future_dof_pos"}
     """
     
+    compile: bool = True
+
     def __init__(
         self,
         compute_func: Callable[..., Tensor],
         dynamic_vars: Dict[str, FieldPath],
         static_params: Dict[str, Any] | None = None,
+        compile: bool = True,
     ):
         """Initialize MdpComponent.
         
@@ -146,11 +150,23 @@ class MdpComponent:
             compute_func: The pure tensor function to call.
             dynamic_vars: Maps compute_func param names to FieldPath objects (runtime-resolved).
             static_params: Compile-time constants to pass to compute_func (optional).
+            compile: Whether ComponentManager should compile the compute function.
         """
         self.compute_func = compute_func
         self.dynamic_vars = dynamic_vars
         self.static_params = static_params or {}
+        self.compile = compile
         self._device_ready = False
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state.pop("_device_ready", None)
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._device_ready = False
+
     
     def resolve_args(self, ctx: "EnvContext") -> tuple:
         """Resolve dynamic_vars from context and prepare func params.
@@ -234,6 +250,7 @@ class MdpComponent:
             "dynamic_vars": {
                 param: fp.path for param, fp in self.dynamic_vars.items()
             },
+            "compile": self.compile,
         }
         # Flatten static_params into the dict (matches old config style)
         for key, val in self.static_params.items():

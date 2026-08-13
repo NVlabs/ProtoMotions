@@ -56,6 +56,7 @@ Learn the foundation of ProtoMotions - creating a physics simulator with a G1 ro
 
    # Robot configuration with per-simulator params
    robot_cfg = RobotConfig(
+       semantic_forward_axis_xy=(1.0, 0.0),
        asset=RobotAssetConfig(asset_file_name="mjcf/g1_bm.xml", ...),
        simulation_params=SimulatorParams(
            isaacgym=IsaacGymSimParams(fps=100, decimation=2, substeps=2),

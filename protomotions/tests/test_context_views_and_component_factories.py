@@ -39,9 +39,7 @@ def _robot_state(num_envs: int = 2, num_bodies: int = 3):
         rigid_body_rot=rigid_body_rot,
         rigid_body_vel=rigid_body_vel,
         rigid_body_ang_vel=rigid_body_ang_vel,
-        rigid_body_contacts=torch.tensor(
-            [[True, False, True], [False, True, False]]
-        ),
+        rigid_body_contacts=torch.tensor([[True, False, True], [False, True, False]]),
         rigid_body_contact_forces=torch.ones(num_envs, num_bodies, 3) * 3.0,
         dof_pos=torch.ones(num_envs, 4),
         dof_vel=torch.ones(num_envs, 4) * 2.0,
@@ -52,6 +50,56 @@ def _robot_state(num_envs: int = 2, num_bodies: int = 3):
         root_vel=rigid_body_vel[:, 0, :],
         root_ang_vel=rigid_body_ang_vel[:, 0, :],
     )
+
+
+class _IndexRaises:
+    def __getitem__(self, _):
+        raise AssertionError("unused historical field was indexed")
+
+
+def test_historical_view_selects_subset_fields_lazily():
+    env_ids = torch.tensor([2, 0])
+    historical_actions = torch.arange(3 * 2 * 5, dtype=torch.float).reshape(3, 2, 5)
+    buffer = SimpleNamespace(
+        historical_rigid_body_pos=_IndexRaises(),
+        historical_rigid_body_rot=_IndexRaises(),
+        historical_rigid_body_vel=_IndexRaises(),
+        historical_rigid_body_ang_vel=_IndexRaises(),
+        historical_dof_pos=_IndexRaises(),
+        historical_dof_vel=_IndexRaises(),
+        historical_actions=historical_actions,
+        historical_processed_actions=_IndexRaises(),
+        historical_ground_heights=_IndexRaises(),
+        historical_body_contacts=_IndexRaises(),
+        historical_root_pos=_IndexRaises(),
+        historical_root_rot=_IndexRaises(),
+        historical_root_ang_vel=_IndexRaises(),
+        historical_anchor_pos=_IndexRaises(),
+        historical_anchor_rot=_IndexRaises(),
+        historical_anchor_vel=_IndexRaises(),
+        historical_anchor_ang_vel=_IndexRaises(),
+    )
+
+    history = HistoricalView(buffer, use_noisy=False, env_ids=env_ids)
+
+    assert torch.equal(history.actions, historical_actions[env_ids])
+
+
+def test_historical_view_memoizes_selected_subset_fields():
+    env_ids = torch.tensor([2, 0])
+    historical_actions = torch.arange(3 * 2 * 5, dtype=torch.float).reshape(3, 2, 5)
+    history = HistoricalView(
+        SimpleNamespace(historical_actions=historical_actions),
+        use_noisy=False,
+        env_ids=env_ids,
+    )
+
+    first = history.actions
+    expected = historical_actions[env_ids].clone()
+    historical_actions.fill_(-1.0)
+
+    assert torch.equal(first, expected)
+    assert history.actions is first
 
 
 def test_current_and_historical_views_precompute_accessors(monkeypatch):
@@ -67,9 +115,14 @@ def test_current_and_historical_views_precompute_accessors(monkeypatch):
     assert torch.equal(current.root_pos, state.root_pos)
     assert torch.equal(current.root_height, state.rigid_body_pos[:, 0, 2])
     assert torch.equal(current.anchor_pos, state.rigid_body_pos[:, 2, :])
-    assert torch.equal(current.anchor_local_ang_vel, state.rigid_body_ang_vel[:, 2, :] + 10.0)
+    assert torch.equal(
+        current.anchor_local_ang_vel, state.rigid_body_ang_vel[:, 2, :] + 10.0
+    )
     assert EnvContext.current.anchor_pos.path == "current.anchor_pos"
-    assert EnvContext.mimic.ref_state.rigid_body_pos.path == "mimic.ref_state.rigid_body_pos"
+    assert (
+        EnvContext.mimic.ref_state.rigid_body_pos.path
+        == "mimic.ref_state.rigid_body_pos"
+    )
 
     buffer = SimpleNamespace(
         historical_rigid_body_pos=torch.ones(2, 2, 3, 3),
@@ -107,9 +160,13 @@ def test_current_and_historical_views_precompute_accessors(monkeypatch):
 
     assert torch.equal(clean_history.actions, buffer.historical_actions)
     assert torch.equal(clean_history.body_contacts, buffer.historical_body_contacts)
-    assert torch.equal(clean_history.root_local_ang_vel, buffer.historical_root_ang_vel + 10.0)
+    assert torch.equal(
+        clean_history.root_local_ang_vel, buffer.historical_root_ang_vel + 10.0
+    )
     assert torch.equal(clean_history.anchor_ang_vel, buffer.historical_anchor_ang_vel)
-    assert torch.equal(noisy_history.rigid_body_pos, buffer.noisy_historical_rigid_body_pos)
+    assert torch.equal(
+        noisy_history.rigid_body_pos, buffer.noisy_historical_rigid_body_pos
+    )
     assert noisy_history.actions is None
     assert noisy_history.anchor_vel is None
 
@@ -185,7 +242,9 @@ def test_control_contexts_and_env_context_store_optional_views():
 
     assert torch.equal(mimic.future_root_pos, future_pos[:, :, 0, :])
     assert torch.equal(mimic.ref_anchor_pos, ref_state.rigid_body_pos[:, 1, :])
-    assert torch.equal(masked.time_offsets, torch.arange(8, dtype=torch.float).reshape(2, 4))
+    assert torch.equal(
+        masked.time_offsets, torch.arange(8, dtype=torch.float).reshape(2, 4)
+    )
     assert env_context.masked_mimic.mimic is mimic
     assert env_context.steering.tar_speed.tolist() == [3.0, 3.0]
     assert env_context.path.height_conditioned is True
@@ -209,6 +268,7 @@ def test_observation_factories_bind_expected_context_paths():
     )
     assert _bindings(max_coords)["body_pos"] == "noisy.rigid_body_pos"
     assert _bindings(max_coords)["ground_height"] == "noisy_ground_heights"
+    assert _bindings(max_coords)["anchor_body_index"] == "current.anchor_idx"
     assert _params(max_coords)["observe_contacts"] is True
     assert _params(max_coords)["local_obs"] is False
 
@@ -225,6 +285,7 @@ def test_observation_factories_bind_expected_context_paths():
         history_steps=[1, 3],
     )
     assert _bindings(hist_max)["historical_rigid_body_pos"] == "noisy_historical.rigid_body_pos"
+    assert _bindings(hist_max)["anchor_body_index"] == "current.anchor_idx"
     assert _params(hist_max)["history_steps"] == [1, 3]
 
     hist_reduced = factories.historical_reduced_coords_obs_factory(use_noisy=False)
@@ -241,6 +302,7 @@ def test_observation_factories_bind_expected_context_paths():
         future_steps=2,
     )
     assert _bindings(max_target)["current_state_body_pos"] == "noisy.rigid_body_pos"
+    assert _bindings(max_target)["anchor_body_index"] == "mimic.anchor_idx"
     assert _params(max_target)["future_steps"] == 2
     assert _params(max_target)["with_velocities"] is False
 
@@ -249,6 +311,7 @@ def test_observation_factories_bind_expected_context_paths():
         future_steps=4,
     )
     assert _bindings(future_rel)["current_state_body_rot"] == "noisy.rigid_body_rot"
+    assert _bindings(future_rel)["anchor_body_index"] == "mimic.anchor_idx"
     assert _params(future_rel)["future_steps"] == 4
 
     reduced_target = factories.mimic_target_poses_reduced_coords_factory(
@@ -258,7 +321,9 @@ def test_observation_factories_bind_expected_context_paths():
         include_anchor_ang_vel=True,
         zero_xy_offset=True,
     )
-    assert _bindings(reduced_target)["mimic_ref_anchor_pos"] == "mimic.future_anchor_pos"
+    assert (
+        _bindings(reduced_target)["mimic_ref_anchor_pos"] == "mimic.future_anchor_pos"
+    )
     assert _params(reduced_target)["zero_xy_offset"] is True
 
     deploy = factories.mimic_deploy_target_poses_factory(
@@ -269,8 +334,11 @@ def test_observation_factories_bind_expected_context_paths():
     assert _bindings(deploy)["current_anchor_rot"] == "noisy.anchor_rot"
     assert _params(deploy)["include_dof_vel"] is False
 
+    assert _bindings(factories.target_obs_factory())["root_pos"] == "current.anchor_pos"
     assert _bindings(factories.target_obs_factory())["tar_pos"] == "target.tar_pos"
+    assert _bindings(factories.steering_obs_factory())["root_rot"] == "current.anchor_rot"
     assert _bindings(factories.steering_obs_factory())["tar_speed"] == "steering.tar_speed"
+    assert _bindings(factories.path_obs_factory())["root_rot"] == "current.anchor_rot"
     assert _bindings(factories.path_obs_factory())["traj_samples"] == "path.traj_samples"
 
 
@@ -298,12 +366,24 @@ def test_reward_factories_and_bundles_bind_expected_context_paths():
     assert _bindings(anchor_xy)["current_anchor_pos"] == "current.anchor_pos"
     assert _params(anchor_xy) == {"weight": 0.7, "coefficient": -3.0}
 
-    corrupted = factories.corrupted_xy_offset_factory(
-        log_noise_std=0.2,
-        soft_threshold=0.4,
-    )
-    assert _bindings(corrupted)["odom_yaw_cos_sin"] == "odom_yaw_cos_sin"
-    assert _params(corrupted)["log_noise_std"] == 0.2
+    from protomotions.envs.obs.target_poses import compute_odom_offset_local
+
+    corrupted = factories.odom_offset_factory()
+    assert corrupted.get_compute_func() is compute_odom_offset_local
+    corrupted_bindings = _bindings(corrupted)
+    assert corrupted_bindings["odom_disp_start"] == "odom_disp_start_corrupt"
+    # Only the reference ANCHOR position is needed, never the full reference body
+    # array -- this is what keeps the deploy-side reference payload small.
+    assert corrupted_bindings["ref_anchor_pos"] == "mimic.ref_anchor_pos"
+    assert "ref_rigid_body_pos" not in corrupted_bindings
+    assert corrupted_bindings["current_state_anchor_rot"] == "current.anchor_rot"
+    assert corrupted_bindings["odom_start_xy"] == "odom_start_xy"
+    assert corrupted_bindings["odom_start_heading_inv"] == "odom_start_heading_inv"
+    assert _params(corrupted) == {"w_last": True}
+
+    clean = factories.odom_offset_factory(odom_clean=True)
+    assert clean.get_compute_func() is compute_odom_offset_local
+    assert _bindings(clean)["odom_disp_start"] == "odom_disp_start_clean"
 
     power = factories.pow_rew_factory(
         weight=-2.0,
@@ -320,21 +400,33 @@ def test_reward_factories_and_bundles_bind_expected_context_paths():
         weight=-0.4,
         zero_during_grace_period=False,
     )
-    assert _bindings(contact_match)["ref_contacts"] == "mimic.ref_state.rigid_body_contacts"
+    assert (
+        _bindings(contact_match)["ref_contacts"]
+        == "mimic.ref_state.rigid_body_contacts"
+    )
     assert _params(contact_match)["zero_during_grace_period"] is False
 
     force_change = factories.contact_force_change_rew_factory(
         min_value=None,
         threshold=5.0,
     )
-    assert _bindings(force_change)["prev_contact_force_magnitudes"] == "prev_contact_force_magnitudes"
+    assert (
+        _bindings(force_change)["prev_contact_force_magnitudes"]
+        == "prev_contact_force_magnitudes"
+    )
     assert "min_value" not in _params(force_change)
     default_force_change = factories.contact_force_change_rew_factory(min_value=-0.75)
     assert _params(default_force_change)["min_value"] == -0.75
 
-    assert _bindings(factories.target_reward_factory())["tar_proximity_threshold"] == "target.tar_proximity_threshold"
+    assert (
+        _bindings(factories.target_reward_factory())["tar_proximity_threshold"]
+        == "target.tar_proximity_threshold"
+    )
     assert _bindings(factories.steering_reward_factory())["dt"] == "dt"
-    assert _bindings(factories.path_following_reward_factory())["height_conditioned"] == "path.height_conditioned"
+    assert (
+        _bindings(factories.path_following_reward_factory())["height_conditioned"]
+        == "path.height_conditioned"
+    )
 
     for factory_fn in [
         factories.global_anchor_pos_rew_factory,
@@ -350,17 +442,33 @@ def test_reward_factories_and_bundles_bind_expected_context_paths():
 
 def test_termination_and_metric_factories_bind_metadata_and_wrappers():
     tracking_term = factories.tracking_error_term_factory(threshold=0.6)
-    assert _bindings(tracking_term)["current_rigid_body_pos"] == "current.rigid_body_pos"
+    assert (
+        _bindings(tracking_term)["current_rigid_body_pos"] == "current.rigid_body_pos"
+    )
     assert _params(tracking_term)["threshold"] == 0.6
 
     fall = factories.fall_termination_factory(termination_height=0.2)
     assert _bindings(fall)["progress_buf"] == "progress_buf"
     assert _params(fall)["termination_height"] == 0.2
 
-    assert _params(factories.anchor_pos_error_term_factory(threshold=0.1))["threshold"] == 0.1
-    assert _params(factories.anchor_ori_error_term_factory(threshold=0.2))["threshold"] == 0.2
-    assert _params(factories.relative_body_pos_error_term_factory(threshold=0.3))["threshold"] == 0.3
-    assert _params(factories.anchor_height_error_term_factory(threshold=0.4))["threshold"] == 0.4
+    assert (
+        _params(factories.anchor_pos_error_term_factory(threshold=0.1))["threshold"]
+        == 0.1
+    )
+    assert (
+        _params(factories.anchor_ori_error_term_factory(threshold=0.2))["threshold"]
+        == 0.2
+    )
+    assert (
+        _params(factories.relative_body_pos_error_term_factory(threshold=0.3))[
+            "threshold"
+        ]
+        == 0.3
+    )
+    assert (
+        _params(factories.anchor_height_error_term_factory(threshold=0.4))["threshold"]
+        == 0.4
+    )
 
     no_threshold_metric = factories.gt_error_factory()
     assert _params(no_threshold_metric) == {}

@@ -49,7 +49,7 @@ if your local GPU memory is not enough to load the entire motion lib of AMASS.
 
    # Run SOMA 23-body humanoid on BONES-SEED motions
    python protomotions/inference_agent.py \
-       --checkpoint data/pretrained_models/motion_tracker/soma-bones/last.ckpt \
+       --checkpoint data/pretrained_models/motion_tracker/soma-bones/last_lab.ckpt \
        --motion-file data/motion_for_trackers/soma23_bones_seed_mini.pt \
        --simulator isaaclab
 
@@ -128,7 +128,7 @@ Use the ``--simulator`` argument:
 
 * ``isaacgym`` - NVIDIA IsaacGym legacy GPU backend
 * ``isaaclab`` - NVIDIA IsaacLab/IsaacSim (recommended for training)
-* ``newton`` - NVIDIA Newton (built on MuJoCo Warp, currently beta)
+* ``newton`` - NVIDIA Newton 1.0.0 (built on MuJoCo Warp)
 * ``genesis`` - Genesis simulator
 * ``mujoco`` - MuJoCo CPU-only (single env, for quick testing/debugging)
 
@@ -155,8 +155,6 @@ Use the ``--robot-name`` argument:
      - AMP humanoid
    * - ``soma23``
      - SOMA 23-body humanoid (digital human)
-   * - ``rigv1``
-     - Custom rigged character
 
 See :doc:`../tutorials/workflows/custom_robot` for adding your own robot.
 
@@ -281,7 +279,7 @@ Evaluate a trained agent:
 
    # Evaluate SOMA pretrained model
    python protomotions/inference_agent.py \
-       --checkpoint data/pretrained_models/motion_tracker/soma-bones/last.ckpt \
+       --checkpoint data/pretrained_models/motion_tracker/soma-bones/last_lab.ckpt \
        --motion-file data/motion_for_trackers/soma23_bones_seed_mini.pt \
        --simulator isaaclab
 

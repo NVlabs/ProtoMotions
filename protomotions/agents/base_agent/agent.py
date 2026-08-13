@@ -52,6 +52,11 @@ from protomotions.agents.utils.training import (
     aggregate_scalar_metrics,
     handle_model_grad_clipping,
 )
+from protomotions.agents.base_agent.motion_shards import (
+    advance_motion_shard_after_evaluation,
+)
+from protomotions.agents.utils.distributed import raise_if_any_rank_failed
+from protomotions.components.motion_lib import MotionFileSwitchMode
 
 log = logging.getLogger(__name__)
 
@@ -104,6 +109,7 @@ class BaseAgent:
         self.env = env
         self.motion_lib = self.env.motion_lib
         self.motion_manager = self.env.motion_manager
+        self.motion_shard_cycle = self.env.motion_lib.motion_file_shard_cycle
         self.config = config
 
         self.num_envs: int = self.env.num_envs
@@ -210,10 +216,12 @@ class BaseAgent:
         self._attach_fabric_to_running_mean_std()
         self._after_model_reset()
 
-        # Materialize lazy modules (LazyLinear, RunningMeanStd)
-        # by running a dummy forward pass before wrapping with DDP
+        # Materialize lazy modules (LazyLinear, RunningMeanStd) with a
+        # setup-only dummy forward before wrapping with DDP. Keep this in eval
+        # mode so observation normalizers initialize shapes without recording
+        # moments or entering distributed collectives during setup.
         log.info("Materializing lazy modules...")
-        with torch.no_grad():
+        with self._eval_model_for_buffer_registration(), torch.no_grad():
             dummy_obs = self.env.get_obs()
             dummy_obs = self.add_agent_info_to_obs(dummy_obs)
             dummy_obs_td = self.obs_dict_to_tensordict(dummy_obs)
@@ -295,17 +303,23 @@ class BaseAgent:
             self.just_loaded_checkpoint_should_evaluate = True
 
             if load_env:
-                # Load env state from the same directory as the checkpoint.
-                task_id = self.env.get_task_id()
-                env_checkpoint = self.root_dir / f"env_{task_id}.ckpt"
-                if env_checkpoint.exists():
-                    print(f"Loading env checkpoint: {env_checkpoint}")
-                    env_state_dict = torch.load(
-                        env_checkpoint, map_location=self.device, weights_only=False
-                    )
-                    self.env.load_state_dict(env_state_dict)
+                self._load_environment_checkpoint()
 
             self.fabric.call("on_load_checkpoint_end")
+
+    def _load_environment_checkpoint(self) -> bool:
+        """Load the saved environment state for the selected motion shard."""
+        task_id = self.env.get_task_id()
+        env_checkpoint = self.root_dir / f"env_{task_id}.ckpt"
+        if not env_checkpoint.exists():
+            return False
+
+        print(f"Loading env checkpoint: {env_checkpoint}")
+        env_state_dict = torch.load(
+            env_checkpoint, map_location=self.device, weights_only=False
+        )
+        self.env.load_state_dict(env_state_dict)
+        return True
 
     def load_parameters(self, state_dict, load_training_state: bool = True):
         """Load agent parameters from state dictionary.
@@ -356,6 +370,9 @@ class BaseAgent:
             if "evaluator" in state_dict:
                 self.evaluator.load_state_dict(state_dict["evaluator"])
 
+        if self.motion_lib.config.motion_file_switch_mode is not MotionFileSwitchMode.FIXED:
+            self.motion_shard_cycle = state_dict["motion_shard_cycle"]
+
     # -----------------------------
     # Model Saving and State Dict
     # -----------------------------
@@ -386,6 +403,9 @@ class BaseAgent:
 
         if self.evaluator is not None:
             extra_state_dict["evaluator"] = self.evaluator.get_state_dict()
+
+        if self.motion_lib.config.motion_file_switch_mode is not MotionFileSwitchMode.FIXED:
+            extra_state_dict["motion_shard_cycle"] = self.motion_shard_cycle
 
         state_dict.update(extra_state_dict)
         return state_dict
@@ -443,19 +463,6 @@ class BaseAgent:
 
         save_dir = self.root_dir
         state_dict = self.get_state_dict({})
-        inference_state_dict = None
-        if self.config.save_inference_checkpoint and self.fabric.global_rank == 0:
-            inference_state_dict = self.get_inference_state_dict(
-                {},
-                model_state_dict=state_dict["model"],
-            )
-
-        # Rank 0 saves the main checkpoint (shared weights across all ranks)
-        if self.fabric.global_rank == 0:
-            torch.save(state_dict, save_dir / checkpoint_name)
-            log.info(f"Saved checkpoint: {save_dir / checkpoint_name}")
-            if inference_state_dict is not None:
-                self.save_inference_checkpoint(checkpoint_name, inference_state_dict)
 
         # Save environment checkpoint for unique task IDs
         task_id = self.env.get_task_id()
@@ -469,16 +476,37 @@ class BaseAgent:
                 seen_task_ids.add(tid)
                 rank_to_task_id[rank] = tid
 
-        if self.fabric.global_rank in rank_to_task_id:
-            env_checkpoint = save_dir / f"env_{task_id}.ckpt"
-            env_state_dict = self.env.get_state_dict()
-            torch.save(env_state_dict, env_checkpoint)
-            log.info(
-                f"Saved env checkpoint: {env_checkpoint}, rank {self.fabric.global_rank}"
-            )
+        env_error = None
+        try:
+            if self.fabric.global_rank in rank_to_task_id:
+                env_checkpoint = save_dir / f"env_{task_id}.ckpt"
+                env_state_dict = self.env.get_state_dict()
+                torch.save(env_state_dict, env_checkpoint)
+                log.info(
+                    f"Saved env checkpoint: {env_checkpoint}, rank {self.fabric.global_rank}"
+                )
+        except Exception as error:
+            env_error = error
+        raise_if_any_rank_failed(env_error, "Environment checkpoint save", self.device)
 
-        # All ranks wait for saves to complete
-        dist.barrier()
+        inference_state_dict = None
+        checkpoint_error = None
+        try:
+            if self.fabric.global_rank == 0:
+                if self.config.save_inference_checkpoint:
+                    inference_state_dict = self.get_inference_state_dict(
+                        {},
+                        model_state_dict=state_dict["model"],
+                    )
+                torch.save(state_dict, save_dir / checkpoint_name)
+                log.info(f"Saved checkpoint: {save_dir / checkpoint_name}")
+                if inference_state_dict is not None:
+                    self.save_inference_checkpoint(
+                        checkpoint_name, inference_state_dict
+                    )
+        except Exception as error:
+            checkpoint_error = error
+        raise_if_any_rank_failed(checkpoint_error, "Agent checkpoint save", self.device)
 
         # Check high score consistency
         hs_tensor = torch.tensor(
@@ -490,19 +518,26 @@ class BaseAgent:
             g.item() == gathered[0].item() for g in gathered
         ), "New high score flag should be the same across all ranks."
 
-        if new_high_score:
-            if self.fabric.global_rank == 0:
+        score_error = None
+        try:
+            if new_high_score and self.fabric.global_rank == 0:
                 torch.save(state_dict, save_dir / "score_based.ckpt")
                 if inference_state_dict is not None:
                     self.save_inference_checkpoint(
                         "score_based.ckpt",
                         inference_state_dict,
                     )
+        except Exception as error:
+            score_error = error
+        raise_if_any_rank_failed(score_error, "High-score checkpoint save", self.device)
+
+        if new_high_score:
             log.info(
                 f"New best performing controller found with score {self.best_evaluated_score}. "
                 f"Model saved to {save_dir / 'score_based.ckpt'}"
             )
 
+        dist.barrier()
         self.fabric.call("on_save_checkpoint_end", self)
 
     # -----------------------------
@@ -751,16 +786,17 @@ class BaseAgent:
             if self.current_epoch % self.config.save_last_checkpoint_every == 0:
                 self.save(checkpoint_name="last.ckpt")
 
-            if (
+            scheduled_eval_due = (
                 self.evaluator is not None
                 and self.evaluator.config.eval_metrics_every is not None
-                and (
-                    self.current_epoch > 0
-                    and self.current_epoch % self.evaluator.config.eval_metrics_every
-                    == 0
-                )
-                or self.just_loaded_checkpoint_should_evaluate
-            ):
+                and self.current_epoch > 0
+                and self.current_epoch % self.evaluator.config.eval_metrics_every == 0
+            )
+            checkpoint_eval_due = self.just_loaded_checkpoint_should_evaluate
+            should_evaluate = self.evaluator is not None and (
+                scheduled_eval_due or checkpoint_eval_due
+            )
+            if should_evaluate:
                 self.fabric.call("on_eval_start", self)
 
                 eval_log_dict, evaluated_score, num_eval_items = (
@@ -806,9 +842,24 @@ class BaseAgent:
                 self.env.max_episode_length = max_episode_length
             self.env.on_epoch_end(self.current_epoch)
 
+            should_restart = False
+            if scheduled_eval_due and not checkpoint_eval_due:
+                should_restart, switched_live = advance_motion_shard_after_evaluation(
+                    self, restart=self.should_stop
+                )
+                if switched_live:
+                    done_indices = torch.arange(
+                        self.num_envs, device=self.device, dtype=torch.long
+                    )
+
             if self.should_stop:
                 self.fabric.call("on_training_stop", self)
-                self.save(checkpoint_name="last.ckpt")
+                if not should_restart:
+                    self.save(checkpoint_name="last.ckpt")
+                return
+
+            if should_restart:
+                self.fabric.call("on_fit_end", self)
                 return
 
         self.time_report.report()

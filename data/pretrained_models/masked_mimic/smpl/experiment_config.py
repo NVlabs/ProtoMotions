@@ -492,6 +492,13 @@ def agent_config(
     return agent_config
 
 
+def configure_robot_and_simulator(
+    robot_cfg: RobotConfig, simulator_cfg: SimulatorConfig, args: argparse.Namespace
+):
+    # Match IsaacLab's implicit robot material when this policy was trained.
+    simulator_cfg.default_robot_friction = 0.5
+
+
 def apply_inference_overrides(
     robot_cfg: RobotConfig,
     simulator_cfg: SimulatorConfig,

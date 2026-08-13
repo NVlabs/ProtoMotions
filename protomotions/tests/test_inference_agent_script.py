@@ -11,6 +11,8 @@ from types import ModuleType, SimpleNamespace
 import pytest
 import torch
 
+from protomotions.components.motion_lib import MotionLibConfig
+
 
 INFERENCE_AGENT_PATH = str(Path(__file__).resolve().parents[1] / "inference_agent.py")
 
@@ -93,7 +95,7 @@ def _write_resolved_configs(run_dir):
     )
     terrain_config = SimpleNamespace(name="terrain")
     scene_lib_config = SimpleNamespace(scene_file="old_scene.yaml", asset_root="/old/root")
-    motion_lib_config = SimpleNamespace(motion_file="old.motion")
+    motion_lib_config = MotionLibConfig(motion_file="old.motion")
     env_config = SimpleNamespace(_target_="env.Target", save_dir="weights")
     agent_config = SimpleNamespace(_target_="agent.Target")
     torch.save(
@@ -259,7 +261,7 @@ def test_inference_main_applies_pretrained_checkpoint_cli_override(
     checkpoint = run_dir / "last.ckpt"
     checkpoint.write_text("checkpoint")
     configs = _write_resolved_configs(run_dir)
-    stale_prior_path = "/remote/old/exp-20260508_200038/results/prior/last.ckpt"
+    stale_prior_path = "/path/to/old/experiment/results/prior/last.ckpt"
     prior_checkpoint = tmp_path / "prior" / "last.ckpt"
     prior_checkpoint.parent.mkdir()
     prior_checkpoint.write_text("prior")
@@ -580,6 +582,42 @@ def test_inference_main_full_eval_switches_simulator_and_applies_cli_overrides(
     assert ("evaluate", 0) in calls
     assert ("agent_load", str(checkpoint), False, False) in calls
     assert ("shutdown", None) in calls
+
+
+def test_inference_explicit_motion_file_clears_stale_shard_subset(monkeypatch, tmp_path):
+    from protomotions.components.motion_lib import MotionLibConfig
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    checkpoint = run_dir / "last.ckpt"
+    checkpoint.write_text("checkpoint")
+    configs = _write_resolved_configs(run_dir)
+    configs["motion_lib"] = MotionLibConfig(
+        motion_file="/tmp/pack_slurmrank.pt",
+        motion_file_shard_indices=[1, 3],
+    )
+    torch.save(configs, run_dir / "resolved_configs_inference.pt")
+    module = _load_inference_agent_globals(
+        monkeypatch,
+        checkpoint,
+        simulator="isaacgym",
+        extra_args=["--motion-file", "replacement.pt"],
+    )
+    captured = {}
+    _install_minimal_inference_runtime(monkeypatch, module, captured)
+    component_builder = sys.modules["protomotions.utils.component_builder"]
+    original_build_all_components = component_builder.build_all_components
+
+    def capture_motion_lib_config(**kwargs):
+        captured["motion_lib_config"] = kwargs["motion_lib_config"]
+        return original_build_all_components(**kwargs)
+
+    component_builder.build_all_components = capture_motion_lib_config
+
+    module["main"]()
+
+    assert captured["motion_lib_config"].motion_file == "replacement.pt"
+    assert captured["motion_lib_config"].motion_file_shard_indices is None
 
 
 def test_inference_main_simple_test_recomputes_scene_asset_root(

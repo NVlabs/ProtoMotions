@@ -77,7 +77,13 @@ class ComponentManager:
             Dict of {name: result_tensor} for each component.
         """
         results = {}
+        compile_components = getattr(ctx, "env_ids", None) is None
         for name, router in components.items():
+            # Reset subsets have variable batch sizes; compiling each size would
+            # pollute the stable all-environment compile cache.
+            if not compile_components:
+                results[name] = router.compute(ctx)
+                continue
             resolved, func_params = router.resolve_args(ctx)
             compiled_fn = self._get_compiled_func(name, router)
             try:
@@ -145,7 +151,7 @@ class ComponentManager:
         cache_key = f"{name}_func"
         if cache_key not in self._compiled:
             fn = router.compute_func
-            if not TORCH_COMPILE_AVAILABLE:
+            if not TORCH_COMPILE_AVAILABLE or not router.compile:
                 self._compiled[cache_key] = fn
             else:
                 try:

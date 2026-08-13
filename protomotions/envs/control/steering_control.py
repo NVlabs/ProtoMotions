@@ -108,9 +108,11 @@ class SteeringControl(ControlComponent):
         if len(env_ids) == 0:
             return
 
-        root_pos = self.env.simulator.get_root_state().root_pos[env_ids]
-        self._prev_root_pos[env_ids] = root_pos
-        self._curr_root_pos[env_ids] = root_pos
+        robot_state = self.env.simulator.get_robot_state()
+        anchor_body_index = self.env.robot_config.anchor_body_index
+        anchor_pos = robot_state.rigid_body_pos[env_ids, anchor_body_index]
+        self._prev_root_pos[env_ids] = anchor_pos
+        self._curr_root_pos[env_ids] = anchor_pos
 
         n = len(env_ids)
         device = self.env.device
@@ -183,7 +185,9 @@ class SteeringControl(ControlComponent):
         """Check if any environments need their heading task updated."""
         # Rotate double buffer: prev <- curr, curr <- new position
         self._prev_root_pos[:] = self._curr_root_pos
-        self._curr_root_pos[:] = self.env.simulator.get_root_state().root_pos
+        robot_state = self.env.simulator.get_robot_state()
+        anchor_body_index = self.env.robot_config.anchor_body_index
+        self._curr_root_pos[:] = robot_state.rigid_body_pos[:, anchor_body_index]
 
         # Check for heading changes
         reset_task_mask = self.env.progress_buf >= self._heading_change_steps
@@ -199,12 +203,25 @@ class SteeringControl(ControlComponent):
 
     def populate_context(self, ctx: EnvContext) -> None:
         """Populate steering-specific view in the EnvContext."""
+        env_ids = getattr(ctx, "env_ids", None)
+        if env_ids is None:
+            tar_dir = self._tar_dir
+            tar_dir_theta = self._tar_dir_theta
+            tar_speed = self._tar_speed
+            tar_face_dir = self._tar_face_dir
+            prev_root_pos = self._prev_root_pos
+        else:
+            tar_dir = self._tar_dir[env_ids]
+            tar_dir_theta = self._tar_dir_theta[env_ids]
+            tar_speed = self._tar_speed[env_ids]
+            tar_face_dir = self._tar_face_dir[env_ids]
+            prev_root_pos = self._prev_root_pos[env_ids]
         ctx.steering = SteeringContext(
-            tar_dir=self._tar_dir,
-            tar_dir_theta=self._tar_dir_theta,
-            tar_speed=self._tar_speed,
-            tar_face_dir=self._tar_face_dir,
-            prev_root_pos=self._prev_root_pos,
+            tar_dir=tar_dir,
+            tar_dir_theta=tar_dir_theta,
+            tar_speed=tar_speed,
+            tar_face_dir=tar_face_dir,
+            prev_root_pos=prev_root_pos,
         )
 
     def create_visualization_markers(
@@ -241,7 +258,9 @@ class SteeringControl(ControlComponent):
         if self.env.simulator.headless:
             return {}
 
-        root_pos = self.env.simulator.get_root_state().root_pos
+        robot_state = self.env.simulator.get_robot_state()
+        anchor_body_index = self.env.robot_config.anchor_body_index
+        root_pos = robot_state.rigid_body_pos[:, anchor_body_index]
         heading_axis = torch.zeros_like(root_pos)
         heading_axis[..., -1] = 1.0
 

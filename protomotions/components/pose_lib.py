@@ -1773,7 +1773,6 @@ if __name__ == "__main__":
         import os
 
         workspace_root = "."  # Adjust if needed
-        # mjcf_path = os.path.join(workspace_root, "protomotions/data/assets/mjcf/rigv1_humanoid.xml")
         # mjcf_path = os.path.join(workspace_root, "protomotions/data/assets/mjcf/g1.xml") # Example single-DOF per body
         mjcf_path = os.path.join(
             workspace_root, "protomotions/data/assets/mjcf/h1_2.xml"

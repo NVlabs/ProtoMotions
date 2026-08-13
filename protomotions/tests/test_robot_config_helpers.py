@@ -53,6 +53,7 @@ def _robot(monkeypatch, **kwargs):
     params = {
         "asset": RobotAssetConfig(asset_root="/assets", asset_file_name="robot.xml"),
         "common_naming_to_robot_body_names": _names(),
+        "semantic_forward_axis_xy": [1.0, 0.0],
     }
     params.update(kwargs)
     return RobotConfig(**params)
@@ -117,6 +118,25 @@ def test_robot_config_post_init_validates_anchor_and_default_dof_length(monkeypa
         _robot(monkeypatch, common_naming_to_robot_body_names={})
 
 
+def test_robot_config_requires_and_normalizes_semantic_forward_axis(monkeypatch):
+    _patch_pose_extractors(monkeypatch)
+    params = {
+        "asset": RobotAssetConfig(asset_root="/assets", asset_file_name="robot.xml"),
+        "common_naming_to_robot_body_names": _names(),
+    }
+
+    with pytest.raises(ValueError, match="semantic_forward_axis_xy") as exc_info:
+        RobotConfig(**params)
+    assert "scripts/identify_robot_facing_axis.py" in str(exc_info.value)
+    assert "--view" in str(exc_info.value)
+
+    config = _robot(monkeypatch, semantic_forward_axis_xy=[3.0, 4.0])
+    assert config.semantic_forward_axis_xy == pytest.approx((0.6, 0.8))
+
+    with pytest.raises(ValueError, match="non-zero 2D"):
+        _robot(monkeypatch, semantic_forward_axis_xy=[0.0, 0.0])
+
+
 def test_robot_config_update_fields_reprocesses_body_name_aliases(monkeypatch):
     config = _robot(monkeypatch, contact_bodies=None, trackable_bodies_subset=["root"])
 
@@ -151,14 +171,13 @@ def test_robot_config_factory_dispatches_all_robot_names_and_applies_updates(mon
         ("protomotions.robot_configs.amp", "AMPRobotConfig"),
         ("protomotions.robot_configs.g1", "G1RobotConfig"),
         ("protomotions.robot_configs.h1_2", "H1_2RobotConfig"),
-        ("protomotions.robot_configs.rigv1", "Rigv1RobotConfig"),
         ("protomotions.robot_configs.soma23", "Soma23RobotConfig"),
     ]:
         module = types.ModuleType(module_name)
         setattr(module, class_name, _FactoryConfig)
         monkeypatch.setitem(sys.modules, module_name, module)
 
-    for name in ["smpl", "smplx", "amp", "g1", "h1_2", "rigv1", "soma23"]:
+    for name in ["smpl", "smplx", "amp", "g1", "h1_2", "soma23"]:
         config = robot_config(name, trackable_bodies_subset=["root"])
         assert isinstance(config, _FactoryConfig)
         assert config.updates == {"trackable_bodies_subset": ["root"]}

@@ -1,20 +1,30 @@
 wheel
-tensordict==0.9.0
+# IsaacLab backend pin: public develop 4ecd0b036da19ff6ad2bb4d621f886b63e9f6db8
+# (after PR #6259 / 17136c6 nested-rigid-body contact sensors). See
+# docs/source/user_guide/isaaclab3_migration.rst
+#
+# Version policy: floors, not equalities. The exact pins below dated from the
+# IsaacLab 2 / Isaac Sim 4.x era and installing them into a working Isaac Sim 6
+# environment silently DOWNGRADES eight packages. Isaac Sim 6 ships its own
+# transitive pins (rtree==1.4.1, sentry-sdk==2.42.1, Pillow==12.1.1, ...), so
+# pinning against it here just fights the backend.
+tensordict>=0.9
 lightning
 numpy>=1.21.1
-termcolor>=1.1.0
+scipy>=1.11
 scikit-image
-rtree==1.2.0
+rtree>=1.2
 trimesh
-setuptools==69.5.1
+setuptools>=69.5.1
+packaging>=23.0
+filelock>=3.0
+PyYAML>=6
+omegaconf>=2.3
 rich
 typer>=0.6.1
-transformers>=4.20.1
 matplotlib
 easydict
-wandb==0.23.0
-sentry-sdk==1.38.0
-hydra-core==1.3.2
+wandb>=0.23
+sentry-sdk>=2.0.0
 moviepy
 dm_control>=1.0
-pandas

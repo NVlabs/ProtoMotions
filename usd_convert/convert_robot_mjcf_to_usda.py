@@ -17,10 +17,10 @@ The full pipeline is:
   2. Strip MuJoCo-specific elements that break the Isaac Sim MJCF importer
      (<contact>, <sensor>, <tendon>) into a temporary cleaned XML.
   3. Invoke the Isaac Lab converter (convert_mjcf_to_usd.py) as a subprocess
-     with --make-instanceable --headless and the required kit extension flag.
+     with --headless. The converter writes ``<stem>/<stem>.usda`` below the selected output root.
   4. Patch missing visual meshes into the base USD.
   5. Patch the generated .usda text wrapper:
-       a. Remove the "_cleaned" suffix leaked from the temp filename.
+       a. Normalize the generated USDA wrapper and preserve the requested robot prim name.
        b. Add ``over "worldBody" (active = false)`` to deactivate the extra
           articulation root that the MJCF importer creates from <worldbody>.
   6. Delete the temporary cleaned XML.
@@ -72,6 +72,8 @@ Limitations:
 from __future__ import annotations
 
 import argparse
+import shutil
+import tempfile
 import os
 import re
 import subprocess
@@ -132,6 +134,11 @@ def verify_mjcf_is_flat(input_path: str) -> list[str]:
                     f'in body "{body.get("name", "unnamed")}"'
                 )
 
+    for include in root.iter("include"):
+        issues.append(
+            f'Contains unresolved <include file="{include.get("file", "")}">'
+        )
+
     return issues
 
 
@@ -170,6 +177,46 @@ def inline_materials(tree: ET.ElementTree) -> int:
     return count
 
 
+def preserve_relative_asset_paths(tree: ET.ElementTree, input_path: str) -> None:
+    """Make asset directories independent of the cleaned XML location."""
+    root = tree.getroot()
+    compiler = root.find("compiler")
+    source_dir = os.path.dirname(os.path.abspath(input_path))
+    if compiler is not None:
+        for attribute in ("assetdir", "meshdir", "texturedir"):
+            value = compiler.get(attribute)
+            if value and not os.path.isabs(value):
+                compiler.set(
+                    attribute, os.path.abspath(os.path.join(source_dir, value))
+                )
+
+    asset_dir = compiler.get("assetdir") if compiler is not None else None
+    mesh_dir = compiler.get("meshdir") if compiler is not None else None
+    texture_dir = compiler.get("texturedir") if compiler is not None else None
+
+    if not (mesh_dir or asset_dir):
+        for tag in ("mesh", "hfield", "skin"):
+            for element in root.iter(tag):
+                file_path = element.get("file")
+                if file_path and not os.path.isabs(file_path):
+                    element.set(
+                        "file", os.path.abspath(os.path.join(source_dir, file_path))
+                    )
+
+    if not (texture_dir or asset_dir):
+        for element in root.iter("texture"):
+            for attribute, file_path in tuple(element.attrib.items()):
+                if (
+                    attribute.startswith("file")
+                    and file_path
+                    and not os.path.isabs(file_path)
+                ):
+                    element.set(
+                        attribute,
+                        os.path.abspath(os.path.join(source_dir, file_path)),
+                    )
+
+
 def strip_mjcf(input_path: str, output_path: str) -> list:
     """Strip converter-incompatible elements and inline materials.
 
@@ -192,6 +239,7 @@ def strip_mjcf(input_path: str, output_path: str) -> list:
     if n_inlined:
         print(f"Inlined material references on {n_inlined} geoms")
 
+    preserve_relative_asset_paths(tree, input_path)
     tree.write(output_path, xml_declaration=False, encoding="unicode")
     return removed
 
@@ -246,8 +294,9 @@ def main():
         "--output-dir",
         default=None,
         help=(
-            "Directory for the generated USDA and configuration/ files. "
-            "Defaults to protomotions/data/assets/usd/<stem>/ where <stem> "
+            "Root directory for the generated USDA asset. The converter writes "
+            "<stem>/<stem>.usda below this directory. Defaults to "
+            "protomotions/data/assets/usd/ where <stem> "
             "is the MJCF filename without extension."
         ),
     )
@@ -289,16 +338,15 @@ def main():
             "data",
             "assets",
             "usd",
-            stem,
         )
         output_dir = os.path.abspath(assets_root)
 
-    usda_name = f"{stem}.usda"
-    usda_path = os.path.join(output_dir, usda_name)
+    usda_path = os.path.join(output_dir, stem, f"{stem}.usda")
     os.makedirs(output_dir, exist_ok=True)
 
     # Step 2: Strip <contact>, <sensor>, <tendon> into a temp file
-    cleaned_path = os.path.join(os.path.dirname(input_path), f"{stem}_cleaned.xml")
+    temp_dir = tempfile.mkdtemp(prefix=f"{stem}_")
+    cleaned_path = os.path.join(temp_dir, f"{stem}.xml")
     removed = strip_mjcf(input_path, cleaned_path)
     if removed:
         print(f"Stripped from MJCF: {', '.join(removed)}")
@@ -314,11 +362,8 @@ def main():
         sys.executable,
         CONVERTER_SCRIPT,
         converter_input,
-        usda_path,
-        "--make-instanceable",
+        output_dir,
         "--headless",
-        "--kit_args",
-        "--enable isaacsim.asset.importer.mjcf",
     ]
     if args.fix_base:
         converter_cmd.append("--fix-base")
@@ -331,13 +376,11 @@ def main():
             f"\nERROR: Converter exited with code {result.returncode}.",
             file=sys.stderr,
         )
-        if os.path.isfile(cleaned_path):
-            os.remove(cleaned_path)
-            print(f"Cleaned up temp file: {cleaned_path}")
+        shutil.rmtree(temp_dir, ignore_errors=True)
         sys.exit(result.returncode)
 
     # Step 4: Patch missing visual meshes into the base USD
-    base_usd_path = os.path.join(output_dir, "configuration", f"{stem}_base.usd")
+    base_usd_path = os.path.join(output_dir, stem, "payloads", "base.usda")
     if os.path.isfile(base_usd_path) and os.path.isfile(PATCH_SCRIPT):
         print("\nPatching missing visual meshes...")
         patch_cmd = [
@@ -359,27 +402,24 @@ def main():
     # Step 5: Patch the USDA
     if os.path.isfile(usda_path):
         patch_usda(usda_path, stem)
-        print("\nPatched USDA: removed _cleaned suffix, added worldBody override.")
+        print("\nPatched USDA: normalized wrapper and added worldBody override.")
     else:
         print(f"\nWARNING: Expected USDA not found at {usda_path}", file=sys.stderr)
 
     # Step 6: Clean up temp file
-    if os.path.isfile(cleaned_path):
-        os.remove(cleaned_path)
-        print(f"Cleaned up temp file: {cleaned_path}")
+    shutil.rmtree(temp_dir, ignore_errors=True)
 
     # Summary
     print("\n" + "=" * 70)
     print("Done! Generated files:")
     print(f"  {usda_path}")
-    config_dir = os.path.join(output_dir, "configuration")
-    if os.path.isdir(config_dir):
-        for f in sorted(os.listdir(config_dir)):
-            print(f"  {os.path.join(config_dir, f)}")
+    payload_dir = os.path.join(output_dir, stem, "payloads")
+    if os.path.isdir(payload_dir):
+        for f in sorted(os.listdir(payload_dir)):
+            print(f"  {os.path.join(payload_dir, f)}")
     print()
-    rel_path = os.path.relpath(usda_path, os.path.join(output_dir, "..", ".."))
     print("Use in robot config or --overrides:")
-    print(f"  robot.asset.usd_asset_file_name={rel_path}")
+    print(f"  robot.asset.asset_file_name={input_path}")
     print("=" * 70)
 
 

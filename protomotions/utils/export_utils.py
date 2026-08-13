@@ -509,7 +509,7 @@ ONNX_INPUT_MAPPING = {
     "mimic_ref_rot": ("reference_motion_body_rot", "reference_motion_body_rot"),
     "mimic_ref_anchor_rot": (
         "reference_motion_anchor_rot",
-        "reference_motion_body_rot",
+        "reference_motion_anchor_rot",
     ),
     # Reference motion (mimic.future_* context paths)
     "mimic_future_ang_vel": (
@@ -527,7 +527,7 @@ ONNX_INPUT_MAPPING = {
     "mimic_future_rot": ("reference_motion_body_rot", "reference_motion_body_rot"),
     "mimic_future_anchor_rot": (
         "reference_motion_anchor_rot",
-        "reference_motion_body_rot",
+        "reference_motion_anchor_rot",
     ),
     # MaskedMimic sparse conditioning
     "masked_mimic_ref_pos": ("masked_mimic_ref_pos", "masked_mimic_body_pos"),
@@ -651,11 +651,10 @@ def _build_policy_input(
         entry["element_names"] = [ang_vel_elements]
     elif kind in ("reference_motion_joint_pos", "reference_motion_joint_vel"):
         entry["element_names"] = [joint_names]
+    elif kind == "reference_motion_anchor_rot":
+        entry["element_names"] = [[anchor_body], quat_elements]
     elif kind == "reference_motion_body_rot":
-        if semantic_name in ("mimic_ref_anchor_rot", "mimic_future_anchor_rot"):
-            entry["element_names"] = [[anchor_body], quat_elements]
-        else:
-            entry["element_names"] = [body_names, quat_elements]
+        entry["element_names"] = [body_names, quat_elements]
 
     # Processed action variants read from the actual commanded positions (after interpolation),
     # while raw action variants read from the policy output directly.

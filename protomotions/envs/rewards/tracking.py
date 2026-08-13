@@ -367,6 +367,7 @@ def compute_global_body_lin_vel_rew(
     current_rigid_body_vel: Tensor,
     ref_rigid_body_vel: Tensor,
     sigma: float = 1.0,
+    body_indices: Optional[Tensor] = None,
 ) -> Tensor:
     """Global body linear velocity reward (BeyondMimic style).
     
@@ -378,13 +379,16 @@ def compute_global_body_lin_vel_rew(
     Returns:
         Reward: exp(-||vel - ref_vel||^2 / sigma^2).
     """
-    return compute_global_position_error_exp(current_rigid_body_vel, ref_rigid_body_vel, sigma)
+    return compute_global_position_error_exp(
+        current_rigid_body_vel, ref_rigid_body_vel, sigma, body_indices
+    )
 
 
 def compute_global_body_ang_vel_rew(
     current_rigid_body_ang_vel: Tensor,
     ref_rigid_body_ang_vel: Tensor,
     sigma: float = 3.14,
+    body_indices: Optional[Tensor] = None,
 ) -> Tensor:
     """Global body angular velocity reward (BeyondMimic style).
     
@@ -397,7 +401,7 @@ def compute_global_body_ang_vel_rew(
         Reward: exp(-||ang_vel - ref_ang_vel||^2 / sigma^2).
     """
     return compute_global_position_error_exp(
-        current_rigid_body_ang_vel, ref_rigid_body_ang_vel, sigma
+        current_rigid_body_ang_vel, ref_rigid_body_ang_vel, sigma, body_indices
     )
 
 

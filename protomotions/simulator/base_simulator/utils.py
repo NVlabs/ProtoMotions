@@ -19,6 +19,23 @@ if TYPE_CHECKING:
     )
 
 
+def get_friction_bucket_count(friction_dr: Dict[str, Any]) -> int:
+    """Return the number of rows in the first configured friction table."""
+    for key in ("static_friction", "dynamic_friction", "restitution"):
+        table = friction_dr.get(key)
+        if table is not None:
+            return table.shape[0]
+    return 0
+
+
+def get_friction_table(friction_dr: Dict[str, Any]) -> Optional[torch.Tensor]:
+    """Return the table used for simulators with one friction coefficient."""
+    static_friction = friction_dr.get("static_friction")
+    if static_friction is not None:
+        return static_friction
+    return friction_dr.get("dynamic_friction")
+
+
 def build_motion_data(
     recorded_motion: Dict[str, List[torch.Tensor]],
     fps: int,
@@ -112,8 +129,8 @@ def convert_friction_for_combine_mode(
     PhysX uses AVERAGE: effective = (robot + terrain) / 2
     MuJoCo uses MAX: effective = max(robot, terrain)
 
-    For MAX mode without DR, assumes simulator sets robot friction to epsilon.
-    See _set_robot_friction_to_minimum() in newton/simulator.py.
+    For MAX mode without DR, assumes the simulator applies
+    ``default_robot_friction`` to character shapes.
     """
     from protomotions.components.terrains.config import CombineMode
 
@@ -182,6 +199,16 @@ def convert_friction_for_combine_mode(
             ("dynamic friction", expected_dynamic, actual_dynamic),
             ("restitution", expected_restitution, actual_restitution),
         ]:
+            if expected is None:
+                if actual is not None:
+                    raise ValueError(
+                        f"Conversion failed: {name} was not configured but produced a range."
+                    )
+                continue
+            if actual is None:
+                raise ValueError(
+                    f"Conversion failed: {name} configured range was dropped."
+                )
             if not _friction_ranges_match(expected, actual, tolerance):
                 raise ValueError(
                     f"Conversion failed: {name} effective range mismatch. "
@@ -204,12 +231,15 @@ def _friction_ranges_match(
 
 
 def _compute_effective_friction_range(
-    robot_range: Tuple[float, float],
+    robot_range: Optional[Tuple[float, float]],
     ground: float,
     mode: "CombineMode",
-) -> Tuple[float, float]:
+) -> Optional[Tuple[float, float]]:
     """Compute effective friction range for robot+ground under a combine mode."""
     from protomotions.components.terrains.config import CombineMode
+
+    if robot_range is None:
+        return None
 
     r_min, r_max = robot_range
 
@@ -225,6 +255,36 @@ def _compute_effective_friction_range(
         raise ValueError(f"Unknown combine mode: {mode}")
 
 
+def _convert_effective_range_to_target(
+    effective_range: Optional[Tuple[float, float]],
+    ground: float,
+    target_mode: "CombineMode",
+) -> Tuple[float, Optional[Tuple[float, float]]]:
+    """Map one effective range to a simulator-supported combine mode.
+
+    For an omitted range, leave the terrain value unchanged and keep it
+    omitted. Configured ranges are represented exactly in the target mode.
+    """
+    from protomotions.components.terrains.config import CombineMode
+
+    if effective_range is None:
+        return ground, None
+
+    effective_min, effective_max = effective_range
+    if target_mode == CombineMode.MAX:
+        return effective_min, (effective_min, effective_max)
+
+    if target_mode == CombineMode.AVERAGE:
+        # (robot + ground) / 2 = effective, and robot friction must be >= 0.
+        target_ground = min(ground, 2 * effective_min)
+        return target_ground, (
+            2 * effective_min - target_ground,
+            2 * effective_max - target_ground,
+        )
+
+    raise ValueError(f"Unsupported target mode: {target_mode.value}")
+
+
 def _convert_material_to_combine_mode(
     terrain_sim_config: "TerrainSimConfig",
     friction_dr_config: Optional["FrictionDomainRandomizationConfig"],
@@ -237,11 +297,21 @@ def _convert_material_to_combine_mode(
     from protomotions.components.terrains.config import CombineMode
 
     if target_mode == CombineMode.MAX:
-        # Set terrain to min of effective range so robot friction controls effective value
-        # max(robot, terrain_min) = robot (since robot >= terrain_min)
-        terrain_static = effective_static_range[0]
-        terrain_dynamic = effective_dynamic_range[0]
-        terrain_restitution = effective_restitution_range[0]
+        terrain_static, static_range = _convert_effective_range_to_target(
+            effective_static_range,
+            terrain_sim_config.static_friction,
+            target_mode,
+        )
+        terrain_dynamic, dynamic_range = _convert_effective_range_to_target(
+            effective_dynamic_range,
+            terrain_sim_config.dynamic_friction,
+            target_mode,
+        )
+        terrain_restitution, restitution_range = _convert_effective_range_to_target(
+            effective_restitution_range,
+            terrain_sim_config.restitution,
+            target_mode,
+        )
 
         adjusted_terrain = replace(
             terrain_sim_config,
@@ -254,9 +324,9 @@ def _convert_material_to_combine_mode(
         if friction_dr_config is not None:
             adjusted_friction = replace(
                 friction_dr_config,
-                static_friction_range=effective_static_range,
-                dynamic_friction_range=effective_dynamic_range,
-                restitution_range=effective_restitution_range,
+                static_friction_range=static_range,
+                dynamic_friction_range=dynamic_range,
+                restitution_range=restitution_range,
             )
         else:
             adjusted_friction = None
@@ -264,27 +334,35 @@ def _convert_material_to_combine_mode(
         return adjusted_terrain, adjusted_friction
 
     elif target_mode == CombineMode.AVERAGE:
-        # effective = (robot + ground) / 2  =>  robot = 2 * effective - ground
-        ground_s = terrain_sim_config.static_friction
-        ground_d = terrain_sim_config.dynamic_friction
-        ground_r = terrain_sim_config.restitution
-        adjusted_terrain = replace(terrain_sim_config, combine_mode=CombineMode.AVERAGE)
+        terrain_static, static_range = _convert_effective_range_to_target(
+            effective_static_range,
+            terrain_sim_config.static_friction,
+            target_mode,
+        )
+        terrain_dynamic, dynamic_range = _convert_effective_range_to_target(
+            effective_dynamic_range,
+            terrain_sim_config.dynamic_friction,
+            target_mode,
+        )
+        terrain_restitution, restitution_range = _convert_effective_range_to_target(
+            effective_restitution_range,
+            terrain_sim_config.restitution,
+            target_mode,
+        )
+        adjusted_terrain = replace(
+            terrain_sim_config,
+            static_friction=terrain_static,
+            dynamic_friction=terrain_dynamic,
+            restitution=terrain_restitution,
+            combine_mode=CombineMode.AVERAGE,
+        )
         adjusted_friction = None
-        if friction_dr_config is not None and effective_static_range is not None:
+        if friction_dr_config is not None:
             adjusted_friction = replace(
                 friction_dr_config,
-                static_friction_range=(
-                    2 * effective_static_range[0] - ground_s,
-                    2 * effective_static_range[1] - ground_s,
-                ),
-                dynamic_friction_range=(
-                    2 * effective_dynamic_range[0] - ground_d,
-                    2 * effective_dynamic_range[1] - ground_d,
-                ),
-                restitution_range=(
-                    2 * effective_restitution_range[0] - ground_r,
-                    2 * effective_restitution_range[1] - ground_r,
-                ),
+                static_friction_range=static_range,
+                dynamic_friction_range=dynamic_range,
+                restitution_range=restitution_range,
             )
         return adjusted_terrain, adjusted_friction
 
@@ -327,7 +405,10 @@ def convert_friction_for_simulator(
         friction_dr_config = simulator_config.domain_randomization.friction
 
     adjusted_sim_config, adjusted_friction = convert_friction_for_combine_mode(
-        terrain_config.sim_config, friction_dr_config, target_mode
+        terrain_config.sim_config,
+        friction_dr_config,
+        target_mode,
+        default_robot_friction=getattr(simulator_config, "default_robot_friction", 1.0),
     )
 
     adjusted_terrain = replace(terrain_config, sim_config=adjusted_sim_config)

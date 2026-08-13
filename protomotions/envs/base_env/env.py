@@ -158,7 +158,7 @@ class BaseEnv:
         self.device = device
         self.terrain = terrain
         self.scene_lib = scene_lib
-        self.motion_lib = motion_lib
+        self.motion_lib = None
         self.simulator = simulator
         self.num_envs = simulator.num_envs
 
@@ -177,6 +177,7 @@ class BaseEnv:
         self.respawn_root_offset = torch.zeros(
             self.num_envs, 3, dtype=torch.float, device=self.device
         )
+        self._fall_reset_states = None
 
         # Per-episode odometer corruption parameters.
         # Sampled once at episode reset; held constant within the episode.
@@ -186,6 +187,15 @@ class BaseEnv:
             self.num_envs, 2, dtype=torch.float, device=self.device
         )
         self.odom_yaw_cos_sin[:, 0] = 1.0  # cos(0) = 1
+        # odom_start_xy: robot anchor XY at episode start, for distance-from-start.
+        # odom_start_heading_inv: inverse heading quat at episode start.
+        self.odom_start_xy = torch.zeros(
+            self.num_envs, 2, dtype=torch.float, device=self.device
+        )
+        self.odom_start_heading_inv = torch.zeros(
+            self.num_envs, 4, dtype=torch.float, device=self.device
+        )
+        self.odom_start_heading_inv[:, 3] = 1.0
 
         # Contact force tracking for impact penalty rewards
         # Initialized properly after simulator init when we know num_bodies
@@ -212,6 +222,8 @@ class BaseEnv:
             self.config.skip_correct_terrain_height_on_flat and self.terrain.is_flat()
         )
 
+        self.dt = self.simulator.dt
+        self.install_motion_lib(motion_lib)
         self.initialize_simulator()
 
     def initialize_simulator(self):
@@ -254,20 +266,6 @@ class BaseEnv:
         else:
             self.state_history = None
 
-        if (
-            self.motion_lib.num_motions() > 0
-            and self.config.ref_contact_smooth_window > 0
-        ):
-            self.motion_lib.smooth_contacts(self.config.ref_contact_smooth_window)
-
-        self.dt = self.simulator.dt
-
-        if self.motion_lib.num_motions() > 0:
-            self._validate_motion_lib_compatibility()
-            self.create_motion_manager()
-        else:
-            self.motion_manager = None
-
         self.terrain_obs_cb = TerrainObs(self.terrain.config, self)
         self.scene_obs_cb = SceneObs(self.config.scene_obs, self)
 
@@ -284,16 +282,22 @@ class BaseEnv:
         self._component_manager = ComponentManager(self.device)
         self._observation_buffer: Dict[str, Tensor] = {}
 
+        recovery_config = getattr(self.config, "recovery_reset", None)
+        if recovery_config is not None and recovery_config.recovery_prob > 0:
+            self._generate_fall_reset_states()
+
         # Initialize observations
         self._initialize_observations()
 
-    def _validate_motion_lib_compatibility(self):
+    def _validate_motion_lib_compatibility(self, motion_lib=None):
         """Validate that the motion file is compatible with the robot config."""
+        if motion_lib is None:
+            motion_lib = self.motion_lib
         ki = self.robot_config.kinematic_info
         expected_dofs = ki.num_dofs
         expected_bodies = ki.num_bodies
 
-        sample_state = self.motion_lib.get_motion_state(
+        sample_state = motion_lib.get_motion_state(
             torch.zeros(1, dtype=torch.long, device=self.device),
             torch.zeros(1, device=self.device),
         )
@@ -375,16 +379,32 @@ class BaseEnv:
         )
 
         # Update observation buffer with results
+        context_env_ids = getattr(context, "env_ids", None)
+        if context_env_ids is not None and not torch.equal(context_env_ids, env_ids):
+            raise ValueError(
+                "Observation context env_ids must match the destination env_ids"
+            )
+
         for name, obs_value in raw_obs.items():
+            expected_rows = (
+                len(env_ids) if context_env_ids is not None else self.num_envs
+            )
+            if obs_value.dim() == 0 or obs_value.shape[0] != expected_rows:
+                raise ValueError(
+                    f"Observation component '{name}' must return {expected_rows} rows "
+                    f"for a {'subset' if context_env_ids is not None else 'global'} "
+                    f"context; got {obs_value.shape[0] if obs_value.dim() else 0}"
+                )
+
             if name not in self._observation_buffer:
                 self._observation_buffer[name] = torch.zeros(
                     self.num_envs,
-                    obs_value.shape[-1],
+                    *obs_value.shape[1:],
                     dtype=obs_value.dtype,
                     device=self.device,
                 )
-            # MdpComponent always computes for all envs, update specified subset
-            self._observation_buffer[name][env_ids] = obs_value[env_ids]
+            rows = obs_value if context_env_ids is not None else obs_value[env_ids]
+            self._observation_buffer[name][env_ids] = rows
 
     def _process_rewards(
         self, context: EnvContext, grace_mask: Optional[Tensor] = None
@@ -716,7 +736,7 @@ class BaseEnv:
         if self.state_history is not None:
             current_state = self.simulator.get_robot_state()
             ground_heights = self.terrain.get_ground_heights(
-                current_state.rigid_body_pos[:, 0]
+                current_state.rigid_body_pos[:, self.robot_config.anchor_body_index]
             ).squeeze(-1)
             body_contacts = current_state.rigid_body_contacts[
                 :, self.contact_body_ids
@@ -874,8 +894,23 @@ class BaseEnv:
             self._current_context = self._build_global_context()
         return self._current_context
 
-    def _build_global_context(self) -> EnvContext:
-        """Build a fresh global context for observations, rewards, and terminations.
+    def _select_noisy_observations(
+        self, noisy: NoisyObservations, env_ids: Optional[Tensor]
+    ) -> NoisyObservations:
+        if env_ids is None:
+            return noisy
+        return noisy.select(env_ids)
+
+    @staticmethod
+    def _select_context_tensor(
+        tensor: Optional[Tensor], env_ids: Optional[Tensor]
+    ) -> Optional[Tensor]:
+        if tensor is None or env_ids is None:
+            return tensor
+        return tensor[env_ids]
+
+    def _build_context(self, env_ids: Optional[Tensor] = None) -> EnvContext:
+        """Build a fresh full or subset context.
 
         Creates typed EnvContext with view wrappers around existing data structures.
         Controllers populate their task-specific views via populate_context().
@@ -890,11 +925,13 @@ class BaseEnv:
         Returns:
             Typed EnvContext for observation/reward/termination functions.
         """
-        current_state = self.simulator.get_robot_state()
+        if env_ids is not None:
+            env_ids = env_ids.to(self.device)
+        current_state = self.simulator.get_robot_state(env_ids)
         anchor_idx = self.robot_config.anchor_body_index
 
         ground_heights = self.terrain.get_ground_heights(
-            current_state.rigid_body_pos[:, 0]
+            current_state.rigid_body_pos[:, anchor_idx]
         ).squeeze(-1)
 
         body_contacts = current_state.rigid_body_contacts[
@@ -908,82 +945,176 @@ class BaseEnv:
 
         # Use cached noisy obs from post_physics_step when available.
         # During init/reset the cache is None — use clean (no-noise) fallback.
+        current_view = CurrentStateView(current_state, anchor_idx)
         if self._current_noisy_obs is not None:
-            noisy = self._current_noisy_obs
+            noisy = self._select_noisy_observations(self._current_noisy_obs, env_ids)
+            noisy_view = CurrentStateView(noisy, anchor_idx)
+            noisy_ground_heights = noisy.ground_heights
         else:
-            noisy = apply_observation_noise(
-                obs_noise_cfg=None,
-                robot_state=current_state,
-                anchor_idx=anchor_idx,
-                ground_heights=ground_heights,
-            )
+            noisy_view = current_view
+            noisy_ground_heights = ground_heights
 
-        scene_surface_context = self._build_scene_surface_context()
+        context_num_envs = current_state.root_pos.shape[0]
+        scene_surface_context = self._build_scene_surface_context(
+            env_ids, context_num_envs=context_num_envs
+        )
+        terrain_context = None
+        if hasattr(self.terrain, "height_points") and hasattr(
+            self.terrain, "height_samples"
+        ):
+            terrain_context = TerrainContext(
+                self._select_context_tensor(self.terrain.height_points, env_ids),
+                self.terrain.height_samples,
+            )
 
         # Build context with view wrappers
         ctx = EnvContext(
             # Core state views (wrap RobotState without copying)
-            current=CurrentStateView(current_state, anchor_idx),
-            noisy=CurrentStateView(noisy, anchor_idx),
+            current=current_view,
+            noisy=noisy_view,
             # Historical views (wrap StateHistoryBuffer without copying)
-            historical=HistoricalView(self.state_history, use_noisy=False)
+            historical=HistoricalView(
+                self.state_history, use_noisy=False, env_ids=env_ids
+            )
             if self.state_history
             else None,
-            noisy_historical=HistoricalView(self.state_history, use_noisy=True)
+            noisy_historical=HistoricalView(
+                self.state_history, use_noisy=True, env_ids=env_ids
+            )
             if self.state_history
             else None,
             # Actions (historical)
-            current_processed_action=self._current_processed_action,
-            previous_action=self.state_history.actions[:, 1]
+            current_processed_action=self._select_context_tensor(
+                self._current_processed_action, env_ids
+            ),
+            previous_action=self._select_context_tensor(
+                self.state_history.actions[:, 1], env_ids
+            )
             if (self.state_history and self.state_history.num_history_steps >= 1)
             else None,
-            previous_processed_action=self.state_history.processed_actions[:, 1]
+            previous_processed_action=self._select_context_tensor(
+                self.state_history.processed_actions[:, 1], env_ids
+            )
             if (self.state_history and self.state_history.num_history_steps >= 1)
             else None,
             # Environment state
+            env_ids=env_ids,
             ground_heights=ground_heights,
-            noisy_ground_heights=noisy.ground_heights,
-            terrain=TerrainContext(
-                self.terrain.height_points,
-                self.terrain.height_samples,
-            ),
+            noisy_ground_heights=noisy_ground_heights,
+            terrain=terrain_context,
             scene=scene_surface_context,
             body_contacts=body_contacts,
             current_contact_force_magnitudes=current_contact_force_magnitudes,
-            prev_contact_force_magnitudes=self.prev_contact_force_magnitudes,
+            prev_contact_force_magnitudes=self._select_context_tensor(
+                self.prev_contact_force_magnitudes, env_ids
+            ),
             dt=self.dt,
-            progress_buf=self.progress_buf,
+            progress_buf=self._select_context_tensor(self.progress_buf, env_ids),
             # Contact tracking
             contact_body_ids=self.contact_body_ids,
             non_termination_contact_body_ids=self.non_termination_contact_body_ids,
             # Per-episode odometer corruption parameters
-            odom_scale=self.odom_scale,
-            odom_yaw_cos_sin=self.odom_yaw_cos_sin,
+            odom_scale=self._select_context_tensor(self.odom_scale, env_ids),
+            odom_yaw_cos_sin=self._select_context_tensor(
+                self.odom_yaw_cos_sin, env_ids
+            ),
         )
 
         # Controllers populate their task-specific views
         self.control_manager.populate_context(ctx)
 
+        # Compute the corrupted odometer displacement once per step.
+        #
+        # The corruption models the G1's leg-kinematics odometer: noise is
+        # proportional to the robot's displacement from episode start (distance
+        # walked), NOT to the displacement to the reference.  Only the raw
+        # sensor fields (odom_disp_start_{corrupt,clean}, odom_start_xy,
+        # odom_start_heading_inv) are stored here -- the heading-local offset to
+        # reference is derived on demand by consumers from these ingredients via
+        # obs.target_poses.compute_odom_offset_local.
+        #
+        # At deployment: odom_position comes from rt/odommodestate directly.
+        if ctx.mimic is not None:
+            odom_start_xy = self._select_context_tensor(self.odom_start_xy, env_ids)
+            odom_start_heading_inv = self._select_context_tensor(
+                self.odom_start_heading_inv, env_ids
+            )
+            from protomotions.utils.odom_corruption import apply_odom_corruption_torch
+            from protomotions.utils import rotations as rot_utils
+
+            cur_anchor_xy = current_state.rigid_body_pos[:, anchor_idx, :2]
+
+            # Corrupt the robot's position (displacement from episode start),
+            # expressed in the episode-start heading frame. This matches real
+            # deployment odometry: zero at motion start, facing robot-front.
+            robot_disp_world = cur_anchor_xy - odom_start_xy
+            robot_disp_world_3d = torch.cat(
+                [robot_disp_world, torch.zeros_like(robot_disp_world[:, :1])],
+                dim=-1,
+            )
+            robot_disp_from_start = rot_utils.quat_rotate(
+                odom_start_heading_inv, robot_disp_world_3d, w_last=True
+            )[:, :2]
+            corrupted_disp = apply_odom_corruption_torch(
+                robot_disp_from_start, ctx.odom_scale, ctx.odom_yaw_cos_sin,
+                log_noise_std=self.config.odom_log_noise_std,
+                soft_threshold=self.config.odom_soft_threshold,
+            )
+            # Store only the raw odometer sensor fields. The heading-local offset
+            # to reference (formerly odom_offset_local_{corrupt,clean}) is derived
+            # on demand by consumers from these ingredients, so the stochastic
+            # corruption stays confined to this sensor boundary.
+            ctx.odom_start_xy = odom_start_xy
+            ctx.odom_start_heading_inv = odom_start_heading_inv
+            ctx.odom_disp_start_clean = robot_disp_from_start
+            ctx.odom_disp_start_corrupt = corrupted_disp
+        else:
+            ctx.odom_start_xy = torch.zeros(
+                context_num_envs, 2, device=self.device, dtype=torch.float
+            )
+            ctx.odom_start_heading_inv = torch.zeros(
+                context_num_envs, 4, device=self.device, dtype=torch.float
+            )
+            ctx.odom_start_heading_inv[:, 3] = 1.0
+            ctx.odom_disp_start_clean = torch.zeros(
+                context_num_envs, 2, device=self.device, dtype=torch.float
+            )
+            ctx.odom_disp_start_corrupt = torch.zeros(
+                context_num_envs, 2, device=self.device, dtype=torch.float
+            )
+
         return ctx
 
-    def _build_scene_surface_context(self) -> SceneSurfaceContext:
+    def _build_scene_surface_context(
+        self, env_ids: Optional[Tensor] = None, context_num_envs: Optional[int] = None
+    ) -> SceneSurfaceContext:
         """Build scene-object surface tensors for component observations.
 
         Nearest-surface observations bind these fields unconditionally. Envs
         without object pointclouds receive empty tensors, which lets the compute
         kernel naturally fall back to terrain-only behavior.
         """
-        has_object_pointclouds = (
-            getattr(self.scene_lib, "_object_pointclouds", None) is not None
+        if env_ids is not None:
+            env_ids = env_ids.to(self.device)
+        if context_num_envs is None:
+            context_num_envs = self.num_envs if env_ids is None else env_ids.shape[0]
+        scene_lib = getattr(self, "scene_lib", None)
+        num_objects_per_scene = (
+            getattr(scene_lib, "num_objects_per_scene", 0)
+            if scene_lib is not None
+            else 0
         )
-        if self.scene_lib.num_objects_per_scene <= 0 or not has_object_pointclouds:
-            object_pos = torch.zeros(self.num_envs, 0, 3, device=self.device)
-            object_rot = torch.zeros(self.num_envs, 0, 4, device=self.device)
+        has_object_pointclouds = (
+            getattr(scene_lib, "_object_pointclouds", None) is not None
+        )
+        if num_objects_per_scene <= 0 or not has_object_pointclouds:
+            object_pos = torch.zeros(context_num_envs, 0, 3, device=self.device)
+            object_rot = torch.zeros(context_num_envs, 0, 4, device=self.device)
             neutral_pointclouds = torch.zeros(
-                self.num_envs, 0, 0, 3, device=self.device
+                context_num_envs, 0, 0, 3, device=self.device
             )
             object_valid_mask = torch.zeros(
-                self.num_envs, 0, dtype=torch.bool, device=self.device
+                context_num_envs, 0, dtype=torch.bool, device=self.device
             )
             return SceneSurfaceContext(
                 object_pos=object_pos,
@@ -992,14 +1123,21 @@ class BaseEnv:
                 object_valid_mask=object_valid_mask,
             )
 
-        env_ids = torch.arange(self.num_envs, device=self.device, dtype=torch.long)
-        object_state = self.simulator.get_object_root_state()
+        scene_env_ids = (
+            torch.arange(self.num_envs, device=self.device, dtype=torch.long)
+            if env_ids is None
+            else env_ids
+        )
+        object_state = self.simulator.get_object_root_state(env_ids)
         return SceneSurfaceContext(
             object_pos=object_state.root_pos,
             object_rot=object_state.root_rot,
-            neutral_pointclouds=self.scene_lib.get_scene_neutral_pointcloud(env_ids),
-            object_valid_mask=self.scene_lib.get_per_object_valid_mask(env_ids),
+            neutral_pointclouds=scene_lib.get_scene_neutral_pointcloud(scene_env_ids),
+            object_valid_mask=scene_lib.get_per_object_valid_mask(scene_env_ids),
         )
+
+    def _build_global_context(self) -> EnvContext:
+        return self._build_context()
 
     def get_has_reset_grace(self):
         """Check if environments are in the grace period after reset.
@@ -1085,7 +1223,7 @@ class BaseEnv:
         """
 
         ref_state = self.motion_lib.get_motion_state(motion_ids, motion_times)
-        new_states = ResetState.from_robot_state(ref_state)
+        new_states = ResetState.from_robot_state(ref_state).clone()
 
         new_object_states = self.scene_lib.get_scene_pose(
             env_ids, motion_times, respawn_offset=self.config.ref_object_respawn_offset
@@ -1102,6 +1240,118 @@ class BaseEnv:
         return self.move_reset_robot_obj_states_to_respawn_position(
             env_ids, new_states, new_object_states
         )
+
+    def _generate_fall_reset_states(self) -> None:
+        """Cache physically settled fall poses for reset sampling."""
+        config = self.config.recovery_reset
+        if config.fall_sim_steps <= 0:
+            self._fall_reset_states = self.default_reset_state.clone()
+            return
+
+        env_ids = torch.arange(self.num_envs, device=self.device, dtype=torch.long)
+        snapshot = self.save_state()
+        try:
+            fall_states = self.default_reset_state.clone()
+            flat_xy = self.terrain.sample_valid_locations(
+                num_envs=self.num_envs, sample_flat=True
+            )
+            ground_heights = self.terrain.get_ground_heights(
+                torch.cat(
+                    [
+                        flat_xy,
+                        torch.zeros(self.num_envs, 1, device=self.device),
+                    ],
+                    dim=-1,
+                )
+            ).squeeze(-1)
+            fall_states.root_pos[:, :2] = flat_xy
+            fall_states.root_pos[:, 2] += ground_heights
+
+            random_quat = torch.randn(self.num_envs, 4, device=self.device)
+            random_quat = random_quat / random_quat.norm(
+                dim=-1, keepdim=True
+            ).clamp_min(1e-6)
+            fall_states.root_rot = random_quat
+            fall_states.root_vel.zero_()
+            fall_states.root_ang_vel.zero_()
+            if fall_states.dof_vel is not None:
+                fall_states.dof_vel.zero_()
+
+            self.simulator.reset_envs(
+                fall_states, self.default_object_state, env_ids
+            )
+
+            dof_lower = self.robot_config.kinematic_info.dof_limits_lower.to(
+                self.device
+            )
+            dof_upper = self.robot_config.kinematic_info.dof_limits_upper.to(
+                self.device
+            )
+            random_targets = (
+                torch.rand(
+                    self.num_envs,
+                    self.robot_config.number_of_actions,
+                    dtype=torch.float,
+                    device=self.device,
+                )
+                * (dof_upper - dof_lower)
+                + dof_lower
+            )
+            for _ in range(config.fall_sim_steps):
+                self.simulator.step(random_targets, markers_callback=None)
+
+            self._fall_reset_states = ResetState.from_robot_state(
+                self.simulator.get_robot_state()
+            ).clone()
+            self._fall_reset_states.root_vel.zero_()
+            self._fall_reset_states.root_ang_vel.zero_()
+            if self._fall_reset_states.dof_vel is not None:
+                self._fall_reset_states.dof_vel.zero_()
+        finally:
+            self.restore_state(snapshot)
+
+    def _apply_recovery_reset_states(
+        self, env_ids: Tensor, reset_states: ResetState
+    ) -> Tuple[ResetState, Tensor]:
+        """Replace a sampled subset with cached fall poses and return the result."""
+        recovery_mask = torch.zeros(
+            len(env_ids), dtype=torch.bool, device=self.device
+        )
+        config = getattr(self.config, "recovery_reset", None)
+        if config is None or config.recovery_prob <= 0:
+            return reset_states, recovery_mask
+        if self._fall_reset_states is None:
+            raise RuntimeError(
+                "recovery_prob is positive but fall reset states were not generated"
+            )
+
+        recovery_mask = (
+            torch.rand(len(env_ids), device=self.device) < config.recovery_prob
+        )
+        if not recovery_mask.any():
+            return reset_states, recovery_mask
+
+        local_ids = torch.nonzero(recovery_mask, as_tuple=False).flatten()
+        random_ids = torch.randint(
+            0,
+            self._fall_reset_states.root_pos.shape[0],
+            (len(local_ids),),
+            device=self.device,
+        )
+        fall_states = self._fall_reset_states[random_ids]
+
+        reset_states.root_rot[local_ids] = fall_states.root_rot
+        reset_states.root_vel[local_ids] = 0.0
+        reset_states.root_ang_vel[local_ids] = 0.0
+        reset_states.dof_pos[local_ids] = fall_states.dof_pos
+        if reset_states.dof_vel is not None and fall_states.dof_vel is not None:
+            reset_states.dof_vel[local_ids] = 0.0
+
+        env_subset = env_ids[local_ids]
+        reset_states.root_pos[local_ids, 2] = (
+            self.respawn_root_offset[env_subset, 2] + fall_states.root_pos[:, 2]
+        )
+        return reset_states, recovery_mask
 
     def reset(
         self,
@@ -1142,27 +1392,44 @@ class BaseEnv:
             env_ids = torch.tensor(env_ids, device=self.device, dtype=torch.long)
         env_ids = env_ids.to(self.device)
 
-        # Start with default reset for all envs
-        new_states, new_object_states = self.compute_default_reset_state(
-            env_ids, sample_flat
-        )
-
         # STEP 1: Reset motion manager and determine which envs need reference motion reset
         # This calls motion_manager.sample_motions() internally
         ref_env_ids, motion_ids, motion_times = self._get_ref_reset_envs(
             env_ids, force_default_mask, disable_motion_resample
         )
 
-        # Overwrite ref envs with reference motion reset
-        if len(ref_env_ids) > 0:
+        default_mask = ~torch.isin(env_ids, ref_env_ids)
+        default_indices = default_mask.nonzero(as_tuple=True)[0]
+
+        if ref_env_ids.numel() == 0:
+            new_states, new_object_states = self.compute_default_reset_state(
+                env_ids, sample_flat
+            )
+        elif default_indices.numel() == 0:
+            new_states, new_object_states = self.compute_ref_reset_state(
+                ref_env_ids, motion_ids, motion_times, sample_flat
+            )
+        else:
+            new_states = self.default_reset_state[env_ids].clone()
+            new_object_states = self.default_object_state[env_ids].clone()
+
+            default_env_ids = env_ids[default_indices]
+            default_states, default_object_states = self.compute_default_reset_state(
+                default_env_ids, sample_flat
+            )
+            new_states[default_indices] = default_states
+            new_object_states[default_indices] = default_object_states
+
             ref_states, ref_object_states = self.compute_ref_reset_state(
                 ref_env_ids, motion_ids, motion_times, sample_flat
             )
-
             ref_indices = torch.isin(env_ids, ref_env_ids).nonzero(as_tuple=True)[0]
-
             new_states[ref_indices] = ref_states
             new_object_states[ref_indices] = ref_object_states
+
+        new_states, recovery_mask = self._apply_recovery_reset_states(
+            env_ids, new_states
+        )
 
         if self.robot_config.reset_noise is not None:
             apply_reset_noise(
@@ -1174,10 +1441,26 @@ class BaseEnv:
 
         self.simulator.reset_envs(new_states, new_object_states, env_ids)
 
-        default_mask = ~torch.isin(env_ids, ref_env_ids)
+        current_state_history_mask = ~torch.isin(env_ids, ref_env_ids)
+        history_ref_env_ids = ref_env_ids
+        history_motion_ids = motion_ids
+        history_motion_times = motion_times
+        if recovery_mask.any():
+            current_state_history_mask = current_state_history_mask | recovery_mask
+            if len(ref_env_ids) > 0:
+                ref_recovery = torch.isin(ref_env_ids, env_ids[recovery_mask])
+                history_ref_env_ids = ref_env_ids[~ref_recovery]
+                if motion_ids is not None:
+                    history_motion_ids = motion_ids[~ref_recovery]
+                    history_motion_times = motion_times[~ref_recovery]
+
         if self.state_history is not None:
             self._reset_state_history(
-                env_ids, default_mask, ref_env_ids, motion_ids, motion_times
+                env_ids,
+                current_state_history_mask,
+                history_ref_env_ids,
+                history_motion_ids,
+                history_motion_times,
             )
 
         # Reset control components after motion_manager has been reset
@@ -1192,7 +1475,7 @@ class BaseEnv:
 
         # Resample per-episode odometer corruption parameters.
         # These remain constant within an episode and are used by
-        # corrupted_xy_offset_factory when present in observation components.
+        # odom_offset_factory when present in observation components.
         n = len(env_ids)
         self.odom_scale[env_ids] = torch.empty(n, device=self.device).uniform_(
             self.config.odom_scale_range[0], self.config.odom_scale_range[1]
@@ -1202,27 +1485,36 @@ class BaseEnv:
         ) * (3.14159265358979 / 180.0)
         self.odom_yaw_cos_sin[env_ids, 0] = torch.cos(yaw_bias)
         self.odom_yaw_cos_sin[env_ids, 1] = torch.sin(yaw_bias)
+        # Record robot XY at episode start (after simulator reset) for distance-from-start.
+        anchor_idx = self.robot_config.anchor_body_index
+        reset_state = self.simulator.get_robot_state()
+        self.odom_start_xy[env_ids] = reset_state.rigid_body_pos[env_ids, anchor_idx, :2]
+        from protomotions.utils import rotations as rot_utils
+
+        self.odom_start_heading_inv[env_ids] = rot_utils.calc_heading_quat_inv(
+            reset_state.rigid_body_rot[env_ids, anchor_idx], w_last=True
+        )
 
         # Update cached noisy obs for the reset envs with fresh noise
         if self._current_noisy_obs is not None:
-            current_state = self.simulator.get_robot_state()
+            current_state = self.simulator.get_robot_state(env_ids)
             ground_heights = self.terrain.get_ground_heights(
-                current_state.rigid_body_pos[env_ids, 0]
+                current_state.rigid_body_pos[:, self.robot_config.anchor_body_index]
             ).squeeze(-1)
             obs_noise_cfg = self.simulator.config.domain_randomization.observation_noise
             noisy_subset = apply_observation_noise(
                 obs_noise_cfg=obs_noise_cfg,
                 robot_state=current_state,
-                env_ids=env_ids,
                 anchor_idx=self.robot_config.anchor_body_index,
                 ground_heights=ground_heights,
             )
             self._current_noisy_obs.update_subset(env_ids, noisy_subset)
 
         # Recompute observations after reset to reflect new control component state
-        # Invalidate and rebuild context since state changed
+        # Invalidate the cached all-env context, but use a temporary subset
+        # context so partial resets only read and process reset environments.
         self._current_context = None
-        self.compute_observations(env_ids, context=self.context)
+        self.compute_observations(env_ids, context=self._build_context(env_ids))
 
         return self.get_obs(), {}
 
@@ -1272,45 +1564,56 @@ class BaseEnv:
     def _reset_state_history(
         self,
         env_ids: Tensor,
-        default_mask: Tensor,
+        current_state_history_mask: Tensor,
         ref_env_ids: Tensor,
         motion_ids: Optional[Tensor],
         motion_times: Optional[Tensor],
     ):
         """Reset state history buffer for specified environments.
 
-        For default reset: repeat current state across all history slots.
+        For current-state history, repeat the simulated state across all slots.
         For ref reset: query motion_lib at t-dt, t-2*dt, ... to get historical states.
 
         Args:
             env_ids: All environment indices being reset.
-            default_mask: Boolean mask indicating which envs use default reset.
+            current_state_history_mask: Environments that repeat their current
+                simulated state across the history buffer.
             ref_env_ids: Environment indices using reference motion reset.
             motion_ids: Motion IDs for ref envs (or None).
             motion_times: Motion times for ref envs (or None).
         """
-        default_env_ids = env_ids[default_mask]
+        current_state_history_env_ids = env_ids[current_state_history_mask]
         num_history_steps = self.state_history.num_history_steps
         # Buffer stores current + history, so total slots = num_history_steps + 1
         buffer_size = num_history_steps + 1
 
-        # Default reset: repeat current simulator state to all buffer slots
-        if len(default_env_ids) > 0:
+        # Default and recovery resets repeat the current simulator state.
+        if len(current_state_history_env_ids) > 0:
             current_state = self.simulator.get_robot_state()
             ground_heights = self.terrain.get_ground_heights(
-                current_state.rigid_body_pos[default_env_ids, 0]
+                current_state.rigid_body_pos[
+                    current_state_history_env_ids, self.robot_config.anchor_body_index
+                ]
             ).squeeze(-1)
-            body_contacts = current_state.rigid_body_contacts[default_env_ids][
-                :, self.contact_body_ids
-            ].bool()
+            body_contacts = current_state.rigid_body_contacts[
+                current_state_history_env_ids
+            ][:, self.contact_body_ids].bool()
             self.state_history.reset_from_single_state(
-                env_ids=default_env_ids,
-                rigid_body_pos=current_state.rigid_body_pos[default_env_ids],
-                rigid_body_rot=current_state.rigid_body_rot[default_env_ids],
-                rigid_body_vel=current_state.rigid_body_vel[default_env_ids],
-                rigid_body_ang_vel=current_state.rigid_body_ang_vel[default_env_ids],
-                dof_pos=current_state.dof_pos[default_env_ids],
-                dof_vel=current_state.dof_vel[default_env_ids],
+                env_ids=current_state_history_env_ids,
+                rigid_body_pos=current_state.rigid_body_pos[
+                    current_state_history_env_ids
+                ],
+                rigid_body_rot=current_state.rigid_body_rot[
+                    current_state_history_env_ids
+                ],
+                rigid_body_vel=current_state.rigid_body_vel[
+                    current_state_history_env_ids
+                ],
+                rigid_body_ang_vel=current_state.rigid_body_ang_vel[
+                    current_state_history_env_ids
+                ],
+                dof_pos=current_state.dof_pos[current_state_history_env_ids],
+                dof_vel=current_state.dof_vel[current_state_history_env_ids],
                 ground_heights=ground_heights,
                 body_contacts=body_contacts,
             )
@@ -1397,6 +1700,24 @@ class BaseEnv:
     ###############################################################
     # Motion and Visualization Helpers
     ###############################################################
+    def install_motion_lib(self, motion_lib: "MotionLib") -> None:
+        """Install a prebuilt motion library and rebuild its environment state."""
+        if motion_lib.num_motions() > 0:
+            self._validate_motion_lib_compatibility(motion_lib)
+
+        if (
+            motion_lib.num_motions() > 0
+            and self.config.ref_contact_smooth_window > 0
+        ):
+            motion_lib.smooth_contacts(self.config.ref_contact_smooth_window)
+
+        self.motion_lib = motion_lib
+        if motion_lib.num_motions() > 0:
+            self.create_motion_manager()
+        else:
+            self.motion_manager = None
+        self._current_context = None
+
     def create_motion_manager(self):
         """Instantiate motion manager from configuration."""
         MotionManagerClass = get_class(self.config.motion_manager._target_)
@@ -1554,6 +1875,8 @@ class BaseEnv:
             "respawn_root_offset": self.respawn_root_offset.clone(),
             "odom_scale": self.odom_scale.clone(),
             "odom_yaw_cos_sin": self.odom_yaw_cos_sin.clone(),
+            "odom_start_xy": self.odom_start_xy.clone(),
+            "odom_start_heading_inv": self.odom_start_heading_inv.clone(),
         }
         if self.state_history is not None:
             snapshot["state_history"] = self.state_history.save_state()
@@ -1592,6 +1915,10 @@ class BaseEnv:
         if "odom_scale" in snapshot:
             self.odom_scale.copy_(snapshot["odom_scale"])
             self.odom_yaw_cos_sin.copy_(snapshot["odom_yaw_cos_sin"])
+        if "odom_start_xy" in snapshot:
+            self.odom_start_xy.copy_(snapshot["odom_start_xy"])
+        if "odom_start_heading_inv" in snapshot:
+            self.odom_start_heading_inv.copy_(snapshot["odom_start_heading_inv"])
         self._current_noisy_obs = snapshot.get("_current_noisy_obs")
         self._current_context = None
 

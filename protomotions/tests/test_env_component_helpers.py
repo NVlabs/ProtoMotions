@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import logging
+import pickle
 
 import pytest
 import torch
@@ -153,6 +154,25 @@ def test_mdp_component_moves_static_tensor_params_to_runtime_device():
     assert component.static_params["bias"].device.type == "meta"
 
 
+def test_mdp_component_reinitializes_static_tensor_device_after_pickle():
+    component = MdpComponent(
+        compute_func=_affine_value,
+        dynamic_vars={"value": _TestContext.current.value},
+        static_params={"bias": torch.tensor([1.0, 2.0, 3.0]), "gain": 1.0},
+    )
+    component.resolve_args(_make_context())
+    assert component._device_ready is True
+    assert "_device_ready" not in component.__getstate__()
+
+    restored = pickle.loads(pickle.dumps(component))
+    assert restored._device_ready is False
+
+    _, func_params = restored.resolve_args(
+        _make_context(value=torch.empty(3, device="meta"))
+    )
+    assert func_params["bias"].device.type == "meta"
+
+
 def test_combine_rewards_applies_grace_mask_weighting_and_clamps():
     grace_mask = torch.tensor([False, True, False])
     raw_rewards = {
@@ -298,6 +318,28 @@ def test_component_manager_executes_all_and_single_in_eager_mode(monkeypatch):
     assert set(manager._compiled) == {"value_func", "other_func"}
 
 
+def test_component_manager_execute_all_uses_eager_for_subset_context(monkeypatch):
+    monkeypatch.setattr(component_manager, "TORCH_COMPILE_AVAILABLE", True)
+
+    def fail_compile(fn, mode):
+        raise AssertionError("subset contexts should not be compiled")
+
+    monkeypatch.setattr(component_manager.torch, "compile", fail_compile)
+    manager = ComponentManager(torch.device("cpu"))
+    ctx = _make_context(value=torch.tensor([1.0, 2.0]))
+    ctx.env_ids = torch.tensor([2, 5])
+    component = MdpComponent(
+        compute_func=_add_value,
+        dynamic_vars={"value": _TestContext.current.value},
+        static_params={"increment": 2.0},
+    )
+
+    results = manager.execute_all({"value": component}, ctx)
+
+    assert torch.equal(results["value"], torch.tensor([3.0, 4.0]))
+    assert manager._compiled == {}
+
+
 def test_component_manager_promotes_successful_compiled_function(monkeypatch):
     monkeypatch.setattr(component_manager, "TORCH_COMPILE_AVAILABLE", True)
     compile_calls = []
@@ -329,6 +371,28 @@ def test_component_manager_promotes_successful_compiled_function(monkeypatch):
     assert compile_calls == [(_add_value, "default")]
     assert len(compiled_calls) == 2
     assert manager._compiled["value_func"] is not component.compute_func
+
+
+def test_component_manager_honors_explicit_component_compile_flag(monkeypatch):
+    monkeypatch.setattr(component_manager, "TORCH_COMPILE_AVAILABLE", True)
+
+    def fail_compile(fn, mode):
+        raise AssertionError("component explicitly disabled compilation")
+
+    monkeypatch.setattr(component_manager.torch, "compile", fail_compile)
+    manager = ComponentManager(torch.device("cpu"))
+    ctx = _make_context(value=torch.tensor([1.0, 2.0]))
+    component = MdpComponent(
+        compute_func=_add_value,
+        dynamic_vars={"value": _TestContext.current.value},
+        static_params={"increment": 2.0},
+        compile=False,
+    )
+
+    result = manager.execute_single("value", component, ctx, compile=True)
+
+    assert torch.equal(result, torch.tensor([3.0, 4.0]))
+    assert manager._compiled["value_func"] is component.compute_func
 
 
 def test_component_manager_falls_back_when_compiled_wrapper_fails(monkeypatch):

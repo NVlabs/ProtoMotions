@@ -88,6 +88,10 @@ class FieldPath(Generic[T]):
             # Class access -> return FieldPath descriptor
             return self
         # Instance access -> return stored value
+        if self.name not in obj.__dict__:
+            compute = getattr(obj, f"_compute_{self.name}", None)
+            if compute is not None:
+                obj.__dict__[self.name] = compute()
         return obj.__dict__.get(self.name)
     
     def __set__(self, obj, value):

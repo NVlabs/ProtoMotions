@@ -19,6 +19,14 @@ backend or version.
      - Purpose
      - Runtime expectation
      - Model card
+   * - SMPL AMASS GPC prior
+     - Discrete GPC prior for SMPL motion
+     - IsaacLab only
+     - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/gpc_prior/smpl_amass/MODEL_CARD.md>`__
+   * - SOMA BONES-SEED GPC prior
+     - Discrete GPC prior for SOMA motion
+     - IsaacLab only
+     - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/gpc_prior/soma_bones/MODEL_CARD.md>`__
    * - SMPL MaskedMimic
      - Sparse and masked future-motion control
      - IsaacLab only
@@ -37,13 +45,13 @@ backend or version.
      - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/motion_tracker/smpl-terrains/MODEL_CARD.md>`__
    * - SOMA BONES-SEED tracker
      - Continuous-action SOMA motion tracking
-     - IsaacLab only
+     - IsaacLab fine-tune only (``last_lab.ckpt``)
      - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/motion_tracker/soma-bones/MODEL_CARD.md>`__
    * - SOMA BONES-SEED FSQ tracker
      - Discrete FSQ tracker used by GPC
      - IsaacLab only
      - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/motion_tracker/soma_bones_fsq/MODEL_CARD.md>`__
-   * - SOMA BONES-SEED GPC prior
-     - Unconditional discrete motion prior
+   * - SOMA BONES-SEED FSQ AMP tracker
+     - FSQ motion tracker with AMP regularization
      - IsaacLab only
-     - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/gpc_prior/soma_bones/MODEL_CARD.md>`__
+     - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/motion_tracker/soma_bones_fsq_amp_muon/MODEL_CARD.md>`__

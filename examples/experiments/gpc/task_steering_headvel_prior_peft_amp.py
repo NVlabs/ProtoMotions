@@ -10,12 +10,15 @@ from protomotions.envs.base_env.config import EnvConfig
 from protomotions.robot_configs.base import RobotConfig
 from protomotions.simulator.base_simulator.config import SimulatorConfig
 
+PRIOR_CHECKPOINT = (
+    "data/pretrained_models/gpc_prior/smpl_amass/inference_last.ckpt"
+)
 
 DISC_HISTORY_STEPS = [1, 2, 4, 8, 16]
 
 
 def additional_experiment_arguments(parser: argparse.ArgumentParser):
-    parser.add_argument("--prior-checkpoint", required=True)
+    parser.add_argument("--prior-checkpoint", default=PRIOR_CHECKPOINT)
 
 
 def configure_robot_and_simulator(
@@ -124,7 +127,7 @@ def agent_config(
     from protomotions.envs.mdp_component import MdpComponent
     from protomotions.envs.obs import compute_historical_max_coords_from_motion_lib
 
-    prior_checkpoint = args.prior_checkpoint
+    prior_checkpoint = getattr(args, "prior_checkpoint", PRIOR_CHECKPOINT)
     actor_in_keys = ["task_obs"]
 
     discriminator_config = DiscriminatorConfig(

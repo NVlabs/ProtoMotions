@@ -4,6 +4,7 @@
 """Tests for ONNX export utility plumbing."""
 from __future__ import annotations
 
+import importlib
 import json
 import sys
 from types import SimpleNamespace
@@ -506,6 +507,13 @@ def test_policy_yaml_builders_cover_history_names_and_constant_gain_outputs():
         body_names,
         anchor_body="torso",
     )
+    future_anchor_rot = export_utils._build_policy_input(
+        "mimic_future_anchor_rot",
+        {"mimic_future_anchor_rot": [8, 5, 4]},
+        joint_names,
+        body_names,
+        anchor_body="torso",
+    )
 
     assert current["shape"] == [1, 2]
     assert current["history"] == 0
@@ -522,7 +530,11 @@ def test_policy_yaml_builders_cover_history_names_and_constant_gain_outputs():
     assert future_rot["future_steps"] == 5
     assert future_rot["element_names"] == [body_names, list("xyzw")]
     assert "history" not in anchor_rot
+    assert anchor_rot["kind"] == "reference_motion_anchor_rot"
     assert anchor_rot["element_names"] == [["torso"], list("xyzw")]
+    assert future_anchor_rot["kind"] == "reference_motion_anchor_rot"
+    assert future_anchor_rot["future_steps"] == 5
+    assert future_anchor_rot["element_names"] == [["torso"], list("xyzw")]
 
     assert export_utils._build_policy_output(
         "unknown", {}, joint_names, [1.0, 2.0], [0.1, 0.2]
@@ -1386,3 +1398,41 @@ def test_export_unified_pipeline_rejects_missing_policy_inputs(tmp_path):
                 anchor_body_name="pelvis",
             ),
         )
+
+
+@pytest.mark.parametrize(
+    "module_name",
+    [
+        "deployment.export_tracker_onnx",
+        "deployment.export_bm_tracker_onnx",
+    ],
+)
+def test_deployment_export_mocks_expose_anchor_bindings(module_name):
+    module = importlib.import_module(module_name)
+    kwargs = {
+        "num_envs": 1,
+        "num_dofs": 2,
+        "num_bodies": 3,
+        "num_future_steps": 2,
+        "anchor_idx": 1,
+    }
+    if module_name.endswith("export_bm_tracker_onnx"):
+        kwargs["history_steps"] = 1
+    context = module.MockContext(**kwargs)
+
+    assert context.current.anchor_idx == 1
+    assert context.mimic.anchor_idx == 1
+
+    from protomotions.envs.component_factories import (
+        max_coords_obs_factory,
+        mimic_target_poses_max_coords_factory,
+    )
+
+    export_utils.ObservationExportModule(
+        {
+            "max_coords": max_coords_obs_factory(),
+            "target": mimic_target_poses_max_coords_factory(),
+        },
+        context,
+        torch.device("cpu"),
+    )

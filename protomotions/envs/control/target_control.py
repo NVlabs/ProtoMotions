@@ -166,9 +166,10 @@ class RandomTargetCommandSource(TargetCommandSource):
 
     def _set_random_target(self, env_ids: Tensor) -> None:
         control = self.control
-        root_state = control.env.simulator.get_root_state(env_ids)
-        root_pos = root_state.root_pos
-        root_rot = root_state.root_rot
+        robot_state = control.env.simulator.get_robot_state(env_ids)
+        anchor_body_index = control.env.robot_config.anchor_body_index
+        root_pos = robot_state.rigid_body_pos[:, anchor_body_index]
+        root_rot = robot_state.rigid_body_rot[:, anchor_body_index]
 
         if self.config.target_positions is not None:
             self._sample_from_target_positions(env_ids)
@@ -262,9 +263,9 @@ class KeyboardTargetCommandSource(TargetCommandSource):
             self._action_bindings.append((handle, binding.delta_xy))
 
     def reset(self, env_ids: Tensor) -> None:
-        self.control._tar_pos[env_ids] = self.control.env.simulator.get_root_state(
-            env_ids
-        ).root_pos
+        robot_state = self.control.env.simulator.get_robot_state(env_ids)
+        anchor_body_index = self.control.env.robot_config.anchor_body_index
+        self.control._tar_pos[env_ids] = robot_state.rigid_body_pos[:, anchor_body_index]
         self.control._update_target_heights(env_ids)
         self.control._tar_change_time[env_ids] = float("inf")
 
@@ -311,7 +312,9 @@ class TargetControl(ControlComponent):
             return
         self.command_source.reset(env_ids)
 
-        root_pos = self.env.simulator.get_root_state(env_ids).root_pos
+        robot_state = self.env.simulator.get_robot_state(env_ids)
+        anchor_body_index = self.env.robot_config.anchor_body_index
+        root_pos = robot_state.rigid_body_pos[:, anchor_body_index]
         self._last_support_root_height[env_ids] = root_pos[:, 2]
         self._last_support_ground_height[env_ids] = self._ground_heights(root_pos)
         self._root_pos_history[env_ids] = root_pos.unsqueeze(1).expand(
@@ -322,7 +325,9 @@ class TargetControl(ControlComponent):
         self.command_source.step()
 
         if self.config.enable_stuck_termination:
-            root_pos = self.env.simulator.get_root_state().root_pos
+            robot_state = self.env.simulator.get_robot_state()
+            anchor_body_index = self.env.robot_config.anchor_body_index
+            root_pos = robot_state.rigid_body_pos[:, anchor_body_index]
             self._root_pos_history[:, self._root_pos_history_idx] = root_pos
             self._root_pos_history_idx = (
                 self._root_pos_history_idx + 1
@@ -344,7 +349,8 @@ class TargetControl(ControlComponent):
             return terminated.clone(), terminated
 
         robot_state = self.env.simulator.get_robot_state()
-        root_pos = robot_state.rigid_body_pos[:, 0]
+        anchor_body_index = self.env.robot_config.anchor_body_index
+        root_pos = robot_state.rigid_body_pos[:, anchor_body_index]
         root_z = root_pos[:, 2]
         ground_z = self._ground_heights(root_pos)
         past_grace = self.env.progress_buf > self.config.reset_grace_period
@@ -395,8 +401,10 @@ class TargetControl(ControlComponent):
         return terminated.clone(), terminated
 
     def populate_context(self, ctx: EnvContext) -> None:
+        env_ids = getattr(ctx, "env_ids", None)
+        tar_pos = self._tar_pos if env_ids is None else self._tar_pos[env_ids]
         ctx.target = TargetContext(
-            tar_pos=self._tar_pos,
+            tar_pos=tar_pos,
             tar_proximity_threshold=self.config.tar_proximity_threshold,
         )
 

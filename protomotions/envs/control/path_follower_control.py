@@ -98,8 +98,10 @@ class PathFollowerControl(ControlComponent):
         if len(env_ids) == 0:
             return
 
-        # Get current root position
-        root_pos = self.env.simulator.get_root_state(env_ids).root_pos
+        # Get current anchor position
+        robot_state = self.env.simulator.get_robot_state(env_ids)
+        anchor_body_index = self.env.robot_config.anchor_body_index
+        root_pos = robot_state.rigid_body_pos[:, anchor_body_index]
 
         # Build head position from root x,y and approximate head height
         head_position = root_pos.clone()
@@ -246,9 +248,14 @@ class PathFollowerControl(ControlComponent):
 
     def populate_context(self, ctx: EnvContext) -> None:
         """Populate path-specific view in the EnvContext."""
-        env_ids = torch.arange(
-            self.env.num_envs, device=self.env.device, dtype=torch.long
-        )
+        env_ids = getattr(ctx, "env_ids", None)
+        if env_ids is None:
+            env_ids = torch.arange(
+                self.env.num_envs, device=self.env.device, dtype=torch.long
+            )
+            progress_buf = self.env.progress_buf
+        else:
+            progress_buf = self.env.progress_buf[env_ids]
 
         ctx.path = PathContext(
             tar_pos=self.calc_target_pos(env_ids),
@@ -256,7 +263,7 @@ class PathFollowerControl(ControlComponent):
             traj_samples=self.fetch_path_samples(env_ids),
             height_conditioned=self.height_conditioned,
             head_body_id=self._head_body_id,
-            progress_buf=self.env.progress_buf,
+            progress_buf=progress_buf,
         )
 
     def create_visualization_markers(

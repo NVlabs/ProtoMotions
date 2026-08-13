@@ -201,6 +201,27 @@ class _PlainMuModule(nn.Module):
         return tensordict
 
 
+class _L2C2CleanActor(nn.Module):
+    in_keys = ["noisy_obs"]
+
+    def __init__(self):
+        super().__init__()
+        self.scale = nn.Parameter(torch.tensor(1.0))
+
+    def forward(self, tensordict):
+        tensordict["mean_action"] = tensordict["noisy_obs"] * self.scale
+        return tensordict
+
+
+class _WrapperThatMustNotHandleL2C2CleanPass(nn.Module):
+    def __init__(self, module):
+        super().__init__()
+        self.module = module
+
+    def forward(self, *args, **kwargs):
+        raise AssertionError("L2C2 clean pass should use the unwrapped actor module")
+
+
 def _make_ppo_agent():
     agent = object.__new__(PPO)
     agent.device = torch.device("cpu")
@@ -405,6 +426,35 @@ def test_ppo_model_resets_nested_rollout_context():
 
     assert model._actor.mu.reset_args == (env_ids, 4, device)
     assert model._critic.reset_args == (env_ids, 4, device)
+
+
+def test_l2c2_clean_forward_uses_unwrapped_actor_module():
+    agent = object.__new__(PPO)
+    agent.device = torch.device("cpu")
+    clean_actor = _L2C2CleanActor()
+    agent.actor = _WrapperThatMustNotHandleL2C2CleanPass(clean_actor)
+    agent.config = SimpleNamespace(
+        l2c2=SimpleNamespace(
+            enabled=True,
+            lambda_l2c2=1.0,
+            obs_pairs={"noisy_obs": "clean_obs"},
+        )
+    )
+    batch_td = TensorDict(
+        {
+            "noisy_obs": torch.tensor([[1.0], [3.0]]),
+            "clean_obs": torch.tensor([[0.5], [2.0]]),
+            "mean_action": torch.tensor([[1.5], [3.5]]),
+        },
+        batch_size=2,
+    )
+
+    loss, logs = PPO.calculate_extra_actor_loss(agent, batch_td)
+    loss.backward()
+
+    assert torch.isfinite(loss)
+    assert clean_actor.scale.grad is not None
+    assert "actor/l2c2_loss" in logs
 
 
 def test_ppo_actor_loss_includes_model_owned_loss():

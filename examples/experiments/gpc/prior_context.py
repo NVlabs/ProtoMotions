@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """Shared observation context used by GPC prior and PEFT task experiments."""
-
 from __future__ import annotations
 
 from protomotions.robot_configs.base import RobotConfig

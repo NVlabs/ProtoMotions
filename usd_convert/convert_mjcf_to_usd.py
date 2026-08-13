@@ -1,7 +1,7 @@
 # Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
-# License: BSD-3-Clause
+# SPDX-License-Identifier: BSD-3-Clause
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -18,14 +18,15 @@ https://docs.isaacsim.omniverse.nvidia.com/latest/robot_setup/ext_isaacsim_asset
 
 
 positional arguments:
-  input               The path to the input URDF file.
-  output              The path to store the USD file.
+  input               The path to the input MJCF file.
+  output_dir          The directory in which to store the converted USD asset.
 
 optional arguments:
   -h, --help                Show this help message and exit
   --fix-base                Fix the base to where it is imported. (default: False)
-  --import-sites            Import sites by parse <site> tag. (default: True)
-  --make-instanceable       Make the asset instanceable for efficient cloning. (default: False)
+  --self-collision          Enable self-collisions. (default: False)
+  --merge-mesh              Merge meshes where possible. (default: False)
+  --collision-from-visuals  Generate collision from visuals. (default: False)
 
 """
 
@@ -39,8 +40,15 @@ from isaaclab.app import AppLauncher  # noqa: E402
 parser = argparse.ArgumentParser(
     description="Utility to convert a MJCF into USD format."
 )
-parser.add_argument("input", type=str, help="The path to the input MJCF file.")
-parser.add_argument("output", type=str, help="The path to store the USD file.")
+parser.add_argument("input", type=str, help="Path to the input MJCF file.")
+parser.add_argument(
+    "output_dir",
+    type=str,
+    help=(
+        "Directory for the converted asset. IsaacLab writes "
+        "<input-stem>/<input-stem>.usda below this directory."
+    ),
+)
 parser.add_argument(
     "--fix-base",
     action="store_true",
@@ -48,16 +56,22 @@ parser.add_argument(
     help="Fix the base to where it is imported.",
 )
 parser.add_argument(
-    "--import-sites",
+    "--self-collision",
     action="store_true",
     default=False,
-    help="Import sites by parsing the <site> tag.",
+    help="Activate self-collisions between links of the articulation.",
 )
 parser.add_argument(
-    "--make-instanceable",
+    "--merge-mesh",
     action="store_true",
     default=False,
-    help="Make the asset instanceable for efficient cloning.",
+    help="Merge meshes where possible to optimize the model.",
+)
+parser.add_argument(
+    "--collision-from-visuals",
+    action="store_true",
+    default=False,
+    help="Generate collision geometry from visual geometries.",
 )
 
 # append AppLauncher cli args
@@ -90,20 +104,20 @@ def main():
         mjcf_path = os.path.abspath(mjcf_path)
     if not check_file_path(mjcf_path):
         raise ValueError(f"Invalid file path: {mjcf_path}")
-    # create destination path
-    dest_path = args_cli.output
-    if not os.path.isabs(dest_path):
-        dest_path = os.path.abspath(dest_path)
+    # create destination directory
+    dest_dir = args_cli.output_dir
+    if not os.path.isabs(dest_dir):
+        dest_dir = os.path.abspath(dest_dir)
 
-    # create the converter configuration
+    # create the converter configuration (IsaacLab 3 API)
     mjcf_converter_cfg = MjcfConverterCfg(
         asset_path=mjcf_path,
-        usd_dir=os.path.dirname(dest_path),
-        usd_file_name=os.path.basename(dest_path),
-        fix_base=args_cli.fix_base,
-        import_sites=args_cli.import_sites,
+        usd_dir=dest_dir,
         force_usd_conversion=True,
-        make_instanceable=args_cli.make_instanceable,
+        fix_base=args_cli.fix_base,
+        self_collision=args_cli.self_collision,
+        merge_mesh=args_cli.merge_mesh,
+        collision_from_visuals=args_cli.collision_from_visuals,
     )
 
     # Print info
