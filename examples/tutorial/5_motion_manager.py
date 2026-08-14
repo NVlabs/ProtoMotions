@@ -102,6 +102,8 @@ print(f"Contact bodies: {robot_cfg.contact_bodies}")
 extra_simulator_params = {}
 if args.simulator == "isaaclab":
     app_launcher_flags = {"headless": args.headless, "device": str(device)}
+    if not args.headless:
+        app_launcher_flags["visualizer"] = ["kit"]
     app_launcher = AppLauncher(app_launcher_flags)
     simulation_app = app_launcher.app
     extra_simulator_params["simulation_app"] = simulation_app
