@@ -19,10 +19,6 @@ backend or version.
      - Purpose
      - Runtime expectation
      - Model card
-   * - SMPL AMASS GPC prior
-     - Discrete GPC prior for SMPL motion
-     - IsaacLab only
-     - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/gpc_prior/smpl_amass/MODEL_CARD.md>`__
    * - SOMA BONES-SEED GPC prior
      - Discrete GPC prior for SOMA motion
      - IsaacLab only

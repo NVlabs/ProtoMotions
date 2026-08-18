@@ -16,12 +16,7 @@ from protomotions.agents.common.autoregressive import (
     prior_constrained_sampling_log_probs,
 )
 from protomotions.agents.common.latent import LATENT_LOGITS_KEY, TARGET_LATENT_KEY
-from protomotions.agents.common.supervision import (
-    SupervisionLossConfig,
-    SupervisionLossType,
-)
 from protomotions.agents.base_agent import agent as base_agent_module
-from protomotions.agents.base_agent.agent import BaseAgent
 from protomotions.agents.common.config import (
     MLPWithConcatConfig,
     ModuleContainerConfig,
@@ -29,7 +24,6 @@ from protomotions.agents.common.config import (
 )
 from protomotions.agents.fine_tuning import agent as fine_tuning_agent_module
 from protomotions.agents.fine_tuning import pretrained_modules as pretrained_modules_module
-from protomotions.agents.peft import prior_agent as prior_agent_module
 from protomotions.agents.peft import prior_setup as prior_setup_module
 from protomotions.agents.peft.utils import model_state as model_state_module
 from protomotions.agents.peft.utils.adapter_state import is_adapter_state_key

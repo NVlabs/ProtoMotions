@@ -764,6 +764,7 @@ def test_pointcloud_parallel_deduplicates_mesh_sampling_and_copies_to_duplicates
     )
 
 
+@pytest.mark.needs_lfs
 def test_scene_lib_main_example_runs_with_repo_assets():
     module_path = Path(scene_lib_module.__file__)
 

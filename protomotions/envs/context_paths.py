@@ -30,7 +30,7 @@ Usage in experiment configs:
 
 from __future__ import annotations
 
-from typing import Any, Generic, TypeVar, Optional, TYPE_CHECKING
+from typing import Any, Generic, TypeVar, Optional
 
 
 T = TypeVar('T')

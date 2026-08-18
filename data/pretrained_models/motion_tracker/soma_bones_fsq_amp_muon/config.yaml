@@ -1,0 +1,26 @@
+{
+  "robot_name": "soma23",
+  "simulator": "isaaclab",
+  "num_envs": 4096,
+  "batch_size": 16384,
+  "motion_file": "data/motion_for_trackers/soma23_bones_seed_mini.pt",
+  "experiment_path": "examples/experiments/mimic/fsq_amp_dr_muon.py",
+  "experiment_name": "155031_fsq_amp_dr_muon_rewnorm_t08a02_3_8_chunk_slurmrank.pt",
+  "scenes_file": null,
+  "checkpoint": null,
+  "use_wandb": true,
+  "use_slurm": true,
+  "ngpu": 8,
+  "nodes": 3,
+  "headless": true,
+  "seed": 0,
+  "torch_deterministic": false,
+  "training_max_steps": 10000000000000,
+  "overrides": [
+    "agent.normalize_rewards=True",
+    "agent.task_reward_w=0.8",
+    "agent.amp_parameters.discriminator_reward_w=0.2"
+  ],
+  "create_config_only": false,
+  "wandb_id": "iu3cg3v9"
+}

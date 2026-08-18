@@ -21,12 +21,25 @@ concurrency:
 
 jobs:
   build:
+    # The documentation site is served from the public repository, which has
+    # GitHub Pages enabled. This workflow ships to public unchanged, but the
+    # development repository and any fork have no Pages site, so the deploy
+    # would 404 on every docs change. Restrict it to the canonical repo.
+    if: github.repository == 'NVlabs/ProtoMotions'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          lfs: true
+          lfs: false
+
+      # lfs: false above, then fetch only what the docs actually embed: seven
+      # tutorial videos, about 31 MB. A full LFS checkout here pulls ~4.9 GB --
+      # overwhelmingly model checkpoints no page references -- against the
+      # organisation's shared LFS bandwidth quota, on every docs change. The
+      # images are not affected either way; they are in the pack, not LFS.
+      - name: Fetch the media the docs embed
+        run: git lfs pull --include="docs/source/_static/*"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -49,6 +62,7 @@ jobs:
           path: 'docs/build/html'
 
   deploy:
+    if: github.repository == 'NVlabs/ProtoMotions'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

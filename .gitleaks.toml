@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Secret-scanning configuration, used by the "Secret scan" CI job.
+#
+# The full default gitleaks rule set, plus one narrow allowlist. Run it the way
+# CI does with:
+#
+#   gitleaks detect --source . --config .gitleaks.toml --redact
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Constants whose value is a Python name, not a credential"
+
+# The generic-api-key rule fires on any assignment to a symbol called *_KEY.
+# Most such names here are observation-dictionary keys rather than
+# credentials -- `PLAN_KEY = rung2.PLAN_KEY`, `ROBOT_YAW_KEY = ...` -- where
+# the value is a bare identifier or dotted attribute reference.
+#
+# Requiring an *unquoted* dotted name keeps this narrow. A credential has to be
+# a string literal (or a lookup such as os.environ[...]), so this cannot mask
+# `API_KEY = "<40 hex chars>"`, which is the shape that matters. Verified: with
+# this allowlist, a planted 40-character token, an AWS access key and a GitHub
+# personal access token are all still reported.
+regexTarget = "match"
+regexes = [
+  '''(?i)[a-z0-9_]*key\s*=\s*[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)+\s*$''',
+]

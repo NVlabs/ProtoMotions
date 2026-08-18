@@ -13,7 +13,7 @@ termcolor>=1.1.0
 scikit-image
 rtree==1.2.0
 trimesh
-setuptools==69.5.1
+setuptools==80.9.0
 rich
 typer>=0.6.1
 transformers>=4.20.1

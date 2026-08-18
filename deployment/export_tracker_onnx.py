@@ -183,7 +183,6 @@ def export_tracker(
     Path to the exported ``.onnx`` file.
     """
     import torch
-    import torch.nn.functional as F
     from tensordict import TensorDict
 
     from protomotions.utils.export_utils import (

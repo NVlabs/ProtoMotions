@@ -284,7 +284,6 @@ def check_motion(
 
     worst_depth_global = 0.0
     worst_pair_name = ""
-    penetrating_frame_count = 0
     reject_reason = None
 
     # Per-frame min distance across all pairs -> max penetration

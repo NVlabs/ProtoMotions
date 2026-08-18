@@ -22,7 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from protomotions.utils.retargeting_fps import fps_from_mapping, subsampled_fps
+from protomotions.utils.retargeting_fps import fps_from_mapping, subsampled_fps  # noqa: E402
 
 H1_2_LINK_NAMES = None
 N_retarget = 15

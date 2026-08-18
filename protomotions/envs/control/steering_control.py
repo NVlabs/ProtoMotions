@@ -8,7 +8,7 @@ The target direction and speed change periodically to encourage versatile locomo
 """
 
 from dataclasses import dataclass
-from typing import Dict, Any, Tuple, TYPE_CHECKING
+from typing import Dict, Tuple, TYPE_CHECKING
 
 import numpy as np
 import torch

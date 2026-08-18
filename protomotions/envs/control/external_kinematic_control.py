@@ -8,7 +8,7 @@ Used when pose computation happens outside the environment (e.g., prior model in
 """
 
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple, TYPE_CHECKING
+from typing import Optional, Tuple, TYPE_CHECKING
 
 import torch
 from torch import Tensor

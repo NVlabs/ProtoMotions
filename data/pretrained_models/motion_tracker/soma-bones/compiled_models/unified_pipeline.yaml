@@ -1,3 +1,121 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:fe5ab62ec6cc8b4cc94166b8957530502efa2f3fa22db8a018bdfd299cca78d0
-size 6895
+_runtime:
+  onnx_in_names: [current_rigid_body_ang_vel, current_rigid_body_pos, current_rigid_body_rot,
+    current_rigid_body_vel, ground_heights, historical_actions, mimic_future_ang_vel,
+    mimic_future_pos, mimic_future_rot, mimic_future_vel]
+  onnx_out_names: [actions, joint_pos_targets, stiffness_targets, damping_targets]
+  onnx_name_to_in_key: {current_rigid_body_ang_vel: current.rigid_body_ang_vel, current_rigid_body_pos: current.rigid_body_pos,
+    current_rigid_body_rot: current.rigid_body_rot, current_rigid_body_vel: current.rigid_body_vel,
+    ground_heights: ground_heights, historical_actions: historical.actions, mimic_future_ang_vel: mimic.future_ang_vel,
+    mimic_future_pos: mimic.future_pos, mimic_future_rot: mimic.future_rot, mimic_future_vel: mimic.future_vel}
+conventions: {quat_format: xyzw, mujoco_body_index_offset: 1, mujoco_free_joint_qpos_offset: 7,
+  mujoco_free_joint_qvel_offset: 6, mujoco_cvel_layout: ang_vel_first, note: 'data.xquat[body_id
+    + 1] for body quaternion (world body at 0); data.cvel[:, 0:3] is angular velocity;
+    data.cvel[:, 3:6] is linear velocity.'}
+robot:
+  mjcf_path: mjcf/soma23_humanoid.xml
+  usd_path: usd/soma23_humanoid_flat/soma23_humanoid_flat.usda
+  num_bodies: 23
+  num_dofs: 66
+  anchor_body_name: null
+  anchor_body_index: 0
+  root_body_name: Hips
+  root_body_index: 0
+  body_names: [Hips, Spine1, Spine2, Chest, Neck1, Neck2, Head, RightShoulder, RightArm,
+    RightForeArm, RightHand, LeftShoulder, LeftArm, LeftForeArm, LeftHand, RightLeg,
+    RightShin, RightFoot, RightToeBase, LeftLeg, LeftShin, LeftFoot, LeftToeBase]
+  joint_names: [Spine1_x, Spine1_y, Spine1_z, Spine2_x, Spine2_y, Spine2_z, Chest_x,
+    Chest_y, Chest_z, Neck1_x, Neck1_y, Neck1_z, Neck2_x, Neck2_y, Neck2_z, Head_x,
+    Head_y, Head_z, RightShoulder_x, RightShoulder_y, RightShoulder_z, RightArm_x,
+    RightArm_y, RightArm_z, RightForeArm_x, RightForeArm_y, RightForeArm_z, RightHand_x,
+    RightHand_y, RightHand_z, LeftShoulder_x, LeftShoulder_y, LeftShoulder_z, LeftArm_x,
+    LeftArm_y, LeftArm_z, LeftForeArm_x, LeftForeArm_y, LeftForeArm_z, LeftHand_x,
+    LeftHand_y, LeftHand_z, RightLeg_x, RightLeg_y, RightLeg_z, RightShin_x, RightShin_y,
+    RightShin_z, RightFoot_x, RightFoot_y, RightFoot_z, RightToeBase_x, RightToeBase_y,
+    RightToeBase_z, LeftLeg_x, LeftLeg_y, LeftLeg_z, LeftShin_x, LeftShin_y, LeftShin_z,
+    LeftFoot_x, LeftFoot_y, LeftFoot_z, LeftToeBase_x, LeftToeBase_y, LeftToeBase_z]
+control:
+  stiffness: [800.0, 800.0, 800.0, 800.0, 800.0, 800.0, 800.0, 800.0, 800.0, 200.0,
+    200.0, 200.0, 200.0, 200.0, 200.0, 200.0, 200.0, 200.0, 400.0, 400.0, 400.0, 400.0,
+    400.0, 400.0, 300.0, 300.0, 300.0, 200.0, 200.0, 200.0, 400.0, 400.0, 400.0, 400.0,
+    400.0, 400.0, 300.0, 300.0, 300.0, 200.0, 200.0, 200.0, 500.0, 500.0, 500.0, 500.0,
+    500.0, 500.0, 100.0, 100.0, 100.0, 60.0, 60.0, 60.0, 500.0, 500.0, 500.0, 500.0,
+    500.0, 500.0, 100.0, 100.0, 100.0, 60.0, 60.0, 60.0]
+  damping: [80.0, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0, 20.0, 20.0, 20.0,
+    20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 40.0, 40.0, 40.0, 40.0, 40.0, 40.0, 30.0,
+    80.0, 30.0, 20.0, 20.0, 20.0, 40.0, 40.0, 40.0, 40.0, 40.0, 40.0, 30.0, 30.0,
+    30.0, 20.0, 20.0, 20.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 20.0, 20.0, 20.0,
+    12.0, 12.0, 12.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 20.0, 20.0, 20.0, 12.0,
+    12.0, 12.0]
+  armature: [0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02,
+    0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02,
+    0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02,
+    0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02,
+    0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02,
+    0.02, 0.02]
+  effort_limits: [300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0,
+    300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 150.0, 150.0, 150.0, 150.0,
+    150.0, 150.0, 150.0, 150.0, 150.0, 150.0, 150.0, 150.0, 150.0, 150.0, 150.0, 150.0,
+    150.0, 150.0, 150.0, 150.0, 150.0, 150.0, 150.0, 150.0, 300.0, 300.0, 300.0, 300.0,
+    300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0,
+    300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0, 300.0]
+  velocity_limits: [100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0,
+    100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0,
+    100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0,
+    100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0,
+    100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0,
+    100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0]
+  control_type: BUILT_IN_PD
+  pd_target_max_accel: null
+  action_ema_alpha: 0.8
+  note: 'stiffness / damping are baked into the ONNX model (constant-folded); these
+    values are for documentation only.  armature / effort_limits / velocity_limits
+    are per-joint physical parameters from the MJCF.  pd_target_max_accel and action_ema_alpha
+    are NOT baked in -- the deploy script must apply them externally.  action_ema_alpha:
+    a_applied = alpha * a_policy + (1-alpha) * a_prev (matches MujocoSimulator._action_filter_alpha).'
+timing:
+  control_dt: 0.02
+  physics_dt: 0.001
+  decimation: 20
+  mujoco: {physics_dt: 0.001, decimation: 20, control_dt: 0.02}
+  isaaclab: {physics_dt: 0.008333, decimation: 4, control_dt: 0.033333}
+  isaacgym: {physics_dt: 0.016667, decimation: 2, control_dt: 0.033333}
+motion:
+  future_step_indices: &id001 [1]
+  future_dt_seconds: [0.02]
+  note: Provide all future_step_indices frames to the ONNX model. The obs function
+    internally selects a subset.
+deploy_inputs:
+  current.rigid_body_ang_vel:
+    onnx_name: current_rigid_body_ang_vel
+    shape: [1, 23, 3]
+  current.rigid_body_pos:
+    onnx_name: current_rigid_body_pos
+    shape: [1, 23, 3]
+  current.rigid_body_rot:
+    onnx_name: current_rigid_body_rot
+    shape: [1, 23, 4]
+  current.rigid_body_vel:
+    onnx_name: current_rigid_body_vel
+    shape: [1, 23, 3]
+  ground_heights:
+    onnx_name: ground_heights
+    shape: [1]
+  historical.actions:
+    onnx_name: historical_actions
+    shape: [1, 3, 66]
+  mimic.future_ang_vel:
+    onnx_name: mimic_future_ang_vel
+    shape: [1, 1, 23, 3]
+  mimic.future_pos:
+    onnx_name: mimic_future_pos
+    shape: [1, 1, 23, 3]
+  mimic.future_rot:
+    onnx_name: mimic_future_rot
+    shape: [1, 1, 23, 4]
+    description: Reference motion body rotations (future steps, xyzw)
+    source: MotionPlayer.get_future_references(frame, step_indices)
+    future_step_indices: *id001
+  mimic.future_vel:
+    onnx_name: mimic_future_vel
+    shape: [1, 1, 23, 3]
+metadata: {checkpoint: data/pretrained_models/motion_tracker/soma-bones/last.ckpt}

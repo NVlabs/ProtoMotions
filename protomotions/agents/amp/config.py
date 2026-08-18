@@ -7,7 +7,7 @@ This module defines configurations for the AMP algorithm which uses a discrimina
 to learn motion priors from reference motions.
 """
 
-from typing import List, Dict, Any, TYPE_CHECKING
+from typing import List, Dict, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from protomotions.envs.mdp_component import MdpComponent

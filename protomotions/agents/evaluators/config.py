@@ -3,7 +3,7 @@
 
 """Configuration classes for evaluators."""
 
-from typing import Any, Dict, Optional, Union
+from typing import Dict, Optional, Union
 from dataclasses import dataclass, field
 
 from protomotions.envs.mdp_component import MdpComponent

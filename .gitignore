@@ -3,6 +3,11 @@
 .vscode
 *__pycache__*
 *.egg-info
+# Build artefacts and downloaded wheels. `python -m build` writes here, and a
+# stray `pip download` in the working tree is otherwise one `git add -A` away
+# from committing an 11 MB binary that no history rewrite gets back out.
+*.whl
+dist/
 outputs/*
 output/*
 rendered_images/*
@@ -20,4 +25,8 @@ data/amass/*.pkl
 renders/
 .envrc
 CLAUDE.local.md
+# safety-probe traces (multi-GB npz)
 .cache/
+
+# Newton/IsaacLab viewer window state; churns on every run
+imgui.ini

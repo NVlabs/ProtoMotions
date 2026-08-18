@@ -9,7 +9,6 @@ Avoids file IO and trimesh by sticking to primitives and option dataclasses.
 
 from __future__ import annotations
 
-import math
 
 import numpy as np
 import pytest

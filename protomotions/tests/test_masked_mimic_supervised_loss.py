@@ -22,7 +22,6 @@ from protomotions.agents.common.supervision import (
     SupervisionLossConfig,
     SupervisionLossType,
 )
-from protomotions.agents.base_agent.agent import BaseAgent
 from protomotions.agents.supervised.agent import SupervisedAgent
 from protomotions.agents.supervised.config import SupervisedAgentConfig, RolloutActor
 from protomotions.agents.supervised.masked_mimic_config import (

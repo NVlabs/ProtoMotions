@@ -119,6 +119,11 @@ docs = [
 ]
 dev = [
   "build>=1.2",
+  # torch.onnx.export needs the `onnx` package itself at call time, not just
+  # onnxruntime. The simulator extras ship onnxruntime for inference, so the
+  # ONNX export tests pass on a developer machine that happens to have onnx
+  # installed and fail on a clean one -- which is what CI is.
+  "onnx>=1.16",
   "pytest>=8",
   "tomli>=2; python_version < '3.11'",
   # Used by the repository's data-conversion scripts under data/scripts/ and
@@ -165,6 +170,66 @@ protomotions = [
   "data/assets/mesh/smpl/**/*",
   "data/assets/mjcf/smpl*.xml",
   "data/assets/usd/smpl*.usda",
+]
+
+[tool.ruff]
+# Kept in step with the ruff pin in .pre-commit-config.yaml and the CI workflow
+# so a local run and a CI run cannot disagree about what passes.
+
+[tool.ruff.lint]
+# No repository-wide ignores. E402 used to be one, to serve nine files -- which
+# meant late imports anywhere else were waved through unexamined. It is now
+# scoped: a per-file rule for the simulator modules, where it is structural, and
+# an inline noqa on the handful of one-off scripts, where each one is visible at
+# the line it applies to.
+
+[tool.ruff.lint.per-file-ignores]
+# E402 is not debt in the simulator modules, it is a hard requirement: IsaacGym
+# and IsaacLab must be imported before torch or the process crashes, so these
+# import deliberately late throughout. See protomotions/utils/simulator_imports.py.
+"protomotions/simulator/**/simulator.py" = ["E402"]
+
+# Experiment configs annotate their return type as a string forward reference
+# and import the real config class inside the function body to keep module
+# import cheap; ruff reads the forward reference as an undefined name (F821).
+# The same functions take an `env_config` parameter that shadows the helper
+# imported from the format module, which reads as F811. Both are intentional
+# and documented in examples/experiments/format.py.
+# F401 is here for a sharper reason than tidiness. A derived experiment
+# re-exports its base's helpers by importing them, and the harness fetches
+# apply_inference_overrides off the module by attribute name -- see
+# import_experiment_relative_eval_overrides in protomotions/utils/config_utils.py,
+# which raises AttributeError when it is absent. Ruff cannot see that use, so
+# removing the "unused" import breaks evaluation at runtime rather than at import
+# time, which is a bad way to find out.
+"examples/experiments/**/*.py" = ["F401", "F821", "F811"]
+"data/pretrained_models/**/*.py" = ["F401", "F821", "F811"]
+
+# Test doubles read better as one-line lambdas than as nested defs.
+"protomotions/tests/**/*.py" = ["E731"]
+
+[tool.pytest.ini_options]
+# An unregistered or misspelled marker is an error, not a warning. Without this,
+# @pytest.mark.needs_lfss silently marks nothing and the test then runs in a job
+# that cannot support it -- the same silent failure that made the hard-coded
+# --deselect lists risky, since pytest ignores a --deselect naming a test that
+# has been renamed and says nothing about it.
+#
+# Both spellings, deliberately. They are not redundant -- each one works on
+# exactly one of the pytest versions this project supports, and fails quietly on
+# the other, so either alone would leave half our developers unguarded:
+#
+#                                  pytest 8.3.4      pytest 9.0.3
+#   addopts = "--strict-markers"   enforces          silently inert
+#   strict_markers = true          unknown option    enforces
+#
+# The cost is one "Unknown config option: strict_markers" warning on pytest 8,
+# which is preferable to raising the floor in [dev] over a lint guard. Drop the
+# addopts line once pytest 8 is no longer supported.
+addopts = "--strict-markers"
+strict_markers = true
+markers = [
+  "needs_lfs: test reads a real Git LFS payload rather than the pointer file. CI jobs that check out without payloads run `-m 'not needs_lfs'`; the jobs that fetch payloads run the whole suite.",
 ]
 
 [tool.uv]

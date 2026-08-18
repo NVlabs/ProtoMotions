@@ -70,7 +70,7 @@ device = torch.device("cuda:0") if not args.cpu_only else torch.device("cpu")
 # Import factory functions
 from protomotions.simulator.factory import simulator_config  # noqa: E402
 from protomotions.robot_configs.smplx import SMPLXRobotConfig  # noqa: E402
-from protomotions.robot_configs.base import ControlConfig, ControlType, ControlInfo
+from protomotions.robot_configs.base import ControlConfig, ControlInfo  # noqa: E402
 
 robot_cfg = SMPLXRobotConfig(
     control= ControlConfig(

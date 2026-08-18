@@ -19,7 +19,7 @@ from typing import Dict, Tuple, TYPE_CHECKING
 import torch
 from torch import Tensor
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 if TYPE_CHECKING:
     from protomotions.simulator.base_simulator.config import VisualizationMarkerConfig, MarkerState

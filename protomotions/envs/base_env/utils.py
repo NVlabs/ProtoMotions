@@ -12,7 +12,7 @@ This module handles:
 - Body indices resolution from names to indices
 """
 
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 from torch import Tensor

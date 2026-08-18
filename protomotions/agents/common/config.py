@@ -4,7 +4,6 @@
 from typing import Any, List, Dict, Optional, Union
 from dataclasses import dataclass, field
 
-from protomotions.agents.base_agent.config import BaseModelConfig
 
 # =============================================================================
 # Base Configuration for Normalized Observations

@@ -3,7 +3,7 @@
 
 import os
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import numpy as np
 import torch
@@ -94,7 +94,6 @@ def convert_phuma_to_motion(
     dof_pos = phuma_data['dof_pos']        # (T, 29)
     fps = int(phuma_data['fps'])
     
-    T = root_trans.shape[0]
     
     # Convert quaternion from PHUMA (xyzw) to MuJoCo (wxyz) format
     root_quat_wxyz = convert_phuma_quaternion_to_wxyz(root_ori)  # (T, 4)

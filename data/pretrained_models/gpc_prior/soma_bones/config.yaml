@@ -1,3 +1,25 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:e68d868812403325ba6fce8626c69faf1ba0eb26b8c83dc16a79f976999d79d7
-size 734
+{
+  "robot_name": "soma23",
+  "simulator": "isaaclab",
+  "num_envs": 1024,
+  "batch_size": 1024,
+  "motion_file": "data/motion_for_trackers/soma23_bones_seed_mini.pt",
+  "experiment_path": "examples/experiments/gpc/prior.py",
+  "experiment_name": "soma23_gpc_prior",
+  "scenes_file": null,
+  "checkpoint": null,
+  "use_wandb": false,
+  "wandb_project": "physical_animation",
+  "use_slurm": false,
+  "ngpu": 8,
+  "nodes": 3,
+  "headless": true,
+  "seed": 0,
+  "torch_deterministic": false,
+  "training_max_steps": 10000000000000,
+  "training_max_iterations": null,
+  "overrides": [],
+  "create_config_only": true,
+  "tracker_checkpoint": "data/pretrained_models/motion_tracker/soma_bones_fsq/inference_last.ckpt",
+  "wandb_id": null
+}

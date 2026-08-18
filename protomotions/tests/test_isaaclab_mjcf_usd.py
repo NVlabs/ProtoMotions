@@ -9,13 +9,17 @@ import ast
 import importlib.util
 import multiprocessing
 import time
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover - Python 3.10 and earlier
-    import tomli as tomllib
 import types
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
+# tomllib is stdlib only from Python 3.11. The package supports 3.8+, and the
+# `dev` extra ships tomli for older interpreters, so fall back to it rather than
+# failing the whole module at collection time.
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11
+    import tomli as tomllib
 
 import pytest
 import torch
@@ -53,9 +57,7 @@ def _recording_mjcf_converter_factory(**cfg_kwargs):
         stream.write("called\n")
     time.sleep(0.1)
     usd_path = Path(
-        predicted_converted_usd_path(
-            cfg_kwargs["asset_path"], cfg_kwargs["usd_dir"]
-        )
+        predicted_converted_usd_path(cfg_kwargs["asset_path"], cfg_kwargs["usd_dir"])
     )
     usd_path.parent.mkdir(parents=True, exist_ok=True)
     usd_path.write_text("#usda 1.0")
@@ -77,11 +79,7 @@ def _run_concurrent_mjcf_conversion(mjcf_path, usd_dir, result_queue):
 
 
 def _load_offline_converter():
-    path = (
-        Path(__file__).parents[2]
-        / "usd_convert"
-        / "convert_robot_mjcf_to_usda.py"
-    )
+    path = Path(__file__).parents[2] / "usd_convert" / "convert_robot_mjcf_to_usda.py"
     spec = importlib.util.spec_from_file_location("offline_mjcf_converter", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -141,6 +139,10 @@ def test_mjcf_d6_workaround_repatches_after_converter_reload(monkeypatch):
 def test_mjcf_d6_composed_conversion_runs_metadata_conversion_first(
     tmp_path, monkeypatch
 ):
+    # pxr (OpenUSD) is not a runtime dependency of the package. It arrives
+    # either with Isaac Sim or from the usd-core wheel, which CI installs so
+    # this test does run there. Skip rather than fail where neither is present.
+    pytest.importorskip("pxr")
     from pxr import Sdf, Usd
 
     events = []
@@ -177,20 +179,25 @@ def test_mjcf_d6_composed_conversion_runs_metadata_conversion_first(
     mujoco_layer = Sdf.Layer.CreateNew(str(tmp_path / "mujoco.usda"))
     mujoco_layer.Save()
 
-    result = fake_module.combine_overconstrained_joints_in_physx_layer(
-        str(physx_path)
-    )
+    result = fake_module.combine_overconstrained_joints_in_physx_layer(str(physx_path))
 
     assert result == 1
     assert [event[0] for event in events] == ["convert", "combine"]
     assert all(event[1] == physx_layer.identifier for event in events)
     converted_stage = Usd.Stage.Open(str(physx_path))
-    assert converted_stage.GetPrimAtPath("/World/joint").GetAttribute(
-        "test:preserved"
-    ).Get() == 7.0
+    assert (
+        converted_stage.GetPrimAtPath("/World/joint")
+        .GetAttribute("test:preserved")
+        .Get()
+        == 7.0
+    )
 
 
 def test_mjcf_d6_repair_ignores_dropped_duplicate_axis():
+    # pxr (OpenUSD) is not a runtime dependency of the package. It arrives
+    # either with Isaac Sim or from the usd-core wheel, which CI installs so
+    # this test does run there. Skip rather than fail where neither is present.
+    pytest.importorskip("pxr")
     from pxr import Sdf, Usd, UsdPhysics
 
     stage = Usd.Stage.CreateInMemory()
@@ -251,13 +258,26 @@ def test_humanoid_robot_configs_use_mjcf_only():
         assert asset.asset_file_name.endswith(".xml")
 
 
-def test_tracked_resolved_sidecars_omit_legacy_usd_fields():
+# This check is split in two so the half that needs no Git LFS payload can gate
+# every pull request. The sidecar YAML is plain text in the pack -- deliberately
+# kept out of LFS so it stays greppable and readable in a diff -- so a checkout
+# with lfs: false holds the real file. The .pt beside it is an LFS object, which
+# that same checkout holds only as a pointer stub, so it runs in the job that
+# fetches payloads.
+def test_tracked_resolved_sidecar_yaml_omits_legacy_usd_fields():
     artifacts_root = Path(__file__).parents[2] / "data" / "pretrained_models"
-    for yaml_path in artifacts_root.glob("**/resolved_configs*.yaml"):
+    yaml_paths = sorted(artifacts_root.glob("**/resolved_configs*.yaml"))
+    # Without this the test would also pass by matching nothing at all.
+    assert yaml_paths, f"no resolved_configs*.yaml found under {artifacts_root}"
+    for yaml_path in yaml_paths:
         text = yaml_path.read_text()
         assert "usd_asset_file_name:" not in text
         assert "usd_bodies_root_prim_path:" not in text
 
+
+@pytest.mark.needs_lfs
+def test_tracked_resolved_sidecar_checkpoints_omit_legacy_usd_fields():
+    artifacts_root = Path(__file__).parents[2] / "data" / "pretrained_models"
     for pt_path in artifacts_root.glob("**/resolved_configs*.pt"):
         configs = torch.load(pt_path, weights_only=False)
         asset = configs["robot"].asset
@@ -561,9 +581,7 @@ def test_offline_cleaned_mjcf_preserves_relative_asset_directories(tmp_path):
 
     compiler = ET.parse(cleaned).getroot().find("compiler")
     assert compiler.get("meshdir") == str((source_dir / "../mesh").resolve())
-    assert compiler.get("texturedir") == str(
-        (source_dir / "../textures").resolve()
-    )
+    assert compiler.get("texturedir") == str((source_dir / "../textures").resolve())
 
 
 def test_offline_converter_rejects_unflattened_includes(tmp_path):
@@ -571,10 +589,7 @@ def test_offline_converter_rejects_unflattened_includes(tmp_path):
     mjcf = tmp_path / "robot.xml"
     mjcf.write_text('<mujoco><include file="defaults.xml"/></mujoco>')
 
-    assert any(
-        "include" in issue
-        for issue in converter.verify_mjcf_is_flat(str(mjcf))
-    )
+    assert any("include" in issue for issue in converter.verify_mjcf_is_flat(str(mjcf)))
 
 
 def test_resolve_body_prim_paths_nested_and_flat():
@@ -630,9 +645,7 @@ def test_resolve_articulation_root_prim_path_nested_and_flat():
         },
     ]
     assert (
-        resolve_articulation_root_prim_path_from_records(
-            records, default_path="/robot"
-        )
+        resolve_articulation_root_prim_path_from_records(records, default_path="/robot")
         == "/Geometry/pelvis"
     )
 
@@ -808,7 +821,10 @@ def test_public_install_metadata_targets_isaaclab3_stack():
     requirements = pyproject["project"]["optional-dependencies"]["isaaclab"]
 
     assert any("isaaclab==12.0.0" in requirement for requirement in requirements)
-    assert any("isaacsim[all,extscache]==6.0.0.1" in requirement for requirement in requirements)
+    assert any(
+        "isaacsim[all,extscache]==6.0.0.1" in requirement
+        for requirement in requirements
+    )
 
     public_docs = [
         repo_root / "README.md",
