@@ -243,7 +243,6 @@ def compute_body_density_weights(
     chain_distances = torch.zeros(num_bodies, num_bodies)
     for i in range(num_bodies):
         for j in range(i + 1, num_bodies):
-            i_ancestors = ancestor_dists[i]
             j_ancestors = ancestor_dists[j]
 
             # Find LCA

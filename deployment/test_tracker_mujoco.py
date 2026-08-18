@@ -155,9 +155,9 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from deployment.motion_utils import MotionPlayer
-from deployment.state_utils import mujoco_wxyz_to_xyzw, quat_rotate_np
-from deployment.tracker_inputs import (
+from deployment.motion_utils import MotionPlayer  # noqa: E402
+from deployment.state_utils import mujoco_wxyz_to_xyzw, quat_rotate_np  # noqa: E402
+from deployment.tracker_inputs import (  # noqa: E402
     align_future_motion_refs,
     build_tracker_onnx_inputs,
     compute_odom_disp_start,

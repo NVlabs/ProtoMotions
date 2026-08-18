@@ -340,7 +340,6 @@ def test_tracking_rewards_cover_standard_and_beyond_mimic_variants():
     ref_rot = _identity_quat(2, 2)
     ref_rot[1, 0] = torch.tensor([1.0, 0.0, 0.0, 0.0])
     current_vel = torch.ones(2, 2, 3)
-    ref_vel = torch.zeros(2, 2, 3)
     current_anchor_pos = current_pos[:, 0, :]
     current_anchor_rot = current_rot[:, 0, :]
 

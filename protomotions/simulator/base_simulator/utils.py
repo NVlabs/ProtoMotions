@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 from dataclasses import replace
 
 import torch
-import numpy as np
 
 if TYPE_CHECKING:
     from protomotions.components.terrains.config import (
@@ -132,7 +131,6 @@ def convert_friction_for_combine_mode(
     For MAX mode without DR, assumes the simulator applies
     ``default_robot_friction`` to character shapes.
     """
-    from protomotions.components.terrains.config import CombineMode
 
     source_mode = terrain_sim_config.combine_mode
     if source_mode == target_mode:

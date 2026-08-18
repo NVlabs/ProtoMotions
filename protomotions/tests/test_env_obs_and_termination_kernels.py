@@ -5,7 +5,6 @@
 
 from types import SimpleNamespace
 
-import pytest
 import torch
 
 from protomotions.envs.obs.path import compute_path_obs

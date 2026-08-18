@@ -72,7 +72,6 @@ from protomotions.envs.obs.nearest_surface_obs import compute_nearest_surface_ve
 from protomotions.envs.obs.target import compute_target_obs
 
 # Nearest surface observation compute kernel
-from protomotions.envs.obs.nearest_surface_obs import compute_nearest_surface_vectors
 
 # Observation noise utilities
 from protomotions.envs.obs.observation_noise import (

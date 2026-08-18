@@ -7,9 +7,7 @@ protomotions.envs.terminations (base + task helpers).
 
 from __future__ import annotations
 
-import math
 
-import pytest
 import torch
 
 from protomotions.envs.terminations.base import (

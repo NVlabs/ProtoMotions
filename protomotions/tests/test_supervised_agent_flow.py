@@ -10,7 +10,6 @@ import torch
 from tensordict import TensorDict
 from torch import nn
 
-from protomotions.agents.common.supervision import SupervisionLossConfig
 from protomotions.agents.base_agent import agent as base_agent_module
 from protomotions.agents.supervised import agent as supervised_agent_module
 from protomotions.agents.supervised.agent import SupervisedAgent

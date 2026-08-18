@@ -11,7 +11,7 @@ from protomotions.robot_configs.base import RobotConfig
 from protomotions.simulator.base_simulator.config import SimulatorConfig
 
 PRIOR_CHECKPOINT = (
-    "data/pretrained_models/gpc_prior/smpl_amass/inference_last.ckpt"
+    "data/pretrained_models/gpc_prior/soma_bones/inference_last.ckpt"
 )
 
 DISC_HISTORY_STEPS = [1, 2, 4, 8, 16]

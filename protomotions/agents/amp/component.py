@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import inspect
 import logging
-from typing import Callable, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import torch
 from tensordict import TensorDict

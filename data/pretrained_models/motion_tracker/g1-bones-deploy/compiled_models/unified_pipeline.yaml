@@ -1,3 +1,137 @@
-version https://git-lfs.github.com/spec/v1
-oid sha256:9b7896f3355a9d9d5e7d3139b83924eeb2e45c62c30bfda44afe996cfc6cf01c
-size 5918
+type: unified_pipeline
+dt: 0.02
+joint_names: &id001 [left_hip_pitch_joint, left_hip_roll_joint, left_hip_yaw_joint,
+  left_knee_joint, left_ankle_pitch_joint, left_ankle_roll_joint, right_hip_pitch_joint,
+  right_hip_roll_joint, right_hip_yaw_joint, right_knee_joint, right_ankle_pitch_joint,
+  right_ankle_roll_joint, waist_yaw_joint, waist_roll_joint, waist_pitch_joint, left_shoulder_pitch_joint,
+  left_shoulder_roll_joint, left_shoulder_yaw_joint, left_elbow_joint, left_wrist_roll_joint,
+  left_wrist_pitch_joint, left_wrist_yaw_joint, right_shoulder_pitch_joint, right_shoulder_roll_joint,
+  right_shoulder_yaw_joint, right_elbow_joint, right_wrist_roll_joint, right_wrist_pitch_joint,
+  right_wrist_yaw_joint]
+body_names: &id002 [pelvis, head, left_hip_pitch_link, left_hip_roll_link, left_hip_yaw_link,
+  left_knee_link, left_ankle_pitch_link, left_ankle_roll_link, right_hip_pitch_link,
+  right_hip_roll_link, right_hip_yaw_link, right_knee_link, right_ankle_pitch_link,
+  right_ankle_roll_link, waist_yaw_link, waist_roll_link, torso_link, left_shoulder_pitch_link,
+  left_shoulder_roll_link, left_shoulder_yaw_link, left_elbow_link, left_wrist_roll_link,
+  left_wrist_pitch_link, left_wrist_yaw_link, left_rubber_hand, right_shoulder_pitch_link,
+  right_shoulder_roll_link, right_shoulder_yaw_link, right_elbow_link, right_wrist_roll_link,
+  right_wrist_pitch_link, right_wrist_yaw_link, right_rubber_hand]
+default_joint_stiffness: &id003 [40.17923847137318, 99.09842777666113, 40.17923847137318,
+  99.09842777666113, 28.50124619574858, 28.50124619574858, 40.17923847137318, 99.09842777666113,
+  40.17923847137318, 99.09842777666113, 28.50124619574858, 28.50124619574858, 40.17923847137318,
+  28.50124619574858, 28.50124619574858, 14.25062309787429, 14.25062309787429, 14.25062309787429,
+  14.25062309787429, 14.25062309787429, 16.77832748089279, 16.77832748089279, 14.25062309787429,
+  14.25062309787429, 14.25062309787429, 14.25062309787429, 14.25062309787429, 16.77832748089279,
+  16.77832748089279]
+default_joint_damping: &id004 [2.5578897650279457, 6.3088018534966395, 2.5578897650279457,
+  6.3088018534966395, 1.814445686584846, 1.814445686584846, 2.5578897650279457, 6.3088018534966395,
+  2.5578897650279457, 6.3088018534966395, 1.814445686584846, 1.814445686584846, 2.5578897650279457,
+  1.814445686584846, 1.814445686584846, 0.907222843292423, 0.907222843292423, 0.907222843292423,
+  0.907222843292423, 0.907222843292423, 1.06814150219, 1.06814150219, 0.907222843292423,
+  0.907222843292423, 0.907222843292423, 0.907222843292423, 0.907222843292423, 1.06814150219,
+  1.06814150219]
+policy_inputs:
+- name: current_anchor_rot
+  key: current.anchor_rot
+  shape: [1, 4]
+  kind: anchor_rot
+  element_names:
+  - [x, y, z, w]
+- name: current_dof_pos
+  key: current.dof_pos
+  shape: [1, 29]
+  kind: joint_pos
+  element_names:
+  - *id001
+- name: current_dof_vel
+  key: current.dof_vel
+  shape: [1, 29]
+  kind: joint_vel
+  element_names:
+  - *id001
+- name: current_root_local_ang_vel
+  key: current.root_local_ang_vel
+  shape: [1, 3]
+  kind: local_root_ang_vel
+- name: historical_processed_actions
+  key: historical.processed_actions
+  shape: [1, 1, 29]
+  kind: last_actions
+  output_key: robot_action
+- name: mimic_future_anchor_rot
+  key: mimic.future_anchor_rot
+  shape: [1, 4, 4]
+  kind: reference_motion_body_rot
+  future_steps: 4
+  element_names:
+  - [torso_link]
+  - [x, y, z, w]
+- name: mimic_future_dof_pos
+  key: mimic.future_dof_pos
+  shape: [1, 4, 29]
+  kind: reference_motion_joint_pos
+  future_steps: 4
+  element_names:
+  - *id001
+- name: mimic_future_dof_vel
+  key: mimic.future_dof_vel
+  shape: [1, 4, 29]
+  kind: reference_motion_joint_vel
+  future_steps: 4
+  element_names:
+  - *id001
+policy_outputs:
+- name: actions
+  kind: actions
+  key: actions
+  shape: [1, 29]
+- name: joint_pos_targets
+  kind: joint_pos_targets
+  key: joint_pos_targets
+  shape: [1, 29]
+  joint_names: *id001
+- name: stiffness_targets
+  kind: stiffness_targets
+  key: stiffness_targets
+  shape: [1, 29]
+  joint_names: *id001
+- name: damping_targets
+  kind: damping_targets
+  key: damping_targets
+  shape: [1, 29]
+  joint_names: *id001
+_runtime:
+  onnx_in_names: [current_anchor_rot, current_dof_pos, current_dof_vel, current_root_local_ang_vel,
+    historical_processed_actions, mimic_future_anchor_rot, mimic_future_dof_pos, mimic_future_dof_vel]
+  onnx_out_names: [actions, joint_pos_targets, stiffness_targets, damping_targets]
+  onnx_name_to_in_key: {current_anchor_rot: current.anchor_rot, current_dof_pos: current.dof_pos,
+    current_dof_vel: current.dof_vel, current_root_local_ang_vel: current.root_local_ang_vel,
+    historical_processed_actions: historical.processed_actions, mimic_future_anchor_rot: mimic.future_anchor_rot,
+    mimic_future_dof_pos: mimic.future_dof_pos, mimic_future_dof_vel: mimic.future_dof_vel}
+  passthrough_keys: [current.anchor_pos, mimic.future_anchor_ang_vel, mimic.future_anchor_pos,
+    mimic.future_anchor_vel, mimic.ref_anchor_pos]
+  obs_context_keys: [current.anchor_pos, current.anchor_rot, current.dof_pos, current.dof_vel,
+    current.root_local_ang_vel, historical.processed_actions, mimic.future_anchor_ang_vel,
+    mimic.future_anchor_pos, mimic.future_anchor_rot, mimic.future_anchor_vel, mimic.future_dof_pos,
+    mimic.future_dof_vel, mimic.ref_anchor_pos]
+metadata: {checkpoint: data/pretrained_models/motion_tracker/g1-bones-deploy/last.ckpt, control_type: BUILT_IN_PD}
+robot:
+  mjcf_path: mjcf/g1_holo_compat.xml
+  num_bodies: 33
+  num_dofs: 29
+  anchor_body_name: torso_link
+  anchor_body_index: 16
+  root_body_name: pelvis
+  root_body_index: 0
+  body_names: *id002
+  joint_names: *id001
+control:
+  stiffness: *id003
+  damping: *id004
+  effort_limits: null
+  pd_target_max_accel: null
+  action_ema_alpha: 1.0
+timing: {control_dt: 0.02, physics_dt: 0.001, decimation: 20}
+motion:
+  future_step_indices: [1, 2, 4, 8]
+  future_dt_seconds: [0.02, 0.04, 0.08, 0.16]

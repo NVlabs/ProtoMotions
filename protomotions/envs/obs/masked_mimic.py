@@ -33,7 +33,6 @@ Use MdpComponent in experiment configs to bind kernels to context paths:
 
 from typing import List, Union
 
-import torch
 from torch import Tensor
 
 from protomotions.envs.obs.target_poses import build_sparse_target_poses

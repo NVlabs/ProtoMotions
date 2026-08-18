@@ -1,0 +1,232 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Continuous integration for the public repository.
+#
+# The public repository accepts pull requests directly, and nothing tested them
+# until this existed. The development repository has its own, richer CI, but
+# that workflow is development-only -- it builds the release projection and
+# scans an internal fence that do not exist in public -- so it is not shipped.
+# This is the part that does belong in public: lint and the CPU test suite.
+#
+# It ships from the development repository through the release projection and is
+# guarded to the canonical public repository, so it is skipped on the
+# development repository (whose own CI already covers these) and on forks.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # The full-payload job below is documented as runnable on demand, and this is
+  # what makes that true: without it there is no Run workflow button and no way
+  # to start that job without pushing to main.
+  workflow_dispatch:
+
+# A literal prefix, not github.workflow. On the development repository this
+# workflow and the development CI are both named "CI", so a group keyed on the
+# workflow name would collide and, with cancel-in-progress, each would cancel
+# the other. This keeps the two apart even though they share a name.
+concurrency:
+  group: public-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GITLEAKS_VERSION: "8.21.2"
+  GITLEAKS_SHA256: "5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba"
+
+jobs:
+  # Catches a credential in a contributed pull request before it is merged --
+  # the one class of mistake that rewriting history afterwards does not undo,
+  # because the commit stays reachable from the pull request ref forever.
+  #
+  # This job is useful on a fork's pull request, and the guard below does not
+  # exclude one: on a pull_request event github.repository is the base
+  # repository. That is intended. It needs no secrets and no write permission,
+  # so it is safe to run on untrusted contributions.
+  secrets:
+    name: Secret scan
+    if: github.repository == 'NVlabs/ProtoMotions'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { lfs: false, fetch-depth: 0 }
+
+      # The binary rather than gitleaks-action, which requires a paid licence
+      # key for organisation-owned repositories. Pinned by version and checksum.
+      - name: Install gitleaks
+        run: |
+          curl -sSLf -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar xzf gitleaks.tar.gz gitleaks
+
+      # On a pull request, only the commits it adds, so a finding is always
+      # something the author can act on -- a whole-history scan here would block
+      # every unrelated pull request on the same old commit. On a push to main,
+      # every ref in the checkout, as the backstop.
+      - name: Scan
+        run: |
+          # An array, because the log-opts value contains a space and has to
+          # stay one argument.
+          scope=()
+          if [ -n "${{ github.base_ref }}" ]; then
+            git fetch --no-tags --quiet origin "${{ github.base_ref }}"
+            scope=(--log-opts="--no-merges origin/${{ github.base_ref }}..HEAD")
+            echo "scanning this pull request's commits"
+          else
+            # Explicit rather than relying on the default scope.
+            scope=(--log-opts="--all")
+            echo "scanning every ref"
+          fi
+          # --redact keeps the secret itself out of a world-readable build log.
+          ./gitleaks detect --source . --config .gitleaks.toml \
+            --redact --no-banner --report-path gitleaks-report.json "${scope[@]}"
+
+      - name: Upload findings
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.json
+
+  lint:
+    name: Lint (changed files)
+    if: github.repository == 'NVlabs/ProtoMotions'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { lfs: false, fetch-depth: 0 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.10" }
+      - run: pip install ruff==0.8.1
+
+      # On a pull request, actions/checkout gives the merge commit, so a
+      # three-dot diff from the merge base isolates this pull request's own
+      # changes rather than also blaming it for what landed on main since.
+      - name: Collect changed Python files
+        id: changed
+        run: |
+          if [ -n "${{ github.base_ref }}" ]; then
+            git fetch --no-tags --quiet origin "${{ github.base_ref }}"
+            range="origin/${{ github.base_ref }}...HEAD"
+          else
+            # A push can carry several commits. HEAD~1..HEAD would lint only the
+            # last of them and wave the rest through, which is how lint debt
+            # accumulates unnoticed in files nobody touches again. github.event
+            # .before is the branch tip before this push -- absent on a new
+            # branch, and stale after a force-push, so fall back when it is not
+            # a commit this checkout has.
+            before="${{ github.event.before }}"
+            if [ -n "$before" ] && [ "$before" != "0000000000000000000000000000000000000000" ] \
+               && git cat-file -e "$before^{commit}" 2>/dev/null; then
+              range="$before HEAD"
+            else
+              range="$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD) HEAD"
+            fi
+          fi
+          git diff --name-only --diff-filter=ACMR $range -- '*.py' > changed.txt
+          echo "count=$(wc -l < changed.txt)" >> "$GITHUB_OUTPUT"
+          cat changed.txt
+
+      - name: Ruff check
+        if: steps.changed.outputs.count != '0'
+        run: xargs -r -a changed.txt ruff check
+
+      # No `ruff format --check`: the formatter's output shifts between ruff
+      # versions, so a pinned check fails on files formatted by a different
+      # local ruff even when they are correctly formatted. Lint (ruff check) is
+      # stable across versions and stays.
+
+  # Gates every pull request, forks included, and pulls NO Git LFS. A pull
+  # request from a fork runs against the base repository's resources, and on a
+  # pull_request event github.repository is the base -- so the guard above does
+  # not keep a fork out, and a checkout with lfs: true would pull ~4.9 GB on the
+  # organisation's LFS bandwidth quota per run. Exhausting that quota disables
+  # LFS for the whole account, so every user's `git clone` then yields pointer
+  # stubs instead of real files. This job therefore checks out pointers only and
+  # skips the handful of tests marked needs_lfs; those run in
+  # test-full below, which forks cannot trigger.
+  test:
+    name: Tests (CPU)
+    if: github.repository == 'NVlabs/ProtoMotions'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { lfs: false }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.10", cache: pip }
+
+      # A bare runner has no display or GL driver; several modules import
+      # PyOpenGL, which then fails at collection. OSMesa is a software
+      # rasteriser that satisfies them.
+      - name: Install headless OpenGL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libosmesa6 libgl1 libglx-mesa0 libglu1-mesa libglfw3
+
+      - name: Install (CPU torch)
+        run: |
+          pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[mujoco,dev]"
+          # OpenUSD, for the MJCF-to-USD converter regression tests. Those
+          # monkeypatch IsaacLab out entirely and need nothing but pxr, so the
+          # usd-core wheel runs them on a plain CPU runner -- without it they
+          # were skipped here and in every other job, i.e. never exercised.
+          # A different OpenUSD build from the one inside Isaac Sim, so this
+          # covers the converter logic rather than the exact deployed stack.
+          pip install usd-core==26.8
+
+      # Skips the tests marked needs_lfs, which read a real payload this job
+      # deliberately does not fetch; they run in test-full. The marker lives on
+      # the test itself, so this cannot drift out of step with the suite the way
+      # a hard-coded --deselect list did -- pytest ignores a --deselect naming a
+      # test that has been renamed, and says nothing.
+      - name: Run test suite (no LFS payloads)
+        env: { MUJOCO_GL: osmesa, PYOPENGL_PLATFORM: osmesa }
+        run: |
+          pytest protomotions/tests/ -q --durations=10 -m "not needs_lfs"
+
+  # The full suite with the payloads the gate above cannot fetch. Runs only on
+  # push to main and manual dispatch -- never on pull_request, so a fork can
+  # never trigger it, which is what keeps the LFS pull off fork-reachable paths.
+  # It excludes *.ckpt: 4.4 GB of the 4.9 GB LFS total is model weights that no
+  # test opens, leaving a ~0.5 GB tail of meshes, motions and USD that the
+  # needs_lfs tests actually read.
+  test-full:
+    name: Tests (full, with LFS payloads)
+    if: github.repository == 'NVlabs/ProtoMotions' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { lfs: false }
+      - name: Fetch test payloads, but not the checkpoint weights
+        run: git lfs pull --exclude="*.ckpt"
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.10", cache: pip }
+      - name: Install headless OpenGL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libosmesa6 libgl1 libglx-mesa0 libglu1-mesa libglfw3
+      - name: Install (CPU torch)
+        run: |
+          pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[mujoco,dev]"
+          # OpenUSD, for the MJCF-to-USD converter regression tests. Those
+          # monkeypatch IsaacLab out entirely and need nothing but pxr, so the
+          # usd-core wheel runs them on a plain CPU runner -- without it they
+          # were skipped here and in every other job, i.e. never exercised.
+          # A different OpenUSD build from the one inside Isaac Sim, so this
+          # covers the converter logic rather than the exact deployed stack.
+          pip install usd-core==26.8
+      - name: Run full test suite
+        env: { MUJOCO_GL: osmesa, PYOPENGL_PLATFORM: osmesa }
+        run: pytest protomotions/tests/ -q --durations=10

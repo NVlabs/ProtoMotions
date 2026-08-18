@@ -24,8 +24,8 @@ reproduce the motion while maintaining physical plausibility.
 
 * ``mlp.py`` - MLP policy for flat terrain
 * ``mlp_complex_terrain.py`` - MLP policy for complex terrains (stairs, slopes, etc.)
-* ``mlp_domain_rand.py`` - Reduced coordinate observations with domain randomization for sim2real
-* ``transformer.py``, ``transformer_complex_terrain.py`` - Transformer variants with more future observation frames
+* ``mlp_bm_l2c2.py`` - BeyondMimic policy with a torso anchor and L2C2 smoothness regularization, aimed at sim2real
+* ``fsq.py`` - FSQ tracker over max-coordinates proprioception and target poses
 
 **Example command**:
 

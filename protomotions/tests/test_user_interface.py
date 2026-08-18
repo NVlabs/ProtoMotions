@@ -4,7 +4,6 @@
 import pytest
 
 from protomotions.simulator.base_simulator.user_interface import (
-    KeyBindingScope,
     UserInterface,
     KeyBinding,
 )
