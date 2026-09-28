@@ -51,6 +51,10 @@ class MimicEvaluatorConfig(EvaluatorConfig):
     """Configuration for Mimic evaluator."""
 
     _target_: str = "protomotions.agents.evaluators.mimic_evaluator.MimicEvaluator"
+    eval_num_motions: Optional[int] = field(
+        default=None,
+        metadata={"help": "Random motions per rank per evaluation. None or 0 = all.", "min": 0}
+    )
     save_predicted_motion_lib_every: Optional[int] = field(
         default=3,
         metadata={"help": "Save pred_motion_lib every M evals. None = disabled.", "min": 1}

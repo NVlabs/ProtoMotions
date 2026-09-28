@@ -225,6 +225,7 @@ def test_mimic_initialize_eval_creates_metrics_and_caches_environment_state(tmp_
 def test_mimic_motion_sampling_weights_discount_successes_and_failures(tmp_path):
     evaluator = _evaluator(tmp_path)
     evaluator._motion_failed = torch.tensor([False, True, True])
+    evaluator._eval_mask = torch.ones(3, dtype=torch.bool)
 
     evaluator._update_motion_sampling_weights()
 
@@ -253,6 +254,7 @@ def test_mimic_motion_sampling_weights_respect_explicit_min_weight(tmp_path):
         ),
     )
     evaluator._motion_failed = torch.tensor([False, True, False])
+    evaluator._eval_mask = torch.ones(3, dtype=torch.bool)
 
     evaluator._update_motion_sampling_weights()
 
@@ -279,6 +281,7 @@ def test_mimic_motion_sampling_weights_handles_no_failures_and_zero_failure_disc
     assert evaluator.env.motion_manager.updated_weights is None
 
     evaluator._motion_failed = torch.tensor([False, True, False])
+    evaluator._eval_mask = torch.ones(3, dtype=torch.bool)
     evaluator._update_motion_sampling_weights()
 
     # Successes discount toward 0 but are floored at "1/num_motions" = 1/3.
@@ -424,6 +427,7 @@ def test_mimic_evaluate_episode_applies_action_ema_and_records_actions(tmp_path)
 def test_mimic_process_eval_results_updates_weights_and_additional_metrics(tmp_path):
     evaluator = _evaluator(tmp_path)
     evaluator._motion_failed = torch.tensor([False, True, False])
+    evaluator._eval_mask = torch.ones(3, dtype=torch.bool)
     evaluator._eval_mask = torch.tensor([True, True, True])
     evaluator._per_component_failures = {}
     evaluator._component_value_sum = {}
@@ -544,3 +548,89 @@ def test_mimic_save_predicted_motion_lib_packs_fields_and_removes_replay_offset(
     )
     assert torch.equal(saved["motion_weights"], evaluator.motion_lib.motion_weights)
     assert saved["motion_files"] == evaluator.motion_lib.motion_files
+
+
+@pytest.mark.parametrize("limit, expected", [(None, 3), (0, 3), (1, 1), (2, 2), (99, 3)])
+def test_sample_limit_allocates_only_selected_trajectories(tmp_path, limit, expected):
+    evaluator = _evaluator(tmp_path, eval_num_motions=limit)
+    rng = torch.random.get_rng_state().clone()
+    metrics = evaluator.initialize_eval()
+    ids = evaluator._eval_motion_ids
+    assert ids.numel() == expected
+    assert ids.unique().numel() == expected
+    assert torch.equal(rng, torch.random.get_rng_state())
+    assert all(m.data.shape[0] == expected for m in metrics.values())
+    assert torch.equal(metrics["actions"].motion_lens,
+                       (evaluator.motion_lib.lengths[ids] / evaluator.env.dt).long().clamp(max=4))
+    evaluator._metrics = metrics
+    for env_ids, motion_ids in evaluator._eval_batches:
+        values = motion_ids.float().unsqueeze(1).expand(-1, 2)
+        evaluator._record_trajectory_step(metrics, {"raw/dof_pos": values},
+                                          env_ids, motion_ids, values)
+    assert torch.equal(metrics["dof_pos"].data[:, 0, 0], ids.float())
+    evaluator.cleanup_after_evaluation()
+
+
+def test_sampling_changes_by_epoch_and_rank_and_is_repeatable(tmp_path):
+    evaluator = _evaluator(tmp_path, eval_num_motions=10)
+    evaluator.motion_lib.lengths = torch.ones(100)
+    first = torch.cat([ids for _, ids in evaluator._build_eval_batches()])
+    again = torch.cat([ids for _, ids in evaluator._build_eval_batches()])
+    assert torch.equal(first, again)
+    evaluator.agent.current_epoch += 1
+    next_epoch = torch.cat([ids for _, ids in evaluator._build_eval_batches()])
+    assert not torch.equal(first, next_epoch)
+    evaluator.fabric = SimpleNamespace(device=torch.device("cpu"), global_rank=1)
+    next_rank = torch.cat([ids for _, ids in evaluator._build_eval_batches()])
+    assert not torch.equal(next_epoch, next_rank)
+
+
+def test_fixed_sampling_keeps_motion_environment_pairs(tmp_path):
+    evaluator = _evaluator(tmp_path, eval_num_motions=1)
+    evaluator.motion_manager.fixed = (torch.tensor([2, 0]), torch.tensor([1, 0]))
+    metrics = evaluator.initialize_eval()
+    env_ids, motion_ids = evaluator._eval_batches[0]
+    assert motion_ids.numel() == 1
+    assert {2: 1, 0: 0}[motion_ids.item()] == env_ids.item()
+    assert metrics["actions"].num_motions == 1
+
+
+def test_partial_evaluation_leaves_unsampled_weights_and_score_untouched(tmp_path):
+    evaluator = _evaluator(tmp_path)
+    evaluator.motion_manager.motion_weights[:] = torch.tensor([1., 1., 0.01])
+    evaluator._motion_failed = torch.tensor([False, True, False])
+    evaluator._eval_mask = torch.tensor([True, True, False])
+    evaluator._metrics = {}
+    evaluator.metric_plugins = []
+    logs, score, count = evaluator.process_eval_results()
+    assert count == 2
+    assert score == 0.5
+    assert logs["eval/num_evaluated"] == 2
+    assert torch.allclose(evaluator.motion_manager.updated_weights,
+                          torch.tensor([1/3, 4., 0.01]))
+    assert (tmp_path / "failed_motions/failed_motions_epoch_7_rank_0.txt").read_text() == "1\n"
+
+
+def test_export_sampled_metrics_preserves_original_ids_on_cpu(tmp_path):
+    evaluator = _evaluator(tmp_path)
+    evaluator._eval_motion_ids = torch.tensor([2, 0])
+    lens = torch.tensor([2, 1])
+    features = {"dof_pos": 2, "dof_vel": 2, "rigid_body_pos": 3,
+                "rigid_body_rot": 4, "rigid_body_vel": 3,
+                "rigid_body_ang_vel": 3, "rigid_body_contacts": 1}
+    metrics = {k: _packed_metric(lens, f) for k, f in features.items()}
+    before = metrics["rigid_body_pos"].data.clone()
+    evaluator._save_predicted_motion_lib(metrics, epoch=8)
+    saved = torch.load(tmp_path / "results/predicted_motion_lib_epoch_8.pt")
+    assert saved["motion_num_frames"].tolist() == [1, 0, 2]
+    assert saved["length_starts"].tolist() == [0, 1, 1]
+    assert saved["motion_files"] == ("a", "b", "c")
+    assert torch.equal(saved["dps"], torch.cat([metrics["dof_pos"].data[1, :1],
+                                             metrics["dof_pos"].data[0, :2]]))
+    assert all(v.device.type == "cpu" for v in saved.values() if torch.is_tensor(v))
+    assert torch.equal(before, metrics["rigid_body_pos"].data)
+
+
+def test_negative_sample_limit_rejected(tmp_path):
+    with pytest.raises(ValueError, match="non-negative"):
+        _evaluator(tmp_path, eval_num_motions=-1).initialize_eval()

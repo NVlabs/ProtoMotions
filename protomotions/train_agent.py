@@ -294,6 +294,10 @@ def create_parser():
         "generate new configs that are compatible with current code, then load old weights.",
     )
 
+    parser.add_argument(
+        "--eval-num-motions", type=int, default=None,
+        help="Random motions per rank per evaluation; 0 = all. Also overrides on resume.",
+    )
     return parser
 
 
@@ -631,6 +635,9 @@ def main():
     resolved_configs_path = save_dir / "resolved_configs.pt"
     original_experiment_path = Path(args.experiment_path)
 
+    eval_num_motions_override = args.eval_num_motions
+    if eval_num_motions_override is not None and eval_num_motions_override < 0:
+        raise ValueError("--eval-num-motions must be non-negative")
     video_overrides = explicit_video_options(args)
 
     # --create-config-only: Force fresh mode to just generate configs
@@ -765,6 +772,13 @@ def main():
                 )
 
         motion_lib_config.validate()
+
+    # Apply after loading frozen resume configs: this memory limit is an explicit
+    # runtime override, so an old checkpoint cannot silently discard it.
+    if eval_num_motions_override is not None:
+        agent_config.evaluator.eval_num_motions = eval_num_motions_override
+        args.eval_num_motions = eval_num_motions_override
+        log.info("Evaluation motion limit per rank: %s (0 = all)", eval_num_motions_override)
 
     # IsaacLab 3 uses xyzw quaternions. Old resolved configs may still carry
     # the IsaacLab 2 wxyz flag, including true resume checkpoints.
