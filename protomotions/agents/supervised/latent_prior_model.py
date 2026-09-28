@@ -154,9 +154,8 @@ class DiscreteAutoregressiveLatentPriorModel(BaseModel):
     ) -> TensorDict:
         data = {key: tensordict[key] for key in self.prior_context_keys}
         if target_prior_tokens is not None:
-            data[self.prior.token_key] = self.latent_tokenization.one_hot_prior_tokens(
-                target_prior_tokens
-            )
+            # Keep categorical IDs compact; the prior performs an embedding lookup.
+            data[self.prior.token_key] = target_prior_tokens
         first_context = data[self.prior_context_keys[0]]
         return TensorDict(
             data,

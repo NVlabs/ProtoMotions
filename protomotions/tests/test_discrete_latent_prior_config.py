@@ -660,3 +660,19 @@ def test_prior_muon_optimizer_keeps_token_and_output_projections_auxiliary():
     adam_params = set(adam_group["params"])
     assert all(param in adam_params for param in prior._token_encoder.parameters())
     assert all(param in adam_params for param in prior._output_head.parameters())
+
+
+def test_stage2_teacher_tokens_remain_indices_without_one_hot(tmp_path):
+    from unittest.mock import patch
+    import torch.nn.functional as F
+
+    config = _small_prior_config(tmp_path / "missing.ckpt")
+    config.latent_decoder.module_config = DummyDiscreteCodecConfig()
+    model = DiscreteAutoregressiveLatentPriorModel(config)
+    td = TensorDict({"state": torch.zeros(2, 4), "target": torch.zeros(2, 4)}, batch_size=2)
+    ids = torch.zeros(2, model.prior.num_tokens, dtype=torch.long)
+    with patch.object(F, "one_hot", side_effect=AssertionError("one_hot allocated")):
+        prior_td = model._prior_tensordict(td, ids)
+        assert prior_td[model.prior.token_key] is ids
+        logits = model.prior(prior_td)[model.prior.logits_key]
+        logits.square().mean().backward()

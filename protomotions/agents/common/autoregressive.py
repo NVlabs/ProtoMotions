@@ -15,7 +15,10 @@ from protomotions.agents.base_agent.model import ProtoMotionsTensorDictModule
 from protomotions.agents.common.config import (
     DiscreteAutoregressiveTransformerConfig,
     MLPWithConcatConfig,
+    ModuleOperationForwardConfig,
 )
+from protomotions.agents.common.common import ModuleContainer
+from protomotions.agents.common.mlp import MLPWithConcat
 from protomotions.agents.utils.training import get_activation_func
 from protomotions.utils.hydra_replacement import get_class
 
@@ -370,7 +373,51 @@ class DiscreteAutoregressiveTransformer(ProtoMotionsTensorDictModule):
         tensordict = self._context_encoder(tensordict)
         return tensordict[self.context_embedding_key]
 
+    def _token_embedding_projection(self):
+        """Recognize the plain categorical projection without bypassing custom encoders."""
+        if type(self._token_encoder) is not ModuleContainer:
+            return None
+        models = self._token_encoder.models
+        if len(models) != 1 or type(models[0]) is not MLPWithConcat:
+            return None
+        model = models[0]
+        cfg = model.config
+        if (
+            cfg.in_keys != [self.token_key]
+            or cfg.out_keys != [self.token_embedding_key]
+            or cfg.normalize_obs
+            or model.output_activation is not None
+            or len(cfg.module_operations) != 1
+            or type(cfg.module_operations[0]) is not ModuleOperationForwardConfig
+            or len(model.mlp) != 1
+            or type(model.mlp[0]) not in (nn.Linear, nn.LazyLinear)
+        ):
+            return None
+        return model.mlp[0]
+
     def encode_tokens(self, tokens: torch.Tensor) -> torch.Tensor:
+        projection = self._token_embedding_projection()
+        if tokens.dim() == 2 and projection is not None:
+            # one_hot(ids) @ W.T + b == embedding(ids, W.T) + b.
+            # Keep the existing parameters/layout so checkpoints and optimizer
+            # moments load unchanged, including the original Linear initializer.
+            if isinstance(projection, nn.LazyLinear):
+                projection(torch.empty(
+                    (0, self.vocab_size),
+                    device=projection.weight.device,
+                    dtype=projection.weight.dtype,
+                ))
+            embedded = F.embedding(tokens.long(), projection.weight.t())
+            bias = projection.bias
+            # Match Linear autocast without casting the entire vocabulary table.
+            if torch.is_autocast_enabled(tokens.device.type) and embedded.dtype != torch.float64:
+                dtype = torch.get_autocast_dtype(tokens.device.type)
+                embedded = embedded.to(dtype)
+                if bias is not None:
+                    bias = bias.to(dtype)
+            if bias is not None:
+                embedded = embedded + bias
+            return embedded
         batch_size = tokens.shape[0]
         token_td = TensorDict(
             {self.token_key: self._one_hot_tokens(tokens)},

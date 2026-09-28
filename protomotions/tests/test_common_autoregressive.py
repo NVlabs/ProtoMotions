@@ -408,3 +408,76 @@ def test_autoregressive_config_requires_context_encoder_to_declare_output_key():
             num_tokens=2,
             vocab_size=3,
         )
+
+
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+def test_token_lookup_matches_dense_projection_and_adam_resume(device):
+    """Repeated IDs must accumulate gradients and preserve old optimizer state."""
+    from copy import deepcopy
+    from unittest.mock import patch
+
+    if device == "cuda" and not torch.cuda.is_available():
+        pytest.skip("CUDA unavailable")
+    torch.manual_seed(123)
+    dense = DiscreteAutoregressiveTransformer(_config()).to(device)
+    ids = torch.tensor([[0, 0, 4], [4, 2, 0]], device=device)
+    hot = F.one_hot(ids, 5).float()
+    dense.encode_tokens(hot)
+    old_opt = torch.optim.AdamW(dense._token_encoder.parameters(), lr=1e-3)
+    dense.encode_tokens(hot).square().sum().backward()
+    old_opt.step()
+    old_opt.zero_grad(set_to_none=True)
+
+    lookup = DiscreteAutoregressiveTransformer(_config()).to(device)
+    lookup._token_encoder.load_state_dict(deepcopy(dense._token_encoder.state_dict()), strict=True)
+    new_opt = torch.optim.AdamW(lookup._token_encoder.parameters(), lr=1e-3)
+    new_opt.load_state_dict(deepcopy(old_opt.state_dict()))
+    expected = dense.encode_tokens(hot)
+    with patch.object(F, "one_hot", side_effect=AssertionError("one_hot allocated")):
+        actual = lookup.encode_tokens(ids)
+    torch.testing.assert_close(actual, expected)
+    upstream = torch.randn_like(expected)
+    (expected * upstream).sum().backward()
+    (actual * upstream).sum().backward()
+    for left, right in zip(dense._token_encoder.parameters(), lookup._token_encoder.parameters()):
+        torch.testing.assert_close(left.grad, right.grad)
+    old_opt.step()
+    new_opt.step()
+    for key, value in dense._token_encoder.state_dict().items():
+        torch.testing.assert_close(value, lookup._token_encoder.state_dict()[key])
+
+
+def test_token_lookup_lazy_init_and_teacher_forcing_without_one_hot():
+    from copy import deepcopy
+    from unittest.mock import patch
+
+    ids = torch.tensor([[0, 0, 4], [4, 2, 0]])
+    torch.manual_seed(17)
+    dense = DiscreteAutoregressiveTransformer(_config())
+    expected = dense.encode_tokens(F.one_hot(ids, 5).float())
+    torch.manual_seed(17)
+    lookup = DiscreteAutoregressiveTransformer(_config())
+    with patch.object(F, "one_hot", side_effect=AssertionError("one_hot allocated")):
+        torch.testing.assert_close(lookup.encode_tokens(ids), expected)
+        td = TensorDict({"context_obs": torch.randn(2, 4), "teacher_tokens": ids}, batch_size=2)
+        actual_logits = lookup(td)["token_logits"]
+        actual_logits.square().mean().backward()
+        lookup.generate(TensorDict({"context_obs": td["context_obs"]}, batch_size=2))
+    dense.load_state_dict(deepcopy(lookup.state_dict()), strict=True)
+    td["teacher_tokens"] = F.one_hot(ids, 5).float()
+    torch.testing.assert_close(dense(td)["token_logits"], actual_logits)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_token_lookup_preserves_autocast_output_dtype(dtype):
+    model = DiscreteAutoregressiveTransformer(_config()).cuda()
+    ids = torch.tensor([[0, 1, 4]], device="cuda")
+    hot = F.one_hot(ids, 5).float()
+    model.encode_tokens(hot)
+    with torch.autocast("cuda", dtype=dtype):
+        expected = model.encode_tokens(hot)
+        actual = model.encode_tokens(ids)
+    assert actual.dtype == expected.dtype == dtype
+    # Autocast Linear rounds operands before adding the bias.
+    torch.testing.assert_close(actual, expected, atol=0.004, rtol=0.01)
