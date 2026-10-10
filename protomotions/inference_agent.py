@@ -71,6 +71,7 @@ def create_parser():
         help="Internal bounded-video request JSON",
     )
 
+    parser.add_argument("--ngpu", type=int, default=1, help="GPU ranks for headless full evaluation")
     # Optional arguments
     parser.add_argument(
         "--full-eval",
@@ -140,6 +141,7 @@ AppLauncher = import_simulator_before_torch(args.simulator)
 
 # Now safe to import everything else including torch
 import logging  # noqa: E402
+import os  # noqa: E402
 from pathlib import Path  # noqa: E402
 import torch  # noqa: E402
 from protomotions.utils.hydra_replacement import get_class  # noqa: E402
@@ -315,7 +317,6 @@ def main():
         # Recompute asset_root from the new scene file path (experiment's
         # asset_root may point to a different machine, e.g. lustre vs local)
         elif scene_lib_config.asset_root is not None:
-            import os
 
             scene_lib_config.asset_root = os.path.dirname(
                 os.path.dirname(os.path.abspath(scenes_file))
@@ -373,12 +374,14 @@ def main():
 
     motion_lib_config.validate()
 
+    if args.ngpu < 1 or (args.ngpu > 1 and (not args.full_eval or not args.headless or video_request is not None)):
+        raise ValueError("Multi-GPU inference requires headless full evaluation, without a video request")
     # Create fabric config for inference (simplified)
     # MuJoCo is CPU-only, so force CPU accelerator
     accelerator = "cpu" if args.simulator == "mujoco" else "gpu"
     fabric_config = FabricConfig(
         accelerator=accelerator,
-        devices=1,
+        devices=args.ngpu,
         num_nodes=1,
         loggers=[],  # No loggers needed for inference
         callbacks=[],  # No callbacks needed for inference
@@ -402,6 +405,10 @@ def main():
             app_launcher_flags["enable_cameras"] = True
         if not args.headless:
             app_launcher_flags["visualizer"] = ["kit"]
+        if fabric.world_size > 1:
+            app_launcher_flags["distributed"] = True
+            os.environ["LOCAL_RANK"] = str(fabric.local_rank)
+            os.environ["RANK"] = str(fabric.global_rank)
         app_launcher = AppLauncher(app_launcher_flags)
         simulator_extra_params["simulation_app"] = app_launcher.app
 

@@ -20,6 +20,8 @@ import torch.nn.functional as F
 
 from protomotions.agents.common.latent import LATENT_LOGITS_KEY, TARGET_LATENT_KEY
 from protomotions.agents.evaluators.gpc_prior_offline import evaluate_prior_offline, evaluation_rng, frozen_encoder_digest
+from protomotions.agents.evaluators.gpc_prior_trajectory import json_safe
+from protomotions.agents.evaluators.gpc_prior_rollout import run_prior_rollouts
 from protomotions.agents.evaluators.base_evaluator import BaseEvaluator
 from protomotions.agents.evaluators.gpc_prior_config import GPCPriorEvaluatorConfig
 
@@ -97,6 +99,10 @@ class GPCPriorEvaluator(BaseEvaluator):
         agent_lib = self.agent.motion_lib
         original_noise = env.robot_config.reset_noise
         original_push = env.simulator._push_enabled
+        recovery = getattr(getattr(env, "config", None), "recovery_reset", None)
+        recovery_prob = recovery.recovery_prob if recovery is not None else None
+        push_state = {key: getattr(env.simulator,key).clone() for key in ("_simulation_time", "_push_next_time")
+                      if hasattr(env.simulator,key)}
         was_training = self.agent.model.training
         py_rng, np_rng = random.getstate(), np.random.get_state()
         sampling = {k: getattr(self.agent.model, k) for k in ("temperature", "top_p")
@@ -108,12 +114,14 @@ class GPCPriorEvaluator(BaseEvaluator):
                     setattr(self.agent.model, key, getattr(self.config, key))
                 env.robot_config.reset_noise = None
                 env.simulator._push_enabled = False
+                if recovery is not None: recovery.recovery_prob = 0.0
                 yield
         finally:
             env.motion_lib, env.motion_manager = original_lib, original_manager
             self.agent.motion_lib = agent_lib
             env.robot_config.reset_noise = original_noise
             env.simulator._push_enabled = original_push
+            if recovery is not None: recovery.recovery_prob = recovery_prob
             for key, value in sampling.items():
                 setattr(self.agent.model, key, value)
             self.agent.model.train(was_training)
@@ -122,6 +130,7 @@ class GPCPriorEvaluator(BaseEvaluator):
             # restore_state can invoke simulator operations: keep their RNG local too.
             with evaluation_rng(self.config.seed, self.device):
                 env.restore_state(snapshot)
+            for key,value in push_state.items(): getattr(env.simulator,key).copy_(value)
 
     def _install_library(self, lib):
         from protomotions.envs.motion_manager.config import MimicMotionManagerConfig
@@ -253,15 +262,21 @@ class GPCPriorEvaluator(BaseEvaluator):
                    "capped_survival_seconds": tracker.seconds.cpu().tolist()}
         return survival, details
 
-    def evaluate_prior_rollout(self, ids):
+    @torch.no_grad()
+    def evaluate_prior_rollout(self, ids=None, label="rollout"):
         """Free autoregressive policy -> frozen decoder -> physics, no mid-run reset."""
-        return self._autonomous(ids)
+        return run_prior_rollouts(self, label=label)
 
     def _sum(self, tensor):
         return self.fabric.all_reduce(tensor, reduce_op="sum") if self.fabric.world_size > 1 else tensor
 
     @torch.no_grad()
     def evaluate(self):
+        # Covers lazy MotionLib loading and media/export as well as the policy pass.
+        with evaluation_rng(self.config.seed + self.fabric.global_rank, self.device):
+            return self._evaluate()
+
+    def _evaluate(self):
         from protomotions.components.motion_lib import MotionLib, MotionLibConfig
 
         if not self.config.enabled:
@@ -327,11 +342,7 @@ class GPCPriorEvaluator(BaseEvaluator):
                             metrics.update({f"eval/{key}": value for key, value in teacher.items()})
                     if self.config.mode != "offline":
                         with evaluation_rng(self.config.seed + rank, self.device):
-                            rollout, record = self.evaluate_prior_rollout(ids)
-                        for key, value in rollout.items():
-                            total = self._sum(torch.tensor(value * n, dtype=torch.float64, device=self.device))
-                            rollout[key] = float(total / global_n)
-                        rollout["episode_count"] = global_n
+                            rollout, record = self.evaluate_prior_rollout(ids, label=f"{source}_{split}")
                         values.update({f"rollout/{key}": value for key, value in rollout.items()})
                         if source == primary and split == score_split:
                             metrics.update({f"rollout/{key}": value for key, value in rollout.items()})
@@ -347,7 +358,7 @@ class GPCPriorEvaluator(BaseEvaluator):
         output.mkdir(parents=True, exist_ok=True)
         stem = f"epoch_{self.agent.current_epoch}_eval_{self.eval_count}"
         report = {"checkpoint": getattr(self.agent, "evaluation_checkpoint", None),
-                  "agent_epoch": self.agent.current_epoch, "config": asdict(self.config), "rank": rank, "world_size": world,
+                  "agent_epoch": self.agent.current_epoch, "eval_count": self.eval_count, "config": asdict(self.config), "rank": rank, "world_size": world,
                   "num_items_per_split": global_n, "score_split": score_split, "score": score,
                   "temperature": self.config.temperature, "top_p": self.config.top_p,
                   "weights": primary, "encoder_sha256": self._encoder_digest, "ema_num_updates": self.agent.ema.num_updates if has_ema else 0,
@@ -357,7 +368,7 @@ class GPCPriorEvaluator(BaseEvaluator):
                   "survival_definition": "terminal anchor height above terrain AND local up-Z thresholds; no resets",
                   "offline_definition": "frozen expert states; one generated sequence per state; all grouped tokens valid",
                   "split_audit": split_audit, "metrics": metrics, "cohorts": details[primary], "weight_cohorts": details}
-        (output / f"{stem}_rank_{rank}.json").write_text(json.dumps(report, indent=2, allow_nan=False) + "\n")
+        (output / f"{stem}_rank_{rank}.json").write_text(json.dumps(json_safe(report), indent=2, allow_nan=False) + "\n")
         # Every rank exports its own reproducible states/labels. Values are tensors only.
         for split, batches in self._offline_batches.items():
             cache_path = output / f"offline_{split}_rank_{rank}.pt"
@@ -370,9 +381,11 @@ class GPCPriorEvaluator(BaseEvaluator):
         if rank == 0:
             with (output / f"{stem}.csv").open("w", newline="") as f:
                 writer = csv.writer(f); writer.writerow(["metric", "value"])
-                writer.writerows(sorted(metrics.items()))
+                writer.writerows(sorted(json_safe(metrics).items()))
             for label, (gt, sampled) in histograms.items():
                 self._save_histogram(output / f"{stem}_{label}", gt, sampled)
+            from protomotions.agents.evaluators.gpc_prior_reporting import log_training_media
+            log_training_media(self.fabric, report, output, self.agent.current_epoch)
         return metrics, score, n
 
     def _save_histogram(self, path, gt, sampled):
@@ -388,7 +401,7 @@ class GPCPriorEvaluator(BaseEvaluator):
             for j, ax in enumerate(axes[:, 0]):
                 p, q = gt[j].double() / gt[j].sum(), sampled[j].double() / sampled[j].sum()
                 # Compare the same IDs, selected by combined frequency.
-                ids = (p + q).topk(min(self.config.histogram_top_k, vocab)).indices
+                ids = torch.argsort(p + q, descending=True, stable=True)[:min(self.config.histogram_top_k, int(((p+q)>0).sum()))]
                 x = np.arange(len(ids))
                 ax.bar(x - .2, p[ids].numpy(), .4, label="GT")
                 ax.bar(x + .2, q[ids].numpy(), .4, label="Sampled")

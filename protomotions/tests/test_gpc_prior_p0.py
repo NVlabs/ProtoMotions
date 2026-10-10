@@ -101,7 +101,7 @@ def test_terminal_survival_allows_recovery_without_zeroing_actions_or_reset():
     evaluator._step = lambda action, n: (actions.append(action.clone()) or 'obs', None, torch.ones(n, dtype=torch.bool), None, None)
     state = SimpleNamespace(rigid_body_contacts=torch.zeros(2, 1, dtype=torch.bool), rigid_body_vel=torch.zeros(2, 1, 3))
     evaluator._physical_state = lambda n: (state, torch.tensor([model.calls in (2,3), False]))
-    metrics, details = evaluator.evaluate_prior_rollout(torch.tensor([0, 1]))
+    metrics, details = evaluator._autonomous(torch.tensor([0, 1]))
     assert metrics['survival_rate'] == 1.
     assert metrics['never_fell_rate'] == .5
     assert len(resets) == 1 and all(torch.all(a == 1) for a in actions)

@@ -96,7 +96,7 @@ def main():
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--checkpoint', required=True)
-    parser.add_argument('--cache', required=True, help='offline_validation_rank_N.pt exported by evaluator')
+    parser.add_argument('--cache', required=True, nargs='+', help='offline_validation_rank_N.pt exported by evaluator')
     parser.add_argument('--output', required=True)
     parser.add_argument('--device', default='cpu')
     parser.add_argument('--seed', type=int, default=20260929)
@@ -106,15 +106,33 @@ def main():
     args = parser.parse_args()
     if not 0 < args.top_p <= 1 or args.temperature <= 0:
         parser.error('Require 0 < top-p <= 1 and temperature > 0')
-    checkpoint, cache_path = Path(args.checkpoint), Path(args.cache)
+    import os
+    import torch.distributed as dist
+    checkpoint = Path(args.checkpoint)
+    cache_paths = [Path(path) for path in args.cache]
+    world = int(os.environ.get('WORLD_SIZE', '1'))
+    rank = int(os.environ.get('RANK', '0'))
+    local_rank = int(os.environ.get('LOCAL_RANK', '0'))
     configs = checkpoint.parent / 'resolved_configs_inference.pt'
     if not configs.exists():
         configs = checkpoint.parent / 'resolved_configs.pt'
     # Repository-native resolved dataclasses: same trusted config path as inference_agent.
     config = torch.load(configs, map_location='cpu', weights_only=False)['agent'].model
     device = torch.device(args.device)
+    fabric = None
+    if world > 1:
+        if device.type == 'cuda':
+            device = torch.device('cuda', local_rank)
+            torch.cuda.set_device(device)
+        dist.init_process_group('nccl' if device.type == 'cuda' else 'gloo')
+        class Reduction:
+            world_size = world
+            def all_reduce(self, value, reduce_op):
+                dist.all_reduce(value)
+                return value
+        fabric = Reduction()
     state = torch.load(checkpoint, map_location='cpu', weights_only=True)
-    cache = torch.load(cache_path, map_location='cpu', weights_only=True)
+    caches = [torch.load(path, map_location='cpu', weights_only=True) for path in cache_paths[rank::world]]
     with evaluation_rng(args.seed, device):
         model = get_class(config._target_)(config)
         materialize_lazy_running_stats_from_state_dict(model, state['model'])
@@ -126,13 +144,21 @@ def main():
             else:
                 raise ValueError(f'Checkpoint contains {actual} weights, not requested {args.weights}; use a full training checkpoint for both')
         model.to(device)
-    if cache.get('encoder_sha256') != frozen_encoder_digest(model):
-        raise ValueError('Cached labels were produced by a different frozen Stage 1 encoder')
-    if cache['group_size'] != model.latent_tokenization.fsq_scalars_per_prior_token:
-        raise ValueError('Cached label grouping does not match checkpoint')
-    batches = [TensorDict(batch, batch_size=[len(batch[TARGET_LATENT_KEY])]) for batch in cache['batches']]
+    encoder_sha = frozen_encoder_digest(model)
+    batches = []
+    for cache in caches:
+        if cache.get('encoder_sha256') != encoder_sha:
+            raise ValueError('Cached labels were produced by a different frozen Stage 1 encoder')
+        if cache['group_size'] != model.latent_tokenization.fsq_scalars_per_prior_token:
+            raise ValueError('Cached label grouping does not match checkpoint')
+        batches.extend(TensorDict(batch, batch_size=[len(batch[TARGET_LATENT_KEY])]) for batch in cache['batches'])
     metrics, gt, sampled = evaluate_prior_offline(model, batches, device=device,
-        seed=args.seed, top_p=args.top_p, temperature=args.temperature)
+        seed=args.seed+rank, top_p=args.top_p, temperature=args.temperature, fabric=fabric)
+    if world > 1:
+        dist.barrier()
+        dist.destroy_process_group()
+    if rank != 0:
+        return
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     def digest(path):
@@ -142,7 +168,8 @@ def main():
                 h.update(chunk)
         return h.hexdigest()
     report = dict(checkpoint=str(checkpoint.resolve()), checkpoint_sha256=digest(checkpoint),
-                  cache=str(cache_path.resolve()), cache_sha256=digest(cache_path),
+                  caches=[str(path.resolve()) for path in cache_paths],
+                  cache_sha256=[digest(path) for path in cache_paths], world_size=world,
                   config=vars(args), metrics={f'eval/{k}': v for k,v in metrics.items()})
     output.with_suffix('.json').write_text(json.dumps(report, indent=2, allow_nan=False)+'\n')
     with output.with_suffix('.csv').open('w', newline='') as f:
