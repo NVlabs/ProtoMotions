@@ -410,6 +410,9 @@ class SupervisedAgent(BaseAgent):
             "supervised/model_loss": model_loss.detach(),
             "losses/supervised_loss": loss.detach(),
         }
+        ce_key = f"{self.config.loss.log_prefix}/cross_entropy"
+        if ce_key in supervised_log_dict:
+            log_dict["train/ce_loss"] = supervised_log_dict[ce_key]
         log_dict.update(supervised_log_dict)
         log_dict.update(model_log_dict)
         log_dict.update(extra_log_dict)
@@ -434,6 +437,7 @@ class SupervisedAgent(BaseAgent):
 
     def _after_load_model_state_dict(self, state_dict):
         super()._after_load_model_state_dict(state_dict)
+        self.loaded_inference_weights = state_dict.get("inference_weights", "raw")
         ema = getattr(self, "ema", None)
         if ema is not None:
             from protomotions.agents.utils.ema import ModelEMA

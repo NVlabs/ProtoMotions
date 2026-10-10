@@ -14,6 +14,13 @@ def add_prior_eval_arguments(parser):
     parser.add_argument("--prior-eval-teacher-steps", type=int, default=None)
     parser.add_argument("--prior-eval-seed", type=int, default=None)
     parser.add_argument("--prior-eval-output", default=None)
+    parser.add_argument("--prior-eval-mode", choices=("both", "offline", "rollout"), default=None)
+    parser.add_argument("--prior-eval-every", type=int, default=None, help="Training epochs between evaluations (not frames)")
+    parser.add_argument("--prior-eval-disable", action="store_true", help="Disable periodic evaluation")
+    parser.add_argument("--prior-eval-temperature", type=float, default=None)
+    parser.add_argument("--prior-eval-top-p", type=float, default=None)
+    parser.add_argument("--prior-eval-min-height", type=float, default=None)
+    parser.add_argument("--prior-eval-min-up-z", type=float, default=None)
     parser.add_argument("--prior-eval-weights", choices=("ema", "raw"), default=None,
                         help="Primary weights for GPC evaluation and best-model selection")
     parser.add_argument("--prior-eval-compare-raw-ema", action="store_true", default=None,
@@ -29,10 +36,21 @@ def explicit_prior_eval_options(args):
         "prior_eval_seed": "seed",
         "prior_eval_output": "output_dir",
         "prior_eval_weights": "weights",
+        "prior_eval_mode": "mode",
+        "prior_eval_every": "eval_metrics_every",
+        "prior_eval_temperature": "temperature",
+        "prior_eval_top_p": "top_p",
+        "prior_eval_min_height": "min_anchor_height",
+        "prior_eval_min_up_z": "min_up_z",
         "prior_eval_compare_raw_ema": "compare_raw_ema",
     }
     values = {dst: getattr(args, src) for src, dst in mapping.items()
               if getattr(args, src, None) is not None}
+    if getattr(args, "gpc_prior_eval", False):
+        values["enabled"] = True
+    if getattr(args, "prior_eval_disable", False):
+        values["eval_metrics_every"] = None
+        values["enabled"] = False
     return values if values or getattr(args, "gpc_prior_eval", False) else None
 
 

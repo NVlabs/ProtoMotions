@@ -793,7 +793,7 @@ class BaseAgent:
                 and self.current_epoch % self.evaluator.config.eval_metrics_every == 0
             )
             checkpoint_eval_due = self.just_loaded_checkpoint_should_evaluate
-            should_evaluate = self.evaluator is not None and (
+            should_evaluate = self.evaluator is not None and getattr(self.evaluator.config, "enabled", True) and (
                 scheduled_eval_due or checkpoint_eval_due
             )
             if should_evaluate:
