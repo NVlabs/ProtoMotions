@@ -74,7 +74,7 @@ mujoco = [
 newton = [
   "dm-control==1.0.45",
   "mujoco==3.12.0",
-  "newton[examples]==1.6.0",
+  "newton[examples]==1.6.1",
   "warp-lang==1.17.0",
   "mujoco-warp==3.12.0",
   "onnxruntime>=1.17",

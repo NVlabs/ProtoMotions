@@ -1,8 +1,8 @@
-# Newton simulator stack: tested against Newton 1.6.0 (PyPI).
+# Newton simulator stack: tested against Newton 1.6.1 (PyPI).
 # Keep these pins together so Newton 1.6 cannot resolve a newer incompatible runtime.
-# warp-lang/mujoco/mujoco-warp are pinned to the exact versions Newton 1.6.0 itself
+# warp-lang/mujoco/mujoco-warp are pinned to the exact versions Newton 1.6.x itself
 # resolves; newton-actuators is no longer a separate package (folded into newton.actuators).
-newton[examples]==1.6.0
+newton[examples]==1.6.1
 warp-lang==1.17.0
 mujoco-warp==3.12.0
 mujoco==3.12.0

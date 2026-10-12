@@ -7,7 +7,7 @@ Unreleased
 Record changes for the next release in this section. Move completed entries
 into a dated release section when the release is published.
 
-* Upgrade Newton from 1.0.0 to 1.6.0 (``warp-lang`` 1.12.0 -> 1.17.0, ``mujoco``/
+* Upgrade Newton from 1.0.0 to 1.6.1 (``warp-lang`` 1.12.0 -> 1.17.0, ``mujoco``/
   ``mujoco-warp`` 3.5.0 -> 3.12.0; the ``newton-actuators`` package is folded
   into ``newton.actuators``). Follows upstream renames/removals: domain
   randomization now notifies via ``newton.ModelFlags`` (``SolverNotifyFlags``

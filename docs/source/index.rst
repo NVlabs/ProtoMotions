@@ -51,7 +51,7 @@ Simulator Support
 .. raw:: html
 
    <p>
-     <a href="https://pypi.org/project/newton/1.6.0/"><img src="https://img.shields.io/badge/Newton-1.6.0-brightgreen.svg" alt="Newton 1.6.0"></a>
+     <a href="https://pypi.org/project/newton/1.6.1/"><img src="https://img.shields.io/badge/Newton-1.6.1-brightgreen.svg" alt="Newton 1.6.1"></a>
      <a href="https://github.com/isaac-sim/IsaacLab/commit/4ecd0b036da19ff6ad2bb4d621f886b63e9f6db8"><img src="https://img.shields.io/badge/IsaacLab-3.0-blue.svg" alt="IsaacLab"></a>
      <a href="https://developer.nvidia.com/isaac-gym"><img src="https://img.shields.io/badge/IsaacGym-Preview_4-blue.svg" alt="IsaacGym"></a>
      <a href="https://github.com/Genesis-Embodied-AI/Genesis"><img src="https://img.shields.io/badge/Genesis-untested-lightgrey.svg" alt="Genesis"></a>
