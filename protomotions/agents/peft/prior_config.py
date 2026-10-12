@@ -298,6 +298,9 @@ class DiscretePriorPEFTSFTAgentConfig(SupervisedAgentConfig):
     """SFT config for supervised discrete-token PEFT training."""
 
     _target_: str = "protomotions.agents.peft.sft_agent.DiscretePriorPEFTSFTAgent"
+    physics_guard_enabled: bool = True
+    physics_guard_joint_speed_limit: float = 1000.0
+    physics_guard_max_consecutive: int = 3
 
     pretrained_modules: Dict[str, PretrainedModelConfig] = field(
         default_factory=dict,

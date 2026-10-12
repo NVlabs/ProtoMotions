@@ -611,6 +611,14 @@ class IsaacLabSimulator(Simulator):
         """
         Advance the simulation by stepping for a number of iterations equal to the decimation factor.
         """
+        guard = getattr(self, "_physics_guard", None)
+        if guard is not None:
+            guard.step()
+            return
+        trace = getattr(self, "_physics_trace", None)
+        if trace is not None:
+            trace.step()
+            return
         for idx in range(self.decimation):
             self._apply_control()
             self._scene.write_data_to_sim()
@@ -641,6 +649,9 @@ class IsaacLabSimulator(Simulator):
             new_object_states (ObjectState): The new object state.
             env_ids (torch.Tensor): Specific environment IDs to update.
         """
+        trace = getattr(self, "_physics_trace", None)
+        if trace is not None:
+            trace.before_state_write(new_states, env_ids)
         init_root_state = torch.cat(
             [
                 new_states.root_pos,

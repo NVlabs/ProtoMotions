@@ -33,3 +33,4 @@ imgui.ini
 NvStreamer*
 data/smpl/*
 data/pretrained_models/*
+*.log

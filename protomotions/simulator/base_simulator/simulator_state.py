@@ -262,6 +262,17 @@ class BaseBatchedState(ABC):
         return res
 
 
+class NonFiniteRobotStateError(AssertionError):
+    """Carry the failed raw state so diagnostics never repeat a failing read."""
+
+    def __init__(self, message, state, field_name, bad_env_ids):
+        super().__init__(message)
+        self.state = state
+        self.field_name = field_name
+        self.bad_env_ids = bad_env_ids
+        self.diagnostic_attempted = False
+
+
 @dataclass
 class RobotState(BaseBatchedState):
     """
@@ -574,7 +585,8 @@ class RobotState(BaseBatchedState):
         else:
             bad_ids = torch.nonzero(bad_mask, as_tuple=False).flatten()
             msg = f"{name} is not finite at indices: {bad_ids[:10].tolist()}"
-        raise AssertionError(msg)
+            bad_env_ids = bad_ids
+        raise NonFiniteRobotStateError(msg, self, name, bad_env_ids.tolist())
 
 
 @dataclass

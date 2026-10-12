@@ -180,6 +180,11 @@ class BaseAgent:
         else:
             raise ValueError("No root_dir provided and no logger available")
 
+        self.env.failure_diagnostics_context = lambda: {
+            "run_dir": str(self.root_dir), "rank": self.fabric.global_rank,
+            "epoch": self.current_epoch, "step_count": self.step_count,
+        }
+
         EvaluatorClass = get_class(self.config.evaluator._target_)
         self.evaluator: BaseEvaluator = EvaluatorClass(
             agent=self, fabric=self.fabric, config=self.config.evaluator
@@ -714,6 +719,7 @@ class BaseAgent:
                     range(self.num_steps),
                     description=f"Epoch {self.current_epoch}, collecting data...",
                 ):
+                    self.env._failure_rollout_step = step
                     # Reset returns observations directly
                     obs, _ = self.env.reset(done_indices)
                     self.pre_collect_step(step)

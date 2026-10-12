@@ -195,6 +195,25 @@ class RunningMeanStd(nn.Module):
         # Lazy initialization if needed
         self._lazy_init(arr)
 
+        from protomotions.utils.valid_samples import current_valid_mask
+        valid = current_valid_mask()
+        if valid is not None:
+            if arr.shape[0] != valid.numel():
+                raise ValueError("Normalization batch differs from valid-sample mask")
+            values = arr[valid].to(torch.float64)
+            count = arr.new_tensor(float(values.shape[0]), dtype=torch.float64)
+            total = values.sum(dim=0)
+            square = values.square().sum(dim=0)
+            if self.fabric is not None and self.fabric.world_size > 1:
+                count = self.fabric.all_reduce(count, reduce_op="sum")
+                total = self.fabric.all_reduce(total, reduce_op="sum")
+                square = self.fabric.all_reduce(square, reduce_op="sum")
+            if count.item() > 0:
+                mean = total / count
+                var = (square / count - mean.square()).clamp_min(0)
+                self.update_from_moments(mean, var, int(count.item()))
+            return
+
         batch_mean = torch.mean(arr, dim=0)
         batch_var = torch.var(arr, dim=0, unbiased=False)
         batch_count = arr.shape[0]

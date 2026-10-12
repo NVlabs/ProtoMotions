@@ -62,6 +62,12 @@ from protomotions.simulator.base_simulator.simulator_state import (
     RobotState,
     ObjectState,
     ResetState,
+    NonFiniteRobotStateError,
+)
+from protomotions.utils.nonfinite_diagnostics import (
+    capture_step_context,
+    capture_pre_physics_state,
+    save_nonfinite_diagnostic,
 )
 from protomotions.envs.terminations import check_max_length_term
 from protomotions.envs.context_views import (
@@ -161,6 +167,8 @@ class BaseEnv:
         self.motion_lib = None
         self.simulator = simulator
         self.num_envs = simulator.num_envs
+        from protomotions.utils.physics_trace import bind_env
+        bind_env(self)
 
         self.max_episode_length = self.config.max_episode_length
 
@@ -685,6 +693,19 @@ class BaseEnv:
     # Environment step logic
     ###############################################################
     def step(self, action: Tensor):
+        """Record a failed simulator step, then preserve the original exception."""
+        capture_step_context(self)
+        self._failure_in_step = True
+        self._failure_phase = "process_action"
+        try:
+            return self._step(action)
+        except NonFiniteRobotStateError as error:
+            save_nonfinite_diagnostic(self, error, phase=self._failure_phase)
+            raise
+        finally:
+            self._failure_in_step = False
+
+    def _step(self, action: Tensor):
         """Step the environment forward one timestep.
 
         Args:
@@ -703,17 +724,25 @@ class BaseEnv:
         self._current_raw_action[:] = action
 
         # Process action
-        action_dict = self._process_action(action, self.context)
+        action_context = self.context
+        capture_pre_physics_state(self, action_context)
+        action_dict = self._process_action(action, action_context)
         processed_action = action_dict["processed_action"]
         self._current_processed_action[:] = processed_action
 
+        self._failure_phase = "physics_step"
         self.simulator.step(processed_action, markers_callback=self.get_markers_state)
 
+        self._failure_phase = "post_physics_step"
         self.post_physics_step()
+        guard = getattr(self.simulator, "_physics_guard", None)
+        if guard is not None:
+            guard.finish_env_step(self)
 
         if self.consume_reset_request():
             self.user_reset()
 
+        self._failure_phase = "get_observation"
         obs = self.get_obs()
         return obs, self.rew_buf, self.reset_buf, self.terminate_buf, self.extras
 
@@ -927,7 +956,13 @@ class BaseEnv:
         """
         if env_ids is not None:
             env_ids = env_ids.to(self.device)
-        current_state = self.simulator.get_robot_state(env_ids)
+        try:
+            current_state = self.simulator.get_robot_state(env_ids)
+        except NonFiniteRobotStateError as error:
+            phase = (getattr(self, "_failure_phase", "state_read")
+                     if getattr(self, "_failure_in_step", False) else "reset_or_state_read")
+            save_nonfinite_diagnostic(self, error, phase=phase, queried_env_ids=env_ids)
+            raise
         anchor_idx = self.robot_config.anchor_body_index
 
         ground_heights = self.terrain.get_ground_heights(
@@ -1391,6 +1426,18 @@ class BaseEnv:
         if isinstance(env_ids, list):
             env_ids = torch.tensor(env_ids, device=self.device, dtype=torch.long)
         env_ids = env_ids.to(self.device)
+        guard = getattr(self.simulator, "_physics_guard", None)
+        if guard is not None:
+            active = ~guard.retired[env_ids]
+            if force_default_mask is not None:
+                force_default_mask = force_default_mask[active]
+            env_ids = env_ids[active]
+            if env_ids.numel() == 0:
+                return self.get_obs(), {}
+
+        trace = getattr(self.simulator, "_physics_trace", None)
+        if trace is not None:
+            trace.before_reset(env_ids)
 
         # STEP 1: Reset motion manager and determine which envs need reference motion reset
         # This calls motion_manager.sample_motions() internally

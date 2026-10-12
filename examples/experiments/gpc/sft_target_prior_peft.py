@@ -31,6 +31,8 @@ TAR_PROXIMITY_THRESHOLD = 0.3
 def additional_experiment_arguments(parser: argparse.ArgumentParser):
     parser.add_argument("--tracker-checkpoint", default=TRACKER_CHECKPOINT)
     parser.add_argument("--prior-checkpoint", default=PRIOR_CHECKPOINT)
+    parser.add_argument("--reset-lift-2mm", action="store_true",
+                        help="Lift the robot by 2 mm after each reference-pose reset.")
 
 
 def configure_robot_and_simulator(
@@ -104,6 +106,9 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
     }
 
     return EnvConfig(
+        _target_=("protomotions.envs.base_env.reset_lift2mm.ResetLift2mmEnv"
+                  if getattr(args, "reset_lift_2mm", False)
+                  else "protomotions.envs.base_env.env.BaseEnv"),
         ref_contact_smooth_window=7,
         max_episode_length=256,
         reset_grace_period=2,

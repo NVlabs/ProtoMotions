@@ -141,6 +141,7 @@ def worker_environment(environ, gpu):
         "MV2_",
         "WANDB_",
         "NCCL_",
+        "PROTOMOTIONS_PHYSICS_TRACE_",
     )
     env = {
         k: v
@@ -178,6 +179,12 @@ class BestPolicyVideoRecorder:
         self.job = None
         self.last_trigger = None
 
+    def _checkpoint_for_video(self):
+        # SFT has no evaluation components, so it cannot produce score_based.ckpt.
+        if getattr(self.agent.config, "_target_", "").endswith(".DiscretePriorPEFTSFTAgent"):
+            return self.root / "inference_last.ckpt"
+        return self.root / "score_based.ckpt"
+
     def tick(self, agent):
         if agent.fabric.global_rank != 0 or not self.options["wandb_video"]:
             return
@@ -196,7 +203,7 @@ class BestPolicyVideoRecorder:
                     "Best-policy video at epoch %s skipped: recorder busy", epoch
                 )
                 return
-            if not (self.root / "score_based.ckpt").is_file():
+            if not self._checkpoint_for_video().is_file():
                 log.info(
                     "Best-policy video at epoch %s skipped: no evaluated best checkpoint",
                     epoch,
@@ -222,11 +229,24 @@ class BestPolicyVideoRecorder:
             "started": time.monotonic(),
         }
         # Copy, never hard-link: training overwrites score_based.ckpt in place.
-        shutil.copyfile(self.root / "score_based.ckpt", scratch / "score_based.ckpt")
+        checkpoint = self._checkpoint_for_video()
+        shutil.copyfile(checkpoint, scratch / "score_based.ckpt")
         shutil.copyfile(
             self.root / "resolved_configs_inference.pt",
             scratch / "resolved_configs_inference.pt",
         )
+        if checkpoint.name == "inference_last.ckpt":
+            # Render SFT with the same future-reference target source as training.
+            # Its default inference override expects keyboard input, unavailable headless.
+            import copy
+            import torch
+            snapshot = scratch / "resolved_configs_inference.pt"
+            configs = torch.load(snapshot, map_location="cpu", weights_only=False)
+            configs["env"].control_components["target"] = copy.deepcopy(
+                agent.env.config.control_components["target"]
+            )
+            torch.save(configs, snapshot)
+            log.info("SFT video uses latest inference checkpoint and future-reference targets")
         motion_file = agent.env.motion_lib.motion_file
         if not motion_file or "slurmrank" in Path(motion_file).name:
             raise ValueError("Recorder requires rank 0's resolved motion file")
