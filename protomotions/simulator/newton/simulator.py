@@ -40,7 +40,6 @@ import newton
 from newton import JointTargetMode
 from newton.selection import ArticulationView
 from newton.sensors import SensorContact
-from newton.solvers import SolverNotifyFlags
 import copy
 import logging
 
@@ -133,6 +132,7 @@ class NewtonSimulator(Simulator):
 
         self._contact_sensors = {}
         self._contact_forces = {}  # Store contact forces per body
+        self.collision_pipeline = None  # Initialized after solver/sensors are set up
         self.contacts = None  # Initialized after solver/sensors are set up
         self._camera_initialized = False
 
@@ -182,7 +182,7 @@ class NewtonSimulator(Simulator):
 
             if self.control_type == ControlType.BUILT_IN_PD:
                 self.robot_view.set_attribute(
-                    "joint_target_pos",
+                    "joint_target_q",
                     self.control,
                     wp.from_torch(zeros, dtype=wp.float32),
                 )
@@ -215,6 +215,7 @@ class NewtonSimulator(Simulator):
         newton.solvers.SolverMuJoCo.register_custom_attributes(self.robot)
         self.robot.default_joint_cfg = newton.ModelBuilder.JointDofConfig()
         self.robot.default_shape_cfg.mu = 1.0
+        self.robot.rigid_gap = 0.01
 
         # 2. Load MJCF
         self.robot.add_mjcf(
@@ -252,6 +253,7 @@ class NewtonSimulator(Simulator):
 
         # 6. Replicate into worlds with ground plane
         builder = newton.ModelBuilder()
+        builder.rigid_gap = 0.01
         builder.replicate(self.robot, self.num_envs)
 
         if self.terrain is not None:
@@ -284,12 +286,13 @@ class NewtonSimulator(Simulator):
         kernels), so passive forces from the MJCF would double-count.
         """
         mujoco_attrs = getattr(self.model, "mujoco", None)
-        if mujoco_attrs is None:
-            return
-        for attr_name in ("dof_passive_stiffness", "dof_passive_damping"):
-            attr = getattr(mujoco_attrs, attr_name, None)
+        if mujoco_attrs is not None:
+            attr = getattr(mujoco_attrs, "dof_passive_stiffness", None)
             if attr is not None:
                 attr.zero_()
+
+        if self.model.joint_damping is not None:
+            self.model.joint_damping.zero_()
 
     def _configure_builder_joint_properties(self) -> None:
         """Set joint stiffness, damping, armature, and actuator mode on the builder.
@@ -498,22 +501,11 @@ class NewtonSimulator(Simulator):
             nconmax=sim_params.nconmax,
             iterations=sim_params.iterations,
             ls_iterations=sim_params.ls_iterations,
-            ls_parallel=sim_params.ls_parallel,
             impratio=sim_params.impratio,
             cone=sim_params.cone,
             ccd_iterations=sim_params.ccd_iterations,
+            use_mujoco_contacts=sim_params.use_mujoco_contacts
         )
-
-        # Set geom_margin and geom_gap on the MuJoCo Warp model directly.
-        # Newton 1.0 removed geom_gap/geom_margin from model.mujoco namespace;
-        # set them on solver.mjw_model which is the MuJoCo Warp data.
-        geom_margin = wp.to_torch(self.solver.mjw_model.geom_margin)
-        geom_margin[:] = 0.01
-        self.solver.mjw_model.geom_margin = wp.from_torch(geom_margin, dtype=wp.float32)
-
-        mj_geom_gap = wp.to_torch(self.solver.mjw_model.geom_gap)
-        mj_geom_gap[:] = 0.01
-        self.solver.mjw_model.geom_gap = wp.from_torch(mj_geom_gap, dtype=wp.float32)
 
         self.viewer = None
         if not self.headless:
@@ -607,7 +599,7 @@ class NewtonSimulator(Simulator):
                     "shape_material_restitution", self.model, rest_wp
                 )
 
-                notify_flags |= SolverNotifyFlags.SHAPE_PROPERTIES
+                notify_flags |= newton.ModelFlags.SHAPE_PROPERTIES
                 print(
                     f"[INFO] Applied friction domain randomization to {len(body_indices)} body types"
                 )
@@ -641,7 +633,7 @@ class NewtonSimulator(Simulator):
             # Write back through ArticulationView
             self.robot_view.set_attribute("body_com", self.model, com_wp)
 
-            notify_flags |= SolverNotifyFlags.BODY_INERTIAL_PROPERTIES
+            notify_flags |= newton.ModelFlags.BODY_INERTIAL_PROPERTIES
             print(
                 f"[INFO] Applied center of mass domain randomization to {len(body_indices)} body types"
             )
@@ -682,7 +674,7 @@ class NewtonSimulator(Simulator):
 
             self.robot_view.set_attribute("body_mass", self.model, mass_wp)
             self.robot_view.set_attribute("body_inertia", self.model, inertia_wp)
-            notify_flags |= SolverNotifyFlags.BODY_INERTIAL_PROPERTIES
+            notify_flags |= newton.ModelFlags.BODY_INERTIAL_PROPERTIES
             print(
                 f"[INFO] Applied body mass domain randomization to {len(body_mass['body_indices'])} body types"
             )
@@ -719,7 +711,7 @@ class NewtonSimulator(Simulator):
         self.robot_view.set_attribute("shape_material_mu", self.model, mu_wp)
         if self.terrain is not None and self.terrain.sim_config is not None:
             self.robot_view.set_attribute("shape_material_restitution", self.model, rest_wp)
-        self.solver.notify_model_changed(SolverNotifyFlags.SHAPE_PROPERTIES)
+        self.solver.notify_model_changed(newton.ModelFlags.SHAPE_PROPERTIES)
 
     def _get_sim_body_ordering(self) -> SimBodyOrdering:
         """Returns the ordering of bodies and DOFs in the simulation."""
@@ -749,7 +741,7 @@ class NewtonSimulator(Simulator):
     @staticmethod
     def _count_sensor_sensing_objects(sensor: SensorContact) -> int:
         """Count matched sensing objects across all Newton worlds."""
-        return sum(len(world_objs) for world_objs in getattr(sensor, "sensing_objs", []))
+        return len(sensor.sensing_indices)
 
     @staticmethod
     def _validate_contact_sensor_match(
@@ -777,7 +769,7 @@ class NewtonSimulator(Simulator):
             # Create sensor that detects contacts between this body and anything
             # The sensor will aggregate contacts across all environments
             sensor = SensorContact(
-                self.model, sensing_obj_bodies=sensor_body_patterns, verbose=False
+                self.model, sensing_bodies=sensor_body_patterns, verbose=False
             )
 
             matched_body_count = self._count_sensor_sensing_objects(sensor)
@@ -797,7 +789,9 @@ class NewtonSimulator(Simulator):
 
     def _create_contacts(self) -> None:
         """Create Contacts object via Model.contacts() (Newton 1.0+ API)."""
-        self.contacts = self.model.contacts()
+        # Allocate Contacts buffer
+        self.collision_pipeline = newton.CollisionPipeline(self.model)
+        self.contacts = self.collision_pipeline.contacts()
 
     def _simulate(self) -> None:
         """Run physics simulation for one frame (decimation substeps)."""
@@ -816,6 +810,8 @@ class NewtonSimulator(Simulator):
                 self._apply_torques_kernel_method()
             if self.viewer:
                 self.viewer.apply_forces(self.state_0)
+            if not self.config.sim.use_mujoco_contacts:
+                self.collision_pipeline.collide(self.state_0, self.contacts)
             self.solver.step(
                 self.state_0, self.state_1, self.control, self.contacts, self.sim_dt
             )
@@ -830,17 +826,17 @@ class NewtonSimulator(Simulator):
             self.solver.update_contacts(self.contacts, self.state_0)
             for body_name, sensor in self._contact_sensors.items():
                 sensor.update(self.state_0, self.contacts)
-                if hasattr(sensor, "net_force") and sensor.net_force is not None:
-                    net_force = wp.to_torch(sensor.net_force).clone()
-                    # net_force shape: (n_sensing_objs, max_readings, 3)
-                    # Sum over readings dimension and reshape to (num_envs, 3)
-                    if net_force.numel() == 0:
-                        net_force = torch.zeros(
+                if sensor.total_force is not None:
+                    total_force = wp.to_torch(sensor.total_force).clone()
+                    # total_force shape: (n_sensing_objs, 3), already aggregated
+                    # per sensing object by Newton; reshape to (num_envs, 3).
+                    if total_force.numel() == 0:
+                        total_force = torch.zeros(
                             self.num_envs, 3, device=self.device
                         )
                     else:
-                        net_force = net_force.sum(dim=-2).view(self.num_envs, 3)
-                    self._contact_forces[body_name] = net_force
+                        total_force = total_force.view(self.num_envs, 3)
+                    self._contact_forces[body_name] = total_force
 
     def _physics_step(self) -> None:
         """Performs a physics simulation step."""
@@ -1159,7 +1155,7 @@ class NewtonSimulator(Simulator):
         a_wp = wp.from_torch(
             pd_targets.unsqueeze(1), dtype=wp.float32, requires_grad=False
         )
-        self.robot_view.set_attribute("joint_target_pos", self.control, a_wp)
+        self.robot_view.set_attribute("joint_target_q", self.control, a_wp)
 
     def _apply_simulator_torques(self, torques: torch.Tensor) -> None:
         """Applies torques to the robot DOFs."""
