@@ -128,7 +128,7 @@ Use the ``--simulator`` argument:
 
 * ``isaacgym`` - NVIDIA IsaacGym legacy GPU backend
 * ``isaaclab`` - NVIDIA IsaacLab/IsaacSim (recommended for training)
-* ``newton`` - NVIDIA Newton 1.0.0 (built on MuJoCo Warp)
+* ``newton`` - NVIDIA Newton 1.6.1 (built on MuJoCo Warp)
 * ``genesis`` - Genesis simulator
 * ``mujoco`` - MuJoCo CPU-only (single env, for quick testing/debugging)
 

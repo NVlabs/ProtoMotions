@@ -38,7 +38,7 @@ digital humans, and humanoid robotics.
 Key Features
 ------------
 
-* **Multi-Backend**: Fast, scalable simulation with NVIDIA Newton 1.0.0, IsaacGym, IsaacLab, Genesis (GPU), and MuJoCo (CPU) backends
+* **Multi-Backend**: Fast, scalable simulation with NVIDIA Newton, IsaacGym, IsaacLab, Genesis (GPU), and MuJoCo (CPU) backends
 * **Modular Design**: Multiple simulation backends, robot morphologies, RL environments, and algorithms with built-in support. Add your own robot, task, or algorithm with ease
 * **Rich Toolkit**: Built-in procedural terrain generation, motion retargeting (PyRoki-based), scene and object spawning. All scalable to large training runs
 * **State-of-the-Art Algorithms**: GPC/PEFT, MaskedMimic, AMP, ASE, PPO implementations
@@ -51,7 +51,7 @@ Simulator Support
 .. raw:: html
 
    <p>
-     <a href="https://pypi.org/project/newton/1.0.0/"><img src="https://img.shields.io/badge/Newton-1.0.0-brightgreen.svg" alt="Newton 1.0.0"></a>
+     <a href="https://pypi.org/project/newton/1.6.1/"><img src="https://img.shields.io/badge/Newton-1.6.1-brightgreen.svg" alt="Newton 1.6.1"></a>
      <a href="https://github.com/isaac-sim/IsaacLab/commit/4ecd0b036da19ff6ad2bb4d621f886b63e9f6db8"><img src="https://img.shields.io/badge/IsaacLab-3.0-blue.svg" alt="IsaacLab"></a>
      <a href="https://developer.nvidia.com/isaac-gym"><img src="https://img.shields.io/badge/IsaacGym-Preview_4-blue.svg" alt="IsaacGym"></a>
      <a href="https://github.com/Genesis-Embodied-AI/Genesis"><img src="https://img.shields.io/badge/Genesis-untested-lightgrey.svg" alt="Genesis"></a>

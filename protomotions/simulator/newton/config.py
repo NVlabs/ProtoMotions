@@ -49,6 +49,10 @@ class NewtonSimParams(SimParams):
         default=200,
         metadata={"help": "CCD (continuous collision detection) iterations."}
     )
+    use_mujoco_contacts: bool = field(
+        default=True,
+        metadata={"help": "Use MuJoCo contacts (default: True)."}
+    )
 
 
 @dataclass

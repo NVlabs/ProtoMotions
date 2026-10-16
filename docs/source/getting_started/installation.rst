@@ -9,7 +9,7 @@ You can install the simulation of your choice, and the simulation backend is sel
 .. raw:: html
 
    <p>
-     <a href="https://pypi.org/project/newton/1.0.0/"><img src="https://img.shields.io/badge/Newton-1.0.0-brightgreen.svg" alt="Newton"></a>
+     <a href="https://pypi.org/project/newton/1.6.1/"><img src="https://img.shields.io/badge/Newton-1.6.1-brightgreen.svg" alt="Newton"></a>
      <a href="https://github.com/isaac-sim/IsaacLab/commit/4ecd0b036da19ff6ad2bb4d621f886b63e9f6db8"><img src="https://img.shields.io/badge/IsaacLab-3.0-blue.svg" alt="IsaacLab"></a>
      <a href="https://developer.nvidia.com/isaac-gym"><img src="https://img.shields.io/badge/IsaacGym-Preview_4-blue.svg" alt="IsaacGym"></a>
      <a href="https://github.com/Genesis-Embodied-AI/Genesis"><img src="https://img.shields.io/badge/Genesis-untested-lightgrey.svg" alt="Genesis"></a>
@@ -211,9 +211,10 @@ Newton
 ~~~~~~~~~~~~~
 
 Newton is a GPU-accelerated physics simulator built on NVIDIA Warp, now available on PyPI.
-For full installation details, see the `Newton Installation Guide <https://newton-physics.github.io/newton/1.0.0/guide/installation.html>`__.
+For full installation details, see the `Newton Installation Guide <https://newton-physics.github.io/newton/1.6.1/guide/installation.html>`__.
 
-**Requirements**: Python 3.10+ (3.11+ recommended), NVIDIA GPU (compute capability >= 5.0), driver 545+
+**Requirements**: Python 3.10+ (3.11+ recommended). Runs with NVIDIA GPU acceleration
+(compute capability >= 5.0, driver 545+) on Linux/Windows, or CPU-only on macOS.
 
 1. Create a virtual environment:
 
@@ -227,9 +228,9 @@ For full installation details, see the `Newton Installation Guide <https://newto
    .. code-block:: bash
 
       pip install torch --index-url https://download.pytorch.org/whl/cu124
-      pip install "newton[examples]==1.0.0"
+      pip install "newton[examples]==1.6.1"
 
-   Use ``newton[sim]==1.0.0`` instead of ``newton[examples]==1.0.0`` if you only need headless mode (no viewer).
+   Use ``newton[sim]==1.6.1`` instead of ``newton[examples]==1.6.1`` if you only need headless mode (no viewer).
 
 3. Install ProtoMotions and dependencies:
 

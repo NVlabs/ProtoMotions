@@ -114,6 +114,12 @@ def create_parser():
             "control component."
         ),
     )
+    parser.add_argument(
+        "--accelerator",
+        choices=["cpu", "gpu"],
+        default="gpu",
+        help="Type of accelerator to use (default: GPU)"
+    )
 
     return parser
 
@@ -354,7 +360,7 @@ def main():
 
     # Create fabric config for inference (simplified)
     # MuJoCo is CPU-only, so force CPU accelerator
-    accelerator = "cpu" if args.simulator == "mujoco" else "gpu"
+    accelerator = "cpu" if args.simulator == "mujoco" else args.accelerator
     fabric_config = FabricConfig(
         accelerator=accelerator,
         devices=1,
