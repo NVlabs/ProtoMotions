@@ -92,6 +92,7 @@ def _write_resolved_configs(run_dir):
         _target_="protomotions.simulator.isaacgym.simulator.IsaacGymSimulator",
         num_envs=1,
         headless=False,
+        sim=SimpleNamespace(fps=60, decimation=2),
     )
     terrain_config = SimpleNamespace(name="terrain")
     scene_lib_config = SimpleNamespace(scene_file="old_scene.yaml", asset_root="/old/root")
@@ -523,9 +524,16 @@ def test_inference_main_full_eval_switches_simulator_and_applies_cli_overrides(
             _target_="protomotions.simulator.newton.simulator.NewtonSimulator",
             num_envs=current_simulator_config.num_envs,
             headless=current_simulator_config.headless,
+            sim=SimpleNamespace(fps=120, decimation=4),
             switched_to=new_simulator,
         )
     )
+    rate_checks = []
+
+    def record_rate_check(train_sim, sim, name):
+        rate_checks.append((train_sim.fps, sim.fps, name))
+
+    simulator_factory.warn_on_control_rate_change = record_rate_check
     config_utils = ModuleType("protomotions.utils.config_utils")
     config_utils.parse_cli_overrides = lambda overrides: {"env.foo": 1}
     config_utils.apply_config_overrides = (
@@ -574,6 +582,7 @@ def test_inference_main_full_eval_switches_simulator_and_applies_cli_overrides(
     assert build_call[1]["simulator_config"].num_envs == 3
     assert build_call[1]["simulator_config"].headless is True
     assert build_call[1]["simulator_config"].switched_to == "newton"
+    assert rate_checks == [(60, 120, "newton")]
     assert build_call[1]["motion_lib_config"].motion_file == "override.motion"
     assert build_call[1]["scene_lib_config"].scene_file is None
     assert build_call[1]["scene_lib_config"].asset_root is None

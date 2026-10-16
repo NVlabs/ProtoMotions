@@ -1,5 +1,17 @@
 # SMPL MaskedMimic
 
+## License
+
+Model license: NVIDIA Open Model License
+
+The model weights, checkpoints, serialized model configurations and exported
+models are licensed under the [NVIDIA Open Model License](LICENSE.pdf).
+See [NOTICE.txt](NOTICE.txt) for attribution. Include both files when
+redistributing these artifacts.
+
+ProtoMotions source code remains Apache-2.0. Training datasets and robot assets
+have separate terms; this model license does not grant rights to those materials.
+
 ## Overview
 
 This is a MaskedMimic controller for the SMPL humanoid. The policy produces

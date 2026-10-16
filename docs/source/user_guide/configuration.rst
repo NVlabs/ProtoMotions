@@ -124,6 +124,28 @@ Robot configs in ``protomotions/robot_configs/`` define the robot:
 Using Configurations
 --------------------
 
+Marker Body Mass and Inertia
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Before importing a robot, the shared loading code resolves its MJCF masses.
+A zero-mass body (typically a fixed tracking marker) receives **0.001 kg (1 g)**
+and diagonal inertia of **4e-8 kg m²** at its local origin. These inertias
+correspond to a 1 g solid sphere with a 1 cm radius; the visual marker geometry
+does not need to change. This convention avoids the extremely small inertia
+of a visualization-sized sphere.
+
+Source MJCF files are unchanged. The loader prepares a temporary asset with
+explicit marker inertias, which IsaacGym, IsaacLab, Newton, Genesis and MuJoCo
+all consume. IsaacLab performs this step before MJCF-to-USD conversion and
+invalidates older conversion caches. PhysX articulation links cannot have zero
+mass; leaving a marker massless can silently give it the simulator's default
+mass instead.
+
+Ordinary physical bodies retain their authored or geometry-derived mass.
+Disabling mass randomization does not make a body massless: it uses the MJCF
+values after normalization. When enabled, body-mass randomization overrides
+the selected bodies and scales their inertia from the positive source properties.
+
 Basic Usage
 ~~~~~~~~~~~
 

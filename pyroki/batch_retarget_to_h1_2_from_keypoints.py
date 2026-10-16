@@ -23,10 +23,22 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from protomotions.utils.retargeting_fps import fps_from_mapping, subsampled_fps  # noqa: E402
+from protomotions.utils.retargeting_keypoints import soma_pelvis_keypoint_on_hips  # noqa: E402
 
 H1_2_LINK_NAMES = None
 N_retarget = 15
 N_AUX = 3
+
+# --- Per-source settings, keyed by --source-type ------------------------------
+
+# Rotation taking the source pelvis frame to the robot pelvis frame. It is only
+# used to initialise the solver's root orientation. SOMA's Hips faces its local
+# -y (its +x is the character's left), so the robot, which faces +x, needs a
+# -90 deg turn about z; SMPL's pelvis already faces +x.
+SOURCE_ROOT_TO_ROBOT_ROOT = {
+    "soma": ((0.0, 1.0, 0.0), (-1.0, 0.0, 0.0), (0.0, 0.0, 1.0)),
+    "smpl": ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)),
+}
 
 # for the local bones alignment cost
 direct_pairs = [
@@ -106,6 +118,10 @@ def load_motion_data(
 
     raw_positions = motion_data["positions"]
     raw_orientations = motion_data["orientations"]
+    if source_type == "soma":
+        # The robot matches the pelvis keypoint with its pelvis origin, so undo
+        # keypoint_utils' 7 cm shift of it behind the Hips joint.
+        raw_positions = soma_pelvis_keypoint_on_hips(raw_positions, raw_orientations)
     raw_left_foot_contacts = motion_data[
         "left_foot_contacts"
     ]  # [T, 2] - ankle, toebase
@@ -226,6 +242,12 @@ def load_motion_data(
         )
 
     elif source_type == "soma":
+        # Pelvis and legs: vertical 1.048 is the robot/source pelvis-to-ankle
+        # drop (0.983 / 0.938), so a straight-legged source keeps H1_2's legs
+        # straight; horizontal 1.04 sits between that and the standing pelvis
+        # height ratio (1.02 / 0.99). Knee bend is very sensitive to the vertical
+        # factor near a straight leg; the previous 1.0 put the pelvis target
+        # ~4 cm too low and kept H1_2's knees bent.
         simplified_keypoints_root = simplified_keypoints[:, 0, :]
         simplified_keypoints_local = (
             simplified_keypoints - simplified_keypoints_root[:, None, :]
@@ -233,7 +255,7 @@ def load_motion_data(
         simplified_keypoints_lower_body_local = simplified_keypoints_local[:, 1:9, :]
         simplified_keypoints_lower_body_local = (
             simplified_keypoints_lower_body_local
-            * onp.array([1.0, 1.0, 1.0])[None, None, :]
+            * onp.array([1.04, 1.04, 1.048])[None, None, :]
         )
 
         simplified_keypoints_upper_body_local = simplified_keypoints_local[
@@ -253,7 +275,7 @@ def load_motion_data(
         )
 
         simplified_keypoints_root = (
-            simplified_keypoints_root * onp.array([1.0, 1.0, 1.0])[None, :]
+            simplified_keypoints_root * onp.array([1.04, 1.04, 1.048])[None, :]
         )
         simplified_keypoints = (
             simplified_keypoints_root[:, None, :] + simplified_keypoints_local
@@ -414,6 +436,7 @@ def main():
         "--source-type",
         type=str,
         default="smpl",
+        choices=sorted(SOURCE_ROOT_TO_ROBOT_ROOT),
         help="Source type for the retargeting.",
     )
     parser.add_argument(
@@ -601,6 +624,7 @@ def main():
                 weights=weights.get_weights(),  # type: ignore
                 subsample_factor=subsample_factor,
                 input_fps=input_fps,
+                source_type=args.source_type,
             )
             gen_button.disabled = False
             retarget_next_button.disabled = False  # Re-enable after generating
@@ -722,6 +746,7 @@ def main():
                 weights=weights_dict,
                 subsample_factor=subsample_factor,
                 input_fps=input_fps,
+                source_type=args.source_type,
             )
 
             # Save results, sliced to the actual motion length
@@ -909,11 +934,17 @@ def solve_retargeting(
     weights: RetargetingWeights,
     subsample_factor: int = 1,
     input_fps: float = 30.0,
+    source_type: jdc.Static[str] = "smpl",
 ) -> Tuple[jaxlie.SE3, jnp.ndarray]:
-    """Solve the simplified retargeting problem."""
+    """Solve the simplified retargeting problem.
+
+    source_type selects the per-source settings above (it must match the
+    keypoint files).
+    """
 
     n_retarget = len(h1_2_joint_retarget_indices)
     timesteps = target_keypoints.shape[0]
+    source_root_to_robot_root = jnp.array(SOURCE_ROOT_TO_ROBOT_ROOT[source_type])
 
     # Robot properties.
     # - Joints that should move less for natural humanoid motion.
@@ -937,11 +968,14 @@ def solve_retargeting(
     var_Ts_world_root = jaxls.SE3Var(jnp.arange(timesteps))
     var_joints_scale = SimplifiedJointsScaleVarH1_2(jnp.zeros(timesteps))
 
-    # Initialize root position and orientation using source root at each timestep t
+    # Initialize root position and orientation using source root at each timestep t,
+    # turned into the robot pelvis convention.
     root_init_se3_list = []
     for t in range(timesteps):
-        root_pos_t = target_keypoints[t, 0, :]  # Root position at timestep t
-        root_rot_t = target_orientations[t, 0, :, :]  # Root orientation at timestep t
+        # Root orientation at timestep t
+        root_rot_t = target_orientations[t, 0, :, :] @ source_root_to_robot_root
+        # Root position at timestep t
+        root_pos_t = target_keypoints[t, 0, :]
 
         # Create SE3 transformation for this timestep
         root_se3_t = jaxlie.SE3.from_rotation_and_translation(

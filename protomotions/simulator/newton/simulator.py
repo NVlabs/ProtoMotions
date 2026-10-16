@@ -1,12 +1,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import os
 import torch
 import numpy as np
 from typing import Dict, List, Optional, Tuple
 
-from protomotions.assets import resolve_asset_root
 from protomotions.simulator.base_simulator.simulator import Simulator
 from protomotions.simulator.base_simulator.config import (
     MarkerState,
@@ -204,9 +202,7 @@ class NewtonSimulator(Simulator):
         Follows the Newton G1 example pattern: configure joint properties
         on the builder BEFORE finalize, then use replicate() for multi-env.
         """
-        asset_root = resolve_asset_root(self.robot_config.asset.asset_root)
-        asset_file = self.robot_config.asset.asset_file_name
-        asset_path = os.path.join(asset_root, asset_file)
+        asset_path = self._get_robot_asset_path()
 
         print(f"Loading robot from: {asset_path}")
 
@@ -861,24 +857,31 @@ class NewtonSimulator(Simulator):
         self.sim_time += self.frame_dt
 
     def _apply_newton_control(self, actions: torch.Tensor) -> None:
-        """Update Newton's explicit control buffers for one action."""
+        """Update Newton's explicit control buffers for one action.
+
+        Mirrors the base ``_apply_control``: actions arrive already processed
+        (PD targets for PROPORTIONAL, torques for TORQUE), so they are used
+        as-is. The PD law itself runs in a Warp kernel inside ``_simulate``.
+        """
         if self.control_type == ControlType.PROPORTIONAL:
-            pd_tar = self._action_to_pd_targets(actions)
+            pd_tar = actions
             if (
                 self._domain_randomization is not None
                 and "action_noise" in self._domain_randomization
             ):
+                pd_tar = pd_tar.clone()
                 pd_tar[
                     ..., self._domain_randomization["action_noise"]["dof_indices"]
                 ] += self._domain_randomization["action_noise"]["action_noise"]
             sim_targets = pd_tar[:, self.data_conversion.dof_convert_to_sim]
             self._update_pd_targets(sim_targets)
         elif self.control_type == ControlType.TORQUE:
-            torques = self._action_to_torque_targets(actions)
+            torques = actions
             if (
                 self._domain_randomization is not None
                 and "action_noise" in self._domain_randomization
             ):
+                torques = torques.clone()
                 torques[
                     ..., self._domain_randomization["action_noise"]["dof_indices"]
                 ] += self._domain_randomization["action_noise"]["action_noise"]
@@ -1008,28 +1011,6 @@ class NewtonSimulator(Simulator):
         contact_binary = (force_magnitudes > force_threshold).float()
 
         return contact_binary
-
-    def park_envs(
-        self,
-        env_ids: torch.Tensor,
-        hide_z: float = -50.0,
-    ) -> None:
-        """No-op on Newton: evaluation env-parking is unnecessary and harmful.
-
-        The base implementation teleports inactive envs to ``hide_z`` to keep
-        their AABBs out of PhysX's broadphase pair budget. Newton replicates
-        environments as separate worlds with fixed per-world contact buffers,
-        so parking buys nothing here.
-
-        Worse, a parked robot free-falls with PD control still driving its
-        joints toward policy targets: energy is pumped in with no contact to
-        dissipate it, joint velocities diverge, and the resulting non-finite
-        values persist in solver warm-start memory — permanently poisoning the
-        parked envs even after their kinematic state is restored. Leaving
-        inactive envs simulating in place (exactly as they do during training)
-        is both safe and cheap.
-        """
-        return None
 
     def _get_simulator_bodies_state(
         self, env_ids: Optional[torch.Tensor] = None

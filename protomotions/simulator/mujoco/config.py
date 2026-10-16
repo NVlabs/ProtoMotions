@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from dataclasses import dataclass, field
+from typing import Optional
 from protomotions.simulator.base_simulator.config import SimParams, SimulatorConfig
 
 
@@ -11,7 +12,8 @@ class MujocoSimParams(SimParams):
 
     Defaults match RoboJuDo: 1000Hz physics, 20x decimation (50Hz control).
     No solver params -- we use MuJoCo's built-in defaults for everything
-    (solver, integrator, iterations, etc.) since RoboJuDo does the same.
+    (solver, iterations, etc.) since RoboJuDo does the same. The integrator
+    can be overridden per robot.
     """
 
     fps: int = field(
@@ -21,6 +23,15 @@ class MujocoSimParams(SimParams):
     decimation: int = field(
         default=20,
         metadata={"help": "Number of physics steps per control step."}
+    )
+    integrator: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "MuJoCo integrator: 'euler', 'implicitfast', 'implicit' or "
+            "'rk4'. None keeps the MJCF's choice (MuJoCo's default is Euler). "
+            "Euler applies actuator damping explicitly, which can go unstable "
+            "with stiff PD gains on light links; 'implicitfast' does not."
+        },
     )
 
 
@@ -37,12 +48,5 @@ class MujocoSimulatorConfig(SimulatorConfig):
             "help": "PD control mode for BUILT_IN_PD. "
             "True: MuJoCo position actuators (implicit PD, stable). "
             "False: explicit PD torque computation at each physics substep."
-        },
-    )
-    use_separate_keyboard_window: bool = field(
-        default=True,
-        metadata={
-            "help": "Capture application keys in a separate Tk window instead "
-            "of competing with MuJoCo viewer keyboard shortcuts."
         },
     )

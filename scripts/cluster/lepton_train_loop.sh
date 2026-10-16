@@ -12,31 +12,37 @@
 #
 # Resume is filesystem-based and needs no flags: train_agent.py finds
 # results/<exp>/last.ckpt in the (unchanged) snapshot cwd and continues. It saves
-# last.ckpt every K epochs (default 10) regardless of SLURM, which is what makes a
-# plain re-invocation safe. So each loop iteration runs the identical command; the
-# first run starts fresh, later runs auto-resume.
+# last.ckpt at loop entry (epoch 0) and every K epochs thereafter regardless of
+# SLURM, which is what makes a plain re-invocation safe. So each loop iteration
+# runs the identical command; the first run starts fresh, later runs auto-resume.
+#
+# The crash-restart policy itself (retry flaky failures, fast-fail a repeated
+# Python exception, key progress off last.ckpt's mtime) lives in the shared
+# run_with_retry in retry_lib.sh, so it stays in lockstep with train_slurm.py.
 #
 # Positional args (main path):
 #   1  PYTHON      interpreter invocation, e.g. "/workspace/isaaclab/isaaclab.sh -p"
 #   2  SIMULATOR   isaacgym|isaaclab|newton (selects install path + IsaacLab warmup)
 #   3  EXP_NAME    experiment name; checkpoints live at results/<EXP_NAME>/last.ckpt
 #   4  EXP_FOLDER  code snapshot on AMLFS; cwd for training, holds results/
-#   5  MAX_RUNS    crash-restart cap (loop iterations)
+#   5  MAX_RUNS    hard cap on total loop iterations (RETRY_TOTAL_ATTEMPTS)
 #   6+ the train_agent.py argument tail, forwarded verbatim as "$@"
 #
 # Each positional is shlex-quoted individually by train_lepton.py, so the
 # container shell splits the command back into exactly these arguments and the
 # train_agent.py tail reaches "$@" without a value being word-split on a space.
 #
-# Env knobs (defaults in parentheses):
-#   STALL_TIMEOUT_MIN (30)  kill training if the durable log stops growing for this
-#                           many minutes; 0 disables. Passed by train_lepton.py.
-#   NO_PROGRESS_LIMIT (3)   give up after this many consecutive runs that do not
-#                           advance last.ckpt (deterministic failure).
+# Env knobs (defaults in parentheses; passed by train_lepton.py):
+#   STALL_TIMEOUT_MIN (30)   kill training if the durable log stops growing for
+#                            this many minutes; 0 disables.
+#   RETRY_MAX_ATTEMPTS (3)   give up after this many consecutive runs that do not
+#                            advance last.ckpt (deterministic failure).
+#   RETRY_REPEAT_LIMIT (3)   give up sooner if the SAME Python exception repeats
+#                            this many runs in a row (the fast-fail-on-python path).
 # Test-only knobs (see protomotions/tests/test_lepton_train_loop.py):
-#   LEPTON_LOOP_SOURCE_ONLY  when set, `source` this file to get the functions
-#                            below (kill_tree/run_with_stall_watchdog/...) WITHOUT
-#                            running any of the main install+train path.
+#   LEPTON_LOOP_SOURCE_ONLY  when set, `source` this file to get the shared
+#                            functions (kill_tree/run_with_stall_watchdog/
+#                            run_with_retry/...) WITHOUT running the main path.
 #   LEPTON_LOOP_SKIP_SETUP   skip the per-container install + IsaacLab warmup, so
 #                            the loop itself can be exercised with a fake python.
 #   STALL_POLL_SEC (60)      watchdog poll interval; sub-second in tests.
@@ -46,123 +52,16 @@
 set -uo pipefail
 
 # ===========================================================================
-# Functions. Defined first so LEPTON_LOOP_SOURCE_ONLY tests can source them.
+# Shared retry/watchdog primitives.
 # ===========================================================================
-
-ckpt_stamp() {
-    # last.ckpt mtime in epoch-seconds, or "none" while it does not exist yet.
-    [ -f "$CKPT" ] && stat -c %Y "$CKPT" 2>/dev/null || echo "none"
-}
-
-kill_tree() {
-    # Kill a process AND all its descendants, children first. The training python
-    # and its Fabric worker ranks live several levels below the process we
-    # background (for IsaacLab, the isaaclab.sh wrapper). Killing only the parent
-    # reparents the grandchildren to init -- they keep the GPUs and MASTER_PORT,
-    # and the immediate resume then collides. Recurse depth-first so a parent is
-    # never killed before its children.
-    local root=$1 child
-    for child in $(pgrep -P "$root" 2>/dev/null); do
-        kill_tree "$child"
-    done
-    kill -9 "$root" 2>/dev/null
-}
-
-run_with_stall_watchdog() {
-    # Run "$@", and if $LOGFILE stops growing for STALL_QUIET_LIMIT consecutive
-    # polls of STALL_POLL_SEC seconds, kill the whole process tree so the loop
-    # restarts instead of hanging. A wedged rank -- one stuck at setup while the
-    # others block at the distributed barrier -- emits no output and no exit code,
-    # but a blocked collective silences the HEALTHY ranks too, so "the durable log
-    # stopped growing" is a reliable whole-job-wedge signal. Defaults poll every
-    # 60s with the limit in minutes (STALL_TIMEOUT_MIN); a limit <= 0 disables it.
-    local poll="${STALL_POLL_SEC:-60}"
-    local quiet_limit="${STALL_QUIET_LIMIT:-${STALL_TIMEOUT_MIN:-30}}"
-    "$@" &
-    local pid=$!
-    if [ "${quiet_limit}" -le 0 ]; then
-        wait "$pid"
-        return $?
-    fi
-    (
-        last=-1
-        quiet=0
-        while kill -0 "$pid" 2>/dev/null; do
-            sleep "$poll"
-            size=$(stat -c %s "$LOGFILE" 2>/dev/null || echo 0)
-            if [ "$size" != "$last" ]; then
-                last=$size
-                quiet=0
-            else
-                quiet=$((quiet + 1))
-            fi
-            if [ "$quiet" -ge "${quiet_limit}" ]; then
-                echo "[watchdog] ${LOGFILE} has not grown for ${quiet_limit} poll(s)" \
-                    "of ${poll}s -- training looks wedged (a rank stuck at" \
-                    "setup/barrier?). Killing pid ${pid} and its descendants so the" \
-                    "job restarts instead of burning the walltime." >&2
-                kill_tree "$pid"
-                break
-            fi
-        done
-    ) &
-    local watchdog=$!
-    wait "$pid"
-    local status=$?
-    kill "$watchdog" 2>/dev/null
-    wait "$watchdog" 2>/dev/null
-    return "$status"
-}
-
-run_training_loop() {
-    # Restart train_agent.py after a crash; give up only when a run makes no
-    # forward progress -- last.ckpt's mtime does not advance -- for
-    # NO_PROGRESS_LIMIT runs in a row. Keying on progress (not merely "does a
-    # checkpoint exist?") handles both failure modes the simpler test gets wrong: a
-    # deterministic crash *after* the first checkpoint (otherwise it would loop the
-    # identical failure for the whole budget, resuming from the same epoch and
-    # re-crashing without ever saving), and a *transient* crash *before* the first
-    # checkpoint (otherwise a single early flake fails the job). A genuinely
-    # deterministic startup error still fails fast, after NO_PROGRESS_LIMIT quick
-    # attempts. "$@" is the train_agent.py argument tail.
-    local no_progress=0 r before after status
-    for r in $(seq 1 "$MAX_RUNS"); do
-        echo "[lepton-loop] ===== run ${r}/${MAX_RUNS} ====="
-        before=$(ckpt_stamp)
-        # Identical command every iteration: train_agent.py auto-resumes when
-        # results/<exp>/last.ckpt exists. No --use-slurm (no walltime autoresume).
-        # shellcheck disable=SC2086  # $PYTHON is "cmd -flag": word-split intended.
-        # The train tail is "$@" -- quoted, so each argument is preserved.
-        run_with_stall_watchdog $PYTHON -u protomotions/train_agent.py "$@"
-        status=$?
-
-        if [ "$status" -eq 0 ]; then
-            echo "[lepton-loop] run ${r} exited 0 -- training complete."
-            return 0
-        fi
-
-        after=$(ckpt_stamp)
-        if [ "$after" != "$before" ]; then
-            no_progress=0
-            echo "[lepton-loop] run ${r} crashed (exit ${status}); checkpoint advanced -- resuming."
-        else
-            no_progress=$((no_progress + 1))
-            echo "[lepton-loop] run ${r} crashed (exit ${status}); no checkpoint progress" \
-                "(${no_progress}/${NO_PROGRESS_LIMIT} in a row)." >&2
-            if [ "$no_progress" -ge "$NO_PROGRESS_LIMIT" ]; then
-                echo "[lepton-loop] ${NO_PROGRESS_LIMIT} runs in a row made no progress; this is" >&2
-                echo "[lepton-loop] almost certainly a deterministic failure. Giving up -- see the" >&2
-                echo "[lepton-loop] traceback(s) above." >&2
-                touch "$GAVE_UP"
-                return "$status"
-            fi
-            echo "[lepton-loop] retrying in case the crash was transient."
-        fi
-    done
-
-    echo "[lepton-loop] exhausted ${MAX_RUNS} run(s) without completing." >&2
-    return 1
-}
+# kill_tree, run_with_stall_watchdog, run_with_retry and ckpt_stamp live in
+# retry_lib.sh so this loop and the SLURM launcher share one implementation.
+# Source by absolute path from THIS script's own directory so it resolves no
+# matter the cwd, and so a LEPTON_LOOP_SOURCE_ONLY test that sources this file
+# gets those functions transitively.
+_LOOP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=retry_lib.sh
+source "${_LOOP_DIR}/retry_lib.sh"
 
 # When a test sources this file just for the functions above, stop here -- do not
 # parse positionals, install, or train.
@@ -196,7 +95,9 @@ exec > >(tee -a "$LOGFILE") 2>&1
 # exiting 0 here would let the job's final state read as "completed" even though
 # training never succeeded, which is dangerous for any automation watching the job
 # status. train_lepton.py clears this sentinel when you deliberately resume with
-# --exp-folder; remove it by hand otherwise to allow retries.
+# --exp-folder; remove it by hand otherwise to allow retries. Checked here, before
+# the expensive install+warmup, so a known-dead relaunch exits fast (run_with_retry
+# re-checks it too, but only after setup).
 GAVE_UP="${EXP_FOLDER}/.lepton_loop_gave_up"
 if [ -f "$GAVE_UP" ]; then
     echo "[lepton-loop] a previous attempt gave up (deterministic failure; see the" \
@@ -206,15 +107,25 @@ if [ -f "$GAVE_UP" ]; then
     exit 1
 fi
 
+# Map the Lepton knobs onto the shared run_with_retry environment. Continue on
+# progress: with no walltime, resume in place until training completes, capped at
+# MAX_RUNS total iterations. RETRY_BACKOFF_SEC=0 preserves the original
+# immediate-resume timing.
 CKPT="results/${EXP_NAME}/last.ckpt"
-NO_PROGRESS_LIMIT="${NO_PROGRESS_LIMIT:-3}"
-STALL_TIMEOUT_MIN="${STALL_TIMEOUT_MIN:-30}"
+export CKPT LOGFILE GAVE_UP
+export RETRY_MAX_ATTEMPTS="${RETRY_MAX_ATTEMPTS:-3}"
+export RETRY_TOTAL_ATTEMPTS="${MAX_RUNS}"
+export RETRY_REPEAT_LIMIT="${RETRY_REPEAT_LIMIT:-3}"
+export RETRY_ON_PROGRESS="continue"
+export RETRY_BACKOFF_SEC="${RETRY_BACKOFF_SEC:-0}"
+export STALL_TIMEOUT_MIN="${STALL_TIMEOUT_MIN:-30}"
 
 echo "[lepton-loop] host=$(hostname) exp=${EXP_NAME}"
 echo "[lepton-loop] folder=${EXP_FOLDER}"
 echo "[lepton-loop] durable log: ${LOGFILE}"
 echo "[lepton-loop] python=${PYTHON} simulator=${SIMULATOR} max_runs=${MAX_RUNS}" \
-    "no_progress_limit=${NO_PROGRESS_LIMIT} stall_timeout_min=${STALL_TIMEOUT_MIN}"
+    "no_progress_limit=${RETRY_MAX_ATTEMPTS} repeat_limit=${RETRY_REPEAT_LIMIT}" \
+    "stall_timeout_min=${STALL_TIMEOUT_MIN}"
 
 # --- one-time per-container setup -------------------------------------------
 # Import the staged snapshot as an editable install; runtime deps already live in
@@ -279,5 +190,9 @@ echo "[lepton-loop] rendezvous: NNODES=${NNODES} NODE_RANK=${NODE_RANK}" \
     "MASTER_ADDR=${MASTER_ADDR} MASTER_PORT=${MASTER_PORT}"
 
 # --- run --------------------------------------------------------------------
-run_training_loop "$@"
+# run_with_retry resumes after a crash; run_with_stall_watchdog (inside it) kills a
+# hung train_agent.py so the loop sees an exit. $PYTHON is "cmd -flag" -- the
+# word-split is intended; the train tail is quoted "$@" so each argument survives.
+# shellcheck disable=SC2086
+run_with_retry run_with_stall_watchdog $PYTHON -u protomotions/train_agent.py "$@"
 exit $?

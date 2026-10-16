@@ -207,6 +207,12 @@ class ModuleContainerConfig:
 
     Modules are processed in order, with each module's outputs available to subsequent modules.
     Input keys are passed through, and all specified output keys must be produced by internal modules.
+
+    **``models`` is execution order, not a dependency graph.** Nothing sorts this
+    list. A module that produces a key must sit before the module that consumes it;
+    appending a producer to the end of the list does not work, however clearly its
+    output names say what it feeds. ``find_key_flow_errors`` catches that specific
+    mistake without building anything -- see its docstring for why that matters.
     """
 
     models: List[Any] = field(
@@ -222,6 +228,57 @@ class ModuleContainerConfig:
         default_factory=list,
         metadata={"help": "Output tensor keys produced by this container."},
     )
+
+    def find_key_flow_errors(self) -> List[str]:
+        """Return descriptions of producer-after-consumer ordering mistakes.
+
+        A module needs a key, no earlier module declares it as an output, and a
+        LATER module does. That is unambiguous: the producer exists, it is simply
+        in the wrong place, and no amount of runtime context can fix it.
+
+        Deliberately narrow. It does NOT report keys that are never produced at
+        all, because a few modules derive their real keys at construction time
+        rather than declaring them in config (``DiscreteLatent`` takes its
+        ``in_keys`` from its encoder, for instance), so "not declared anywhere"
+        does not imply "missing". Restricting the check to keys with a known
+        later producer makes false positives impossible, which is what lets it run
+        over every experiment config in the repo.
+
+        The value is that this needs no torch, no lazy-layer materialization, no
+        GPU and no environment. ``ModuleContainer.__init__`` performs the
+        authoritative check, but only while building the modules -- so a config
+        that is wrong in this way otherwise gets discovered at model-construction
+        time, which in a distributed job means one rank dying and the rest
+        deadlocking at the next collective.
+
+        Returns:
+            One human-readable string per mistake found; empty when the ordering
+            is sound.
+        """
+        produced_at: Dict[str, int] = {}
+        for index, model in enumerate(self.models):
+            for key in getattr(model, "out_keys", None) or []:
+                produced_at.setdefault(key, index)
+
+        errors: List[str] = []
+        available = set(self.in_keys)
+        for index, model in enumerate(self.models):
+            name = type(model).__name__
+            for key in getattr(model, "in_keys", None) or []:
+                if key in available:
+                    continue
+                producer = produced_at.get(key)
+                if producer is not None and producer > index:
+                    producer_name = type(self.models[producer]).__name__
+                    errors.append(
+                        f"model {index} ({name}) needs input key {key!r}, but the "
+                        f"module that produces it is model {producer} "
+                        f"({producer_name}), which runs later. `models` is "
+                        f"execution order: move the producer before the consumer."
+                    )
+            for key in getattr(model, "out_keys", None) or []:
+                available.add(key)
+        return errors
 
 
 @dataclass

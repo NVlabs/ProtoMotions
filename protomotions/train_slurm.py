@@ -102,7 +102,10 @@ import tempfile
 # install.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from protomotions._train_launch_common import build_train_agent_args  # noqa: E402
+from protomotions._train_launch_common import (  # noqa: E402
+    RSYNC_EXCLUDES,
+    build_train_agent_args,
+)
 
 
 # =============================================================================
@@ -150,12 +153,16 @@ SITE_DEFAULTS = {
     # workflow/checkout-specific junk (personal side-project dirs, pre-staged data
     # directories, etc.) that should not ship to the cluster on every submit.
     "rsync_excludes": [],
-    # Opt-in startup retry + startup watchdog (see the --startup-* flags). These
-    # default to today's behaviour: no retry loop, no startup watchdog. They live
-    # here so a team can set a cluster-wide default in the site file -- the loader
-    # rejects unknown keys, so a site file could not set them without these entries.
+    # Opt-in startup retry (see the --startup-* flags). Defaults to today's
+    # behaviour: no retry loop. When on, the batch layer wraps srun in the shared
+    # run_with_retry (scripts/cluster/retry_lib.sh), which re-runs a scene build
+    # that aborts before training and fast-fails a repeated Python exception. A
+    # hung build is caught by the always-on stall watchdog inside srun (lower
+    # --stall-timeout-min for known-flaky builds), so there is no separate startup
+    # watchdog. These live here so a team can set a cluster-wide default in the site
+    # file -- the loader rejects unknown keys, so a site file could not set them
+    # without these entries.
     "startup_max_attempts": 1,
-    "startup_stall_min": 0,
     "startup_repeat_limit": 3,
     "startup_retry_backoff_sec": 15,
 }
@@ -517,27 +524,20 @@ def create_parser():
         "to --slurm-time, so total walltime is N x --slurm-time. --srun-repeat is "
         "a backward-compatible alias. Default: the site's array_size (else 5).",
     )
-    # Opt-in startup retry + startup watchdog. All default to None so the site
-    # file can supply a team-wide value (main() fills them like array_size); an
-    # explicit flag still wins. With the resolved defaults (1 attempt, 0 minutes)
-    # the emitted script is byte-identical to today's.
+    # Opt-in startup retry. All default to None so the site file can supply a
+    # team-wide value (main() fills them like array_size); an explicit flag still
+    # wins. With the resolved default (1 attempt) the emitted script is
+    # byte-identical to the no-retry path.
     parser.add_argument(
         "--startup-max-attempts",
         type=int,
         default=None,
         help="In-place srun attempts per array element, for scene-build failures "
-        "that abort or hang BEFORE epoch 0 (no training progress at stake). 1 (the "
-        "default) emits no retry loop at all. Retries reuse the same allocation "
-        "instead of costing a fresh array-element scheduling round trip.",
-    )
-    parser.add_argument(
-        "--startup-stall-min",
-        type=int,
-        default=None,
-        help="Outer startup watchdog, in minutes: kill and retry an attempt whose "
-        "log goes silent for this long BEFORE training starts (a wedged scene "
-        "build). 0 (default) disables it. Should be LESS than --stall-timeout-min "
-        "so it disarms before the inner watchdog would fire.",
+        "that abort BEFORE epoch 0 (no training progress at stake). 1 (the default) "
+        "emits no retry loop at all. Retries reuse the same allocation instead of "
+        "costing a fresh array-element scheduling round trip. A hung (not aborted) "
+        "scene build is killed by the always-on stall watchdog inside srun -- lower "
+        "--stall-timeout-min for known-flaky builds -- which then feeds this loop.",
     )
     parser.add_argument(
         "--startup-repeat-limit",
@@ -566,41 +566,7 @@ def sync_code_to_cluster(user, exp_folder, local_repo, extra_excludes=None):
     `extra_excludes` (from the site file's rsync_excludes) is appended to the
     built-in list, for workflow-specific junk and pre-staged data directories.
     """
-    exclude_patterns = [
-        ".git",
-        ".idea",
-        ".claude",
-        ".cursor",
-        ".vscode",
-        ".ruff_cache",
-        "**/__pycache__",
-        "**/*.egg-info",
-        # Local worktrees and in-tree virtualenvs are full duplicate checkouts /
-        # gigabytes -- never ship them.
-        ".worktrees",
-        ".venv**",
-        "outputs",
-        "output/*",
-        "results",
-        "exps",
-        "tmp",
-        "**/*tmp*",
-        # Root-level scratch caches (e.g. token/plan caches).
-        "**/_*_cache.pt",
-        # Large data blobs, pre-staged on the cluster rather than re-uploaded.
-        "data/smpl",
-        "data/amass",
-        "data/pretrained_models",
-        "docs",
-        "docs/*",
-        # Media that never belongs in a code snapshot.
-        "**/*.mp4",
-        "**/*.avi",
-        "**/*.gif",
-        "**/*.jpg",
-        "**/*.png",
-        "**/*.onnx",
-    ]
+    exclude_patterns = list(RSYNC_EXCLUDES)
     if extra_excludes:
         exclude_patterns += list(extra_excludes)
     exclude_str = " ".join([f'--exclude="{f}"' for f in exclude_patterns])
@@ -616,139 +582,14 @@ def sync_code_to_cluster(user, exp_folder, local_repo, extra_excludes=None):
     subprocess_run(rsync_cmd, shell=True)
 
 
-def _kill_tree_bash() -> str:
-    """bash defining kill_tree(): kill a process and ALL its descendants, children
-    first. The training python and its ranks run several levels below the srun
-    task, so killing only $pid orphans them -- they keep the GPUs and would
-    collide with the immediate resume. Extracted so it can be unit-tested
-    (test_train_slurm_watchdog.py) against a real fake process tree."""
-    return (
-        "kill_tree() { local root=$1 child; "
-        'for child in $(pgrep -P "$root" 2>/dev/null); do kill_tree "$child"; done; '
-        'kill -9 "$root" 2>/dev/null; }'
-    )
-
-
-def _stall_watchdog_bash() -> str:
-    """bash defining run_with_stall_watchdog(): run "$@" and kill its whole process
-    tree if $LOGFILE stops growing for a while.
-
-    Knobs (env): STALL_TIMEOUT_MIN is the user-facing one, in minutes; the watchdog
-    kills after that many no-growth polls of STALL_POLL_SEC (default 60s), i.e.
-    minutes by default. STALL_QUIET_LIMIT overrides the poll count directly and
-    STALL_POLL_SEC the interval, so a test can drive it in fractions of a second;
-    with the defaults this is identical to the previous 'sleep 60; quiet >=
-    STALL_TIMEOUT_MIN'. A limit <= 0 disables the watchdog. Extracted (with the
-    knobs) so it can be unit-tested without SLURM."""
-    return (
-        'run_with_stall_watchdog() { "$@" & local pid=$!; '
-        'local poll="${STALL_POLL_SEC:-60}"; '
-        'local quiet_limit="${STALL_QUIET_LIMIT:-${STALL_TIMEOUT_MIN:-30}}"; '
-        'if [ "${quiet_limit}" -le 0 ]; then wait "$pid"; return $?; fi; '
-        "( last=-1; quiet=0; "
-        'while kill -0 "$pid" 2>/dev/null; do sleep "$poll"; '
-        'size=$(stat -c %s "$LOGFILE" 2>/dev/null || echo 0); '
-        'if [ "$size" != "$last" ]; then last=$size; quiet=0; '
-        "else quiet=$((quiet + 1)); fi; "
-        'if [ "$quiet" -ge "${quiet_limit}" ]; then '
-        'echo "[watchdog] no log growth for ${quiet_limit} poll(s) of ${poll}s; killing pid ${pid} and descendants" >&2; '
-        'kill_tree "$pid"; break; fi; '
-        "done ) & local wd=$!; "
-        'wait "$pid"; local status=$?; '
-        'kill "$wd" 2>/dev/null; wait "$wd" 2>/dev/null; return "$status"; }'
-    )
-
-
-def _startup_retry_bash() -> str:
-    """bash defining run_with_startup_retry(): run "$@" up to STARTUP_MAX_ATTEMPTS
-    times, retrying only attempts that failed BEFORE reaching training.
-
-    This is the OUTER, startup-only counterpart to the inner run_with_stall_watchdog
-    in build_job_command. The inner one lives inside srun and kills the training
-    process; a retry loop cannot (you cannot re-run srun from inside srun), so this
-    wraps srun at the batch layer and re-runs it in place on the same allocation
-    when a scene build aborts (glibc heap corruption -> SIGABRT) or hangs before
-    epoch 0. It disarms the moment training is reached -- the inner watchdog owns
-    liveness from there -- and it refuses to retry a DETERMINISTIC failure: a native
-    abort prints no Python traceback, so a repeating exception line means a real
-    bug, not a flaky one, and the loop stops and surfaces it.
-
-    Knobs (env): STARTUP_MAX_ATTEMPTS (1 = no retry), STARTUP_STALL_SEC (0 = no
-    startup watchdog), STARTUP_POLL_SEC (30), STARTUP_BACKOFF_SEC (15),
-    STARTUP_REPEAT_LIMIT (3, 0 = off), TRAINING_MARKER (default 'Epoch [0-9]'),
-    LOGFILE. Extracted, with the knobs, so a test can drive it in fractions of a
-    second (test_train_slurm_startup_retry.py). Depends on kill_tree from
-    _kill_tree_bash()."""
-    return r'''run_with_startup_retry() {
-  local max="${STARTUP_MAX_ATTEMPTS:-1}" stall_sec="${STARTUP_STALL_SEC:-0}"
-  local poll="${STARTUP_POLL_SEC:-30}" backoff="${STARTUP_BACKOFF_SEC:-15}"
-  local repeat_limit="${STARTUP_REPEAT_LIMIT:-3}" marker="${TRAINING_MARKER:-Epoch [0-9]}"
-  local attempt=0 status=0 prev_cls="" repeat=0 _mark pid wd _exc _cls
-  # Always run at least once: a 0/negative max (e.g. someone paired it with a
-  # startup watchdog) must not silently skip srun and report success.
-  [ "$max" -lt 1 ] && max=1
-  while [ "$attempt" -lt "$max" ]; do
-    attempt=$((attempt + 1))
-    # Read only THIS attempt's slice of the shared log: everything from line
-    # _mark+1 on. wc/tail/grep below all key off it.
-    if [ -f "$LOGFILE" ]; then _mark=$(wc -l < "$LOGFILE"); else _mark=0; fi
-    "$@" &
-    pid=$!
-    wd=""
-    if [ "$stall_sec" -gt 0 ]; then
-      # Startup watchdog: kill the attempt if the log's mtime stops advancing for
-      # stall_sec BEFORE training is reached. Disarms (breaks) once the slice shows
-      # the training marker -- the inner run_with_stall_watchdog takes over then.
-      ( armed=1
-        while kill -0 "$pid" 2>/dev/null; do
-          sleep "$poll"
-          if [ "$armed" = 1 ] && tail -n +$((_mark + 1)) "$LOGFILE" 2>/dev/null | grep -qE "$marker"; then
-            break
-          fi
-          now=$(date +%s); mt=$(stat -c %Y "$LOGFILE" 2>/dev/null || echo "$now")
-          if [ $((now - mt)) -ge "$stall_sec" ]; then
-            echo "[startup-watchdog] no log activity for ${stall_sec}s before training started; killing pid ${pid} and its tree so this attempt can retry" >&2
-            kill_tree "$pid"
-            break
-          fi
-        done ) &
-      wd=$!
-    fi
-    wait "$pid"; status=$?
-    if [ -n "$wd" ]; then kill "$wd" 2>/dev/null; wait "$wd" 2>/dev/null; fi
-
-    if [ "$status" -eq 0 ]; then break; fi
-    if tail -n +$((_mark + 1)) "$LOGFILE" 2>/dev/null | grep -qE "$marker"; then
-      echo "[startup-retry] attempt ${attempt} reached training then exited ${status}; not retrying in place (the array element resumes from checkpoint)." >&2
-      break
-    fi
-    # Repeat check: a native abort/hang prints no Python traceback, so retry it
-    # freely (bounded by max). A DETERMINISTIC bug prints the same exception every
-    # attempt -- stop and surface it rather than hide it behind retries. Match
-    # message-LESS exceptions too: a bare `assert` prints just "AssertionError"
-    # with no colon, and that is one of the commonest deterministic startup bugs.
-    # Compare only the exception CLASS (strip the message): a message that embeds a
-    # path, CUDA device id or rank varies between attempts, but the bug is the same.
-    _exc=$(tail -n +$((_mark + 1)) "$LOGFILE" 2>/dev/null | grep -oE '^[A-Za-z_][A-Za-z0-9_.]*(Error|Exception)(: .*)?$' | tail -1)
-    _cls="${_exc%%:*}"
-    if [ -n "$_exc" ] && [ "$_cls" = "$prev_cls" ]; then
-      repeat=$((repeat + 1))
-    elif [ -n "$_exc" ]; then
-      repeat=1
-    fi
-    prev_cls="$_cls"
-    if [ -n "$_exc" ] && [ "$repeat_limit" -gt 0 ] && [ "$repeat" -ge "$repeat_limit" ]; then
-      echo "[startup-retry] same exception ${repeat} attempts in a row -- this is deterministic, not flaky:" >&2
-      echo "[startup-retry]   ${_exc}" >&2
-      break
-    fi
-    if [ "$attempt" -lt "$max" ]; then
-      echo "[startup-retry] attempt ${attempt}/${max} failed (exit ${status}) before training; retrying in ${backoff}s." >&2
-      sleep "$backoff"
-    fi
-  done
-  return "$status"
-}'''
+def _retry_lib_source(exp_folder) -> str:
+    """bash sourcing the shared retry/watchdog primitives (kill_tree,
+    run_with_stall_watchdog, run_with_retry) from the staged snapshot. Both the
+    batch layer and the in-srun command source the SAME file, so their retry and
+    watchdog logic cannot drift from lepton_train_loop.sh's. Absolute path: the
+    batch layer never cds, and inside srun the snapshot is mounted at exp_folder
+    too. Unit-tested by sourcing the file directly (test_cluster_retry_lib.py)."""
+    return f"source {exp_folder}/scripts/cluster/retry_lib.sh"
 
 
 def build_job_command(args, exp_folder, python_path, passthrough_args=None):
@@ -861,14 +702,15 @@ def build_job_command(args, exp_folder, python_path, passthrough_args=None):
     # observed silence. That case is rarer (collectives usually couple the ranks)
     # and out of scope here. Kill after STALL_TIMEOUT_MIN minutes of no growth; the
     # failed array element then restarts on the next (possibly different) node. 0
-    # disables. The bash is double-quoted throughout so it is safe inside the
-    # single-quoted `bash -c '...'` that srun wraps job_cmd in.
+    # disables. kill_tree + run_with_stall_watchdog are sourced from the shared
+    # retry_lib.sh (after the `cd {exp_folder}` above put the snapshot on the path)
+    # so this and lepton_train_loop.sh run the same watchdog. `source PATH` adds no
+    # single quotes, so it is safe inside the single-quoted `bash -c '...'` srun
+    # wraps job_cmd in.
     log_file = f"{exp_folder}/slurm_output.log"
-    kill_tree_fn = _kill_tree_bash()
-    watchdog_fn = _stall_watchdog_bash()
     job_cmd += (
         f"export PYTHONUNBUFFERED=1; LOGFILE={log_file}; "
-        f"STALL_TIMEOUT_MIN={args.stall_timeout_min}; {kill_tree_fn}; {watchdog_fn}; "
+        f"STALL_TIMEOUT_MIN={args.stall_timeout_min}; {_retry_lib_source(exp_folder)}; "
         f"run_with_stall_watchdog {train_cmd}"
     )
 
@@ -903,22 +745,27 @@ def generate_slurm_script(args, exp_folder, job_cmd, container_image, job_name):
         f"/bin/bash -c '{job_cmd_quoted}'"
     )
 
-    # Opt-in startup retry. When off (the default), the body is the bare srun_cmd
-    # and this script is byte-identical to before the feature existed. When on,
-    # wrap srun in run_with_startup_retry, which re-runs it in place for a scene
-    # build that failed before training. srun_cmd is passed as ARGUMENTS (not
-    # re-quoted): it already contains a single-quoted bash -c '...' and must not be
-    # escaped again.
-    retry_on = args.startup_max_attempts > 1 or args.startup_stall_min > 0
+    # Opt-in startup retry. When off (the default), the body is the bare srun_cmd.
+    # When on, source the shared retry_lib.sh at the batch layer and wrap srun in
+    # run_with_retry, which re-runs a scene build that failed before training and
+    # fast-fails a repeated Python exception. RETRY_ON_PROGRESS=break: the moment a
+    # checkpoint is written (training reached), stop retrying in place -- the SLURM
+    # array's next task resumes from it. No GAVE_UP sentinel here: a deterministic
+    # scene-build bug fast-fails per array task (each is quick), and the array is the
+    # coarse bound. srun_cmd is passed as ARGUMENTS (not re-quoted): it already
+    # contains a single-quoted bash -c '...' and must not be escaped again.
+    retry_on = args.startup_max_attempts > 1
     if retry_on:
+        ckpt = f"{exp_folder}/results/{args.experiment_name}/last.ckpt"
         body = (
-            f"{_kill_tree_bash()}\n{_startup_retry_bash()}\n"
+            f"{_retry_lib_source(exp_folder)}\n"
             f"export LOGFILE={log_file} "
-            f"STARTUP_MAX_ATTEMPTS={args.startup_max_attempts} "
-            f"STARTUP_STALL_SEC={args.startup_stall_min * 60} "
-            f"STARTUP_BACKOFF_SEC={args.startup_retry_backoff_sec} "
-            f"STARTUP_REPEAT_LIMIT={args.startup_repeat_limit}\n"
-            f"run_with_startup_retry {srun_cmd}"
+            f"CKPT={ckpt} "
+            f"RETRY_MAX_ATTEMPTS={args.startup_max_attempts} "
+            f"RETRY_REPEAT_LIMIT={args.startup_repeat_limit} "
+            f"RETRY_BACKOFF_SEC={args.startup_retry_backoff_sec} "
+            f"RETRY_ON_PROGRESS=break\n"
+            f"run_with_retry {srun_cmd}"
         )
     else:
         body = srun_cmd
@@ -990,12 +837,11 @@ def main():
     # once) when neither --array-size nor its --srun-repeat alias was given.
     if args.array_size is None:
         args.array_size = site.get("array_size", 5)
-    # The startup-retry / startup-watchdog knobs resolve the same way: a flag left
-    # None takes the site value (which defaults to the off values in SITE_DEFAULTS),
-    # and an explicit flag still wins.
+    # The startup-retry knobs resolve the same way: a flag left None takes the site
+    # value (which defaults to the off value in SITE_DEFAULTS), and an explicit flag
+    # still wins.
     for _key, _default in (
         ("startup_max_attempts", 1),
-        ("startup_stall_min", 0),
         ("startup_repeat_limit", 3),
         ("startup_retry_backoff_sec", 15),
     ):
@@ -1022,24 +868,13 @@ def main():
         )
 
     # Startup retry multiplies with the job array. Print the worst-case execution
-    # count before anything is submitted, and warn if the startup watchdog is set
-    # so high the inner stall watchdog would always fire first (leaving it inert).
-    if args.startup_max_attempts > 1 or args.startup_stall_min > 0:
+    # count before anything is submitted.
+    if args.startup_max_attempts > 1:
         worst = args.startup_max_attempts * (args.array_size + 1)
         print(
             f"[startup-retry] up to {args.startup_max_attempts} attempts x "
             f"{args.array_size + 1} array elements = {worst} executions worst case"
         )
-        if (
-            args.startup_stall_min > 0
-            and args.stall_timeout_min > 0
-            and args.startup_stall_min >= args.stall_timeout_min
-        ):
-            print(
-                f"[startup-retry] WARNING: --startup-stall-min ({args.startup_stall_min}) "
-                f">= --stall-timeout-min ({args.stall_timeout_min}); the inner watchdog "
-                "fires first, so the startup watchdog never acts. Set it lower."
-            )
 
     # Setup paths
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1075,10 +910,16 @@ def main():
     # Build job command
     job_cmd = build_job_command(args, exp_folder, python_path, passthrough_args)
 
-    # SLURM job name carries the timestamp so a squeue row maps to its exp-<ts>
+    # SLURM job name carries the submit TIME so a squeue row maps to its exp-<ts>
     # directory and its output log -- otherwise squeue tells you nothing about
     # where a job's output lives.
-    job_name = f"{timestamp}_{args.experiment_name}"
+    #
+    # Time only, not the full timestamp: squeue's NAME column is 8 characters, so
+    # a leading date would fill it entirely and every job submitted on the same
+    # day would render identically. The date is recoverable from the job's submit
+    # date, and the exp-<slurm_job_id> symlink created after submission below
+    # gives the exact directory anyway.
+    job_name = f"{timestamp.split('_')[1]}_{args.experiment_name}"
     slurm_script, log_file = generate_slurm_script(
         args, exp_folder, job_cmd, container_image, job_name
     )
@@ -1116,6 +957,33 @@ def main():
             slurm_job_id = line.split()[-1].strip()
             break
 
+    # Make the exp directory addressable by SLURM job id, so squeue's JOBID column
+    # leads straight to a path. For an array job sbatch returns the base id, which
+    # is the part squeue prints before the "_<task>" suffix, so exp-<base id> is
+    # what you can actually copy off a squeue row.
+    #
+    # A symlink rather than a rename: the sbatch script, --output and --error all
+    # have the exp-<ts> path baked in already, and the job may be pending or
+    # running by now. Failure here is not worth aborting a submitted job over, so
+    # it is best-effort and only reported.
+    exp_link = None
+    if slurm_job_id != "unknown":
+        candidate = os.path.join(os.path.dirname(exp_folder), f"exp-{slurm_job_id}")
+        link_result = subprocess_run(
+            f"ssh {args.user}@{CLUSTER_LOGIN_NODE} 'ln -sfn {exp_folder} {candidate}'",
+            shell=True,
+            capture_output=True,
+            text=True,
+            ignore_err=True,
+        )
+        if link_result.returncode == 0:
+            exp_link = candidate
+        else:
+            print(
+                f"warning: could not link exp-{slurm_job_id} -> {exp_folder} "
+                f"({(link_result.stderr or '').strip()})"
+            )
+
     # Copy-back hint: auto-discover the helper wherever it lives (it has moved
     # between directories). rglob avoids naming any specific path this file must
     # not reference; first non-worktree match wins.
@@ -1145,6 +1013,8 @@ def main():
     print(
         f"Cancel job:    ssh {args.user}@{CLUSTER_LOGIN_NODE} 'scancel {slurm_job_id}'"
     )
+    if exp_link:
+        print(f"Exp by job id: {exp_link}")
     if copy_back_cmd:
         print(f"Copy back:     {copy_back_cmd}")
     print("=" * 60)
@@ -1155,6 +1025,8 @@ def main():
     print(f"slurm_job_id={slurm_job_id}")
     print(f"exp_id={timestamp}")
     print(f"exp_dir={exp_folder}")
+    if exp_link:
+        print(f"exp_link={exp_link}")
     print(f"output_log={log_file}")
     if copy_back_cmd:
         print(f"copy_back={copy_back_cmd}")

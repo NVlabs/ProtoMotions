@@ -59,6 +59,7 @@ def _args(**over):
         registry_secret=None,
         stall_timeout_min=30,
         no_progress_limit=3,
+        repeat_limit=3,
         shared_memory_mib=65536,
         preemptible=False,
         max_job_retries=10,
@@ -167,12 +168,22 @@ def test_lep_job_create_forwards_disabled_stall_timeout():
 
 
 def test_lep_job_create_passes_no_progress_limit_env():
-    # lepton_train_loop.sh reads NO_PROGRESS_LIMIT; the launcher must let a flaky
-    # scene build raise it above the default 3, or three ordinary aborts kill the job.
+    # lepton_train_loop.sh maps --no-progress-limit onto RETRY_MAX_ATTEMPTS (the
+    # shared run_with_retry knob); the launcher must let a flaky scene build raise it
+    # above the default 3, or three ordinary aborts kill the job.
     cmd = tl.build_lep_job_create(
         _args(no_progress_limit=8), _site(), "/mnt/exp", "true"
     )
-    assert "NO_PROGRESS_LIMIT=8" in cmd
+    assert "RETRY_MAX_ATTEMPTS=8" in cmd
+
+
+def test_lep_job_create_passes_repeat_limit_env():
+    # --repeat-limit feeds RETRY_REPEAT_LIMIT: the fast-fail-on-python threshold the
+    # Lepton loop previously lacked. The launcher must forward it.
+    cmd = tl.build_lep_job_create(
+        _args(repeat_limit=5), _site(), "/mnt/exp", "true"
+    )
+    assert "RETRY_REPEAT_LIMIT=5" in cmd
 
 
 def test_lep_job_create_missing_image_fails_cleanly():

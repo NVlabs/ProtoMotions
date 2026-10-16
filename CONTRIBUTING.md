@@ -2,6 +2,44 @@
 
 We started ProtoMotions3 to promote open research and help all members of the community. All participation in this project is open and not bound to corporate affiliation. 
 
+## Automated Checks
+
+Linting, formatting, license headers and spell checking all run through
+[pre-commit](https://pre-commit.com/). Install the hook once and every commit is checked
+before it is created:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+**Run these tools through pre-commit rather than invoking them yourself.**
+`.pre-commit-config.yaml` pins an exact version of each tool, and pre-commit installs
+those versions into an isolated environment of its own. A `ruff` that happens to be on
+your `PATH` is almost certainly a different version, and the formatter's output changes
+between releases — so a file your local `ruff` wants to reformat may be one the pinned
+version already considers correct. Going through pre-commit is what makes everyone's
+result the same, and the same as CI's.
+
+To check specific files without committing:
+
+```bash
+pre-commit run --files <file1> <file2> ...
+```
+
+Prefer that over `pre-commit run --all-files`: parts of the tree predate these checks, so
+running over everything produces a large diff unrelated to your change.
+
+## Releasing models
+
+Code remains Apache-2.0. NVIDIA-provided model releases default to the NVIDIA
+Open Model License unless explicitly approved otherwise. Follow the
+[model-release checklist](legal/MODEL-LICENSING.md): include a License section
+in the model card, the complete license and an attribution notice with every
+model package, including exported models and adapters. Document any exception
+in the card and the reviewed exception manifest. Run
+`python scripts/check_model_licenses.py` before submitting a model release.
+
 ## Code Reviews
 
 All submissions, including submissions by project members, require review. We use GitHub pull requests for this purpose. Consult

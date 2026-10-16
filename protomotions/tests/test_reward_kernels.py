@@ -206,6 +206,14 @@ def test_regularization_rewards_and_helpers():
         regularization.compute_action_smoothness(current_action, previous_action),
         torch.tensor([2.0, 5.0]),
     )
+    torch.testing.assert_close(
+        regularization.compute_action_rate_l2(current_action, previous_action),
+        torch.tensor([4.0, 25.0]),
+    )
+    torch.testing.assert_close(
+        regularization.compute_action_rate_l2(current_action, current_action),
+        torch.zeros(2),
+    )
     assert torch.allclose(
         regularization.compute_action_smoothness_logmeanexp(
             current_action,

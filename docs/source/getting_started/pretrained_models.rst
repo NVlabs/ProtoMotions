@@ -4,6 +4,13 @@ Pre-trained Models
 Each shipped checkpoint has a model card beside it with the training recipe,
 input and output contract, artifact roles, intended use, and limitations.
 
+NVIDIA-provided pretrained models use the **NVIDIA Open Model License** unless
+their card explicitly specifies otherwise; ProtoMotions source code remains
+Apache-2.0. Each model directory includes a full license and attribution notice.
+Keep these files with redistributed checkpoints and exported models. See the
+`model licensing policy <https://github.com/NVlabs/ProtoMotions/blob/main/legal/MODEL-LICENSING.md>`__
+for details. Training datasets and robot assets retain their separate terms.
+
 Unless its model card says otherwise, a policy should be used on its training
 simulator. The recommended checkpoints were trained or fine-tuned in IsaacLab.
 The G1 deployment tracker is the only current policy trained with the full

@@ -167,6 +167,32 @@ class ProtoMotionsTensorDictModule(TensorDictModuleBase):
         for child in self._proto_children():
             child.reset_rollout_state(env_ids=env_ids)
 
+    def save_rollout_context(self) -> dict[str, torch.Tensor]:
+        """Copy every rollout-context buffer in this module tree.
+
+        A caller that runs its own episodes on the training envs, such as
+        evaluation, saves this first and passes it to ``load_rollout_context``
+        afterwards, so training resumes with the context it had.
+        """
+        return {
+            self._rollout_context_name(name, key): getattr(module, key).clone()
+            for name, module in self.named_modules()
+            if isinstance(module, ProtoMotionsTensorDictModule)
+            for key in module.rollout_state_specs()
+        }
+
+    def load_rollout_context(self, state: dict[str, torch.Tensor]) -> None:
+        """Write back rollout context returned by ``save_rollout_context``."""
+        for name, module in self.named_modules():
+            if not isinstance(module, ProtoMotionsTensorDictModule):
+                continue
+            for key in module.rollout_state_specs():
+                getattr(module, key).copy_(state[self._rollout_context_name(name, key)])
+
+    @staticmethod
+    def _rollout_context_name(module_name: str, key: str) -> str:
+        return f"{module_name}.{key}" if module_name else key
+
     def _reset_own_rollout_state(self, env_ids=None) -> None:
         """Reseed selected rows of this module's initialized rollout context."""
         for key, spec in self.rollout_state_specs().items():

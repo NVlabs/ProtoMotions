@@ -3,12 +3,18 @@
 
 """Tests for generic TensorDict module containers."""
 
+from types import SimpleNamespace
+
 import torch
 import pytest
 from tensordict import TensorDict
 from tensordict.nn import TensorDictModuleBase
 
-from protomotions.agents.base_agent.model import BaseModel, ProtoMotionsTensorDictModule
+from protomotions.agents.base_agent.model import (
+    BaseModel,
+    ProtoMotionsTensorDictModule,
+    RolloutStateSpec,
+)
 from protomotions.agents.common.common import ModuleContainer
 from protomotions.agents.common.config import ModuleContainerConfig
 
@@ -51,6 +57,21 @@ class _CommonStateModule(ProtoMotionsTensorDictModule):
     def forward(self, tensordict: TensorDict):
         tensordict["common_out"] = tensordict["latent"] * 4.0
         tensordict["common_state"] = tensordict["latent"] * 0.0 + 5.0
+        return tensordict
+
+
+class _EpisodeNoiseModule(ProtoMotionsTensorDictModule):
+    def __init__(self, config):
+        super().__init__()
+        self.in_keys = ["obs"]
+        self.out_keys = ["latent"]
+
+    def rollout_state_specs(self):
+        return {"episode_noise": RolloutStateSpec(shape=(2,), init="normal")}
+
+    def forward(self, tensordict: TensorDict):
+        self.read_rollout_state(tensordict)
+        tensordict["latent"] = tensordict["obs"] + tensordict["episode_noise"]
         return tensordict
 
 
@@ -150,6 +171,35 @@ def test_module_container_propagates_reset_to_internal_common_modules():
     assert container.models[0].reset_calls == [(env_ids, 3, "cpu")]
 
 
+def test_saved_rollout_context_restores_nested_module_state_after_reseeding():
+    container = ModuleContainer(
+        ModuleContainerConfig(
+            in_keys=["obs"],
+            out_keys=["plain_out"],
+            models=[
+                ModuleContainerConfig(
+                    _target_="protomotions.tests.test_common_module_container._EpisodeNoiseModule",
+                ),
+                ModuleContainerConfig(
+                    _target_="protomotions.tests.test_common_module_container._PlainTensorDictModule",
+                ),
+            ],
+        )
+    )
+    torch.manual_seed(0)
+    container.reset_rollout_context(num_envs=3, device="cpu")
+    noise = container.models[0].episode_noise
+    before = noise.clone()
+
+    saved = container.save_rollout_context()
+    container.reset_rollout_context(env_ids=torch.tensor([0, 2]))
+    assert not torch.equal(noise, before)
+    container.load_rollout_context(saved)
+
+    assert list(saved) == ["models.0.episode_noise"]
+    assert torch.equal(noise, before)
+
+
 def test_base_model_experience_buffer_keys_include_rollout_context_keys_once():
     model = _StatefulModel(config=None)
     model.out_keys = ["action", "latent_noise"]
@@ -198,3 +248,88 @@ def test_module_container_rejects_promised_outputs_not_produced():
                 ],
             )
         )
+
+
+# ---------------------------------------------------------------------------
+# Module ordering: `models` is execution order, not a dependency graph
+# ---------------------------------------------------------------------------
+
+
+def _stub(in_keys, out_keys):
+    """A config-shaped stand-in; find_key_flow_errors reads only in/out keys."""
+    return SimpleNamespace(in_keys=list(in_keys), out_keys=list(out_keys))
+
+
+def test_key_flow_accepts_a_correctly_ordered_list():
+    config = ModuleContainerConfig(
+        in_keys=["obs"],
+        out_keys=["action"],
+        models=[_stub(["obs"], ["token"]), _stub(["token"], ["action"])],
+    )
+    assert config.find_key_flow_errors() == []
+
+
+def test_key_flow_reports_a_producer_that_runs_after_its_consumer():
+    """The real defect: the producer was appended to the end of the list.
+
+    A scene-conditioning channel was added by appending its normalizer and token
+    MLP after the transformer that consumes the token. The names lined up, so it
+    read as correct; the container validates in list order, so it was not.
+    """
+    config = ModuleContainerConfig(
+        in_keys=["obs"],
+        out_keys=["action"],
+        models=[
+            _stub(["obs", "scene_token"], ["action"]),  # consumer, first
+            _stub(["scene_obs"], ["scene_norm"]),  # producers, appended after
+            _stub(["scene_norm"], ["scene_token"]),
+        ],
+    )
+
+    errors = config.find_key_flow_errors()
+
+    assert len(errors) == 1
+    assert "'scene_token'" in errors[0]
+    assert "model 2" in errors[0]
+    assert "execution order" in errors[0]
+
+
+def test_key_flow_stays_quiet_about_keys_nothing_declares():
+    """Some modules derive their real keys at construction, so silence is correct.
+
+    DiscreteLatent takes its in_keys from its encoder rather than from config, so
+    "no module declares this output" does not imply the key is missing. Only a
+    known later producer is unambiguous, and only that is reported.
+    """
+    config = ModuleContainerConfig(
+        in_keys=[],
+        out_keys=["action"],
+        models=[_stub(["produced_at_runtime"], ["action"])],
+    )
+    assert config.find_key_flow_errors() == []
+
+
+def test_container_rejects_a_misordered_list_before_building_any_module():
+    class _Exploding:
+        def __init__(self, config):
+            raise AssertionError("no module should be constructed")
+
+    config = ModuleContainerConfig(
+        in_keys=["obs"],
+        out_keys=["action"],
+        models=[
+            SimpleNamespace(
+                in_keys=["late_token"],
+                out_keys=["action"],
+                _target_=f"{__name__}._Exploding",
+            ),
+            SimpleNamespace(
+                in_keys=["obs"],
+                out_keys=["late_token"],
+                _target_=f"{__name__}._Exploding",
+            ),
+        ],
+    )
+
+    with pytest.raises(AssertionError, match="out of order"):
+        ModuleContainer(config)

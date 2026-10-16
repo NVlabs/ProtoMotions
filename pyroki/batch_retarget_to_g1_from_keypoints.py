@@ -23,10 +23,44 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from protomotions.utils.retargeting_fps import fps_from_mapping, subsampled_fps  # noqa: E402
+from protomotions.utils.retargeting_keypoints import soma_pelvis_keypoint_on_hips  # noqa: E402
 
 G1_LINK_NAMES = None
 N_retarget = 15
 N_AUX = 3
+
+# --- Per-source settings, keyed by --source-type ------------------------------
+
+# Rotation taking the source pelvis frame to the robot pelvis frame. It is only
+# used to initialise the solver's root orientation. SOMA's Hips faces its local
+# -y (its +x is the character's left), so the robot, which faces +x, needs a
+# -90 deg turn about z; SMPL's pelvis already faces +x.
+SOURCE_ROOT_TO_ROBOT_ROOT = {
+    "soma": ((0.0, 1.0, 0.0), (-1.0, 0.0, 0.0), (0.0, 0.0, 1.0)),
+    "smpl": ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)),
+}
+
+# Joints held near their rest angle with the joint_rest_penalty weight; every
+# other joint gets 0.02. Waist pitch and pelvis pitch both tilt the torso. With
+# only the small weight on waist pitch, the solver put all of a SOMA source's
+# forward lean into the waist: it sat at its 0.52 rad stop in ~90% of frames,
+# with the pelvis tipped back against the source's. Holding it moves the lean
+# back to the pelvis. On SMPL sources holding it was not a clear win (the pelvis
+# then tipped ~11 deg further forward than the source's and the knees bent
+# more), so SMPL keeps the original set.
+JOINTS_TO_MOVE_LESS = {
+    "soma": [
+        "waist_roll_joint",
+        "waist_pitch_joint",
+        "right_wrist_pitch_joint",
+        "left_wrist_pitch_joint",
+    ],
+    "smpl": [
+        "waist_roll_joint",
+        "right_wrist_pitch_joint",
+        "left_wrist_pitch_joint",
+    ],
+}
 
 # for the local bones alignment cost
 direct_pairs = [
@@ -109,6 +143,10 @@ def load_motion_data(
 
     raw_positions = motion_data["positions"]
     raw_orientations = motion_data["orientations"]
+    if source_type == "soma":
+        # The robot matches the pelvis keypoint with its pelvis origin, so undo
+        # keypoint_utils' 7 cm shift of it behind the Hips joint.
+        raw_positions = soma_pelvis_keypoint_on_hips(raw_positions, raw_orientations)
     raw_left_foot_contacts = motion_data[
         "left_foot_contacts"
     ]  # [T, 2] - ankle, toebase
@@ -229,6 +267,12 @@ def load_motion_data(
         )
 
     elif source_type == "soma":
+        # Pelvis and legs: horizontal 0.8 is the robot/source standing pelvis
+        # height (0.793 / 0.99) and vertical 0.807 the pelvis-to-ankle drop
+        # (0.757 / 0.938), so a straight-legged source keeps G1's legs straight.
+        # Knee bend is very sensitive to the vertical factor: near a straight
+        # leg, a pelvis target 1 cm too low bends G1's knee by ~20 deg. (The
+        # previous 0.75, the hip-joint height ratio, put it ~5 cm too low.)
         simplified_keypoints_root = simplified_keypoints[:, 0, :]
         simplified_keypoints_local = (
             simplified_keypoints - simplified_keypoints_root[:, None, :]
@@ -236,7 +280,7 @@ def load_motion_data(
         simplified_keypoints_lower_body_local = simplified_keypoints_local[:, 1:9, :]
         simplified_keypoints_lower_body_local = (
             simplified_keypoints_lower_body_local
-            * onp.array([0.8, 0.8, 0.75])[None, None, :]
+            * onp.array([0.8, 0.8, 0.807])[None, None, :]
         )
 
         simplified_keypoints_upper_body_local = simplified_keypoints_local[
@@ -256,7 +300,7 @@ def load_motion_data(
         )
 
         simplified_keypoints_root = (
-            simplified_keypoints_root * onp.array([0.8, 0.8, 0.75])[None, :]
+            simplified_keypoints_root * onp.array([0.8, 0.8, 0.807])[None, :]
         )
         simplified_keypoints = (
             simplified_keypoints_root[:, None, :] + simplified_keypoints_local
@@ -417,6 +461,7 @@ def main():
         "--source-type",
         type=str,
         default="smpl",
+        choices=sorted(SOURCE_ROOT_TO_ROBOT_ROOT),
         help="Source type for the retargeting.",
     )
     parser.add_argument(
@@ -604,6 +649,7 @@ def main():
                 weights=weights.get_weights(),  # type: ignore
                 subsample_factor=subsample_factor,
                 input_fps=input_fps,
+                source_type=args.source_type,
             )
             gen_button.disabled = False
             retarget_next_button.disabled = False  # Re-enable after generating
@@ -725,6 +771,7 @@ def main():
                 weights=weights_dict,
                 subsample_factor=subsample_factor,
                 input_fps=input_fps,
+                source_type=args.source_type,
             )
 
             # Save results, sliced to the actual motion length
@@ -912,22 +959,24 @@ def solve_retargeting(
     weights: RetargetingWeights,
     subsample_factor: int = 1,
     input_fps: float = 30.0,
+    source_type: jdc.Static[str] = "smpl",
 ) -> Tuple[jaxlie.SE3, jnp.ndarray]:
-    """Solve the simplified retargeting problem."""
+    """Solve the simplified retargeting problem.
+
+    source_type selects the per-source settings above (it must match the
+    keypoint files).
+    """
 
     n_retarget = len(g1_joint_retarget_indices)
     timesteps = target_keypoints.shape[0]
+    source_root_to_robot_root = jnp.array(SOURCE_ROOT_TO_ROBOT_ROOT[source_type])
 
     # Robot properties.
     # - Joints that should move less for natural humanoid motion.
     joints_to_move_less = jnp.array(
         [
             robot.joints.actuated_names.index(name)
-            for name in [
-                "waist_roll_joint",
-                "right_wrist_pitch_joint",
-                "left_wrist_pitch_joint",
-            ]
+            for name in JOINTS_TO_MOVE_LESS[source_type]
         ]
     )
 
@@ -950,11 +999,14 @@ def solve_retargeting(
     var_Ts_world_root = jaxls.SE3Var(jnp.arange(timesteps))
     var_joints_scale = SimplifiedJointsScaleVarG1(jnp.zeros(timesteps))
 
-    # Initialize root position and orientation using source root at each timestep t
+    # Initialize root position and orientation using source root at each timestep t,
+    # turned into the robot pelvis convention.
     root_init_se3_list = []
     for t in range(timesteps):
-        root_pos_t = target_keypoints[t, 0, :]  # Root position at timestep t
-        root_rot_t = target_orientations[t, 0, :, :]  # Root orientation at timestep t
+        # Root orientation at timestep t
+        root_rot_t = target_orientations[t, 0, :, :] @ source_root_to_robot_root
+        # Root position at timestep t
+        root_pos_t = target_keypoints[t, 0, :]
 
         # Create SE3 transformation for this timestep
         root_se3_t = jaxlie.SE3.from_rotation_and_translation(
@@ -1087,7 +1139,8 @@ def solve_retargeting(
         # we use torso here to prevent odd waist rotations
         # but then we need 0.07m height offset...
 
-        # x=0.18 matches source pelvis_aux (0.2 * 0.9x scaling = 0.18).
+        # x=0.18 matches the SMPL source pelvis_aux (0.2 * 0.9x scaling = 0.18);
+        # the SOMA one is 0.155 * 0.8 = 0.124 in front of the pelvis, so this leads it.
         # z=0.03 to encourage forward torso tilt; note source
         # pelvis_aux is at pelvis height which is even lower, also encourages forward torso tilt.
         torso_aux_pos = link_pos_torso + link_rot_mat_torso @ jnp.array(

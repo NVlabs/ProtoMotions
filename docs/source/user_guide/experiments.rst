@@ -27,6 +27,19 @@ reproduce the motion while maintaining physical plausibility.
 * ``mlp_bm_l2c2.py`` - BeyondMimic policy with a torso anchor and L2C2 smoothness regularization, aimed at sim2real
 * ``fsq.py`` - FSQ tracker over max-coordinates proprioception and target poses
 
+The BM recipe uses ``q_target = q_default + 0.25 * effort_limit / stiffness * action``
+without clipping the raw action or changing the robot's PD gains. Its action-rate
+reward is ``-0.1 * sum((action - previous_action)**2)`` on raw policy outputs,
+with no mean, square root, or timestep division. This is distinct from the L2C2
+model loss and from the processed-action L2 norm used by other recipes.
+
+The scale change applies to all newly built configs using
+``make_bm_pd_action_config``. The raw action-rate reward is selected explicitly
+by the BM L2C2 recipe; other recipes keep their existing reward bindings.
+Resume and inference use the action
+scales and reward bindings saved in ``resolved_configs.pt``; existing pretrained
+configs are not rewritten. Use a new experiment name to train with this recipe.
+
 **Example command**:
 
 .. code-block:: bash

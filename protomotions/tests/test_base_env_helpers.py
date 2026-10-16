@@ -840,6 +840,7 @@ def test_base_env_cached_body_ids_and_clean_context_without_history():
     assert ctx.noisy_historical is None
     assert ctx.previous_action is None
     assert ctx.previous_processed_action is None
+    assert ctx.current_action is env._current_raw_action
     assert ctx.current_processed_action is env._current_processed_action
     assert BaseEnv.context.fget(env) is ctx
     assert env.control_manager.populate_calls[-1] is ctx
@@ -1411,6 +1412,55 @@ def test_base_env_motion_manager_markers_state_save_restore_and_close(monkeypatc
 
     BaseEnv.close(env)
     assert env.simulator.closed is True
+
+
+class _ContactCachingSimulator(_FakeSimulator):
+    """Fake backend that remembers contacts and records the call order."""
+
+    def __init__(self, events, **kwargs):
+        super().__init__(**kwargs)
+        self.events = events
+
+    def flush_contact_cache(self):
+        self.events.append("flush_contact_cache")
+
+    def reset_envs(self, new_states, new_object_states=None, env_ids=None):
+        self.events.append("reset_envs")
+        super().reset_envs(new_states, new_object_states, env_ids)
+
+
+def test_restore_state_flushes_contacts_before_writing_state_back():
+    # PhysX keeps each robot's contacts from the last substep, and a state write
+    # does not clear them. If the flush ran after the write-back (or not at all),
+    # robots restored into a grounded pose could be launched on the next substep.
+    env = _make_env(scenes=1)
+    events = []
+    env.simulator = _ContactCachingSimulator(events, num_envs=env.num_envs)
+    env.simulator.config._target_ = "fake.IsaacLab"
+    snapshot = BaseEnv.save_state(env)
+
+    BaseEnv.restore_state(env, snapshot)
+
+    assert events == ["flush_contact_cache", "reset_envs"]
+    new_states, new_object_states, env_ids = env.simulator.reset_calls[-1]
+    assert new_states is snapshot["robot_state"]
+    assert new_object_states is snapshot["object_state"]
+    assert torch.equal(env_ids, torch.arange(env.num_envs))
+
+
+def test_restore_state_works_with_a_simulator_that_cannot_flush():
+    env = _make_env()
+    assert not hasattr(env.simulator, "flush_contact_cache")
+    env.simulator.config._target_ = "fake.IsaacLab"
+    env.progress_buf[:] = torch.tensor([4, 5, 6])
+    snapshot = BaseEnv.save_state(env)
+    env.progress_buf.zero_()
+
+    BaseEnv.restore_state(env, snapshot)
+
+    assert len(env.simulator.reset_calls) == 1
+    assert env.simulator.reset_calls[0][0] is snapshot["robot_state"]
+    assert torch.equal(env.progress_buf, torch.tensor([4, 5, 6]))
 
 
 def test_base_env_constructor_initializes_lightweight_dependencies(monkeypatch):

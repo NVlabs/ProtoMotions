@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import torch
+from protomotions.utils.retargeting_keypoints import SOMA_PELVIS_KEYPOINT_SHIFT
 from protomotions.utils.rotations import quaternion_to_matrix
 from typing import List, Dict, Tuple
 
@@ -580,11 +581,13 @@ def extract_keypoints_from_motion_soma_skel(
         keypoint_orientations_quat, w_last=True
     )
 
-    # Pelvis offset: shift backward in local +y to create forward bias on all
-    # Body keypoints relative to root.
+    # Pelvis offset: store the pelvis keypoint 7 cm behind the Hips joint, as
+    # every SOMA keypoint file so far has it. The retargeters move it back onto
+    # the joint when they load the file (soma_pelvis_keypoint_on_hips in
+    # protomotions/utils/retargeting_keypoints.py).
     root_idx = conceptual_keypoint_names.index("pelvis")
     root_offset = torch.tensor(
-        [0.0, 0.07, 0.0], device=device, dtype=keypoint_positions.dtype
+        SOMA_PELVIS_KEYPOINT_SHIFT, device=device, dtype=keypoint_positions.dtype
     )
     R_root = keypoint_orientations_mat[:, root_idx, :, :]
     keypoint_positions[:, root_idx, :] += torch.einsum(
@@ -671,9 +674,10 @@ def extract_keypoints_from_motion_soma_skel(
                 dim=1,
             )
 
-        # 0.225 * 0.8 = 0.18m, matching retargeter torso_aux x.
-        # A 0.30m offset would produce 0.24m after scaling, creating
-        # a 6cm x-mismatch with the torso_aux (0.18) that pushes pelvis backward.
+        # 0.225 m in front of the shifted pelvis keypoint, i.e. 0.155 m in front
+        # of the Hips joint (0.124 m after G1's 0.8 scaling, against G1's 0.18 m
+        # torso_aux). It was sized as 0.225 * 0.8 = 0.18 m for a G1 pelvis matched
+        # to the shifted keypoint, which the retargeters no longer do.
         pelvis_idx = conceptual_keypoint_names.index("pelvis")
         p_local_pelvis = torch.tensor(
             [0.0, -0.225, 0.0], device=device, dtype=keypoint_positions.dtype

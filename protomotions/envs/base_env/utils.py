@@ -166,7 +166,8 @@ def combine_evaluation(
     Evaluation components return numeric values [num_envs]. If a component has
     a ``threshold`` in its static_params, the value is compared against it to
     determine failure. ``fail_above`` (default True) controls the comparison
-    direction.
+    direction. Evaluation kernels must not declare a ``threshold`` parameter,
+    otherwise MdpComponent would pass this failure cut to the kernel as well.
 
     Args:
         raw_values: Dict of {name: value_tensor} from ComponentManager.execute_all().

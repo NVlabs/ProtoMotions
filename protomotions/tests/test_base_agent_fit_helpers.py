@@ -3,6 +3,7 @@
 
 """Lightweight lifecycle tests for BaseAgent.fit without simulator startup."""
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import torch
@@ -169,6 +170,9 @@ def _fit_agent(calls, buffer, *, max_epochs=1):
     agent.best_evaluated_score = None
     agent._should_stop = False
     agent.fabric = _Fabric()
+    # A dir with no last.ckpt, so the loop-entry "reached training" save fires (it is
+    # written only when absent). Overridden by tests that check the resume/skip path.
+    agent.root_dir = Path("nonexistent_fit_test_dir")
     agent.env = _FitEnv()
     agent.motion_shard_cycle = 0
     agent.motion_lib = SimpleNamespace(
@@ -368,3 +372,44 @@ def test_checkpoint_evaluation_does_not_advance_a_scheduled_motion_shard(
 
     assert ("evaluate",) in calls
     assert ("unexpected_shard_advance",) not in calls
+
+
+def test_fit_writes_initial_checkpoint_only_when_last_ckpt_absent(monkeypatch, tmp_path):
+    # The loop-entry save (a resume point + the "reached training" signal the cluster
+    # retry loop reads) fires ONLY when last.ckpt is absent. On a resume the loaded
+    # checkpoint already exists, and re-writing it every attempt would advance the
+    # mtime with no real progress -- which continue-mode run_with_retry would misread
+    # as training progress, masking a deterministic first-epoch crash.
+    def _run(root_dir):
+        calls = []
+        monkeypatch.setattr(base_agent_module, "ExperienceBuffer", _FitExperienceBuffer)
+        monkeypatch.setattr(
+            base_agent_module, "track", lambda it, description=None: it
+        )
+        monkeypatch.setattr(
+            base_agent_module,
+            "aggregate_scalar_metrics",
+            lambda metrics, fabric, weight=1: dict(metrics),
+        )
+        agent = _fit_agent(calls, buffer=None)
+        agent.root_dir = root_dir
+        BaseAgent.fit(agent)
+        return calls
+
+    def _first(calls, item):
+        return next((i for i, c in enumerate(calls) if c == item), len(calls))
+
+    save_last = ("save", "last.ckpt", False)
+    optimize = ("optimize",)
+
+    # Absent -> the loop-entry save happens BEFORE the first epoch's optimize.
+    fresh = _run(tmp_path / "fresh")
+    assert _first(fresh, save_last) < _first(fresh, optimize)
+
+    # Present (a resume) -> the loop-entry save is skipped; the only last.ckpt save is
+    # the periodic one, which comes AFTER the first optimize.
+    resumed_dir = tmp_path / "resumed"
+    resumed_dir.mkdir()
+    (resumed_dir / "last.ckpt").write_bytes(b"x")
+    resumed = _run(resumed_dir)
+    assert _first(resumed, save_last) > _first(resumed, optimize)

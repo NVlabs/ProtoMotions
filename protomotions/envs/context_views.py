@@ -144,6 +144,16 @@ class CurrentStateView:
         self.anchor_vel = state.rigid_body_vel[:, anchor_idx, :]
         self.anchor_ang_vel = state.rigid_body_ang_vel[:, anchor_idx, :]
 
+        # NoisyObservations also carries root/anchor channels that were noised
+        # on their own (anchor_rot_noise, root_ang_vel_noise,
+        # anchor_ang_vel_noise). Re-deriving them from the whole-body tensors
+        # would silently drop that noise, so use them when present. RobotState
+        # has none of these fields, so clean views are unchanged.
+        for name in ("anchor_rot", "root_local_ang_vel", "anchor_local_ang_vel"):
+            value = getattr(state, name, None)
+            if value is not None:
+                setattr(self, name, value)
+
     def _compute_root_local_ang_vel(self) -> Tensor:
         return compute_local_ang_vel(self.root_rot, self.root_ang_vel)
 
@@ -591,6 +601,7 @@ class EnvContext:
     noisy_historical: Optional[HistoricalView] = NestedField(HistoricalView)
 
     # Actions (historical)
+    current_action: Optional[Tensor] = FieldPath()
     previous_action: Optional[Tensor] = FieldPath()
     current_processed_action: Optional[Tensor] = FieldPath()
     previous_processed_action: Optional[Tensor] = FieldPath()
@@ -645,6 +656,7 @@ class EnvContext:
         dt: float,
         historical: Optional[HistoricalView] = None,
         noisy_historical: Optional[HistoricalView] = None,
+        current_action: Optional[Tensor] = None,
         previous_action: Optional[Tensor] = None,
         current_processed_action: Optional[Tensor] = None,
         previous_processed_action: Optional[Tensor] = None,
@@ -679,6 +691,7 @@ class EnvContext:
             dt: Simulation timestep in seconds.
             historical: Clean historical state view (optional).
             noisy_historical: Noisy historical state view (optional).
+            current_action: Current raw policy action before PD processing (optional).
             previous_action: Previous raw action [num_envs, action_dim] (optional).
             current_processed_action: Current processed action (optional).
             previous_processed_action: Previous processed action (optional).
@@ -711,6 +724,7 @@ class EnvContext:
         self.noisy_historical = noisy_historical
 
         # Actions
+        self.current_action = current_action
         self.previous_action = previous_action
         self.current_processed_action = current_processed_action
         self.previous_processed_action = previous_processed_action

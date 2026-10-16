@@ -22,6 +22,7 @@ from examples.experiments.gpc import sft_target_prior_peft
 from examples.experiments.gpc import target_prior_peft
 from examples.experiments.gpc import task_target_prior_peft_amp
 from examples.experiments.mimic import fsq as mimic_fsq
+from protomotions.agents.common.config import ModuleContainerConfig
 from protomotions.agents.common.latent import LATENT_KEY, LATENT_LOGITS_KEY
 from protomotions.agents.supervised.config import RolloutActor
 
@@ -64,6 +65,32 @@ def _args(**overrides):
     return argparse.Namespace(**values)
 
 
+
+def assert_module_order_is_sound(config, _seen=None):
+    """Walk every ModuleContainerConfig under `config` and check module ordering.
+
+    `models` is execution order, so a producer appended after its consumer never
+    runs in time. That is invisible until the container is built, which on a
+    multi-rank job means one rank raising and the others deadlocking at the next
+    collective -- an hour of cluster time to learn what this costs milliseconds.
+    """
+    _seen = _seen if _seen is not None else set()
+    if id(config) in _seen:
+        return
+    _seen.add(id(config))
+
+    if isinstance(config, ModuleContainerConfig):
+        errors = config.find_key_flow_errors()
+        assert not errors, "module ordering error:\n  " + "\n  ".join(errors)
+
+    children = config if isinstance(config, (list, tuple)) else None
+    if children is None:
+        children = list(vars(config).values()) if hasattr(config, "__dict__") else []
+    for child in children:
+        if isinstance(child, (list, tuple)) or hasattr(child, "__dict__"):
+            assert_module_order_is_sound(child, _seen)
+
+
 def test_mimic_fsq_basic_config_factories_and_inference_overrides():
     args = _args()
     robot_cfg = _RobotConfig()
@@ -74,6 +101,7 @@ def test_mimic_fsq_basic_config_factories_and_inference_overrides():
     motion_cfg = mimic_fsq.motion_lib_config(args)
     env_cfg = mimic_fsq.env_config(robot_cfg, args)
     agent_cfg = mimic_fsq.agent_config(robot_cfg, env_cfg, args)
+    assert_module_order_is_sound(agent_cfg)
 
     assert terrain_cfg.__class__.__name__ == "TerrainConfig"
     assert scene_cfg.scene_file == "scenes.pt"
@@ -162,6 +190,7 @@ def test_gpc_prior_parser_and_checkpoint_dependent_config(monkeypatch):
     motion_cfg = gpc_prior.motion_lib_config(args)
     env_cfg = gpc_prior.env_config(robot_cfg, args)
     agent_cfg = gpc_prior.agent_config(robot_cfg, env_cfg, args)
+    assert_module_order_is_sound(agent_cfg)
 
     assert terrain_cfg.__class__.__name__ == "TerrainConfig"
     assert scene_cfg.scene_file == "scenes.pt"
@@ -220,6 +249,7 @@ def test_gpc_prior_tracker_helpers_load_future_steps_and_embed_module_config(
     assert gpc_prior._tracker_future_steps(_args()) == [2, 5, 9]
 
     agent_cfg = gpc_prior.agent_config(_RobotConfig(), SimpleNamespace(), _args())
+    assert_module_order_is_sound(agent_cfg)
     decoder_cfg = agent_cfg.model.latent_decoder
     assert decoder_cfg.module_config_path == gpc_prior.TRACKER_MODULE_CONFIG_PATH
     assert decoder_cfg.module_config is None
