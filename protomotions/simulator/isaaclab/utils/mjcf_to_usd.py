@@ -18,6 +18,7 @@ import hashlib
 import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, Callable, Dict, Mapping, MutableMapping, Optional, Tuple, Union
 
 from filelock import FileLock
@@ -30,7 +31,7 @@ from protomotions.robot_configs.base import RobotAssetConfig
 _CONVERSION_CACHE: Dict[Tuple[Any, ...], str] = {}
 
 ConverterFactory = Callable[..., str]
-_MJCF_CONVERTER_CACHE_VERSION = "isaaclab3-d6-workaround-v2"
+_MJCF_CONVERTER_CACHE_VERSION = "isaaclab3-d6-marker-inertia-v3"
 
 
 def _absolute_path(path: Union[os.PathLike, str]) -> str:
@@ -256,7 +257,13 @@ def default_mjcf_converter_factory(**cfg_kwargs: Any) -> str:
 
     install_isaaclab_mjcf_d6_workaround()
 
-    converter = MjcfConverter(MjcfConverterCfg(**cfg_kwargs))
+    from protomotions.simulator.base_simulator.robot_mass_properties import prepare_robot_mjcf
+
+    with TemporaryDirectory(prefix="protomotions-robot-usd-") as directory:
+        prepared_path = prepare_robot_mjcf(cfg_kwargs["asset_path"], directory)
+        converter = MjcfConverter(
+            MjcfConverterCfg(**{**cfg_kwargs, "asset_path": prepared_path})
+        )
     return _absolute_path(converter.usd_path)
 
 

@@ -343,6 +343,13 @@ def test_observation_factories_bind_expected_context_paths():
 
 
 def test_reward_factories_and_bundles_bind_expected_context_paths():
+    rate = factories.action_rate_l2_factory()
+    assert _bindings(rate) == {
+        "raw_action": "current_action",
+        "previous_raw_action": "previous_action",
+    }
+    assert _params(rate)["weight"] == -0.1
+
     smooth = factories.action_smoothness_factory(weight=-0.5)
     assert _bindings(smooth)["current_processed_action"] == "current_processed_action"
     assert _params(smooth)["weight"] == -0.5

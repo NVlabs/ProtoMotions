@@ -1227,6 +1227,9 @@ def test_prior_peft_fit_runs_one_epoch_rollout_eval_and_checkpoint_branches(
     agent.best_evaluated_score = None
     agent._should_stop = False
     agent.fabric = _Fabric()
+    # A dir with no last.ckpt so the loop-entry "reached training" save fires (it is
+    # written only when absent).
+    agent.root_dir = Path("nonexistent_fit_test_dir")
     agent.env = _FitEnv()
     agent.evaluator = _Evaluator()
     agent.model = _FitModel()
@@ -1360,6 +1363,9 @@ def test_prior_peft_fit_skip_update_branch_can_stop_training(monkeypatch):
     agent.best_evaluated_score = None
     agent._should_stop = True
     agent.fabric = _Fabric()
+    # A dir with no last.ckpt so the loop-entry "reached training" save fires (it is
+    # written only when absent).
+    agent.root_dir = Path("nonexistent_fit_test_dir")
     agent.env = _FitEnv()
     agent.evaluator = None
     agent.model = _FitModel()

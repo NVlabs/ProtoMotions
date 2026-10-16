@@ -71,7 +71,10 @@ import sys
 # install. Same standalone invocation train_slurm.py supports.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from protomotions._train_launch_common import build_train_agent_argv  # noqa: E402
+from protomotions._train_launch_common import (  # noqa: E402
+    RSYNC_EXCLUDES,
+    build_train_agent_argv,
+)
 
 
 # =============================================================================
@@ -307,6 +310,14 @@ def create_parser():
         "a Lepton job after three ordinary aborts.",
     )
     parser.add_argument(
+        "--repeat-limit",
+        type=int,
+        default=3,
+        help="Give up sooner if the SAME Python exception repeats this many "
+        "restarts in a row -- a deterministic bug, not a flaky abort. 0 disables "
+        "the check (fall back to --no-progress-limit alone). Default 3.",
+    )
+    parser.add_argument(
         "--stall-timeout-min",
         type=int,
         default=30,
@@ -383,25 +394,6 @@ def teleport_host(site, user):
     return f"root@{site['workspace_id']}-{site['pod_name']}.{site['teleport_cluster']}"
 
 
-# rsync excludes: skip VCS, caches, and the large/derived data that must be staged
-# to AMLFS separately (mirrors train_slurm.py's list). A small motion file under
-# data/motion_for_trackers and the robot assets under protomotions/data DO travel.
-RSYNC_EXCLUDES = [
-    ".git",
-    ".idea",
-    "**/__pycache__",
-    "**/*.egg-info",
-    "outputs",
-    "output",
-    "results",
-    "exps",
-    "tmp",
-    "wandb",
-    "data/smpl",
-    "data/amass",
-    "data/pretrained_models",
-    "docs",
-]
 
 
 def stage_code(host, exp_folder, local_repo, execute):
@@ -510,7 +502,9 @@ def build_lep_job_create(args, site, exp_folder, container_command):
         "--env",
         f"STALL_TIMEOUT_MIN={args.stall_timeout_min}",
         "--env",
-        f"NO_PROGRESS_LIMIT={args.no_progress_limit}",
+        f"RETRY_MAX_ATTEMPTS={args.no_progress_limit}",
+        "--env",
+        f"RETRY_REPEAT_LIMIT={args.repeat_limit}",
         "--shared-memory-size",
         str(args.shared_memory_mib),
         # The in-job loop handles crashes within a running job. Job-level retry

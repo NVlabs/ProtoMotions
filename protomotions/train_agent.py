@@ -64,20 +64,26 @@ Generate new configs compatible with current code::
 
 Example
 -------
->>> # Training with custom configuration
->>> # PYTHON_PATH protomotions/train_agent.py \\
->>> #     +exp=full_body_tracker/transformer_flat_terrain \\
->>> #     +robot=smpl \\
->>> #     +simulator=isaacgym \\
->>> #     motion_file=data/motions/amass_train.pt \\
->>> #     num_envs=2048 \\
->>> #     agent.config.batch_size=4096 \\
->>> #     +experiment_name=my_tracker
+Training with config overrides. An override path is
+``<config_type>.<field>[.<subfield>]``, where config_type is one of env,
+simulator, robot, agent, terrain, motion_lib, scene_lib. Note there is NO
+``.config`` level -- the fields sit directly on the config object, so
+``agent.num_mini_epochs=2`` is right and ``agent.config.num_mini_epochs=2``
+raises "Field 'config' not found"::
+
+    python protomotions/train_agent.py \\
+        --robot-name g1 --simulator isaaclab \\
+        --experiment-path examples/experiments/mimic/mlp.py \\
+        --experiment-name my_tracker \\
+        --motion-file data/motion_for_trackers/g1_bones_seed_mini.pt \\
+        --num-envs 2048 --batch-size 4096 \\
+        --overrides agent.num_mini_epochs=2 env.max_episode_length=1000
 """
 
 import os
 import sys
 import json
+import traceback
 
 os.environ["WANDB_DISABLE_SENTRY"] = "true"  # Must be first environment variable
 os.environ["WANDB_SILENT"] = "true"
@@ -226,6 +232,22 @@ def create_parser():
         help="Weights & Biases project name",
     )
     parser.add_argument(
+        "--kit-thread-count",
+        type=int,
+        default=None,
+        help=(
+            "Pin Kit's task scheduler to this many threads (IsaacLab only). Default "
+            "None passes nothing: Kit keeps its own thread count on a single GPU, and "
+            "AppLauncher sets os.cpu_count() // WORLD_SIZE on multi-GPU runs. Set to 1 "
+            "to work around the IsaacLab 3 heap corruption during the first "
+            "sim.reset(), which scales with the number of distinct spawn prototypes: "
+            "measured 7/10 glibc aborts at the default vs 0/10 at 1, on 512 "
+            "prototypes / 8000 envs. The cost is small: ~68 s/epoch with the pin vs "
+            "~70 s/epoch without on 4xA100 with 4096 envs and 4500 furniture scenes. "
+            "On resume, a value given on the command line overrides the saved one."
+        ),
+    )
+    parser.add_argument(
         "--use-slurm",
         action="store_true",
         default=False,
@@ -349,10 +371,23 @@ def detect_checkpoint_mode(args, save_dir):
             with open(checkpoint_config_path, "r") as file:
                 checkpoint_config = json.load(file)
 
-            # Update args with checkpoint config
+            # Update args with checkpoint config. --kit-thread-count is a launch-time
+            # workaround for a startup crash, not a training setting, and adding it to
+            # the resume command is how a run that starts aborting gets fixed; so a
+            # value given on this command line wins over the saved one, which for any
+            # run started without the flag is None.
+            cli_kit_thread_count = getattr(args, "kit_thread_count", None)
             for key, value in checkpoint_config.items():
                 if key != "wandb_id":
                     setattr(args, key, value)
+            if cli_kit_thread_count is not None:
+                saved = checkpoint_config.get("kit_thread_count")
+                if saved != cli_kit_thread_count:
+                    log.info(
+                        f"RESUME: using --kit-thread-count {cli_kit_thread_count} from "
+                        f"the command line instead of the saved value {saved}"
+                    )
+                args.kit_thread_count = cli_kit_thread_count
             wandb_id = checkpoint_config.get("wandb_id", None)
         else:
             raise FileNotFoundError(
@@ -825,6 +860,22 @@ def main():
             app_launcher_flags["distributed"] = True
             os.environ["LOCAL_RANK"] = str(fabric.local_rank)
             os.environ["RANK"] = str(fabric.global_rank)
+        # MUST go through kit_args, NOT sys.argv.append(). AppLauncher appends its
+        # OWN threadCount (os.cpu_count() // WORLD_SIZE) inside __init__, but only on
+        # the distributed branch (app_launcher.py:1034-1064) -- so a single-GPU run
+        # never sees it and a multi-GPU run silently loses our value. Kit takes the
+        # LAST occurrence of a duplicated setting (verified: appending 1 then 16
+        # aborts 2/2, appending 16 then 1 is clean), and _config_resolution calls
+        # _resolve_device_settings BEFORE _resolve_kit_args, whose `sys.argv +=
+        # self._kit_args` (app_launcher.py:1205) therefore lands last and wins.
+        # getattr, not attribute access: `args` does not always come from this
+        # parser (tests and other callers pass a plain namespace without the flag).
+        kit_thread_count = getattr(args, "kit_thread_count", None)
+        if kit_thread_count is not None:
+            kit_arg = f"--/plugins/carb.tasking.plugin/threadCount={kit_thread_count}"
+            existing = app_launcher_flags.get("kit_args", "")
+            app_launcher_flags["kit_args"] = f"{existing} {kit_arg}".strip()
+
         app_launcher = AppLauncher(app_launcher_flags)
         simulator_extra_params["simulation_app"] = app_launcher.app
 
@@ -1135,5 +1186,46 @@ def _handle_create_config_only(
     )
 
 
+def _run_main_reporting_failures() -> None:
+    """Run main(), making sure a crash actually exits non-zero.
+
+    Isaac Sim and IsaacLab each register an atexit hook (isaacsim
+    simulation_app.py, isaaclab app_launcher.py) that calls app.close() with the
+    default exit_code=0. Under Kit's fastShutdown that reaches
+    quickReleaseFrameworkAndTerminate, documented as calling _exit() on Linux --
+    so it replaces CPython's pending status 1 with 0 during interpreter
+    finalization. NVIDIA documents this: close(exit_code=...) exists precisely to
+    "preserve nonzero script/test failure status when fast shutdown is enabled".
+
+    The effect is that a crashed training run reports SUCCESS. Observed on a real
+    4-rank job where every rank raised torch.OutOfMemoryError and the retry loop
+    still logged "attempt 3 exited 0 -- done" and the cluster marked the job
+    Completed. Every retry loop, give-up sentinel and job state keyed on this exit
+    code was reading a value that could not report failure.
+
+    os._exit skips atexit entirely, so we set the status before Kit can overwrite
+    it. Only the failure path does this: on success we return normally and let the
+    hooks run, which is the clean shutdown they are there for.
+    """
+    try:
+        main()
+    except SystemExit as exit_request:
+        # Preserve an intentional exit code (argparse inside main(), for example)
+        # rather than turning a deliberate exit 0 into a failure.
+        code = exit_request.code
+        if code is None:
+            code = 0
+        elif not isinstance(code, int):
+            code = 1
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(code)
+    except BaseException:
+        traceback.print_exc()
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(1)
+
+
 if __name__ == "__main__":
-    main()
+    _run_main_reporting_failures()

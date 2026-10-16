@@ -78,6 +78,27 @@ def simulator_config(
     )
 
 
+def warn_on_control_rate_change(
+    train_sim_params, sim_params, simulator_name: str
+) -> bool:
+    """Warn when inference runs the policy at a different control rate than training.
+
+    The policy acts once per control step (fps / decimation), so a different
+    rate puts it in a regime it never trained in. Call this after all config
+    overrides are applied. Returns True if it warned.
+    """
+    train_rate = train_sim_params.fps / train_sim_params.decimation
+    rate = sim_params.fps / sim_params.decimation
+    if abs(train_rate - rate) <= 1e-6 * train_rate:
+        return False
+    log.warning(
+        f"Control rate changes from {train_rate:g} Hz (training) to {rate:g} Hz "
+        f"({simulator_name}). Match it with "
+        f"--overrides simulator.sim.fps=... simulator.sim.decimation=..."
+    )
+    return True
+
+
 def update_simulator_config_for_test(
     current_simulator_config: SimulatorConfig,
     new_simulator: str,

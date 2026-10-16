@@ -412,6 +412,20 @@ Comparing ``batch_retarget_to_g1_from_keypoints.py`` and
               * onp.array([1.1, 1.1, 1.0])[None, None, :]
           )
 
+   Take the vertical factor for the pelvis and legs from the robot/source
+   pelvis-to-ankle drop, not from the hip-joint height. Knee bend is very
+   sensitive to it: near a straight leg, a pelvis target only 1 cm too low
+   already bends G1's knees by about 20 degrees. Keep the x and y factors
+   equal, so the scaling does not depend on which way the motion is heading.
+
+   The robot matches the pelvis keypoint with its pelvis origin. Keypoint
+   extraction stores the SOMA pelvis keypoint 7 cm behind the Hips joint, so
+   ``load_motion_data`` moves it back onto the joint with
+   ``soma_pelvis_keypoint_on_hips`` from
+   ``protomotions/utils/retargeting_keypoints.py``. Call it in a new robot's
+   script too; otherwise every SOMA target lands about 7 cm too far forward
+   relative to the pelvis.
+
 3. **Auxiliary Point Offsets**
    
    Update hand and torso auxiliary point offsets in ``pc_alignment_cost()``:

@@ -19,6 +19,7 @@ EXPERIMENTS_GUIDE_PATH = REPO_ROOT / "docs/source/user_guide/experiments.rst"
 README_PATH = REPO_ROOT / "README.md"
 
 REQUIRED_SECTIONS = (
+    "License",
     "Overview",
     "Intended Use",
     "Training",

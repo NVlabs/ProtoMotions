@@ -40,6 +40,17 @@ env:
   GITLEAKS_SHA256: "5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba"
 
 jobs:
+  model-licenses:
+    name: Model release licenses
+    if: github.repository == 'NVlabs/ProtoMotions'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { lfs: false }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.10" }
+      - run: python scripts/check_model_licenses.py
+
   # Catches a credential in a contributed pull request before it is merged --
   # the one class of mistake that rewriting history afterwards does not undo,
   # because the commit stays reachable from the pull request ref forever.

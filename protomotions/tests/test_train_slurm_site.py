@@ -271,35 +271,33 @@ def test_cli_account_overrides_missing_site_account(tmp_path, monkeypatch):
 
 
 def test_startup_site_keys_are_accepted_and_flag_beats_site(tmp_path, monkeypatch, capsys):
-    # A site file may set the four startup knobs; the loader (which rejects unknown
+    # A site file may set the three startup knobs; the loader (which rejects unknown
     # keys) must accept them because they are in SITE_DEFAULTS.
     site_on = FLAT_SITE + (
         "startup_max_attempts: 8\n"
-        "startup_stall_min: 12\n"
         "startup_repeat_limit: 4\n"
         "startup_retry_backoff_sec: 5\n"
     )
     loaded = ts.load_site_config(_write(tmp_path, site_on))
     assert loaded["startup_max_attempts"] == 8
-    assert loaded["startup_stall_min"] == 12
+    assert loaded["startup_repeat_limit"] == 4
 
     # With no flag, the site value turns the feature on: the emitted script wraps
-    # srun and the worst-case line is printed.
+    # srun in the shared run_with_retry and the worst-case line is printed.
     _run_main(monkeypatch, tmp_path, _write(tmp_path, site_on), ["--simulator", "isaaclab"])
     out = capsys.readouterr().out
-    assert "run_with_startup_retry" in out
     assert "up to 8 attempts" in out
 
-    # An explicit flag beats the site value: turning both knobs off leaves the
-    # default, byte-identical (unwrapped) script.
+    # An explicit flag beats the site value: turning it off leaves the default,
+    # byte-identical (unwrapped) script -- no worst-case line.
     _run_main(
         monkeypatch,
         tmp_path,
         _write(tmp_path, site_on),
-        ["--simulator", "isaaclab", "--startup-max-attempts", "1", "--startup-stall-min", "0"],
+        ["--simulator", "isaaclab", "--startup-max-attempts", "1"],
     )
     out = capsys.readouterr().out
-    assert "run_with_startup_retry" not in out
+    assert "up to" not in out
 
 
 # ---------------------------------------------------------------------------

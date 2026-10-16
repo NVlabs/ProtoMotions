@@ -57,6 +57,15 @@ def compute_action_smoothness(
     return delta_norm(current_processed_action, previous_processed_action)
 
 
+def compute_action_rate_l2(raw_action: Tensor, previous_raw_action: Tensor) -> Tensor:
+    """Sum squared raw policy-action changes over joints, per environment.
+
+    Inputs are dimensionless policy outputs [num_envs, action_dim], before
+    clipping or PD scaling. No mean, square root, or timestep scaling is applied.
+    """
+    return (raw_action - previous_raw_action).square().sum(dim=-1)
+
+
 def compute_action_smoothness_logmeanexp(
     current_processed_action: Tensor,
     previous_processed_action: Tensor,

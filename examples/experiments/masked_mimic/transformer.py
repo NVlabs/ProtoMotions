@@ -205,7 +205,8 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
 
     # Termination components configuration
     termination_components = {
-        "tracking_error": tracking_error_term_factory(threshold=0.25),
+        # Always ran at 0.5 m: the 0.25 m set here before never took effect.
+        "tracking_error": tracking_error_term_factory(threshold=0.5),
     }
 
     # Reward components

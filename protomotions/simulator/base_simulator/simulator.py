@@ -23,6 +23,8 @@ Key Features:
 from abc import ABC, abstractmethod
 import logging
 import math
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from typing import Dict, List, Optional, Any, Tuple, Callable
 
@@ -55,6 +57,8 @@ from protomotions.simulator.base_simulator.config import (
 from protomotions.robot_configs.base import ControlType, RobotConfig
 from protomotions.simulator.base_simulator.record import RecordingMixin
 from protomotions.simulator.base_simulator.user_interface import UserInterface
+from protomotions.assets import resolve_asset_root
+from protomotions.simulator.base_simulator.robot_mass_properties import prepare_robot_mjcf
 
 
 class Simulator(RecordingMixin, ABC):
@@ -99,6 +103,23 @@ class Simulator(RecordingMixin, ABC):
     # -------------------------
     # ⚙️ Group 1: Initialization & Configuration
     # -------------------------
+    def _get_robot_asset_path(self) -> str:
+        """Prepare robot inertia once, retaining temporary assets for its lifetime."""
+        if not hasattr(self, "_prepared_robot_asset_path"):
+            path = (
+                resolve_asset_root(self.robot_config.asset.asset_root)
+                / self.robot_config.asset.asset_file_name
+            )
+            self._robot_asset_directory = TemporaryDirectory(
+                prefix="protomotions-robot-"
+            )
+            self._prepared_robot_asset_path = (
+                prepare_robot_mjcf(path, self._robot_asset_directory.name)
+                if Path(path).suffix == ".xml"
+                else str(path)
+            )
+        return self._prepared_robot_asset_path
+
     def __init__(
         self,
         config: SimulatorConfig,
@@ -792,85 +813,85 @@ class Simulator(RecordingMixin, ABC):
         # Reset projectiles for reset environments
         self._reset_projectiles(env_ids)
 
-    def park_envs(
+    def flush_contact_cache(self) -> None:
+        """Make the simulator forget every env's current contacts.
+
+        Called right before every env's state is written back
+        (``BaseEnv.restore_state``). The base implementation does nothing;
+        backends whose contact solver remembers contacts between steps override
+        it. See ``IsaacLabSimulator.flush_contact_cache`` for why this matters.
+        """
+        return None
+
+    def _move_all_envs_out_of_contact(
         self,
-        env_ids: torch.Tensor,
         hide_z: float = -50.0,
+        object_drop: float = 20.0,
     ) -> None:
-        """Move robot and scene objects for ``env_ids`` far below the terrain.
+        """Move every robot and scene object far below the terrain, at rest.
 
-        Used during evaluation to disable physics for envs that are not being
-        evaluated, eliminating their contribution to the PhysX broadphase pair
-        budget. Parked bodies sit well below any terrain/object AABB so no
-        broadphase pairs are generated, no narrow-phase contacts are computed,
-        and no found/lost pair churn occurs. Velocities are zeroed so the
-        parked bodies stay put.
+        A helper for ``flush_contact_cache`` overrides, which then simulate one
+        substep here and write the real state back. Robots keep their x, y and
+        rotation, so each stays in its own grid cell instead of all landing at
+        the world origin (which could exceed PhysX's broadphase limits at large
+        env counts); they go to ``z = hide_z`` in the default joint pose with
+        zero velocity. Objects keep their x, y and rotation and go to
+        ``hide_z - object_drop``, far enough below that a robot cannot touch
+        its own furniture. Every object of an env goes to that same height, so
+        two objects that overlap when seen from above (a box on a table) end up
+        inside each other, and if either is dynamic the simulator records a
+        contact between them.
 
-        Pre-eval state is restored later via ``BaseEnv.restore_state(snapshot)``,
-        which calls ``reset_envs`` over all envs with the saved snapshot.
-
-        Args:
-            env_ids: Environment IDs to park. No-op if empty/None.
-            hide_z: World z-coordinate to teleport robot roots to. Object roots
-                are placed slightly below at ``hide_z - 1.0`` so their AABBs
-                cannot overlap with the parked robot's AABB.
+        This goes through ``reset_envs``, so it also clears the action buffers
+        and reschedules pushes and projectiles; the write-back that follows
+        does the same again for every env.
         """
         from protomotions.simulator.base_simulator.simulator_state import (
             StateConversion,
         )
 
-        if env_ids is None or env_ids.numel() == 0:
-            return
-
-        n = env_ids.numel()
+        n = self.num_envs
         device = self.device
+        env_ids = torch.arange(n, device=device)
 
-        # Preserve current root xy so parked envs stay in their own grid cell
-        # (avoids stacking all parked envs at world origin, which could exceed
-        # PhysX broadphase region limits at large num_envs).
         current_root = self.get_root_state(env_ids)
-        park_root_pos = current_root.root_pos.clone()
-        park_root_pos[:, 2] = hide_z
-        park_root_rot = current_root.root_rot.clone()
-        zero_root_vel = torch.zeros((n, 3), device=device, dtype=torch.float32)
-
-        num_dofs = self.robot_config.kinematic_info.num_dofs
-        park_dof_pos = (
+        root_pos = current_root.root_pos.clone()
+        root_pos[:, 2] = hide_z
+        zero_vel = torch.zeros((n, 3), device=device, dtype=torch.float32)
+        dof_pos = (
             self.robot_config.default_dof_pos.unsqueeze(0)
             .repeat(n, 1)
             .to(device=device, dtype=torch.float32)
         )
-        park_dof_vel = torch.zeros((n, num_dofs), device=device, dtype=torch.float32)
-
-        park_state = ResetState(
-            root_pos=park_root_pos,
-            root_rot=park_root_rot,
-            root_vel=zero_root_vel,
-            root_ang_vel=zero_root_vel.clone(),
-            dof_pos=park_dof_pos,
-            dof_vel=park_dof_vel,
+        robot_state = ResetState(
+            root_pos=root_pos,
+            root_rot=current_root.root_rot.clone(),
+            root_vel=zero_vel,
+            root_ang_vel=zero_vel.clone(),
+            dof_pos=dof_pos,
+            dof_vel=torch.zeros_like(dof_pos),
             state_conversion=StateConversion.COMMON,
         )
 
-        park_object_state = None
+        object_state = None
         if self.scene_lib.num_objects_per_scene > 0:
             current_obj = self.get_object_root_state(env_ids)
-            obj_root_pos = current_obj.root_pos.clone()
-            obj_root_pos[..., 2] = hide_z - 1.0
-            obj_root_rot = current_obj.root_rot.clone()
-            m = self.scene_lib.num_objects_per_scene
+            obj_pos = current_obj.root_pos.clone()
+            obj_pos[..., 2] = hide_z - object_drop
             zero_obj_vel = torch.zeros(
-                (n, m, 3), device=device, dtype=torch.float32
+                (n, self.scene_lib.num_objects_per_scene, 3),
+                device=device,
+                dtype=torch.float32,
             )
-            park_object_state = ObjectState(
-                root_pos=obj_root_pos,
-                root_rot=obj_root_rot,
+            object_state = ObjectState(
+                root_pos=obj_pos,
+                root_rot=current_obj.root_rot.clone(),
                 root_vel=zero_obj_vel,
                 root_ang_vel=zero_obj_vel.clone(),
                 state_conversion=StateConversion.COMMON,
             )
 
-        self.reset_envs(park_state, park_object_state, env_ids)
+        self.reset_envs(robot_state, object_state, env_ids)
 
     @abstractmethod
     def _set_simulator_env_state(

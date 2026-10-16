@@ -15,6 +15,7 @@ from protomotions.simulator.isaaclab.config import (
 )
 from protomotions.simulator.genesis.config import GenesisSimParams
 from protomotions.simulator.newton.config import NewtonSimParams
+from protomotions.simulator.mujoco.config import MujocoSimParams
 from protomotions.components.pose_lib import ControlInfo
 from typing import List, Dict, Tuple
 from dataclasses import dataclass, field
@@ -207,6 +208,14 @@ class SMPLXRobotConfig(RobotConfig):
             newton=NewtonSimParams(
                 fps=120,
                 decimation=4,
+            ),
+            # Same 30 Hz control rate as the other simulators. implicitfast
+            # also treats the PD damping implicitly (Euler only does that for
+            # joint damping), which keeps stiff gains on light links stable.
+            mujoco=MujocoSimParams(
+                fps=960,
+                decimation=32,
+                integrator="implicitfast",
             ),
         )
     )

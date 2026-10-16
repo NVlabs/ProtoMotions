@@ -15,7 +15,7 @@ here without a GPU, a cluster, or `lep`, using fake child processes and a fake
                                 IsaacLab warmup, so a fake python drives it.
 
 The watchdog poll interval (STALL_POLL_SEC) and no-growth limit (STALL_QUIET_LIMIT
-/ NO_PROGRESS_LIMIT) are overridden to sub-second / tiny values, so the suite runs
+/ RETRY_MAX_ATTEMPTS) are overridden to sub-second / tiny values, so the suite runs
 in a couple of seconds rather than minutes."""
 
 import os
@@ -225,7 +225,7 @@ def test_deterministic_failure_gives_up_and_writes_sentinel(tmp_path):
     exp = tmp_path / "exp"
     exp.mkdir()
     r = _run_loop(
-        always_fail, exp, 5, ["--robot-name=g1"], extra_env={"NO_PROGRESS_LIMIT": "2"}
+        always_fail, exp, 5, ["--robot-name=g1"], extra_env={"RETRY_MAX_ATTEMPTS": "2"}
     )
     assert r.returncode != 0, r.stdout + r.stderr  # the job is marked failed
     assert (exp / ".lepton_loop_gave_up").exists(), "give-up sentinel not written"
@@ -247,7 +247,7 @@ def test_crash_after_progress_then_success(tmp_path):
     exp = tmp_path / "exp"
     exp.mkdir()
     r = _run_loop(
-        prog, exp, 5, ["--robot-name=g1"], extra_env={"NO_PROGRESS_LIMIT": "2"}
+        prog, exp, 5, ["--robot-name=g1"], extra_env={"RETRY_MAX_ATTEMPTS": "2"}
     )
     # A crash that advanced the checkpoint is treated as transient, and the next
     # run completes, so the job succeeds. (This case exercises the progress path
@@ -257,11 +257,11 @@ def test_crash_after_progress_then_success(tmp_path):
 
 
 def test_progress_crash_resets_consecutive_no_progress_counter(tmp_path):
-    # The give-up rule is "NO_PROGRESS_LIMIT runs IN A ROW with no checkpoint
+    # The give-up rule is "RETRY_MAX_ATTEMPTS runs IN A ROW with no checkpoint
     # progress". A progressing crash must RESET that consecutive count -- otherwise
     # interleaved transient failures around real progress would be miscounted as a
     # deterministic failure and the job would give up while it is actually
-    # advancing. With NO_PROGRESS_LIMIT=2, this fake python never produces two
+    # advancing. With RETRY_MAX_ATTEMPTS=2, this fake python never produces two
     # no-progress crashes in a row (no-progress, progress, no-progress, progress,
     # success), so the run must succeed. Deleting the reset makes it give up at the
     # third run -- so this test, unlike the one above, actually depends on it.
@@ -282,7 +282,7 @@ def test_progress_crash_resets_consecutive_no_progress_counter(tmp_path):
     exp = tmp_path / "exp"
     exp.mkdir()
     r = _run_loop(
-        prog, exp, 9, ["--robot-name=g1"], extra_env={"NO_PROGRESS_LIMIT": "2"}
+        prog, exp, 9, ["--robot-name=g1"], extra_env={"RETRY_MAX_ATTEMPTS": "2"}
     )
     assert r.returncode == 0, r.stdout + r.stderr
     assert not (exp / ".lepton_loop_gave_up").exists(), "gave up despite never 2-in-a-row"

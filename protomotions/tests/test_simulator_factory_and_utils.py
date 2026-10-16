@@ -126,6 +126,21 @@ def test_update_simulator_config_for_test_adds_missing_params_and_new_fields(mon
         simulator_factory.update_simulator_config_for_test(current, "mujoco", robot_config)
 
 
+@pytest.mark.parametrize(
+    "train_sim, sim, warns",
+    [
+        (_FakeSimParams(120, 4), _FakeSimParams(1000, 20), True),  # 30 -> 50 Hz
+        (_FakeSimParams(120, 4), _FakeSimParams(960, 32), False),  # 30 -> 30 Hz
+    ],
+)
+def test_warn_on_control_rate_change(caplog, train_sim, sim, warns):
+    with caplog.at_level("WARNING", logger=simulator_factory.__name__):
+        warned = simulator_factory.warn_on_control_rate_change(train_sim, sim, "mujoco")
+
+    assert warned is warns
+    assert ("Control rate changes from 30 Hz" in caplog.text) is warns
+
+
 def test_build_motion_data_maps_recorded_fields_and_fills_missing_values():
     recorded_motion = {
         "gts": [torch.ones(2, 3), torch.ones(2, 3) * 2.0],

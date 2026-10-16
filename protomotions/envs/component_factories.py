@@ -758,6 +758,20 @@ def action_smoothness_factory(weight: float = -0.02) -> MdpComponent:
     )
 
 
+def action_rate_l2_factory(weight: float = -0.1) -> MdpComponent:
+    """Penalize squared raw action changes; requires at least one history step."""
+    from protomotions.envs.rewards import compute_action_rate_l2
+
+    return MdpComponent(
+        compute_func=compute_action_rate_l2,
+        dynamic_vars={
+            "raw_action": EnvContext.current_action,
+            "previous_raw_action": EnvContext.previous_action,
+        },
+        static_params={"weight": weight},
+    )
+
+
 def gt_rew_factory(weight: float = 0.5, coefficient: float = -100.0) -> MdpComponent:
     """Factory for position tracking reward.
 
@@ -1813,6 +1827,7 @@ __all__ = [
     "path_obs_factory",
     # Reward factories
     "action_smoothness_factory",
+    "action_rate_l2_factory",
     "gt_rew_factory",
     "gr_rew_factory",
     "gv_rew_factory",

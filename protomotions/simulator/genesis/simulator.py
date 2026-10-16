@@ -6,7 +6,6 @@ import torch
 from typing import Dict, Optional, Tuple
 from easydict import EasyDict
 
-from protomotions.assets import resolve_asset_root
 from protomotions.utils import rotations
 from protomotions.simulator.base_simulator.simulator import Simulator
 from protomotions.simulator.base_simulator.config import (
@@ -126,11 +125,7 @@ class GenesisSimulator(Simulator):
     # ===== Group 2: Environment Setup & Configuration =====
     def _create_envs(self) -> None:
         """Creates the simulation environments and loads robot assets."""
-        asset_root = resolve_asset_root(self.robot_config.asset.asset_root)
-        asset_file = self.robot_config.asset.asset_file_name
-
-        asset_path = os.path.join(asset_root, asset_file)
-        asset_root = os.path.dirname(asset_path)
+        asset_path = self._get_robot_asset_path()
         asset_file = os.path.basename(asset_path)
         asset_file_ext = os.path.splitext(asset_file)[1]
 

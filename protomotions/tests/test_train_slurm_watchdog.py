@@ -15,6 +15,7 @@ quiet >= STALL_TIMEOUT_MIN'."""
 import importlib.util
 import os
 import shutil
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -37,7 +38,14 @@ def _load_module():
 ts = _load_module()
 
 # The bash under test: the two function definitions, sourced into every snippet.
-WATCHDOG_BASH = ts._kill_tree_bash() + "\n" + ts._stall_watchdog_bash()
+if hasattr(ts, "_retry_lib_source"):
+    # The development launcher sources shared primitives; the public launcher
+    # embeds them. Exercise the implementation used by the loaded launcher.
+    WATCHDOG_BASH = ts._retry_lib_source(
+        shlex.quote(str(TRAIN_SLURM_PATH.parents[1]))
+    )
+else:
+    WATCHDOG_BASH = ts._kill_tree_bash() + "\n" + ts._stall_watchdog_bash()
 
 pytestmark = pytest.mark.skipif(
     sys.platform != "linux"

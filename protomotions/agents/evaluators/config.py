@@ -59,17 +59,3 @@ class MimicEvaluatorConfig(EvaluatorConfig):
         default_factory=MotionWeightsRulesConfig,
         metadata={"help": "Rules for updating motion sampling weights."}
     )
-    eval_action_ema_alpha: Optional[float] = field(
-        default=None,
-        metadata={
-            "help": (
-                "EMA smoothing factor for actions during evaluation only. "
-                "Simulates deployment low-pass filtering. "
-                "a_applied = alpha * a_policy + (1-alpha) * a_prev. "
-                "None = disabled (raw actions). Typical values: 0.5-0.8."
-                "Smaller alpha = more smoothing."
-            ),
-            "min": 0.0,
-            "max": 1.0,
-        }
-    )

@@ -414,6 +414,34 @@ def test_detect_checkpoint_mode_handles_fresh_warm_start_and_resume(
         detect_checkpoint_mode(SimpleNamespace(checkpoint=None), missing_config_dir)
 
 
+def test_resume_keeps_kit_thread_count_given_on_the_command_line(
+    monkeypatch,
+    tmp_path,
+):
+    module = _load_train_agent_globals(monkeypatch, tmp_path)
+    detect_checkpoint_mode = module["detect_checkpoint_mode"]
+    resume_dir = tmp_path / "resume"
+    resume_dir.mkdir()
+    (resume_dir / "last.ckpt").write_text("checkpoint")
+
+    def resume(saved, cli):
+        (resume_dir / "config.yaml").write_text(
+            json.dumps({"batch_size": 64, "kit_thread_count": saved})
+        )
+        args = SimpleNamespace(checkpoint=None, batch_size=8, kit_thread_count=cli)
+        assert detect_checkpoint_mode(args, resume_dir)[0] == "resume"
+        assert args.batch_size == 64
+        return args.kit_thread_count
+
+    # The fix for a run that starts aborting at startup is to add the flag to the
+    # resume command; the saved None from the original launch must not erase it.
+    assert resume(saved=None, cli=1) == 1
+    assert resume(saved=4, cli=1) == 1
+    # Without the flag, the saved value is used as before.
+    assert resume(saved=1, cli=None) == 1
+    assert resume(saved=None, cli=None) is None
+
+
 def test_load_experiment_module_loads_file_and_rejects_missing_paths(
     monkeypatch,
     tmp_path,

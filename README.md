@@ -234,7 +234,12 @@ We welcome contributions! Please read our [**Contributing Guide**](CONTRIBUTING.
 
 ## License
 
-ProtoMotions3 is released under the [**Apache-2.0 License**](LICENSE.md).
+ProtoMotions3 source code is released under the [**Apache-2.0 License**](LICENSE.md).
+
+NVIDIA-provided pretrained models are released under the **NVIDIA Open Model
+License**, unless their model card explicitly states otherwise. Each model
+directory includes its model card, license and attribution notice. See
+[model licensing and redistribution](legal/MODEL-LICENSING.md).
 
 Third-party software and bundled asset notices are listed in [legal/](legal/), including Unitree, BeyondMimic, Isaac Lab, and SMPL/SMPL-H attribution and license notices.
 

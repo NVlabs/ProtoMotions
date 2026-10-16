@@ -10,6 +10,10 @@ import pytest
 import torch
 from tensordict import TensorDict
 
+from protomotions.agents.base_agent.model import (
+    ProtoMotionsTensorDictModule,
+    RolloutStateSpec,
+)
 from protomotions.agents.evaluators.config import (
     MimicEvaluatorConfig,
     MotionWeightsRulesConfig,
@@ -40,13 +44,9 @@ class _RobotState:
 class _Simulator:
     def __init__(self):
         self._push_enabled = True
-        self.parked = []
 
     def get_robot_state(self):
         return _RobotState()
-
-    def park_envs(self, env_ids):
-        self.parked.append(env_ids.clone())
 
 
 class _MotionLib:
@@ -128,9 +128,39 @@ class _Env:
         )
 
 
-class _Model:
-    def __call__(self, obs_td):
-        return {"mean_action": obs_td["obs"] + 1.0}
+class _Model(ProtoMotionsTensorDictModule):
+    def __init__(self):
+        super().__init__()
+        self.in_keys = ["obs"]
+        self.out_keys = ["mean_action"]
+
+    def forward(self, tensordict, log_internals=False):
+        tensordict["mean_action"] = tensordict["obs"] + 1.0
+        return tensordict
+
+
+class _StatefulModel(_Model):
+    """Adds a per-env value to the action; each reset seeds the next generation."""
+
+    def __init__(self):
+        super().__init__()
+        self.generation = 0
+
+    def _next_generation(self, num_envs, device):
+        self.generation += 1
+        return torch.full((num_envs, 1), float(self.generation), device=device)
+
+    def rollout_state_specs(self):
+        return {
+            "episode_value": RolloutStateSpec(shape=(1,), init=self._next_generation)
+        }
+
+    def forward(self, tensordict, log_internals=False):
+        self.read_rollout_state(tensordict)
+        tensordict["mean_action"] = (
+            tensordict["obs"] + 1.0 + tensordict["episode_value"]
+        )
+        return tensordict
 
 
 class _Agent:
@@ -288,17 +318,6 @@ def test_mimic_motion_sampling_weights_handles_no_failures_and_zero_failure_disc
     )
 
 
-def test_mimic_parks_inactive_envs_only_when_batch_is_partial(tmp_path):
-    evaluator = _evaluator(tmp_path, num_envs=4)
-
-    evaluator._park_inactive_envs(torch.tensor([1, 3]))
-    evaluator._park_inactive_envs(torch.arange(4))
-    evaluator._park_inactive_envs(None)
-
-    assert len(evaluator.env.simulator.parked) == 1
-    assert torch.equal(evaluator.env.simulator.parked[0], torch.tensor([0, 2]))
-
-
 def test_mimic_build_eval_batches_prefers_fixed_motions_then_chunks_all_motions(tmp_path):
     evaluator = _evaluator(tmp_path, num_envs=2)
     evaluator.motion_manager.fixed = (
@@ -405,8 +424,8 @@ def test_mimic_check_eval_components_skips_when_no_clip_is_active(tmp_path):
     assert checked == []
 
 
-def test_mimic_evaluate_episode_applies_action_ema_and_records_actions(tmp_path):
-    evaluator = _evaluator(tmp_path, eval_action_ema_alpha=0.5)
+def test_mimic_evaluate_episode_steps_and_records_the_policy_actions(tmp_path):
+    evaluator = _evaluator(tmp_path)
     evaluator._episode_ctx = MimicEpisodeContext(
         motion_ids=torch.tensor([0, 1]),
         frame_limits=torch.tensor([2, 2]),
@@ -416,9 +435,141 @@ def test_mimic_evaluate_episode_applies_action_ema_and_records_actions(tmp_path)
 
     evaluator.evaluate_episode(torch.tensor([0, 1]), max_steps=2)
 
+    # The fake policy acts obs + 1 and the fake env echoes the action back as
+    # the next obs, so the raw actions are 1 and then 2, applied unfiltered.
     assert torch.equal(evaluator.env.step_actions[0], torch.ones(2, 2))
-    assert torch.equal(evaluator.env.step_actions[1], torch.full((2, 2), 1.5))
-    assert torch.equal(evaluator._metrics["actions"].data[0, 1], torch.full((2,), 1.5))
+    assert torch.equal(evaluator.env.step_actions[1], torch.full((2, 2), 2.0))
+    assert torch.equal(evaluator._metrics["actions"].data[0, 1], torch.full((2,), 2.0))
+
+
+def test_mimic_unscored_envs_play_fixed_background_clips(tmp_path):
+    evaluator = _evaluator(tmp_path, num_envs=6)
+    # Envs 1 and 4 are scene-paired with clips 2 and 0; the others have no scene.
+    evaluator.motion_manager._fixed_motion_ids_per_env = torch.tensor(
+        [-1, 2, -1, -1, 0, -1]
+    )
+    evaluator._episode_ctx = MimicEpisodeContext(
+        motion_ids=torch.tensor([1]),
+        frame_limits=torch.tensor([2]),
+    )
+
+    evaluator._on_episode_start(torch.tensor([3]))
+
+    # Scene-paired envs keep their own clip, the rest cycle through the 3 library
+    # clips, and the scored env 3 gets this batch's clip. Everyone starts at frame 0.
+    assert torch.equal(
+        evaluator.motion_manager.motion_ids, torch.tensor([0, 2, 2, 1, 0, 2])
+    )
+    assert torch.equal(evaluator.motion_manager.motion_times, torch.zeros(6))
+
+
+def _scored_and_unscored_env_finish_on_first_step(evaluator):
+    """Score envs 0 and 1 of 4; scored env 0 and unscored env 2 finish at step 1."""
+    evaluator._episode_ctx = MimicEpisodeContext(
+        motion_ids=torch.tensor([0, 1]),
+        frame_limits=torch.tensor([2, 2]),
+    )
+    evaluator._check_evaluation_failures = (
+        lambda active_env_ids, active_motion_ids: None
+    )
+    env = evaluator.env
+    base_step = env.step
+
+    def step(actions):
+        obs, rewards, dones, terminated, extras = base_step(actions)
+        env.motion_manager.motion_times += 0.5
+        if len(env.step_actions) == 1:
+            dones = torch.tensor([True, False, True, False])
+        return obs, rewards, dones, terminated, extras
+
+    env.step = step
+    return torch.tensor([0, 1])
+
+
+def test_mimic_evaluate_episode_restarts_only_unscored_envs_that_finish(tmp_path):
+    evaluator = _evaluator(tmp_path, num_envs=4)
+    evaluator._metrics = {"actions": _metric(num_motions=3, features=2)}
+    env = evaluator.env
+    scored_ids = _scored_and_unscored_env_finish_on_first_step(evaluator)
+
+    evaluator.evaluate_episode(scored_ids, max_steps=2)
+
+    (start_ids, start_kwargs), (restart_ids, restart_kwargs) = env.reset_calls
+    assert torch.equal(start_ids, torch.arange(4))
+    # Only the unscored env restarts; a scored env keeps its result as it was.
+    assert torch.equal(restart_ids, torch.tensor([2]))
+    assert start_kwargs == restart_kwargs == evaluator._get_reset_kwargs()
+    # It replays its own background clip from frame 0.
+    assert torch.equal(env.motion_manager.motion_ids, torch.tensor([0, 1, 2, 0]))
+    assert torch.equal(
+        env.motion_manager.motion_times, torch.tensor([1.0, 1.0, 0.5, 1.0])
+    )
+
+
+def test_mimic_evaluate_episode_scores_each_step_before_restarting_envs(tmp_path):
+    # A restart discards the env's cached context, which the failure checks read
+    # for the scored envs too. Scoring after the restart would judge the step
+    # against rebuilt context instead of the state the policy just produced.
+    evaluator = _evaluator(tmp_path, num_envs=4)
+    evaluator._metrics = {"actions": _metric(num_motions=3, features=2)}
+    env = evaluator.env
+    scored_ids = _scored_and_unscored_env_finish_on_first_step(evaluator)
+    events = []
+    evaluator._check_evaluation_failures = (
+        lambda active_env_ids, active_motion_ids: events.append(
+            ("score", active_env_ids.tolist())
+        )
+    )
+    record_step = evaluator._on_episode_step
+
+    def on_episode_step(env_ids, extras, actions):
+        events.append(("record", env_ids.tolist()))
+        record_step(env_ids, extras, actions)
+
+    evaluator._on_episode_step = on_episode_step
+    base_reset = env.reset
+
+    def reset(env_ids=None, **kwargs):
+        events.append(("reset", env_ids.tolist()))
+        return base_reset(env_ids, **kwargs)
+
+    env.reset = reset
+
+    evaluator.evaluate_episode(scored_ids, max_steps=2)
+
+    assert events == [
+        ("reset", [0, 1, 2, 3]),
+        ("score", [0, 1]),
+        ("record", [0, 1]),
+        ("reset", [2]),
+        ("score", [0, 1]),
+        ("record", [0, 1]),
+    ]
+
+
+def test_mimic_evaluation_reseeds_model_context_only_for_envs_it_resets(tmp_path):
+    evaluator = _evaluator(tmp_path, num_envs=4)
+    model = evaluator.agent.model = _StatefulModel()
+    model.reset_rollout_context(num_envs=4, device=torch.device("cpu"))
+    training_context = model.episode_value.clone()
+    env = evaluator.env
+    scored_ids = _scored_and_unscored_env_finish_on_first_step(evaluator)
+
+    evaluator._metrics = evaluator.initialize_eval()
+    evaluator.evaluate_episode(scored_ids, max_steps=2)
+
+    # The episode start resets every env, so every env gets generation 2 in place
+    # of training's generation 1. The fake env returns zero observations, so each
+    # action is 1 plus the env's generation.
+    assert torch.equal(env.step_actions[0], torch.full((4, 2), 3.0))
+    # Only the restarted unscored env 2 gets generation 3. Scored env 0 also
+    # finished but is not restarted, so its context stays as it was.
+    assert torch.equal(env.step_actions[1][:, 0], torch.tensor([3.0, 3.0, 4.0, 3.0]))
+
+    evaluator.cleanup_after_evaluation()
+
+    # Training resumes with the context it had before evaluation.
+    assert torch.equal(model.episode_value, training_context)
 
 
 def test_mimic_process_eval_results_updates_weights_and_additional_metrics(tmp_path):

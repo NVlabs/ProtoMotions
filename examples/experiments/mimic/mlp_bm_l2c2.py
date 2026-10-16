@@ -74,7 +74,7 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
         max_coords_obs_factory,
         mimic_target_poses_max_coords_factory,
         previous_actions_factory,
-        action_smoothness_factory,
+        action_rate_l2_factory,
         global_anchor_ori_rew_factory,
         relative_body_pos_rew_factory,
         relative_body_ori_rew_factory,
@@ -131,7 +131,7 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
             with_velocities=True,
             with_relative=True,
         ),
-        # Common observations (processed actions after tanh/clamp)
+        # Common observations (joint position targets after PD action scaling)
         "historical_previous_processed_actions": previous_actions_factory(
             history_steps=1, processed=True
         ),
@@ -164,7 +164,7 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
             weight=1.0,
             sigma=3.14,
         ),
-        "action_rate": action_smoothness_factory(weight=-0.1),
+        "action_rate": action_rate_l2_factory(weight=-0.1),
         "limits_dof_pos": MdpComponent(
             compute_func=compute_soft_pos_limit_rew,
             dynamic_vars={

@@ -267,10 +267,12 @@ def main():
         -3
     ]  # e.g., "isaacgym" from "protomotions.simulator.isaacgym.simulator.IsaacGymSimulator"
 
+    train_sim_params = None
     if args.simulator != current_simulator:
         log.info(
             f"Switching simulator from '{current_simulator}' (training) to '{args.simulator}' (inference)"
         )
+        train_sim_params = simulator_config.sim
         from protomotions.simulator.factory import update_simulator_config_for_test
 
         simulator_config = update_simulator_config_for_test(
@@ -340,6 +342,13 @@ def main():
     if args.command_source:
         log.info(f"CLI override: command_source = {args.command_source}")
         apply_command_source_overrides(env_config, args.command_source)
+
+    if train_sim_params is not None:
+        from protomotions.simulator.factory import warn_on_control_rate_change
+
+        warn_on_control_rate_change(
+            train_sim_params, simulator_config.sim, args.simulator
+        )
 
     motion_lib_config.validate()
 

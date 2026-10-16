@@ -984,6 +984,7 @@ class BaseEnv:
             if self.state_history
             else None,
             # Actions (historical)
+            current_action=self._select_context_tensor(self._current_raw_action, env_ids),
             current_processed_action=self._select_context_tensor(
                 self._current_processed_action, env_ids
             ),
@@ -1901,6 +1902,13 @@ class BaseEnv:
             snapshot: Dictionary from save_state() containing state tensors
         """
         env_ids = torch.arange(self.num_envs, device=self.device)
+        # Every env is about to be teleported back. Clear the simulator's
+        # memory of the contacts at the current poses first: otherwise a robot
+        # that was standing on the ground here can be launched on the first
+        # physics substep after the write-back.
+        flush_contact_cache = getattr(self.simulator, "flush_contact_cache", None)
+        if flush_contact_cache is not None:
+            flush_contact_cache()
         self.simulator.reset_envs(
             snapshot["robot_state"], snapshot.get("object_state"), env_ids
         )

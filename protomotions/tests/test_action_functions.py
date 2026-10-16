@@ -191,7 +191,7 @@ def test_make_pd_action_config_builds_normalized_action_config_from_robot_data()
     assert torch.equal(config["damping"], torch.tensor([1.0, 2.0, 4.0, 5.0, 10.0]))
 
 
-def test_make_bm_pd_action_config_uses_default_pose_and_effort_over_stiffness_scale():
+def test_make_bm_pd_action_config_uses_default_pose_and_quarter_effort_scale():
     robot_config = _mixed_dof_robot_config()
 
     config = make_bm_pd_action_config(robot_config)
@@ -200,12 +200,43 @@ def test_make_bm_pd_action_config_uses_default_pose_and_effort_over_stiffness_sc
     assert torch.equal(config["pd_action_offset"], robot_config.default_dof_pos)
     _assert_no_storage_alias(config["pd_action_offset"], robot_config.default_dof_pos)
     assert torch.allclose(
-        config["action_scale"], torch.tensor([10.0, 4.0, 1.5, 0.5, 0.1])
+        config["action_scale"], torch.tensor([2.5, 1.0, 0.375, 0.125, 0.025])
     )
     assert torch.equal(
         config["stiffness"], torch.tensor([10.0, 20.0, 40.0, 50.0, 100.0])
     )
     assert torch.equal(config["damping"], torch.tensor([1.0, 2.0, 4.0, 5.0, 10.0]))
+
+
+def test_bm_unit_action_produces_quarter_effort_at_default_pose():
+    robot = _mixed_dof_robot_config()
+    config = make_bm_pd_action_config(robot)
+    fn = config.pop("fn")
+    result = fn(torch.ones(2, 5), **config)
+    torque = config["stiffness"] * (result["processed_action"] - robot.default_dof_pos)
+    expected = 0.25 * torch.tensor([100.0, 80.0, 60.0, 25.0, 10.0])
+    torch.testing.assert_close(torque, expected.expand_as(torque))
+
+
+def test_bm_recipe_penalizes_raw_action_rate_with_unchanged_weight():
+    from argparse import Namespace
+
+    from examples.experiments.mimic.mlp_bm_l2c2 import env_config
+    from protomotions.envs.rewards import compute_action_rate_l2
+
+    cfg = env_config(_mixed_dof_robot_config(), Namespace())
+    reward = cfg.reward_components["action_rate"]
+    assert reward.compute_func is compute_action_rate_l2
+    assert {key: str(path) for key, path in reward.dynamic_vars.items()} == {
+        "raw_action": "current_action",
+        "previous_raw_action": "previous_action",
+    }
+    assert reward.static_params["weight"] == -0.1
+    assert cfg.num_state_history_steps >= 1
+    torch.testing.assert_close(
+        cfg.action_config["action_scale"],
+        torch.tensor([2.5, 1.0, 0.375, 0.125, 0.025]),
+    )
 
 
 def test_make_passthrough_pd_action_config_builds_fixed_gain_config_only():

@@ -12,7 +12,7 @@ from torch import Tensor
 import numpy as np
 from rich.progress import Progress
 import os
-from protomotions.assets import get_asset_root, resolve_asset_root
+from protomotions.assets import get_asset_root
 from protomotions.components.terrains.terrain import Terrain
 from protomotions.components.terrains.config import CombineMode
 from protomotions.components.scene_lib import (
@@ -346,9 +346,7 @@ class IsaacGymSimulator(Simulator):
         Returns:
             Loaded asset handle (opaque gymapi handle)
         """
-        asset_root = resolve_asset_root(self.robot_config.asset.asset_root)
-        asset_file = self.robot_config.asset.asset_file_name
-        asset_path = os.path.join(asset_root, asset_file)
+        asset_path = self._get_robot_asset_path()
         asset_root = os.path.dirname(asset_path)
         asset_file = os.path.basename(asset_path)
 

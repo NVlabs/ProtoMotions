@@ -249,6 +249,18 @@ class ModuleContainer(ProtoMotionsTensorDictModule):
 
         self.models = nn.ModuleList()
 
+        # Cheap structural check first, so an ordering mistake is reported before
+        # any module is constructed. Building modules materializes lazy layers and,
+        # on a multi-rank job, an exception here kills one rank and leaves the rest
+        # blocked at the next collective -- which presents as a hang rather than as
+        # the error it is. See ModuleContainerConfig.find_key_flow_errors.
+        ordering_errors = self.config.find_key_flow_errors()
+        if ordering_errors:
+            raise AssertionError(
+                "ModuleContainer: module list is out of order.\n  "
+                + "\n  ".join(ordering_errors)
+            )
+
         # Build models and validate data flow
         # Container in_keys are "available" at the start (like sources)
         available_keys = set(self.config.in_keys)

@@ -379,7 +379,7 @@ def test_simulator_step_applies_control_markers_push_and_projectile_timers():
     assert sim._proj_sim_time[1] == 0.0
 
 
-def test_simulator_reset_and_park_env_paths_with_and_without_objects():
+def test_simulator_reset_paths_with_and_without_objects():
     sim = _sim(scene_objects=1)
     sim._initialize_with_markers(None)
     env_ids = torch.tensor([0])
@@ -407,12 +407,6 @@ def test_simulator_reset_and_park_env_paths_with_and_without_objects():
     assert torch.equal(sim._common_actions[env_ids], torch.zeros(1, 2))
     assert torch.equal(sim._previous_actions[env_ids], torch.zeros(1, 2))
 
-    sim.park_envs(torch.tensor([], dtype=torch.long))
-    sim.park_envs(torch.tensor([0]))
-    parked_state, parked_objects, _ = sim.reset_calls[-1]
-    assert torch.equal(parked_state.root_pos[:, 2], torch.tensor([-50.0]))
-    assert torch.equal(parked_objects.root_pos[..., 2], torch.tensor([[-51.0]]))
-
     no_object_sim = _sim(scene_objects=0)
     no_object_sim._initialize_with_markers(None)
     no_object_sim.reset_envs(reset_state, object_state, env_ids)
@@ -429,6 +423,84 @@ def test_simulator_reset_and_park_env_paths_with_and_without_objects():
     )
     no_object_sim.reset_envs(full_reset_state)
     assert torch.equal(no_object_sim.reset_calls[-1][2], torch.tensor([0, 1]))
+
+
+def test_move_all_envs_out_of_contact_and_base_flush_contact_cache():
+    sim = _sim(scene_objects=1)
+    sim._initialize_with_markers(None)
+    before = sim.get_root_state()
+    before_objects = sim.get_object_root_state()
+
+    sim._move_all_envs_out_of_contact()
+
+    moved, moved_objects, env_ids = sim.reset_calls[-1]
+    assert torch.equal(env_ids, torch.arange(sim.num_envs))
+    # Robots keep their own grid cell and rotation, sink to 50 m below ground in
+    # the default pose, at rest. Furniture goes 20 m further down so a robot
+    # cannot touch its own scene objects during the flush substep.
+    assert torch.equal(moved.root_pos[:, :2], before.root_pos[:, :2])
+    assert torch.equal(moved.root_pos[:, 2], torch.full((sim.num_envs,), -50.0))
+    assert torch.equal(moved.root_rot, before.root_rot)
+    assert torch.equal(moved.root_vel, torch.zeros(sim.num_envs, 3))
+    assert torch.equal(moved.root_ang_vel, torch.zeros(sim.num_envs, 3))
+    # The default pose is [0.25, -0.5] in the model's joint order; this fake
+    # simulator lists its joints the other way round, so seeing it reversed here
+    # shows the state was built in the common format and converted on the way in.
+    assert torch.equal(moved.dof_pos, torch.tensor([[-0.5, 0.25]] * sim.num_envs))
+    assert torch.equal(moved.dof_vel, torch.zeros_like(moved.dof_vel))
+    assert torch.equal(
+        moved_objects.root_pos[..., :2], before_objects.root_pos[..., :2]
+    )
+    assert torch.equal(
+        moved_objects.root_pos[..., 2], torch.full((sim.num_envs, 1), -70.0)
+    )
+    assert torch.equal(moved_objects.root_rot, before_objects.root_rot)
+    assert torch.equal(moved_objects.root_vel, torch.zeros_like(moved_objects.root_vel))
+    assert torch.equal(
+        moved_objects.root_ang_vel, torch.zeros_like(moved_objects.root_ang_vel)
+    )
+
+    no_object_sim = _sim(scene_objects=0)
+    no_object_sim._initialize_with_markers(None)
+    no_object_sim._move_all_envs_out_of_contact()
+    assert no_object_sim.reset_calls[-1][1] is None
+
+    # The base backend keeps no contacts between steps, so its flush must not
+    # move, step or reset anything.
+    reset_count = len(sim.reset_calls)
+    physics_steps = sim.physics_steps
+    assert sim.flush_contact_cache() is None
+    assert len(sim.reset_calls) == reset_count
+    assert sim.physics_steps == physics_steps
+
+
+def test_isaaclab_flush_contact_cache_simulates_one_substep_out_of_contact():
+    isaaclab_simulator = pytest.importorskip(
+        "protomotions.simulator.isaaclab.simulator"
+    )
+    events = []
+    fake = SimpleNamespace(
+        _move_all_envs_out_of_contact=lambda **kwargs: events.append(("move", kwargs)),
+        _scene=SimpleNamespace(
+            write_data_to_sim=lambda: events.append(("write_data_to_sim",)),
+            update=lambda dt: events.append(("update", dt)),
+        ),
+        _sim=SimpleNamespace(
+            step=lambda render: events.append(("step", render)),
+            get_physics_dt=lambda: 0.005,
+        ),
+    )
+
+    isaaclab_simulator.IsaacLabSimulator.flush_contact_cache(fake)
+
+    # Teleporting alone does not clear PhysX's contact memory; it takes one
+    # simulated substep with every robot (and its furniture) out of contact.
+    assert events == [
+        ("move", {"hide_z": -50.0, "object_drop": 20.0}),
+        ("write_data_to_sim",),
+        ("step", False),
+        ("update", 0.005),
+    ]
 
 
 def test_simulator_control_modes_and_domain_randomization_helpers():
