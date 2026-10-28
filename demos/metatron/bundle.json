@@ -1,8 +1,8 @@
 {
   "release_status": "public-release",
-  "sha256": "4c03a22f00e9b6acb43196dd671b67bafa49447575328120d551b01c9151e7f2",
+  "sha256": "c4a8099168098618e885137fd5d83f64dc77cafaf48b71c90c050582636a2194",
   "files": {
-    "assets/__vite-browser-external-B_f7GtsW.js": 1859,
+    "assets/__vite-browser-external-CTtJnTWd.js": 1928,
     "assets/furniture/armchair_part00.obj": 393,
     "assets/furniture/armchair_part01.obj": 401,
     "assets/furniture/armchair_part02.obj": 393,
@@ -32,9 +32,9 @@
     "assets/furniture/straightchair_part04.obj": 385,
     "assets/furniture/straightchair_part05.obj": 389,
     "assets/furniture/straightchair_visual.obj": 2246,
-    "assets/index-DIGYQn-1.js": 2274,
-    "assets/main-CYY3dR59.css": 27260,
-    "assets/main-OO9gUA_I.js": 3200048,
+    "assets/index-BTUoub1t.js": 2274,
+    "assets/main-BrWbYnkP.css": 27422,
+    "assets/main-BE8jQTMs.js": 3206175,
     "assets/motions/NOTICE.txt": 206,
     "assets/motions/dancing.mp4": 86495,
     "assets/motions/high_jump.mp4": 36292,
@@ -49,8 +49,7 @@
     "assets/policy/LICENSE.pdf": 79005,
     "assets/policy/MODEL_CARD.md": 4081,
     "assets/policy/NOTICE.txt": 337,
-    "assets/policy/manifest.json": 9391,
-    "assets/recovery/NOTICE.txt": 756,
+    "assets/policy/manifest.json": 9681,
     "assets/recovery/prone_plan.json": 761639,
     "assets/robot/meshes/head_link.stl": 932784,
     "assets/robot/meshes/left_ankle_pitch_link.stl": 71184,
@@ -118,6 +117,8 @@
     "licenses/third-party/onnxruntime-web-1.29.0/ThirdPartyNotices.txt": 336906,
     "licenses/third-party/three-0.185.1/LICENSE": 1081,
     "motion-notice.html": 3312,
-    "threading-worker.js": 1189
+    "threading-worker.js": 1189,
+    "assets/recovery/NOTICE.txt": 756,
+    "assets/policy/model.onnx": 439477
   }
 }

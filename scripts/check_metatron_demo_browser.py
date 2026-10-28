@@ -43,7 +43,10 @@ def check_browser(site: Path, output: Path) -> None:
     policy = json.loads(
         (site / "ProtoMotions/demos/metatron/assets/policy/manifest.json").read_text()
     )
-    model_url = policy["model_download"]["url"]
+    # Either the whole model or only its external weights is hosted; the
+    # smoke test watches whichever URL the manifest pins.
+    hosted = policy.get("model_download") or policy["external_data"]["download"]
+    model_url = hosted["url"]
     try:
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(
@@ -122,7 +125,14 @@ def check_browser(site: Path, output: Path) -> None:
                     print(f"Passed {name}/{task}", flush=True)
             assert not errors, errors
             assert model_url in requests, "No anonymous HF model request observed"
-            assert not any("/assets/policy/model.onnx" in url for url in requests)
+            # The graph layout fetches the small bundled graph; only the hosted
+            # file must never be served from Pages.
+            bundled_weights = (
+                "weights.bin" if "external_data" in policy else "model.onnx"
+            )
+            assert not any(
+                f"/assets/policy/{bundled_weights}" in url for url in requests
+            )
 
             # Second pass: the real desktop path. Without threads=1 the bootstrap
             # registers the COOP/COEP service worker, reloads once, and the reloaded

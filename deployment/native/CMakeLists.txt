@@ -495,6 +495,12 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(motion_library_test tests/motion_library_test.cpp)
+  target_link_libraries(motion_library_test PRIVATE protomotions_deployment)
+  protomotions_configure_target(motion_library_test)
+  target_compile_options(motion_library_test PRIVATE -UNDEBUG)
+  add_test(NAME motion_library COMMAND motion_library_test
+    "${CMAKE_CURRENT_BINARY_DIR}/motion_library_test.pmmot")
   add_executable(metatron_v1_contract_test
     tests/metatron_v1_contract_test.cpp)
   target_link_libraries(metatron_v1_contract_test PRIVATE protomotions_deployment)

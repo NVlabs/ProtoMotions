@@ -103,7 +103,8 @@ void MotionLibrary::load(const std::string& path) {
     motion.frames = read_value<std::uint32_t>(stream, "motion frames");
     motion.dt = read_value<float>(stream, "motion dt");
     if (motion.frames == 0 || !std::isfinite(motion.dt) || motion.dt <= 0.0F ||
-        motion.start < previous_end || motion.start + motion.frames > total_frames) {
+        motion.start < previous_end || motion.start > total_frames ||
+        motion.frames > total_frames - motion.start) {
       throw std::runtime_error("invalid motion index entry");
     }
     previous_end = motion.start + motion.frames;

@@ -209,7 +209,8 @@ class PicoInputSource::Impl {
     }
     const std::string lock_path =
         "/tmp/protomotions_pico_xrt_" + std::to_string(::getuid()) + ".lock";
-    lock_fd_ = ::open(lock_path.c_str(), O_CREAT | O_RDWR | O_CLOEXEC, 0600);
+    lock_fd_ = ::open(lock_path.c_str(),
+                      O_CREAT | O_RDWR | O_CLOEXEC | O_NOFOLLOW, 0600);
     if (lock_fd_ < 0) {
       throw std::runtime_error(
           "cannot open Pico client lock " + lock_path + ": " +

@@ -13,9 +13,15 @@ and extracts it; it does not rebuild the application or install npm packages.
 
 The FP32 unified scene/recovery policy is fetched anonymously from
 [Hugging Face — demo](https://huggingface.co/nvidia/Metatron-v1/tree/main/demo),
-not from Pages. The packaged manifest pins an immutable revision and SHA256;
-the browser verifies downloaded and cached bytes before inference. No account
-or token is needed. The archive contains the app, robot/motion assets and
+not from Pages. The policy ships as a small graph file (`assets/policy/model.onnx`,
+under 1 MB) plus hosted external weights (`demo/weights.bin`, the same FP32
+bytes as `demo/model.onnx` in a separate file); loading the two files keeps
+ONNX Runtime from holding the model twice, which is what memory-limited phones
+cannot afford. The packaged manifest pins an immutable revision and SHA256 for
+the weights and the graph's SHA256; the browser verifies downloaded and cached
+bytes before inference, prefers WebGPU on phones with a single-thread WASM
+fallback, and stops after two memory-reload cycles instead of downloading
+again. No account or token is needed. The archive contains the app, robot/motion assets and
 notices, but no neural weights. The `racer/network.onnx` export in the same
 Hugging Face repository, used by a separate racing demo, is batched for six
 robots and is not interchangeable with `demo/model.onnx`.

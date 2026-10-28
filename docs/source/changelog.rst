@@ -93,6 +93,15 @@ Models and Deployment
 * Add the compiled Metatron browser demo and G1 Racer under ``demos/`` with
   installer scripts that fetch their weights from Hugging Face. See
   :doc:`user_guide/browser_demo` and :doc:`user_guide/g1_racer`.
+* Ship the compiled browser demo's policy as a small graph plus external
+  weights hosted on Hugging Face (the same FP32 bytes as the single file, in
+  a separate file), so phones no longer run out of memory while the model
+  loads: the browser copies the weights once, prefers WebGPU on phones with a
+  single-thread WASM fallback, and stops after two memory-reload cycles
+  instead of downloading again. Desktop runtime selection and speed are
+  unchanged. See :doc:`user_guide/browser_demo`.
+* Native deployment: reject motion indices that would overflow the motion
+  library and refuse a symlinked Pico input lock file.
 
 August 12, 2026
 ---------------
