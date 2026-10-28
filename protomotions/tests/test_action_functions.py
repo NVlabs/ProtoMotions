@@ -7,15 +7,21 @@ from types import SimpleNamespace
 
 import pytest
 import torch
+from protomotions.envs.context_requirements import bound_components
+from protomotions.envs.obs.state_history_buffer import history_depth
 
+from protomotions.components.pose_lib import ControlInfo
 from protomotions.envs.action.action_functions import (
     bm_pd_action,
     build_pd_action_offset_scale,
+    normalized_pd_fixed_gains_action,
+    passthrough_pd_action,
+)
+from protomotions.envs.action.config import (
+    ActionConfig,
     make_bm_pd_action_config,
     make_passthrough_pd_action_config,
     make_pd_action_config,
-    normalized_pd_fixed_gains_action,
-    passthrough_pd_action,
 )
 
 
@@ -32,11 +38,11 @@ def _mixed_dof_robot_config(**control_overrides):
         "hinge4",
     ]
     default_control = {
-        "body3_x": SimpleNamespace(stiffness=10.0, damping=1.0, effort_limit=100.0),
-        "body3_y": SimpleNamespace(stiffness=20.0, damping=2.0, effort_limit=80.0),
-        "body3_z": SimpleNamespace(stiffness=40.0, damping=4.0, effort_limit=60.0),
-        "hinge1": SimpleNamespace(stiffness=50.0, damping=5.0, effort_limit=25.0),
-        "hinge4": SimpleNamespace(stiffness=100.0, damping=10.0, effort_limit=10.0),
+        "body3_x": ControlInfo(stiffness=10.0, damping=1.0, effort_limit=100.0),
+        "body3_y": ControlInfo(stiffness=20.0, damping=2.0, effort_limit=80.0),
+        "body3_z": ControlInfo(stiffness=40.0, damping=4.0, effort_limit=60.0),
+        "hinge1": ControlInfo(stiffness=50.0, damping=5.0, effort_limit=25.0),
+        "hinge4": ControlInfo(stiffness=100.0, damping=10.0, effort_limit=10.0),
     }
     default_control.update(control_overrides)
     return SimpleNamespace(
@@ -175,20 +181,22 @@ def test_make_pd_action_config_builds_normalized_action_config_from_robot_data()
         action_scale=1.5,
     )
 
-    assert config["fn"] is normalized_pd_fixed_gains_action
-    assert config["action_transform"] == "clamp"
-    assert config["clamp_value"] == 0.2
+    assert config.fn is normalized_pd_fixed_gains_action
+    assert config.params["action_transform"] == "clamp"
+    assert config.params["clamp_value"] == 0.2
     assert torch.allclose(
-        config["pd_action_offset"], torch.tensor([0.05, 0.0, 0.0, 0.0, 0.7])
+        config.params["pd_action_offset"], torch.tensor([0.05, 0.0, 0.0, 0.0, 0.7])
     )
     assert torch.allclose(
-        config["pd_action_scale"],
+        config.params["pd_action_scale"],
         torch.tensor([1.05, torch.pi, torch.pi, torch.pi, 1.5]),
     )
     assert torch.equal(
-        config["stiffness"], torch.tensor([10.0, 20.0, 40.0, 50.0, 100.0])
+        config.params["stiffness"], torch.tensor([10.0, 20.0, 40.0, 50.0, 100.0])
     )
-    assert torch.equal(config["damping"], torch.tensor([1.0, 2.0, 4.0, 5.0, 10.0]))
+    assert torch.equal(
+        config.params["damping"], torch.tensor([1.0, 2.0, 4.0, 5.0, 10.0])
+    )
 
 
 def test_make_bm_pd_action_config_uses_default_pose_and_quarter_effort_scale():
@@ -196,24 +204,29 @@ def test_make_bm_pd_action_config_uses_default_pose_and_quarter_effort_scale():
 
     config = make_bm_pd_action_config(robot_config)
 
-    assert config["fn"] is bm_pd_action
-    assert torch.equal(config["pd_action_offset"], robot_config.default_dof_pos)
-    _assert_no_storage_alias(config["pd_action_offset"], robot_config.default_dof_pos)
+    assert config.fn is bm_pd_action
+    assert torch.equal(config.params["pd_action_offset"], robot_config.default_dof_pos)
+    _assert_no_storage_alias(
+        config.params["pd_action_offset"], robot_config.default_dof_pos
+    )
     assert torch.allclose(
-        config["action_scale"], torch.tensor([2.5, 1.0, 0.375, 0.125, 0.025])
+        config.params["action_scale"], torch.tensor([2.5, 1.0, 0.375, 0.125, 0.025])
     )
     assert torch.equal(
-        config["stiffness"], torch.tensor([10.0, 20.0, 40.0, 50.0, 100.0])
+        config.params["stiffness"], torch.tensor([10.0, 20.0, 40.0, 50.0, 100.0])
     )
-    assert torch.equal(config["damping"], torch.tensor([1.0, 2.0, 4.0, 5.0, 10.0]))
+    assert torch.equal(
+        config.params["damping"], torch.tensor([1.0, 2.0, 4.0, 5.0, 10.0])
+    )
 
 
 def test_bm_unit_action_produces_quarter_effort_at_default_pose():
     robot = _mixed_dof_robot_config()
     config = make_bm_pd_action_config(robot)
-    fn = config.pop("fn")
-    result = fn(torch.ones(2, 5), **config)
-    torque = config["stiffness"] * (result["processed_action"] - robot.default_dof_pos)
+    result = config.apply(torch.ones(2, 5))
+    torque = config.params["stiffness"] * (
+        result["processed_action"] - robot.default_dof_pos
+    )
     expected = 0.25 * torch.tensor([100.0, 80.0, 60.0, 25.0, 10.0])
     torch.testing.assert_close(torque, expected.expand_as(torque))
 
@@ -222,20 +235,31 @@ def test_bm_recipe_penalizes_raw_action_rate_with_unchanged_weight():
     from argparse import Namespace
 
     from examples.experiments.mimic.mlp_bm_l2c2 import env_config
-    from protomotions.envs.rewards import compute_action_rate_l2
+    from protomotions.envs.rewards.regularization import compute_action_rate_l2
+    from protomotions.robot_configs.g1 import G1RobotConfig
 
-    cfg = env_config(_mixed_dof_robot_config(), Namespace())
+    # The recipe declares physical sensors and therefore needs a real rig;
+    # the mixed-DoF stub above only exercises action-processing math.
+    robot = G1RobotConfig()
+    cfg = env_config(robot, Namespace())
     reward = cfg.reward_components["action_rate"]
     assert reward.compute_func is compute_action_rate_l2
     assert {key: str(path) for key, path in reward.dynamic_vars.items()} == {
         "raw_action": "current_action",
         "previous_raw_action": "previous_action",
     }
-    assert reward.static_params["weight"] == -0.1
-    assert cfg.num_state_history_steps >= 1
+    assert reward.meta.weight == -0.1
+    assert history_depth(bound_components(cfg, robot)) >= 1
     torch.testing.assert_close(
-        cfg.action_config["action_scale"],
-        torch.tensor([2.5, 1.0, 0.375, 0.125, 0.025]),
+        cfg.action_config.params["action_scale"],
+        torch.tensor(
+            [
+                0.25
+                * robot.control.control_info[name].effort_limit
+                / robot.control.control_info[name].stiffness
+                for name in robot.kinematic_info.dof_names
+            ]
+        ),
     )
 
 
@@ -244,16 +268,22 @@ def test_make_passthrough_pd_action_config_builds_fixed_gain_config_only():
 
     config = make_passthrough_pd_action_config(robot_config)
 
-    assert config["fn"] is passthrough_pd_action
+    assert config.fn is passthrough_pd_action
     assert torch.equal(
-        config["stiffness"], torch.tensor([10.0, 20.0, 40.0, 50.0, 100.0])
+        config.params["stiffness"], torch.tensor([10.0, 20.0, 40.0, 50.0, 100.0])
     )
-    assert torch.equal(config["damping"], torch.tensor([1.0, 2.0, 4.0, 5.0, 10.0]))
+    assert torch.equal(
+        config.params["damping"], torch.tensor([1.0, 2.0, 4.0, 5.0, 10.0])
+    )
 
 
 @pytest.mark.parametrize(
     "config_factory",
-    [make_pd_action_config, make_bm_pd_action_config, make_passthrough_pd_action_config],
+    [
+        make_pd_action_config,
+        make_bm_pd_action_config,
+        make_passthrough_pd_action_config,
+    ],
 )
 def test_action_config_helpers_reject_missing_joint_control_info(config_factory):
     robot_config = _mixed_dof_robot_config()
@@ -265,8 +295,86 @@ def test_action_config_helpers_reject_missing_joint_control_info(config_factory)
 
 def test_make_bm_pd_action_config_rejects_zero_stiffness_before_dividing():
     robot_config = _mixed_dof_robot_config(
-        hinge1=SimpleNamespace(stiffness=0.0, damping=5.0, effort_limit=25.0)
+        hinge1=ControlInfo(stiffness=0.0, damping=5.0, effort_limit=25.0)
     )
 
     with pytest.raises(ValueError, match="stiffness must be positive"):
         make_bm_pd_action_config(robot_config)
+
+
+def test_make_helpers_apply_matches_a_direct_function_call():
+    """apply() runs the bound function on the parameters, like the old dict call."""
+    robot = _mixed_dof_robot_config()
+    action = torch.tensor([[-1.0, 0.5, 2.0, -0.5, 1.0], [0.0, 1.0, -1.0, 0.5, -2.0]])
+    for config in (
+        make_pd_action_config(robot),
+        make_bm_pd_action_config(robot),
+        make_passthrough_pd_action_config(robot),
+    ):
+        got = config.apply(action)
+        want = config.fn(action=action, **config.params)
+        for key in ("processed_action", "stiffness_targets", "damping_targets"):
+            torch.testing.assert_close(got[key], want[key])
+
+
+_module_lambda = lambda action: {  # noqa: E731
+    "processed_action": action,
+    "stiffness_targets": action,
+    "damping_targets": action,
+}
+
+
+class _CallableAction:
+    def __call__(self, action):
+        return {
+            "processed_action": action,
+            "stiffness_targets": action,
+            "damping_targets": action,
+        }
+
+
+def test_action_config_refuses_opaque_functions_and_bad_params():
+    import functools
+
+    with pytest.raises(TypeError, match="plain module-level function"):
+        ActionConfig(fn=lambda action: {"processed_action": action}, params={})
+    # A module-level lambda has __qualname__ == __name__ == "<lambda>", so the
+    # dotted-name check alone would let it through.
+    with pytest.raises(TypeError, match="plain module-level function"):
+        ActionConfig(fn=_module_lambda, params={})
+    # A callable object has neither __name__ nor __qualname__ -> TypeError, not
+    # AttributeError.
+    with pytest.raises(TypeError, match="plain module-level function"):
+        ActionConfig(fn=_CallableAction(), params={})
+    with pytest.raises(TypeError, match="plain module-level function"):
+        ActionConfig(fn=functools.partial(bm_pd_action), params={})
+    with pytest.raises(ValueError, match="has no parameter 'nope'"):
+        ActionConfig(fn=passthrough_pd_action, params={"nope": 1})
+    with pytest.raises(ValueError, match="is missing 'stiffness'"):
+        ActionConfig(fn=passthrough_pd_action, params={"damping": torch.ones(2)})
+    with pytest.raises(ValueError, match="must not contain 'action'"):
+        ActionConfig(
+            fn=passthrough_pd_action,
+            params={
+                "action": torch.ones(2),
+                "stiffness": torch.ones(2),
+                "damping": torch.ones(2),
+            },
+        )
+
+
+def test_action_config_tensors_constants_to_and_num_actions():
+    robot = _mixed_dof_robot_config()
+    config = make_pd_action_config(robot)
+    assert set(config.tensors()) == {
+        "pd_action_offset",
+        "pd_action_scale",
+        "stiffness",
+        "damping",
+    }
+    assert set(config.constants()) == {"action_transform", "clamp_value"}
+    assert config.num_actions == 5
+    assert config.neutral_command().shape == (5,)
+    moved = config.to(torch.device("cpu"))
+    assert moved is not config
+    assert torch.equal(moved.params["stiffness"], config.params["stiffness"])

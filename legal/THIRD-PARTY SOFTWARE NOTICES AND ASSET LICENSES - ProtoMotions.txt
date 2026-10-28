@@ -38,7 +38,7 @@ terms before use.
    Applied to:
    - BeyondMimic-style tracking/deployment configuration and documentation,
      including examples/experiments/mimic/mlp_bm*.py,
-     deployment/export_bm_tracker_onnx.py, and related pretrained tracker
+     deployment/export_to_onnx.py, and related pretrained tracker
      package metadata.
 
    Copyright:

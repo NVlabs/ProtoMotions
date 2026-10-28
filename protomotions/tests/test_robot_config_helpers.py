@@ -3,15 +3,12 @@
 
 """Tests for robot config parsing and factory helpers."""
 
-import sys
-import types
 from types import SimpleNamespace
 
 import pytest
 import torch
 
 import protomotions.components.pose_lib as pose_lib
-import protomotions.robot_configs.base as robot_base
 from protomotions.robot_configs.base import (
     ControlConfig,
     ControlType,
@@ -20,6 +17,7 @@ from protomotions.robot_configs.base import (
     abstract_names_to_body_names,
 )
 from protomotions.robot_configs.factory import robot_config
+from protomotions.utils.config_schema import from_tree, to_tree
 
 
 def _names():
@@ -39,11 +37,16 @@ def _patch_pose_extractors(monkeypatch):
         dof_names=["left_knee_joint", "right_hip_joint", "spine_joint"],
         num_dofs=3,
     )
-    monkeypatch.setattr(pose_lib, "extract_kinematic_info", lambda mjcf_path: kinematic_info)
+    monkeypatch.setattr(
+        pose_lib, "extract_kinematic_info", lambda mjcf_path: kinematic_info
+    )
     monkeypatch.setattr(
         pose_lib,
         "extract_control_info",
-        lambda mjcf_path, override_control_info=None: {"path": mjcf_path, "override": override_control_info},
+        lambda mjcf_path, override_control_info=None, asset_default_joints=(): {
+            "path": mjcf_path,
+            "override": override_control_info,
+        },
     )
     return kinematic_info
 
@@ -54,6 +57,7 @@ def _robot(monkeypatch, **kwargs):
         "asset": RobotAssetConfig(asset_root="/assets", asset_file_name="robot.xml"),
         "common_naming_to_robot_body_names": _names(),
         "semantic_forward_axis_xy": [1.0, 0.0],
+        "control_hz": 50,
     }
     params.update(kwargs)
     return RobotConfig(**params)
@@ -69,26 +73,20 @@ def test_control_type_and_asset_validation():
         RobotAssetConfig(asset_file_name="robot.urdf")
 
 
-def test_control_config_converts_dict_overrides(monkeypatch):
-    class _ControlInfo:
-        @staticmethod
-        def from_dict(data):
-            return SimpleNamespace(converted=data)
+def test_control_config_refuses_dict_overrides():
+    """override_control_info values must be ControlInfo; a dict is refused (no from_dict)."""
+    from protomotions.components.pose_lib import ControlInfo
 
-    monkeypatch.setattr(robot_base, "ControlInfo", _ControlInfo)
+    config = ControlConfig(override_control_info={"joint": ControlInfo(stiffness=10.0)})
+    assert config.override_control_info["joint"].stiffness == 10.0
 
-    config = ControlConfig(
-        override_control_info={
-            "joint": {"stiffness": 10.0},
-            "ready": SimpleNamespace(value=1),
-        }
-    )
-
-    assert config.override_control_info["joint"].converted == {"stiffness": 10.0}
-    assert config.override_control_info["ready"].value == 1
+    with pytest.raises(TypeError, match="must be ControlInfo, not dict"):
+        ControlConfig(override_control_info={"joint": {"stiffness": 10.0}})
 
 
-def test_robot_config_post_init_resolves_anchor_defaults_and_abstract_body_names(monkeypatch):
+def test_robot_config_post_init_resolves_anchor_defaults_and_abstract_body_names(
+    monkeypatch,
+):
     config = _robot(
         monkeypatch,
         anchor_body_name="torso",
@@ -118,11 +116,108 @@ def test_robot_config_post_init_validates_anchor_and_default_dof_length(monkeypa
         _robot(monkeypatch, common_naming_to_robot_body_names={})
 
 
+def test_anchor_index_is_a_derived_property_that_rederives(monkeypatch):
+    config = _robot(monkeypatch, anchor_body_name="torso")
+    assert config.anchor_body_index == 1
+    assert config.resolved_anchor_body_name == "torso"
+
+    # Assigning the name re-derives the index and resolved name on the next read.
+    config.anchor_body_name = "head"
+    assert config.anchor_body_index == 2
+    assert config.resolved_anchor_body_name == "head"
+
+    config.anchor_body_name = None
+    assert config.anchor_body_index == 0
+    assert config.resolved_anchor_body_name == "root"
+
+    # An unknown name is refused when the index is read.
+    config.anchor_body_name = "missing"
+    with pytest.raises(ValueError, match="anchor_body_name 'missing' not found"):
+        _ = config.anchor_body_index
+
+
+def test_anchor_index_cannot_be_assigned_directly(monkeypatch):
+    config = _robot(monkeypatch, anchor_body_name="torso")
+    with pytest.raises(AttributeError):
+        config.anchor_body_index = 0
+
+
+def test_anchor_index_self_heals_without_a_cache(monkeypatch):
+    """A config unpickled from a pre-property bundle has no cache; it re-derives."""
+    config = _robot(monkeypatch, anchor_body_name="torso")
+    del config._anchor_cache  # a pre-D2 pickle has no _anchor_cache attribute
+    assert config.anchor_body_index == 1
+    assert config.resolved_anchor_body_name == "torso"
+
+
+def test_update_fields_rederives_the_anchor_and_refuses_derived_fields(monkeypatch):
+    config = _robot(monkeypatch, anchor_body_name="torso")
+    config.update_fields(anchor_body_name="head")
+    assert config.anchor_body_index == 2
+    config.update_fields(anchor_body_name=None)
+    assert config.anchor_body_index == 0
+
+    # The derived index is refused, naming the field it is derived from.
+    with pytest.raises(
+        ValueError, match=r"anchor_body_index is derived.*\(anchor_body_name\)"
+    ):
+        config.update_fields(anchor_body_index=2)
+
+    # The asset-derived init=False fields are refused too, naming the asset.
+    for key in ("kinematic_info", "number_of_actions"):
+        with pytest.raises(ValueError, match=rf"{key} is derived.*\(the asset\)"):
+            config.update_fields(**{key: 0})
+
+
+def test_body_indices_matches_abstract_expansion_and_refuses_bad_input(monkeypatch):
+    config = _robot(monkeypatch)
+    body_names = config.kinematic_info.body_names
+    for sel in (["root"], ["all"], ["all_left_foot_bodies"], ["torso", "head"]):
+        want = tuple(
+            body_names.index(b) for b in abstract_names_to_body_names(sel, config)
+        )
+        assert config.body_indices(*sel) == want
+
+    with pytest.raises(
+        ValueError, match="is neither a body of .* nor a semantic group"
+    ):
+        config.body_indices("nope")
+    with pytest.raises(ValueError, match="selected twice"):
+        config.body_indices("root", "root")
+
+
+def test_bodies_matching_returns_regex_matches_in_body_order(monkeypatch):
+    config = _robot(monkeypatch)
+    assert config.bodies_matching(".*_foot") == (3, 4)
+    assert config.bodies_matching("torso") == (1,)
+    with pytest.raises(ValueError, match="matches no body"):
+        config.bodies_matching("zzz")
+
+
+def test_body_indices_match_abstract_for_every_registered_robot():
+    """body_indices(...) equals indexing abstract_names_to_body_names, on real robots."""
+    from protomotions.robot_configs.factory import registered_robot_names
+
+    for name in registered_robot_names():
+        config = robot_config(name)
+        body_names = config.kinematic_info.body_names
+        selections = [["root"]] + [
+            [group] for group in config.common_naming_to_robot_body_names
+        ]
+        for sel in selections:
+            expanded = abstract_names_to_body_names(sel, config)
+            if len(expanded) != len(set(expanded)):
+                continue  # body_indices refuses a duplicate selection by design
+            want = tuple(body_names.index(b) for b in expanded)
+            assert config.body_indices(*sel) == want, (name, sel)
+
+
 def test_robot_config_requires_and_normalizes_semantic_forward_axis(monkeypatch):
     _patch_pose_extractors(monkeypatch)
     params = {
         "asset": RobotAssetConfig(asset_root="/assets", asset_file_name="robot.xml"),
         "common_naming_to_robot_body_names": _names(),
+        "control_hz": 50,
     }
 
     with pytest.raises(ValueError, match="semantic_forward_axis_xy") as exc_info:
@@ -135,6 +230,15 @@ def test_robot_config_requires_and_normalizes_semantic_forward_axis(monkeypatch)
 
     with pytest.raises(ValueError, match="non-zero 2D"):
         _robot(monkeypatch, semantic_forward_axis_xy=[0.0, 0.0])
+
+
+def test_a_saved_robot_subtree_without_the_forward_axis_fails_to_load(monkeypatch):
+    # No runtime fallback is left for a bundle that predates the field: from_tree
+    # rebuilds the dataclass through its constructor, which refuses None.
+    tree = to_tree(_robot(monkeypatch), where="robot")
+    del tree["semantic_forward_axis_xy"]
+    with pytest.raises(ValueError, match="must be declared explicitly"):
+        from_tree(tree, None, where="x:robot")
 
 
 def test_robot_config_update_fields_reprocesses_body_name_aliases(monkeypatch):
@@ -151,36 +255,23 @@ def test_abstract_names_to_body_names_handles_none_all_lists_and_literals(monkey
     config = _robot(monkeypatch)
 
     assert abstract_names_to_body_names(None, config) is None
-    assert abstract_names_to_body_names("all", config) == config.kinematic_info.body_names
+    assert (
+        abstract_names_to_body_names("all", config) == config.kinematic_info.body_names
+    )
     assert abstract_names_to_body_names("root", config) == ["root"]
     assert abstract_names_to_body_names("all_left_hand_bodies", config) == ["left_hand"]
-    assert abstract_names_to_body_names(["root", "custom"], config) == ["root", "custom"]
+    assert abstract_names_to_body_names(["root", "custom"], config) == [
+        "root",
+        "custom",
+    ]
 
 
-def test_robot_config_factory_dispatches_all_robot_names_and_applies_updates(monkeypatch):
-    class _FactoryConfig:
-        def __init__(self):
-            self.updates = {}
+def test_robot_config_builds_a_registered_robot_and_applies_updates():
+    """robot_config(name, **updates) builds the robot's one RobotConfig and applies updates.
 
-        def update_fields(self, **updates):
-            self.updates.update(updates)
-
-    for module_name, class_name in [
-        ("protomotions.robot_configs.smpl", "SmplRobotConfig"),
-        ("protomotions.robot_configs.smplx", "SMPLXRobotConfig"),
-        ("protomotions.robot_configs.amp", "AMPRobotConfig"),
-        ("protomotions.robot_configs.g1", "G1RobotConfig"),
-        ("protomotions.robot_configs.h1_2", "H1_2RobotConfig"),
-        ("protomotions.robot_configs.soma23", "Soma23RobotConfig"),
-    ]:
-        module = types.ModuleType(module_name)
-        setattr(module, class_name, _FactoryConfig)
-        monkeypatch.setitem(sys.modules, module_name, module)
-
-    for name in ["smpl", "smplx", "amp", "g1", "h1_2", "soma23"]:
-        config = robot_config(name, trackable_bodies_subset=["root"])
-        assert isinstance(config, _FactoryConfig)
-        assert config.updates == {"trackable_bodies_subset": ["root"]}
-
-    with pytest.raises(ValueError, match="Invalid robot name"):
-        robot_config("unknown")
+    The registry's name set, the unknown-name refusal and the one-direct-base
+    rule are covered in test_robot_facts_d1.py.
+    """
+    config = robot_config("g1", default_root_height=2.0)
+    assert type(config).__name__ == "G1RobotConfig"
+    assert config.default_root_height == 2.0

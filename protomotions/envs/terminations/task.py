@@ -1,116 +1,83 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Task-specific termination functions.
+"""Task-specific scalar termination kernels (path following, steering).
 
-Provides termination conditions for specific tasks:
-- Path following terminations
-- Steering terminations
+Each kernel is a scalar measurement; a recipe cuts it with a
+``TerminationRule(kernel, threshold, fail_above=...)`` and may place the same
+rule in the evaluator's failure components. There is no boolean check helper:
+a termination is one rule over a scalar kernel, shared with evaluation.
 """
 
 import torch
 from torch import Tensor
 
+from protomotions.envs.context_views import EnvContext
 
-@torch.jit.script
-def check_path_distance_term(
-    head_pos: Tensor,
-    target_pos: Tensor,
-    fail_dist: float,
-    progress_buf: Tensor,
+
+def path_distance(
+    head_pos: Tensor = EnvContext.path.head_pos,
+    target_pos: Tensor = EnvContext.path.tar_pos,
+    progress_buf: Tensor = EnvContext.progress_buf,
     min_progress: int = 10,
 ) -> Tensor:
-    """Check if agent deviated too far from target path position.
+    """3D distance from the head to the target path position, in metres.
 
-    Args:
-        head_pos: Agent head positions [num_envs, 3]
-        target_pos: Target path positions [num_envs, 3]
-        fail_dist: Maximum allowed distance from target
-        progress_buf: Episode progress counter [num_envs]
-        min_progress: Minimum steps before checking (avoid early termination)
-
-    Returns:
-        Boolean tensor [num_envs] indicating which agents deviated too far
+    Zero while ``progress_buf <= min_progress`` (the check is off early, as the
+    old ``progress_buf > min_progress`` gate was). ``TerminationRule(path_distance,
+    fail_dist)`` equals the old ``d**2 > fail_dist**2`` for nonnegative ``d``.
     """
-    tar_delta = target_pos - head_pos
-    tar_dist_sq = torch.sum(tar_delta * tar_delta, dim=-1)
-    tar_fail = tar_dist_sq > fail_dist * fail_dist
-
-    # Only check after minimum progress to avoid early termination
-    tar_fail = tar_fail & (progress_buf > min_progress)
-
-    return tar_fail
+    distance = (target_pos - head_pos).pow(2).sum(dim=-1).sqrt()
+    return torch.where(
+        progress_buf > min_progress, distance, torch.zeros_like(distance)
+    )
 
 
-@torch.jit.script
-def check_path_height_term(
-    head_pos: Tensor,
-    target_pos: Tensor,
-    fail_height_dist: float,
-    progress_buf: Tensor,
+def path_height_error(
+    head_pos: Tensor = EnvContext.path.head_pos,
+    target_pos: Tensor = EnvContext.path.tar_pos,
+    progress_buf: Tensor = EnvContext.progress_buf,
     min_progress: int = 10,
 ) -> Tensor:
-    """Check if agent height deviated too far from target path height.
-
-    Args:
-        head_pos: Agent head positions [num_envs, 3]
-        target_pos: Target path positions [num_envs, 3]
-        fail_height_dist: Maximum allowed height deviation
-        progress_buf: Episode progress counter [num_envs]
-        min_progress: Minimum steps before checking
-
-    Returns:
-        Boolean tensor [num_envs] indicating which agents deviated in height
-    """
-    tar_height = target_pos[..., 2]
-    height_delta = tar_height - head_pos[..., 2]
-    tar_height_dist_sq = height_delta * height_delta
-    tar_height_fail = tar_height_dist_sq > fail_height_dist * fail_height_dist
-
-    # Only check after minimum progress
-    tar_height_fail = tar_height_fail & (progress_buf > min_progress)
-
-    return tar_height_fail
+    """Absolute height (Z) deviation from the target path; zero early."""
+    height_error = (target_pos[..., 2] - head_pos[..., 2]).abs()
+    return torch.where(
+        progress_buf > min_progress, height_error, torch.zeros_like(height_error)
+    )
 
 
-# ==============================================================================
-# Steering Terminations / Evaluations
-# ==============================================================================
-
-
-@torch.jit.script
-def check_steering_velocity_error(
-    root_pos: Tensor,
-    prev_root_pos: Tensor,
-    tar_dir: Tensor,
-    tar_speed: Tensor,
-    dt: float,
-    speed_tolerance: float,
-    direction_tolerance: float,
+def steering_speed_error(
+    root_pos: Tensor = EnvContext.current.anchor_pos,
+    prev_root_pos: Tensor = EnvContext.steering.prev_root_pos,
+    tar_speed: Tensor = EnvContext.steering.tar_speed,
+    dt: float = EnvContext.dt,
 ) -> Tensor:
-    """Check if agent velocity deviates from target direction/speed.
+    """``|planar speed - target speed|``: the speed magnitude today's check compares.
 
-    Args:
-        root_pos: Current root positions [num_envs, 3].
-        prev_root_pos: Previous root positions [num_envs, 3].
-        tar_dir: Target direction (unit vector) [num_envs, 2].
-        tar_speed: Target speed [num_envs].
-        dt: Simulation timestep.
-        speed_tolerance: Acceptable speed difference (m/s).
-        direction_tolerance: Acceptable direction difference (dot product, 1.0 = perfect).
-
-    Returns:
-        Boolean tensor [num_envs] indicating which agents have unacceptable velocity.
+    The planar speed is ``|(root_pos - prev_root_pos)[:, :2] / dt|``; the velocity
+    projected onto ``tar_dir`` belongs to the steering reward, not this check.
     """
-    delta_pos = root_pos - prev_root_pos
-    vel_xy = delta_pos[:, :2] / dt
+    vel_xy = (root_pos - prev_root_pos)[:, :2] / dt
     speed = torch.norm(vel_xy, dim=-1)
+    return torch.abs(speed - tar_speed)
 
-    speed_err = torch.abs(speed - tar_speed)
-    speed_fail = speed_err > speed_tolerance
 
+def steering_direction_alignment(
+    root_pos: Tensor = EnvContext.current.anchor_pos,
+    prev_root_pos: Tensor = EnvContext.steering.prev_root_pos,
+    tar_dir: Tensor = EnvContext.steering.tar_dir,
+    dt: float = EnvContext.dt,
+) -> Tensor:
+    """Dot of the planar heading with the target direction.
+
+    ``1.0`` (a passing value for a ``fail_above=False`` rule) where the robot is
+    nearly stationary (``|v_xy| <= 0.1``), since today's guard only fails a moving
+    robot. ``TerminationRule(steering_speed_error, speed_tol)`` OR
+    ``TerminationRule(steering_direction_alignment, dir_tol, fail_above=False)``
+    equals the old steering boolean on every input.
+    """
+    vel_xy = (root_pos - prev_root_pos)[:, :2] / dt
+    speed = torch.norm(vel_xy, dim=-1)
     vel_dir = vel_xy / (speed.unsqueeze(-1) + 1e-6)
-    dir_dot = (vel_dir * tar_dir).sum(dim=-1)
-    dir_fail = (dir_dot < direction_tolerance) & (speed > 0.1)
-
-    return speed_fail | dir_fail
+    alignment = (vel_dir * tar_dir).sum(dim=-1)
+    return torch.where(speed > 0.1, alignment, torch.ones_like(alignment))

@@ -21,14 +21,3 @@ class DiscretePriorPEFTRLFTAMPAgent(AMPAgentMixin, DiscretePriorPEFTRLFTAgent):
                 "DiscretePriorPEFTRLFTAMPAgent requires config.model.critic."
             )
         super().__init__(fabric, env, config, root_dir=root_dir)
-
-    def _load_parameters_without_amp_component(
-        self,
-        state_dict,
-        load_training_state: bool = True,
-    ):
-        DiscretePriorPEFTRLFTAgent.load_parameters(
-            self,
-            state_dict,
-            load_training_state=load_training_state,
-        )

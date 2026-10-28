@@ -18,7 +18,6 @@ Key Functions:
 
 import torch
 from torch import nn, Tensor
-from protomotions.utils.hydra_replacement import get_class
 from protomotions.agents.base_agent.model import ProtoMotionsTensorDictModule
 from copy import copy
 from typing import List, Dict, Optional
@@ -27,6 +26,7 @@ from tensordict import TensorDict
 from protomotions.agents.utils.normalization import RunningMeanStd
 from protomotions.agents.common.config import (
     NormObsBaseConfig,
+    MaskedMeanConfig,
     ObsProcessorConfig,
     ModuleContainerConfig,
     ModuleOperationConfig,
@@ -234,6 +234,40 @@ class ObsProcessor(ProtoMotionsTensorDictModule):
         return tensordict
 
 
+class MaskedMean(ProtoMotionsTensorDictModule):
+    """Pool values [batch, frames, features] into [batch, features].
+
+    Masks may be [batch, frames] or [batch, frames, properties]. Any nonzero
+    property makes a frame visible. Empty or all-hidden sequences yield zero;
+    hidden values (including NaNs) and their gradients do not contribute.
+    """
+
+    def __init__(self, config: MaskedMeanConfig):
+        super().__init__()
+        if len(config.in_keys) != 2 or len(config.out_keys) != 1:
+            raise ValueError("MaskedMean requires values/mask inputs and one output")
+        self.config = config
+        self.in_keys = config.in_keys
+        self.out_keys = config.out_keys
+
+    def forward(self, tensordict: TensorDict, *args, **kwargs) -> TensorDict:
+        values, mask = (tensordict[key] for key in self.in_keys)
+        if (
+            values.ndim != 3
+            or mask.ndim not in (2, 3)
+            or mask.shape[:2] != values.shape[:2]
+        ):
+            raise ValueError(
+                "Expected values [batch, frames, features] and matching frame mask"
+            )
+        if mask.ndim == 2:
+            mask = mask.unsqueeze(-1)
+        visible = mask.bool().any(-1, keepdim=True)
+        total = values.masked_fill(~visible, 0).sum(1)
+        tensordict[self.out_keys[0]] = total / visible.sum(1).clamp_min(1)
+        return tensordict
+
+
 class ModuleContainer(ProtoMotionsTensorDictModule):
     """Generic container that runs a list of modules sequentially on a TensorDict.
 
@@ -266,7 +300,7 @@ class ModuleContainer(ProtoMotionsTensorDictModule):
         available_keys = set(self.config.in_keys)
 
         for i, model_cfg in enumerate(config.models):
-            model = get_class(model_cfg._target_)(config=model_cfg)
+            model = self._build_submodule(model_cfg)
             self.models.append(model)
 
             # Validate: each model's in_keys must be available

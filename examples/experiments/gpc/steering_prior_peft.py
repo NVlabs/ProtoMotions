@@ -10,13 +10,13 @@ from examples.experiments.gpc.prior_context import (
     nearest_surface_obs_params,
     peft_sampling_mode_kwargs,
 )
+from protomotions.envs.presets import tracking_playback
+from protomotions.utils.experiment_configs import ExperimentConfigs
 from protomotions.envs.base_env.config import EnvConfig
 from protomotions.robot_configs.base import RobotConfig
 from protomotions.simulator.base_simulator.config import SimulatorConfig
 
-PRIOR_CHECKPOINT = (
-    "data/pretrained_models/gpc_prior/soma_bones/inference_last.ckpt"
-)
+PRIOR_CHECKPOINT = "data/pretrained_models/gpc_prior/soma_bones/inference_last.ckpt"
 
 
 def additional_experiment_arguments(parser: argparse.ArgumentParser):
@@ -27,9 +27,7 @@ def additional_experiment_arguments(parser: argparse.ArgumentParser):
 def configure_robot_and_simulator(
     robot_cfg: RobotConfig, simulator_cfg: SimulatorConfig, args: argparse.Namespace
 ):
-    robot_cfg.update_fields(
-        contact_bodies=["all_left_foot_bodies", "all_right_foot_bodies"]
-    )
+    robot_cfg.update_fields(contact_bodies=None)
 
 
 def terrain_config(args: argparse.Namespace):
@@ -41,7 +39,7 @@ def terrain_config(args: argparse.Namespace):
 def scene_lib_config(args: argparse.Namespace):
     from protomotions.components.scene_lib import SceneLibConfig
 
-    scene_file = args.scenes_file if hasattr(args, "scenes_file") else None
+    scene_file = args.scenes_file
     return SceneLibConfig(scene_file=scene_file)
 
 
@@ -53,28 +51,40 @@ def motion_lib_config(args: argparse.Namespace):
 
 def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
     from protomotions.envs.action import make_pd_action_config
-    from protomotions.envs.component_factories import (
-        max_coords_obs_factory,
-        nearest_surface_obs_factory,
-        previous_actions_factory,
-        steering_obs_factory,
-        steering_reward_factory,
+    from protomotions.envs.obs.steering import compute_steering_obs
+    from protomotions.envs.obs.nearest_surface_obs import (
+        compute_nearest_surface_vectors,
     )
+    from protomotions.envs.mdp_component import MdpComponent
+    from protomotions.envs.obs.humanoid import (
+        compute_humanoid_max_coords_observations,
+    )
+    from protomotions.envs.obs.humanoid_historical import (
+        compute_historical_actions_from_state,
+    )
+    from protomotions.envs.rewards.meta import RewardMeta
+    from protomotions.envs.rewards.task import compute_heading_velocity_rew
     from protomotions.envs.control.steering_control import SteeringControlConfig
     from protomotions.envs.motion_manager.config import MimicMotionManagerConfig
 
     observation_components = {
-        "max_coords_obs": max_coords_obs_factory(),
-        "previous_actions": previous_actions_factory(),
-        "task_obs": steering_obs_factory(),
-        "nearest_surface": nearest_surface_obs_factory(
-            **nearest_surface_obs_params(robot_cfg),
+        "max_coords_obs": MdpComponent.from_kernel(
+            compute_humanoid_max_coords_observations
+        ),
+        "previous_actions": MdpComponent.from_kernel(
+            compute_historical_actions_from_state, history_steps=1
+        ),
+        "task_obs": MdpComponent.from_kernel(compute_steering_obs),
+        "nearest_surface": MdpComponent.from_kernel(
+            compute_nearest_surface_vectors,
+            **nearest_surface_obs_params(
+                robot_cfg, with_objects=args.scenes_file is not None
+            ),
         ),
     }
 
     return EnvConfig(
         ref_contact_smooth_window=7,
-        num_state_history_steps=1,
         max_episode_length=256,
         reset_grace_period=5,
         ref_respawn_offset=0.0,
@@ -93,7 +103,10 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
         },
         observation_components=observation_components,
         reward_components={
-            "steering": steering_reward_factory(weight=1.0),
+            "steering": MdpComponent.from_kernel(
+                compute_heading_velocity_rew,
+                meta=RewardMeta(weight=1.0),
+            ),
         },
         action_config=make_pd_action_config(robot_cfg),
         motion_manager=MimicMotionManagerConfig(
@@ -120,7 +133,7 @@ def agent_config(
         DiscretePriorPEFTRLFTModelConfig,
     )
 
-    prior_checkpoint = getattr(args, "prior_checkpoint", PRIOR_CHECKPOINT)
+    prior_checkpoint = args.prior_checkpoint
     actor_in_keys = ["task_obs"]
 
     return DiscretePriorPEFTRLFTAgentConfig(
@@ -150,7 +163,9 @@ def agent_config(
                 normalize_obs=True,
                 norm_clamp_value=5,
                 num_out=1,
-                layers=[MLPLayerConfig(units=1024, activation="relu") for _ in range(4)],
+                layers=[
+                    MLPLayerConfig(units=1024, activation="relu") for _ in range(4)
+                ],
             ),
             actor_optimizer=OptimizerConfig(_target_="torch.optim.AdamW", lr=1e-4),
             critic_optimizer=OptimizerConfig(_target_="torch.optim.AdamW", lr=1e-4),
@@ -167,16 +182,7 @@ def agent_config(
 
 
 def apply_inference_overrides(
-    robot_cfg,
-    simulator_cfg,
-    env_cfg,
-    agent_cfg,
-    terrain_cfg,
-    motion_lib_cfg,
-    scene_lib_cfg,
-    args,
-):
-    env_cfg.termination_components = {}
-    env_cfg.max_episode_length = 100000
-    env_cfg.motion_manager.resample_on_reset = True
-    env_cfg.motion_manager.init_start_prob = 1.0
+    configs: ExperimentConfigs, args: argparse.Namespace
+) -> None:
+    """Play each clip through to its end for evaluation."""
+    tracking_playback(configs.env)

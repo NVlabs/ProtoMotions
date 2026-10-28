@@ -85,7 +85,7 @@ class DiscreteAutoregressiveLatentPriorModel(BaseModel):
                 "to declare at least one non-token input key."
             )
 
-        self.in_keys = list(dict.fromkeys(self.get_inference_in_keys()))
+        self.in_keys = list(dict.fromkeys(self.deployable_in_keys))
         self.out_keys = ["action", "mean_action", "neglogp"]
 
     def compute_model_loss(
@@ -117,7 +117,8 @@ class DiscreteAutoregressiveLatentPriorModel(BaseModel):
     def optimization_module(self) -> nn.Module:
         return self.prior
 
-    def get_inference_in_keys(self) -> list:
+    @property
+    def deployable_in_keys(self) -> list:
         decoder_in_keys = [
             key
             for key in self.latent_decoder.decoder.in_keys

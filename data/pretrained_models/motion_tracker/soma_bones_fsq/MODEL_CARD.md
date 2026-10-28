@@ -47,18 +47,16 @@ poses. Its actor quantizes a latent representation into FSQ codes and decodes
 them into 66 joint actions.
 
 Exact codebook levels, scalar grouping, normalization statistics, target
-horizons, and dimensions are stored in `resolved_configs.pt`.
+horizons, and dimensions are stored in `resolved_configs.json`.
 
 ## Artifacts
 
-- `inference_last.ckpt`: inference-oriented tracker artifact used by the public
+- `inference_last.ckpt`: model-only inference tracker artifact used by the public
   GPC configuration.
-- `last.ckpt`: full training/resume checkpoint.
-- `config.yaml`: concise artifact metadata.
-- `resolved_configs.pt`: serialized training configuration.
-- `resolved_configs_inference.pt`: serialized inference configuration.
-- `resolved_configs.yaml` and `resolved_configs_inference.yaml`: readable
-  configuration sidecars.
+- `experiment_config.py`: the tracker experiment wiring.
+- `config.yaml`: the portable launcher arguments that regenerate the bundle.
+- `resolved_configs.json`: the self-contained v2 runtime configuration bundle.
+- `provenance.json`: checkpoint provenance (sha256, byte count, tensor count).
 
 ## Runtime Support
 

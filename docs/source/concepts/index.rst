@@ -8,7 +8,7 @@ Overview
 
 ProtoMotions is designed to support many combinations:
 
-* **Simulators**: IsaacGym, IsaacLab, Newton, Genesis
+* **Simulators**: IsaacGym, IsaacLab, Newton, MuJoCo
 * **Robots**: SMPL, G1, H1, custom morphologies
 * **Algorithms**: PPO, AMP, ASE, MaskedMimic
 * **Environments**: Mimic, Steering, PathFollower

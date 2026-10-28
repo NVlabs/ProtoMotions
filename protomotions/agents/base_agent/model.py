@@ -19,6 +19,7 @@ from tensordict import TensorDict
 from tensordict.nn import TensorDictModuleBase
 from protomotions.agents.base_agent.config import BaseModelConfig
 from abc import abstractmethod
+from protomotions.utils.hydra_replacement import get_class
 
 
 @dataclass(frozen=True)
@@ -65,6 +66,11 @@ class ProtoMotionsTensorDictModule(TensorDictModuleBase):
     modules, and models with rollout-local latent state.
     """
 
+    @staticmethod
+    def _build_submodule(config) -> torch.nn.Module:
+        """Construct a configured child; its caller defines the required interface."""
+        return get_class(config._target_)(config=config)
+
     def forward(
         self,
         tensordict: TensorDict,
@@ -76,6 +82,26 @@ class ProtoMotionsTensorDictModule(TensorDictModuleBase):
         diagnostics can honor it; stateless modules can ignore it.
         """
         raise NotImplementedError
+
+    def forward_deployable(self, tensordict: TensorDict) -> TensorDict:
+        """The deployable forward: by default the same graph the policy runs.
+
+        A policy family whose exported pass differs from its training forward (an
+        actor that samples exploration noise) overrides this; everything else
+        inherits it, so the exporter, evaluator and teacher call one name without
+        an isinstance check on the policy class.
+        """
+        return self(tensordict)
+
+    @property
+    def deployable_in_keys(self) -> list:
+        """The input keys the deployable graph reads; ``in_keys`` by default."""
+        return list(self.in_keys)
+
+    @property
+    def deployable_action_key(self) -> str:
+        """The output key the host drives the robot from."""
+        return "mean_action" if "mean_action" in self.out_keys else "action"
 
     def _proto_children(self) -> list["ProtoMotionsTensorDictModule"]:
         """Nearest child modules that participate in the ProtoMotions contract."""
@@ -146,12 +172,6 @@ class ProtoMotionsTensorDictModule(TensorDictModuleBase):
                 device=device,
             )
 
-    def init_rollout_state(self, num_envs: int, device) -> None:
-        """Allocate declared rollout-context buffers for this module tree."""
-        self._init_own_rollout_state(num_envs=num_envs, device=device)
-        for child in self._proto_children():
-            child.init_rollout_state(num_envs=num_envs, device=device)
-
     def _init_own_rollout_state(self, num_envs: int, device) -> None:
         """Allocate this module's own declared rollout-context buffers."""
         for key, spec in self.rollout_state_specs().items():
@@ -160,12 +180,6 @@ class ProtoMotionsTensorDictModule(TensorDictModuleBase):
                 setattr(self, key, state)
             else:
                 self.register_buffer(key, state, persistent=False)
-
-    def reset_rollout_state(self, env_ids=None) -> None:
-        """Reseed selected rows for this module tree's rollout context."""
-        self._reset_own_rollout_state(env_ids=env_ids)
-        for child in self._proto_children():
-            child.reset_rollout_state(env_ids=env_ids)
 
     def save_rollout_context(self) -> dict[str, torch.Tensor]:
         """Copy every rollout-context buffer in this module tree.
@@ -249,14 +263,29 @@ class ProtoMotionsTensorDictModule(TensorDictModuleBase):
 
     def rollout_context_keys(self) -> list:
         """Module-owned state that must be stored from rollout and replayed."""
-        keys = list(self.rollout_state_specs().keys())
-        for child in self._proto_children():
-            keys.extend(child.rollout_context_keys())
-        return list(dict.fromkeys(keys))
+        return list(self._rollout_state_specs_recursive())
 
     def experience_buffer_keys(self) -> list:
         """Keys produced during rollout that the experience buffer must store."""
         return list(dict.fromkeys(self.out_keys + self.rollout_context_keys()))
+
+    def build_training_targets(self, rollout: dict) -> dict:
+        """Derive model-owned targets from [time, env, ...] rollout tensors.
+
+        BaseAgent calls this once per rollout under no_grad, after agent
+        preprocessing and before flattening/shuffling destroys time adjacency.
+        Inputs are borrowed experience-buffer views: do not mutate them. Return
+        additional [time, env, ...] targets/masks for compute_model_loss; the
+        agent owns batching, not their meaning. The default gathers child
+        targets; overrides should call super() to preserve those results.
+        """
+        targets = {}
+        for child in self._proto_children():
+            for key, value in child.build_training_targets(rollout).items():
+                if key in targets:
+                    raise ValueError(f"Duplicate model training target: {key}")
+                targets[key] = value
+        return targets
 
     def compute_model_loss(
         self,
@@ -315,6 +344,10 @@ class BaseModel(ProtoMotionsTensorDictModule):
     def materialize_from_state_dict(self, state_dict: dict) -> None:
         """Create lazily-owned modules needed for strict state-dict loading."""
         pass
+
+    def optional_checkpoint_modules(self) -> tuple[str, ...]:
+        """Networks allowed to keep initialization when wholly absent on load."""
+        return ()
 
     def materialize(self, tensordict: TensorDict) -> TensorDict:
         """Run the setup-time pass used to create lazy module parameters."""

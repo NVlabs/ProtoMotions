@@ -1,643 +1,840 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Masked mimic control component for sparse conditioning tasks.
+"""MaskedMimic global targets with coherent episode-level conditioning plans.
 
-This component extends MimicControl with:
-- Target pose masks (which poses are visible)
-- Target body masks (which bodies are conditioned)
-- Time-based pose visibility with beta distribution sampling
-- Color-coded visualization markers (blue/yellow/red by time-to-target)
+The sampler of the training prompt: per episode, a target-stream plan (slot
+offsets, frame visibility, body/property masks) for the global stream and,
+when configured, the local stream, the anchor sub-masks, the style plan and
+the velocity-command visibility, all per-env state in the control's registry
+(the streams in child registries) and all drawn on the control stage's
+generator. Publishes the parent's ``mimic.*`` names and the
+``masked_mimic.*`` names of the enabled modalities.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Dict, List, Optional, TYPE_CHECKING
+import math
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 from torch import Tensor
 
-from protomotions.envs.context_views import EnvContext, MaskedMimicContext
+from protomotions.envs.base_env.episode_tensors import EpisodeTensors
+from protomotions.envs.control.masked_mimic_prompt import GoalCanvas
 from protomotions.envs.control.mimic_control import MimicControl, MimicControlConfig
+from protomotions.envs.control.task_inputs import TaskInputs
+from protomotions.envs.obs.masked_mimic import (
+    STYLE_POSE_FEATURES_PER_BODY,
+    STYLE_VELOCITY_FEATURES_PER_BODY,
+    apply_style_condition_masks,
+    compute_style_pose_samples,
+    compute_style_velocity_samples,
+)
 from protomotions.simulator.base_simulator.config import (
     MarkerConfig,
-    VisualizationMarkerConfig,
     MarkerState,
+    VisualizationMarkerConfig,
 )
-
-if TYPE_CHECKING:
-    from protomotions.envs.base_env.env import BaseEnv
+from protomotions.simulator.base_simulator.simulator_state import RobotState
 
 
 @dataclass
 class FixedBodyCondition:
     """Fixed conditioning for a specific body."""
+
     body_name: str
     constraint_state: int  # 0=translation only, 1=both, 2=rotation only
 
 
 @dataclass
-class MaskedMimicControlConfig(MimicControlConfig):
-    """Configuration for masked mimic control component.
-    
-    Extends MimicControlConfig with masking parameters.
-    
-    Attributes:
-        num_masked_future_steps: Number of future pose samples for masked mimic conditioning.
-        time_alpha: Alpha parameter for beta distribution time sampling.
-        time_beta: Beta parameter for beta distribution time sampling.
-        repeat_mask_probability: Probability of repeating previous body mask.
-        force_max_conditioned_bodies_prob: Probability of conditioning on all bodies.
-        force_small_num_conditioned_bodies_prob: Probability of using small number of bodies.
-        visible_target_pose_prob: Probability of making a target pose visible.
-        fixed_conditioning: Optional list of fixed body conditioning entries.
-        fully_hidden_pose_prob: Probability that a pose is fully hidden (all bodies masked out).
-    
-    Note: The inherited num_future_steps from MimicControlConfig controls the base mimic
-    reference data (mimic_ref_pos, etc.). num_masked_future_steps is for masked mimic specific obs.
+class MaskedMimicVelocityCommandConfig:
+    """Episode visibility and rolling reference lookahead for an XY command."""
+
+    horizon_seconds: float = 0.5
+    probability: float = 0.5
+
+    def __post_init__(self):
+        self.validate()
+
+    def validate(self):
+        if not math.isfinite(self.horizon_seconds) or self.horizon_seconds <= 0:
+            raise ValueError("velocity horizon_seconds must be finite and positive")
+        if not 0 <= self.probability <= 1:
+            raise ValueError("velocity probability must be in [0, 1]")
+
+
+@dataclass
+class MaskedMimicStyleConfig:
+    """Untimed reference samples: fixed episode offsets, sliding future window.
+
+    Each visible frame selects body translation/rotation and optionally dynamics.
+    The default distribution hides style in half the episodes and spreads the
+    remaining probability evenly across one through five visible frames.
     """
+
+    window_seconds: float = 2.0
+    num_frames: int = 5
+    near_time_bias_power: float = 2.0
+    velocity_probability: float = 0.5
+    visible_frame_count_probabilities: Optional[Tuple[float, ...]] = None
+
+    def __post_init__(self):
+        if (
+            self.visible_frame_count_probabilities is None
+            and isinstance(self.num_frames, int)
+            and self.num_frames > 0
+        ):
+            self.visible_frame_count_probabilities = (0.5,) + (
+                0.5 / self.num_frames,
+            ) * self.num_frames
+        self.validate()
+
+    def validate(self):
+        if type(self.num_frames) is not int or not 1 <= self.num_frames <= 5:
+            raise ValueError("style num_frames must be an integer in [1, 5]")
+        if not math.isfinite(self.window_seconds) or self.window_seconds <= 0:
+            raise ValueError("style window_seconds must be finite and positive")
+        if (
+            not math.isfinite(self.near_time_bias_power)
+            or self.near_time_bias_power < 1
+        ):
+            raise ValueError("style near_time_bias_power must be finite and at least 1")
+        if not 0 <= self.velocity_probability <= 1:
+            raise ValueError("style velocity_probability must be in [0, 1]")
+        weights = self.visible_frame_count_probabilities
+        if (
+            len(weights) != self.num_frames + 1
+            or any(not math.isfinite(p) or p < 0 for p in weights)
+            or not math.isfinite(sum(weights))
+            or sum(weights) <= 0
+        ):
+            raise ValueError(
+                "style count weights require finite nonnegative mass for counts 0 through num_frames"
+            )
+
+
+@dataclass
+class MaskedMimicControlConfig(MimicControlConfig):
+    """Sample one dense/intermediate/sparse global prompt per episode.
+
+    Body/property masks and frame visibility remain fixed until reset. Time
+    remaining counts down until the first target time is reached, even if that
+    target is hidden. All target times then move forward using the same offsets
+    from the current motion time.
+    Inherited future_steps controls the separate, full mimic reference stream.
+    """
+
     _target_: str = "protomotions.envs.control.masked_mimic_control.MaskedMimicControl"
-    
+
     num_masked_future_steps: int = 5
-    
-    # Time sampling (beta distribution)
-    time_alpha: float = 2.0
-    time_beta: float = 5.0
-    
-    # Joint masking
-    repeat_mask_probability: float = 0.8
-    force_max_conditioned_bodies_prob: float = 0.1
-    force_small_num_conditioned_bodies_prob: float = 0.1
+    # Relative weights for dense, intermediate and sparse episodes.
+    target_profile_probabilities: Tuple[float, float, float] = (0.2, 0.6, 0.2)
+    target_gap_min_seconds: float = 0.1
+    target_gap_max_seconds: float = 2.0
+    # Frame visibility for intermediate episodes; all-hidden prompts are valid.
     visible_target_pose_prob: float = 0.8
-    
-    # Fixed conditioning (optional)
+    # Overrides body/property selection, not profile spacing or frame visibility.
     fixed_conditioning: Optional[List[FixedBodyCondition]] = None
-    
-    # Probability that a pose is fully hidden (all bodies masked out)
-    fully_hidden_pose_prob: float = 0.1
+    # Independent episode-level enables; defaults preserve global-only prompts.
+    sparse_target_condition_probability: float = 1.0
+    local_target_condition_probability: float = 0.0
+    anchor_pose_submasking: bool = False
+    style: Optional[MaskedMimicStyleConfig] = None
+    velocity_command: Optional[MaskedMimicVelocityCommandConfig] = None
+
+    @property
+    def local_stream(self) -> bool:
+        """Whether episodes may carry local (anchor-relative) targets: the one
+        read of ``local_target_condition_probability > 0``, the switch behind
+        the ``requires="local_stream"`` names and the goal canvas."""
+        return self.local_target_condition_probability > 0
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.validate()
+
+    def validate(self) -> None:
+        if self.velocity_command is not None:
+            self.velocity_command.validate()
+        if self.style is not None:
+            self.style.validate()
+        probabilities = self.target_profile_probabilities
+        if (
+            len(probabilities) != 3
+            or any(not math.isfinite(p) or p < 0 for p in probabilities)
+            or not math.isfinite(sum(probabilities))
+            or sum(probabilities) <= 0
+        ):
+            raise ValueError(
+                "target_profile_probabilities requires three finite nonnegative "
+                "weights with a finite positive sum"
+            )
+        if not (
+            math.isfinite(self.target_gap_min_seconds)
+            and math.isfinite(self.target_gap_max_seconds)
+            and 0 < self.target_gap_min_seconds <= self.target_gap_max_seconds
+        ):
+            raise ValueError(
+                "Require finite 0 < target_gap_min_seconds <= target_gap_max_seconds"
+            )
+        if self.num_masked_future_steps < 1:
+            raise ValueError("num_masked_future_steps must be positive")
+        if not 0 <= self.visible_target_pose_prob <= 1:
+            raise ValueError("visible_target_pose_prob must be in [0, 1]")
+        if not 0 <= self.sparse_target_condition_probability <= 1:
+            raise ValueError("sparse_target_condition_probability must be in [0, 1]")
+        if not 0 <= self.local_target_condition_probability <= 1:
+            raise ValueError("local_target_condition_probability must be in [0, 1]")
+
+
+class TargetStream:
+    """Episode-fixed lookahead plan for one timed target stream.
+
+    Offsets, frame visibility and body/property masks stay at their slot
+    indices until reset. Times are absolute clip timestamps rebased from the
+    current motion time whenever the first slot is reached, so a later visible
+    goal advances before its own deadline. Slots do not shift like a rolling
+    queue: the episode's sampled offsets and masks are reused at each rebase.
+    """
+
+    def __init__(
+        self, state: EpisodeTensors, num_steps: int, num_bodies: int, probability: float
+    ):
+        self.probability = probability
+        # The plan's four per-env tensors, allocated through the control's
+        # child registry (row reset, snapshot and restore reach them).
+        self.times = state.add("times", (num_steps,), torch.float, 0.0)
+        self.offsets = state.add("offsets", (num_steps,), torch.float, 0.0)
+        self.frame_masks = state.add("frame_masks", (num_steps,), torch.bool, False)
+        self.body_masks = state.add(
+            "body_masks", (num_steps * num_bodies * 2,), torch.bool, False
+        )
+
+    def write_plan(self, env_ids: Tensor, offsets: Tensor, body_masks: Tensor) -> None:
+        """Store offsets [E, S] and visibility [E, S, B, 2] for the reset envs."""
+        self.offsets[env_ids] = offsets
+        self.body_masks[env_ids] = body_masks.flatten(1)
+        self.frame_masks[env_ids] = body_masks.flatten(2).any(-1)
+
+    def rebase_times(
+        self, env_ids: Tensor, motion_times: Tensor, motion_lengths: Tensor
+    ) -> None:
+        self.times[env_ids] = torch.minimum(
+            motion_times[:, None] + self.offsets[env_ids], motion_lengths[:, None]
+        )
+
+    def due(self, motion_times: Tensor) -> Tensor:
+        """The envs whose first slot's time is reached."""
+        return torch.nonzero(motion_times >= self.times[:, 0]).squeeze(-1)
 
 
 class MaskedMimicControl(MimicControl):
-    """Control component for masked mimic tasks.
-    
-    Extends MimicControl with sparse conditioning state where only a subset of 
-    bodies and poses are visible to the agent at each timestep. Handles time 
-    sampling with beta distribution and body mask sampling with configurable 
-    probabilities.
-    
-    Attributes:
-        masked_mimic_target_poses_masks: Which future poses are visible [num_envs, num_future_steps].
-        masked_mimic_target_bodies_masks: Which bodies are visible [num_envs, num_future_steps * num_bodies * 2].
-        target_times: Target times for future poses [num_envs, num_future_steps].
-        conditionable_body_ids: IDs of bodies that can be conditioned on.
-    """
-    
+    """Own a stable body/property mask and reference lookahead plan per episode."""
+
     config: MaskedMimicControlConfig
-    
-    def __init__(self, config: MaskedMimicControlConfig, env: "BaseEnv"):
-        """Initialize masked mimic control component.
-        
-        Args:
-            config: Component configuration.
-            env: Parent environment instance.
-        """
-        super().__init__(config, env)
-        
-        # Get conditionable body IDs from robot config
-        self._all_body_names = self.env.robot_config.kinematic_info.body_names
-        self.conditionable_body_ids = torch.tensor(
-            [
-                self._all_body_names.index(name)
-                for name in self.env.robot_config.trackable_bodies_subset
-            ],
-            device=self.env.device,
-            dtype=torch.long,
+    # The parent's ``mimic.*`` names plus ``masked_mimic.*``. Each modality
+    # beyond the global targets is a switch of the config (the ``requires=``
+    # tags in ``context_views.MaskedMimicContext`` name the switches), and a
+    # disabled modality is not published.
+    namespaces = ("mimic", "masked_mimic")
+
+    @classmethod
+    def check_bindings(cls, config, robot_config, bound_paths):
+        """Refuse a binding the trained goal layout cannot serve (``GoalCanvas``)."""
+        GoalCanvas.derive(config, robot_config).validate(bound_paths, getup=False)
+
+    def __init__(self, config: MaskedMimicControlConfig, inputs: TaskInputs):
+        super().__init__(config, inputs)
+        if not math.isfinite(inputs.dt) or inputs.dt <= 0:
+            raise ValueError("Control dt must be finite and positive")
+        robot, device = inputs.robot, inputs.device
+        constant = self.state.constant
+
+        # The layout this sampler produces, derived once; it refuses an anchor
+        # that anchor, local or style goals need but cannot condition.
+        canvas = GoalCanvas.derive(config, robot)
+        body_names = robot.kinematic_info.body_names
+        trackable_names = robot.trackable_bodies_subset
+        self.conditionable_body_ids = constant(
+            "conditionable_body_ids",
+            torch.tensor(
+                [body_names.index(name) for name in trackable_names],
+                device=device,
+                dtype=torch.long,
+            ),
         )
-        self.num_conditionable_bodies = len(self.conditionable_body_ids)
-        
-        # Initialize masked mimic state buffers
-        self.masked_mimic_target_poses_masks = torch.zeros(
-            self.env.num_envs,
-            self.config.num_masked_future_steps,
-            dtype=torch.bool,
-            device=self.env.device,
+        self.num_conditionable_bodies = len(trackable_names)
+        if not self.num_conditionable_bodies:
+            raise ValueError("MaskedMimic requires at least one trackable body")
+
+        # Device constants reused across resets (registered so the attribute
+        # guard knows they are deliberate).
+        self._profile_gap_lower = constant(
+            "profile_gap_lower", torch.tensor([0.0, 0.25, 0.65], device=device)
         )
-        
-        # Format: [num_envs, num_future_steps * num_conditionable_bodies * 2]
-        # The *2 is for translation and rotation masks
-        self.masked_mimic_target_bodies_masks = torch.zeros(
-            self.env.num_envs,
-            self.config.num_masked_future_steps * self.num_conditionable_bodies * 2,
-            dtype=torch.bool,
-            device=self.env.device,
+        self._profile_gap_upper = constant(
+            "profile_gap_upper", torch.tensor([0.25, 0.65, 1.0], device=device)
         )
-        
-        # Target times for each future step
-        self.target_times = torch.zeros(
-            self.env.num_envs,
-            self.config.num_masked_future_steps,
-            dtype=torch.float,
-            device=self.env.device,
+        self._future_step_indices = constant(
+            "future_step_indices",
+            torch.arange(1, config.num_masked_future_steps + 1, device=device),
         )
-        
-        self._initialized = False
-    
-    def reset(self, env_ids: Tensor):
-        """Reset masked mimic state for given environments.
-        
-        Initializes target times from current motion time and samples all future
-        time steps and body masks.
-        
-        Args:
-            env_ids: Environment indices to reset.
-        """
-        # Call parent reset (resets contact forces)
-        super().reset(env_ids)
-        
+        self._body_ranks = constant(
+            "body_ranks", torch.arange(self.num_conditionable_bodies, device=device)
+        )
+        self._profile_weights_key = None
+        self._profile_weights = None
+
+        # False until a row's first reset (the registry's row reset writes
+        # True); the streams rebase once any row has a plan.
+        self.planned = self.state.add("planned", (), torch.bool, True)
+        self.planned.zero_()
+
+        num_steps = config.num_masked_future_steps
+        self.global_stream = TargetStream(
+            self.state.child("global_stream"),
+            num_steps,
+            self.num_conditionable_bodies,
+            config.sparse_target_condition_probability,
+        )
+        self.local_stream = None
+        if canvas.has_local_stream:
+            self.local_stream = TargetStream(
+                self.state.child("local_stream"),
+                num_steps,
+                self.num_conditionable_bodies,
+                config.local_target_condition_probability,
+            )
+
+        self._conditionable_anchor_index = None
+        if (
+            canvas.anchor_pose_submasking
+            or canvas.has_local_stream
+            or canvas.style_frames is not None
+        ):
+            self._conditionable_anchor_index = trackable_names.index(canvas.anchor_body)
+
+        add = self.state.add
+        self.anchor_translation_mask = None
+        self.anchor_rotation_mask = None
+        if config.anchor_pose_submasking:
+            self.anchor_translation_mask = add(
+                "anchor_translation_mask", (num_steps, 2), torch.bool, False
+            )
+            self.anchor_rotation_mask = add(
+                "anchor_rotation_mask", (num_steps, 2), torch.bool, False
+            )
+
+        self.style_time_offsets = None
+        self.style_frame_masks = None
+        self.style_condition_masks = None
+        if config.style is not None:
+            frames = config.style.num_frames
+            self.style_time_offsets = add(
+                "style_time_offsets", (frames,), torch.float, 0.0
+            )
+            self.style_frame_masks = add(
+                "style_frame_masks", (frames,), torch.bool, False
+            )
+            self.style_condition_masks = add(
+                "style_condition_masks",
+                (frames, self.num_conditionable_bodies * 2 + 1),
+                torch.bool,
+                False,
+            )
+            total = sum(config.style.visible_frame_count_probabilities)
+            self._style_count_weights = constant(
+                "style_count_weights",
+                torch.tensor(
+                    [p / total for p in config.style.visible_frame_count_probabilities],
+                    device=device,
+                ),
+            )
+
+        self.velocity_command_mask = None
+        if config.velocity_command is not None:
+            self.velocity_command_mask = add(
+                "velocity_command_mask", (1,), torch.bool, False
+            )
+
+        self._fixed_body_mask = None
+        if config.fixed_conditioning is not None:
+            self._fixed_body_mask = constant(
+                "fixed_body_mask",
+                torch.zeros(
+                    self.num_conditionable_bodies, 2, dtype=torch.bool, device=device
+                ),
+            )
+            seen_bodies = set()
+            for condition in config.fixed_conditioning:
+                if (
+                    condition.body_name in seen_bodies
+                    or condition.constraint_state not in (0, 1, 2)
+                ):
+                    raise ValueError(
+                        "Fixed conditions require unique bodies and states 0, 1, or 2"
+                    )
+                seen_bodies.add(condition.body_name)
+                body_index = trackable_names.index(condition.body_name)
+                self._fixed_body_mask[body_index, 0] = condition.constraint_state <= 1
+                self._fixed_body_mask[body_index, 1] = condition.constraint_state >= 1
+
+    def _streams(self) -> List[TargetStream]:
+        streams = [self.global_stream]
+        if self.local_stream is not None:
+            streams.append(self.local_stream)
+        return streams
+
+    def reset_rows(self, env_ids: Tensor, state: RobotState) -> None:
+        """Resample only the reset environments' lookaheads and visibility
+        (the registry's clear first: it also marks the rows planned)."""
+        super().reset_rows(env_ids, state)
         if len(env_ids) == 0:
             return
-        
-        # Initialize time steps from current time
-        new_times = self.env.motion_manager.motion_times[env_ids]
-        self.target_times[env_ids] = new_times.unsqueeze(-1)
-        
-        # Reset masks
-        self.masked_mimic_target_poses_masks[env_ids] = False
-        self.masked_mimic_target_bodies_masks[env_ids] = False
-        
-        # Sample all future steps
-        for _ in range(self.config.num_masked_future_steps):
-            self._shift_and_sample_time_steps(env_ids)
-            self._shift_and_sample_body_masks(env_ids)
-        
-        self._initialized = True
-    
-    def step(self):
-        """Update masked mimic state after physics step.
-        
-        Identifies environments where the current time has passed the first target
-        time and triggers resampling of time steps and body masks for those environments.
-        """
-        # Call parent step (currently no-op)
-        super().step()
-        
-        if not self._initialized:
-            return
-        
-        current_time = self.env.motion_manager.motion_times
-        
-        # Check which envs have outdated target times
-        outdated_target_times = current_time >= self.target_times[:, 0]
-        resample_env_ids = torch.nonzero(outdated_target_times).squeeze(-1)
-        
-        if len(resample_env_ids) > 0:
-            self._shift_and_sample_time_steps(resample_env_ids)
-            self._shift_and_sample_body_masks(resample_env_ids)
-    
-    def _shift_and_sample_time_steps(self, env_ids: Tensor):
-        """Shift target time steps forward and sample a new future time step.
-        
-        Samples new time steps using a beta distribution to determine the offset from
-        the last conditioned time. The new time is added to the end after shifting
-        existing times forward.
-        
-        Args:
-            env_ids: Tensor of environment indices to update.
-        """
-        num_envs = len(env_ids)
-        
-        current_times = self.env.motion_manager.motion_times[env_ids]
-        motion_ids = self.env.motion_manager.motion_ids[env_ids]
-        motion_lengths = self.env.motion_lib.motion_lengths[motion_ids]
-        
-        # Get last conditioned time for each environment
-        last_conditioned_times = torch.max(self.target_times[env_ids], dim=1)[0]
-        remaining_times = motion_lengths - last_conditioned_times
-        
-        # Sample beta values for all environments at once
-        beta_dist = torch.distributions.Beta(
-            self.config.time_alpha, self.config.time_beta
-        )
-        beta_samples = beta_dist.sample((num_envs,)).to(self.env.device)
-        
-        # Calculate new times
-        time_offsets = beta_samples * remaining_times
-        absolute_times = last_conditioned_times + time_offsets
-        
-        # Clip absolute times to be within valid bounds
-        min_times = current_times + self.env.dt
-        absolute_times = torch.clamp(absolute_times, min_times, motion_lengths)
-        
-        # Shift existing frames and add new ones
-        self.target_times[env_ids, :-1] = self.target_times[env_ids, 1:]
-        self.target_times[env_ids, -1] = absolute_times
-    
-    def _shift_and_sample_body_masks(self, env_ids: Tensor):
-        """Shift body masks forward and sample new masks for the last time step.
-        
-        Moves existing body masks one position forward (removing the first) and
-        samples fresh masks for the newly added future time step.
-        
-        Args:
-            env_ids: Tensor of environment indices to update masks for.
-        """
-        single_step_mask_size = self.num_conditionable_bodies * 2
-        num_future_steps = self.config.num_masked_future_steps
-        
-        # Reshape masks to (num_envs, num_future_steps, single_step_mask_size)
-        masks = self.masked_mimic_target_bodies_masks[env_ids].view(
-            len(env_ids), num_future_steps, single_step_mask_size
-        )
-        
-        shifted_masks = masks.roll(shifts=-1, dims=1)
-        
-        # Sample new masks for the last position
-        new_body_masks = self._sample_body_masks(env_ids)
-        shifted_masks[:, -1] = new_body_masks.view(len(env_ids), single_step_mask_size)
-        
-        # With probability (1 - visible_target_pose_prob), fully hide the pose
-        # This replaces the old fully_hidden_pose_prob logic
-        hide_prob = 1.0 - self.config.visible_target_pose_prob
-        if hide_prob > 0:
-            fully_hidden = torch.rand(len(env_ids), device=self.env.device) < hide_prob
-            shifted_masks[fully_hidden, -1] = False
-        
-        # Update the masks
-        self.masked_mimic_target_bodies_masks[env_ids] = shifted_masks.view(
-            len(env_ids), -1
-        )
-        
-        # Update pose visibility masks
-        reshaped_masked_bodies_masks = self.masked_mimic_target_bodies_masks[
-            env_ids
-        ].view(len(env_ids), self.config.num_masked_future_steps, -1)
-        
-        for i in range(self.config.num_masked_future_steps):
-            any_visible_joint = reshaped_masked_bodies_masks[:, i].any(dim=-1)
-            self.masked_mimic_target_poses_masks[env_ids, i] = any_visible_joint
-    
-    def _sample_body_masks(self, env_ids: Tensor) -> Tensor:
-        """Sample body visibility masks for conditioning.
-        
-        With a certain probability, repeats the previous mask; otherwise samples
-        new masks to determine which bodies and their properties (translation/rotation)
-        are visible for conditioning.
-        
-        Note: Never repeats an empty (all-False) mask - always samples fresh in that case.
-        
-        Args:
-            env_ids: Tensor of environment indices to sample masks for.
-            
-        Returns:
-            Tensor of shape (num_envs, num_conditionable_bodies * 2) with boolean masks.
-        """
-        num_envs = len(env_ids)
-        
-        # Get previous masks (last step)
-        single_step_mask_size = self.num_conditionable_bodies * 2
-        previous_masks = self.masked_mimic_target_bodies_masks[
-            env_ids, -single_step_mask_size:
-        ].view(num_envs, self.num_conditionable_bodies, 2)
-        
-        # Check which previous masks are empty (all False) - never repeat empty masks
-        previous_is_empty = ~previous_masks.any(dim=-1).any(dim=-1)  # [num_envs]
-        
-        # Check if we should repeat previous masks (but not if previous is empty)
-        repeat_mask_prob = self.config.repeat_mask_probability
-        repeat_mask = torch.rand(num_envs, device=self.env.device) < repeat_mask_prob
-        repeat_mask = repeat_mask & ~previous_is_empty  # Don't repeat empty masks
-        
-        if repeat_mask.any():
-            # For environments that should repeat, return previous mask
-            new_mask = torch.zeros(
-                num_envs,
-                self.num_conditionable_bodies,
-                2,
-                dtype=torch.bool,
-                device=self.env.device,
-            )
-            new_mask[repeat_mask] = previous_masks[repeat_mask]
-            
-            # For environments that shouldn't repeat, sample new masks
-            sample_new_mask = ~repeat_mask
-            if sample_new_mask.any():
-                num_new_masks = sample_new_mask.sum().item()
-                new_sampled_masks = self._sample_new_body_masks(num_new_masks)
-                new_mask[sample_new_mask] = new_sampled_masks.view(
-                    num_new_masks, self.num_conditionable_bodies, 2
+        body_masks, profiles = self._reset_stream(self.global_stream, env_ids)
+        if self.config.anchor_pose_submasking:
+            translation, rotation = self._sample_anchor_masks(body_masks, profiles)
+            self.anchor_translation_mask[env_ids] = translation
+            self.anchor_rotation_mask[env_ids] = rotation
+        if self.local_stream is not None:
+            self._reset_stream(self.local_stream, env_ids)
+        if self.config.style is not None:
+            self._sample_style_plan(env_ids)
+        if self.config.velocity_command is not None:
+            self.velocity_command_mask[env_ids] = (
+                torch.rand(
+                    len(env_ids),
+                    1,
+                    device=self.inputs.device,
+                    generator=self.inputs.generator,
                 )
-            
-            return new_mask.view(num_envs, -1)
-        
-        return self._sample_new_body_masks(num_envs).view(num_envs, -1)
-    
-    def _sample_new_body_masks(self, num_envs: int) -> Tensor:
-        """Sample fresh body masks for multiple environments.
-        
-        Determines the number of active bodies and their constraint states
-        (translation only, rotation only, or both). Supports fixed conditioning
-        or random sampling strategies.
-        
-        Args:
-            num_envs: Number of environments to sample masks for.
-            
-        Returns:
-            Tensor of shape (num_envs, num_conditionable_bodies * 2) with boolean masks.
+                < self.config.velocity_command.probability
+            )
+
+    def _reset_stream(
+        self, stream: TargetStream, env_ids: Tensor
+    ) -> tuple[Tensor, Tensor]:
+        offsets, body_masks, profiles = self._sample_target_plan(len(env_ids))
+        self._mask_disabled_stream(body_masks, stream.probability)
+        stream.write_plan(env_ids, offsets, body_masks)
+        self._rebase_stream_times(stream, env_ids)
+        return body_masks, profiles
+
+    def _rebase_stream_times(self, stream: TargetStream, env_ids: Tensor) -> None:
+        reference = self.inputs.reference
+        stream.rebase_times(
+            env_ids,
+            reference.times[env_ids],
+            reference.lengths(reference.ids[env_ids]),
+        )
+
+    def advance(self, state: RobotState) -> Dict[str, Tensor]:
+        """Keep target times fixed until the first is reached, then move them forward."""
+        logging = super().advance(state)
+        if not bool(self.planned.any()):
+            return logging
+        # Visibility masks observations, not the schedule clock: a hidden first
+        # slot still rebases every slot of its stream.
+        for stream in self._streams():
+            env_ids = stream.due(self.inputs.reference.times)
+            if len(env_ids) > 0:
+                self._rebase_stream_times(stream, env_ids)
+        return logging
+
+    def _compute_average_velocity(self, env_ids: Optional[Tensor] = None) -> Tensor:
+        """Reference anchor XY displacement over the available lookahead.
+
+        Spawn and terrain offsets are identical for both frames of one
+        environment, so raw reference positions give the same XY velocity.
         """
-        # Sample number of active bodies
-        num_bodies_mask = (
-            torch.rand(num_envs, device=self.env.device)
-            >= self.config.force_small_num_conditioned_bodies_prob
+        selected = slice(None) if env_ids is None else env_ids
+        reference = self.inputs.reference
+        motion_ids = reference.ids[selected]
+        motion_times = reference.times[selected]
+        future_times = torch.minimum(
+            motion_times + self.config.velocity_command.horizon_seconds,
+            reference.lengths(motion_ids),
         )
-        max_num_bodies = torch.where(num_bodies_mask, self.num_conditionable_bodies, 3)
-        num_active_bodies = torch.round(
-            torch.rand(num_envs, device=self.env.device) * (max_num_bodies - 1) + 1
-        ).long()
-        
-        max_bodies_mask = (
-            torch.rand(num_envs, device=self.env.device)
-            <= self.config.force_max_conditioned_bodies_prob
+        anchor_pos = reference.raw(
+            torch.cat((motion_ids, motion_ids)), torch.cat((motion_times, future_times))
+        ).rigid_body_pos[:, self.inputs.robot.anchor_body_index, :2]
+        current_pos, future_pos = anchor_pos.chunk(2)
+        duration = (future_times - motion_times).unsqueeze(-1)
+        velocity = (future_pos - current_pos) / duration.clamp_min(self.inputs.dt)
+        return torch.where(duration > 0, velocity, torch.zeros_like(velocity))
+
+    def _sample_style_plan(self, env_ids: Tensor) -> None:
+        """Keep offsets, visible frames and body/property choices until reset."""
+        style = self.config.style
+        num_envs, device = len(env_ids), self.inputs.device
+        generator = self.inputs.generator
+        self.style_time_offsets[env_ids] = (
+            torch.rand(
+                num_envs, style.num_frames, device=device, generator=generator
+            ).pow(style.near_time_bias_power)
+            * style.window_seconds
         )
-        num_active_bodies[max_bodies_mask] = self.num_conditionable_bodies
-        
-        # Sample which bodies are active
-        active_body_ids = torch.zeros(
+        counts = torch.multinomial(
+            self._style_count_weights, num_envs, replacement=True, generator=generator
+        )
+        # The second argsort inverts the permutation into each frame's rank.
+        ranks = (
+            torch.rand(num_envs, style.num_frames, device=device, generator=generator)
+            .argsort(-1)
+            .argsort(-1)
+        )
+        frame_masks = ranks < counts[:, None]
+        profiles = self._sample_profiles(num_envs)
+        body_masks = self._sample_body_masks(profiles)
+        velocity_mask = (
+            torch.rand(num_envs, 1, device=device, generator=generator)
+            < style.velocity_probability
+        )
+        condition_masks = torch.cat((body_masks.flatten(1), velocity_mask), -1)
+        self.style_frame_masks[env_ids] = frame_masks
+        self.style_condition_masks[env_ids] = (
+            condition_masks[:, None] & frame_masks[..., None]
+        )
+
+    def _query_style_samples(self, env_ids: Optional[Tensor]) -> Dict[str, Tensor]:
+        """Query the moving reference window without exposing its times.
+
+        For E environments, F frames and B conditionable bodies, return poses
+        [E, F*B*9], velocities [E, F*B*6], condition masks [E, F, 2*B+1], and
+        frame masks [E, F].
+        """
+        selected = slice(None) if env_ids is None else env_ids
+        reference = self.inputs.reference
+        motion_ids = reference.ids[selected]
+        motion_times = reference.times[selected]
+        lengths = reference.lengths(motion_ids)
+        frame_masks = (
+            self.style_frame_masks[selected] & (motion_times <= lengths)[:, None]
+        )
+        condition_masks = self.style_condition_masks[selected] & frame_masks[..., None]
+        num_envs, num_frames = frame_masks.shape
+        num_bodies = self.num_conditionable_bodies
+        pose = torch.zeros(
             num_envs,
-            self.num_conditionable_bodies,
-            device=self.env.device,
-            dtype=torch.bool,
+            num_frames * num_bodies * STYLE_POSE_FEATURES_PER_BODY,
+            device=self.inputs.device,
         )
+        velocity = torch.zeros(
+            num_envs,
+            num_frames * num_bodies * STYLE_VELOCITY_FEATURES_PER_BODY,
+            device=self.inputs.device,
+        )
+        active_env_ids = frame_masks.any(-1).nonzero().squeeze(-1)
+        if len(active_env_ids):
+            query_times = torch.minimum(
+                motion_times[active_env_ids, None]
+                + self.style_time_offsets[selected][active_env_ids],
+                lengths[active_env_ids, None],
+            )
+            # Raw clip poses: the style samples are expressed relative to each
+            # frame's own anchor, so the env's placement cancels.
+            state = reference.raw(
+                motion_ids[active_env_ids, None].expand(-1, num_frames).reshape(-1),
+                query_times.reshape(-1),
+            )
+            pos = state.rigid_body_pos.reshape(len(active_env_ids), num_frames, -1, 3)
+            rot = state.rigid_body_rot.reshape(len(active_env_ids), num_frames, -1, 4)
+            pose[active_env_ids] = compute_style_pose_samples(
+                pos,
+                rot,
+                anchor_body_index=self.inputs.robot.anchor_body_index,
+                conditionable_body_ids=self.conditionable_body_ids,
+            )
+            velocity[active_env_ids] = compute_style_velocity_samples(
+                state.rigid_body_vel.reshape_as(pos),
+                state.rigid_body_ang_vel.reshape_as(pos),
+                rot,
+                anchor_body_index=self.inputs.robot.anchor_body_index,
+                conditionable_body_ids=self.conditionable_body_ids,
+            )
+        pose, velocity = apply_style_condition_masks(pose, velocity, condition_masks)
+        return dict(
+            style_pose_samples=pose,
+            style_velocity_samples=velocity,
+            style_condition_masks=condition_masks,
+            style_frame_masks=frame_masks,
+        )
+
+    def _mask_disabled_stream(self, masks: Tensor, probability: float) -> None:
+        # No random draws for the default global-only path or deterministic gates.
+        if probability == 0:
+            masks.zero_()
+        elif probability < 1:
+            enabled = (
+                torch.rand(
+                    masks.shape[0], device=masks.device, generator=self.inputs.generator
+                )
+                < probability
+            )
+            masks &= enabled[:, None, None, None]
+
+    def _sample_anchor_masks(
+        self, body_masks: Tensor, profiles: Tensor
+    ) -> tuple[Tensor, Tensor]:
+        """One submode per episode, intersected with each frame's visibility."""
+        n, device, generator = (
+            body_masks.shape[0],
+            body_masks.device,
+            self.inputs.generator,
+        )
+        translation_mode = torch.randint(3, (n,), device=device, generator=generator)
+        rotation_mode = torch.randint(2, (n,), device=device, generator=generator)
+        translation = torch.stack((translation_mode != 1, translation_mode != 0), -1)
+        rotation = torch.stack((rotation_mode == 0, rotation_mode == 1), -1)
+        translation[profiles == 0] = True
+        rotation[profiles == 0, 0] = True
+        rotation[profiles == 0, 1] = False
+        active = body_masks[:, :, self._conditionable_anchor_index]
+        return (
+            translation[:, None] & active[..., 0:1],
+            rotation[:, None] & active[..., 1:2],
+        )
+
+    def _sample_target_plan(self, num_envs: int) -> tuple[Tensor, Tensor, Tensor]:
+        """Return offsets, per-frame body/property masks, and density profiles."""
+        config = self.config
+        device, generator = self.inputs.device, self.inputs.generator
+        num_steps = config.num_masked_future_steps
+        if num_envs == 0:
+            return (
+                torch.empty(0, num_steps, device=device),
+                torch.empty(
+                    0,
+                    num_steps,
+                    self.num_conditionable_bodies,
+                    2,
+                    dtype=torch.bool,
+                    device=device,
+                ),
+                torch.empty(0, dtype=torch.long, device=device),
+            )
+        profile_ids = self._sample_profiles(num_envs)
+        is_dense, is_sparse = profile_ids == 0, profile_ids == 2
+
+        # Dense uses the first 25% of the gap range, intermediate the middle
+        # 40%, and sparse the final 35%. Each episode has one fixed spacing.
+        gap_span = config.target_gap_max_seconds - config.target_gap_min_seconds
+        gap_min = (
+            config.target_gap_min_seconds
+            + gap_span * self._profile_gap_lower[profile_ids]
+        )
+        gap_max = (
+            config.target_gap_min_seconds
+            + gap_span * self._profile_gap_upper[profile_ids]
+        )
+        gap = gap_min + torch.rand(num_envs, device=device, generator=generator) * (
+            gap_max - gap_min
+        ).clamp_min(0.0)
+        schedule_offsets = (
+            gap.clamp_min(self.inputs.dt).unsqueeze(-1) * self._future_step_indices
+        )
+        body_mask = self._sample_body_masks(profile_ids)
+
+        frame_visible = (
+            torch.rand(num_envs, num_steps, device=device, generator=generator)
+            < config.visible_target_pose_prob
+        )
+        frame_visible[is_dense] = True
+        sparse_env_ids = torch.nonzero(is_sparse).squeeze(-1)
+        if len(sparse_env_ids) > 0:
+            frame_visible[sparse_env_ids] = False
+            sparse_frame_ids = torch.randint(
+                num_steps, (len(sparse_env_ids),), device=device, generator=generator
+            )
+            frame_visible[sparse_env_ids, sparse_frame_ids] = True
+        return (
+            schedule_offsets,
+            body_mask.unsqueeze(1) & frame_visible[:, :, None, None],
+            profile_ids,
+        )
+
+    def _sample_profiles(self, num_envs: int) -> Tensor:
+        config, device = self.config, self.inputs.device
+        # Keep runtime probability edits working without repeated host-to-device copies.
+        weights_key = tuple(config.target_profile_probabilities)
+        if weights_key != self._profile_weights_key:
+            # Normalize in Python first so large finite weights do not overflow float32.
+            total = sum(weights_key)
+            self._profile_weights = self.state.constant(
+                "profile_weights",
+                torch.tensor([p / total for p in weights_key], device=device),
+            )
+            self._profile_weights_key = weights_key
+        return torch.multinomial(
+            self._profile_weights,
+            num_envs,
+            replacement=True,
+            generator=self.inputs.generator,
+        )
+
+    def _sample_body_masks(self, profile_ids: Tensor) -> Tensor:
+        num_envs, num_bodies = len(profile_ids), self.num_conditionable_bodies
+        device, generator = self.inputs.device, self.inputs.generator
+        is_dense, is_sparse = profile_ids == 0, profile_ids == 2
+        # Preserve the training sampler's draw order, including fixed-body plans.
+        body_count = (
+            (
+                torch.rand(num_envs, device=device, generator=generator)
+                * (num_bodies - 1)
+                + 1
+            )
+            .round()
+            .long()
+        )
+        body_count[is_dense] = num_bodies
+        body_count[is_sparse] = 1
         constraint_states = torch.randint(
-            0, 3, (num_envs, self.num_conditionable_bodies), device=self.env.device
+            3, (num_envs, num_bodies), device=device, generator=generator
         )
-        
-        if self.config.fixed_conditioning is None:
-            # Parallelized sampling without replacement
-            rand_values = torch.rand(
-                num_envs, self.num_conditionable_bodies, device=self.env.device
+        if self._fixed_body_mask is None:
+            body_order = torch.rand(
+                num_envs, num_bodies, device=device, generator=generator
+            ).argsort(1)
+            # Invert the permutation in linear work instead of sorting it again.
+            body_ranks = torch.empty_like(body_order).scatter_(
+                1, body_order, self._body_ranks.expand_as(body_order)
             )
-            # Get ranks: rank[i, j] is the rank of body j in env i among the random values
-            ranks = torch.argsort(torch.argsort(rand_values, dim=1), dim=1)
-            active_body_ids[:] = ranks < num_active_bodies.unsqueeze(1)
+            selected_bodies = body_ranks < body_count.unsqueeze(-1)
+            body_mask = torch.stack(
+                (constraint_states <= 1, constraint_states >= 1), dim=-1
+            )
+            body_mask &= selected_bodies.unsqueeze(-1)
+            body_mask[is_dense] = True
         else:
-            # Use fixed conditioning
-            fixed_conditioning = self.config.fixed_conditioning
-            body_names = [entry.body_name for entry in fixed_conditioning]
-            
-            # Get indices of conditioned bodies
-            conditioned_body_ids = [
-                self._all_body_names.index(name) for name in body_names
-            ]
-            fixed_body_indices = [
-                self.conditionable_body_ids.tolist().index(body_id)
-                for body_id in conditioned_body_ids
-            ]
-            
-            for i, body_index in enumerate(fixed_body_indices):
-                active_body_ids[:, body_index] = True
-                constraint_states[:, body_index] = fixed_conditioning[i].constraint_state
-        
-        # Create masks for translation and rotation
-        translation_mask = (constraint_states <= 1) & active_body_ids
-        rotation_mask = (constraint_states >= 1) & active_body_ids
-        
-        new_mask = torch.zeros(
-            num_envs,
-            self.num_conditionable_bodies,
-            2,
-            dtype=torch.bool,
-            device=self.env.device,
-        )
-        new_mask[:, :, 0] = translation_mask
-        new_mask[:, :, 1] = rotation_mask
-        
-        return new_mask.view(num_envs, -1)
-    
-    def populate_context(self, ctx: EnvContext) -> None:
-        """Populate masked mimic-specific view in the EnvContext.
-        
-        First calls parent to populate ctx.mimic, then adds ctx.masked_mimic.
-        
-        Args:
-            ctx: The EnvContext to populate with ctx.mimic and ctx.masked_mimic.
+            body_mask = self._fixed_body_mask.unsqueeze(0).expand(num_envs, -1, -1)
+
+        return body_mask
+
+    def publish(self, env_ids: Optional[Tensor]) -> Dict[str, Any]:
+        """Add the ``masked_mimic.*`` names to the parent's ``mimic.*`` names.
+
+        Only the enabled modalities are published: a binding to a disabled
+        one is refused by the config-only check and by the build check, which
+        name the switch (``requires=`` in ``context_views.py``).
         """
-        # Populate parent mimic view first
-        super().populate_context(ctx)
-        
-        # Query motion library for poses at target times
-        env_ids = getattr(ctx, "env_ids", None)
-        num_future_steps = self.config.num_masked_future_steps
-        if env_ids is None:
-            motion_ids = self.env.motion_manager.motion_ids
-            motion_times = self.env.motion_manager.motion_times
-            target_times = self.target_times
-            target_poses_masks = self.masked_mimic_target_poses_masks
-            target_bodies_masks = self.masked_mimic_target_bodies_masks
-        else:
-            motion_ids = self.env.motion_manager.motion_ids[env_ids]
-            motion_times = self.env.motion_manager.motion_times[env_ids]
-            target_times = self.target_times[env_ids]
-            target_poses_masks = self.masked_mimic_target_poses_masks[env_ids]
-            target_bodies_masks = self.masked_mimic_target_bodies_masks[env_ids]
-        num_envs = motion_ids.shape[0]
-        
-        # Expand motion_ids for all future steps
-        flat_motion_ids = motion_ids.unsqueeze(-1).expand(
-            num_envs, num_future_steps
-        ).reshape(-1)
-        
-        # Clip target times to motion lengths
-        motion_lengths = self.env.motion_lib.get_motion_length(flat_motion_ids)
-        flat_target_times = torch.minimum(target_times.reshape(-1), motion_lengths)
-        
-        # Query motion lib for poses at target times
-        target_state = self.env.motion_lib.get_motion_state(flat_motion_ids, flat_target_times)
-        
-        # Reshape to [envs, future_steps, bodies, dim]
-        num_bodies = target_state.rigid_body_pos.shape[1]
-        
-        masked_mimic_ref_pos = target_state.rigid_body_pos.view(
-            num_envs, num_future_steps, num_bodies, 3
-        ).clone()
-        if env_ids is None:
-            offset = self.env.get_spawn_to_ref_pose_offset_with_terrain_height_correction(
-                masked_mimic_ref_pos[:, 0, :, :]  # Use first step for offset
-            )
-        else:
-            offset = self.env.get_spawn_to_ref_pose_offset_with_terrain_height_correction(
-                masked_mimic_ref_pos[:, 0, :, :], env_ids=env_ids
-            )
-        masked_mimic_ref_pos += offset.unsqueeze(1)
-        
-        masked_mimic_ref_rot = target_state.rigid_body_rot.view(
-            num_envs, num_future_steps, num_bodies, 4
+        published = super().publish(env_ids)
+        selected = slice(None) if env_ids is None else env_ids
+        motion_times = self.inputs.reference.times[selected]
+
+        fields: Dict[str, Tensor] = self._stream_context(
+            "", self.global_stream, motion_times, env_ids
         )
-        
-        # Compute time offsets from current time
-        masked_mimic_time_offsets = target_times - motion_times.unsqueeze(-1)
-        
-        # Populate the masked_mimic view
-        ctx.masked_mimic = MaskedMimicContext(
-            mimic=ctx.mimic,
-            ref_pos=masked_mimic_ref_pos,
-            ref_rot=masked_mimic_ref_rot,
-            target_times=target_times,
-            time_offsets=masked_mimic_time_offsets,
-            target_poses_masks=target_poses_masks,
-            target_bodies_masks=target_bodies_masks,
+        if self.anchor_translation_mask is not None:
+            fields.update(
+                anchor_translation_mask=self.anchor_translation_mask[selected],
+                anchor_rotation_mask=self.anchor_rotation_mask[selected],
+            )
+        if self.local_stream is not None:
+            fields.update(
+                self._stream_context("local_", self.local_stream, motion_times, env_ids)
+            )
+        if self.config.style is not None:
+            fields.update(self._query_style_samples(env_ids))
+        if self.config.velocity_command is not None:
+            fields.update(
+                average_velocity=self._compute_average_velocity(env_ids),
+                velocity_command_mask=self.velocity_command_mask[selected],
+            )
+        published.update(
+            {f"masked_mimic.{name}": value for name, value in fields.items()}
         )
-    
-    def create_visualization_markers(self, headless: bool) -> Dict[str, VisualizationMarkerConfig]:
-        """Create visualization markers for masked mimic targets.
-        
-        Overrides parent to create three sets of color-coded markers based on 
-        time-to-target instead of single red markers:
-        - Blue: time to target > 1 second
-        - Yellow: 0.1 < time to target <= 1 second
-        - Red: time to target <= 0.1 seconds
-        
-        Args:
-            headless: If True, returns empty dict.
-            
-        Returns:
-            Dictionary of marker configurations.
+        return published
+
+    def _stream_context(
+        self, prefix: str, stream: TargetStream, motion_times, env_ids
+    ) -> Dict[str, Tensor]:
+        selected = slice(None) if env_ids is None else env_ids
+        times = stream.times[selected]
+        # Either stream in the same placed world frame: every slot shares the
+        # placement of the first (target times are already clipped to the
+        # motion length when written).
+        window = self.inputs.reference.window(env_ids, times)
+        return {
+            f"{prefix}ref_pos": window.pos,
+            f"{prefix}ref_rot": window.rot,
+            f"{prefix}target_times": times,
+            f"{prefix}time_offsets": times - motion_times.unsqueeze(-1),
+            f"{prefix}target_poses_masks": stream.frame_masks[selected],
+            f"{prefix}target_bodies_masks": stream.body_masks[selected],
+        }
+
+    _MARKER_COLORS = {
+        "body_markers_blue": (0.0, 0.0, 1.0),
+        "body_markers_yellow": (1.0, 1.0, 0.0),
+        "body_markers_red": (1.0, 0.0, 0.0),
+    }
+
+    def create_visualization_markers(
+        self, headless: bool
+    ) -> Dict[str, VisualizationMarkerConfig]:
+        """Conditionable-body spheres colored by time to the first visible target.
+
+        Blue: more than 1s away. Yellow: between 0.1s and 1s. Red: within 0.1s.
         """
         if headless:
             return {}
-        
-        visualization_markers = {}
-        
-        # Use trackable_bodies_subset for masked mimic (not all bodies)
-        body_names = self.env.robot_config.trackable_bodies_subset
-        
-        body_markers = []
-        for body_name in body_names:
-            if (
-                self.env.robot_config.mimic_small_marker_bodies is not None
-                and body_name in self.env.robot_config.mimic_small_marker_bodies
-            ):
-                body_markers.append(MarkerConfig(size="small"))
-            else:
-                body_markers.append(MarkerConfig(size="regular"))
-        
-        # Blue markers: time to target > 1 second
-        body_markers_blue_cfg = VisualizationMarkerConfig(
-            type="sphere", color=(0.0, 0.0, 1.0), markers=body_markers
-        )
-        visualization_markers["body_markers_blue"] = body_markers_blue_cfg
-        
-        # Yellow markers: 0.1 < time to target <= 1 second
-        body_markers_yellow_cfg = VisualizationMarkerConfig(
-            type="sphere", color=(1.0, 1.0, 0.0), markers=body_markers
-        )
-        visualization_markers["body_markers_yellow"] = body_markers_yellow_cfg
-        
-        # Red markers: time to target <= 0.1 seconds
-        body_markers_red_cfg = VisualizationMarkerConfig(
-            type="sphere", color=(1.0, 0.0, 0.0), markers=body_markers
-        )
-        visualization_markers["body_markers_red"] = body_markers_red_cfg
-        
-        return visualization_markers
-    
-    def get_markers_state(self) -> Dict[str, MarkerState]:
-        """Compute marker positions colored by time-to-target.
-        
-        Overrides parent to show only conditionable bodies with color coding.
-        
-        Returns:
-            Dictionary mapping marker names to MarkerState.
-        """
-        if self.env.simulator.headless:
-            return {}
-        
-        if not self._initialized:
-            return {}
-        
-        markers_state = {}
-        
-        # Get the first visible target pose for each env
-        pose_masks = self.masked_mimic_target_poses_masks  # [num_envs, num_future_steps]
-        first_valid_indices = torch.argmax(pose_masks.float(), dim=1)  # [num_envs]
-        
-        # Get the target times for the first visible pose
-        env_indices = torch.arange(self.env.num_envs, device=self.env.device)
-        target_motion_times = self.target_times[env_indices, first_valid_indices]
-        
-        # Compute time to target
-        current_motion_times = self.env.motion_manager.motion_times
-        time_to_target = target_motion_times - current_motion_times  # [num_envs]
-        
-        # Get reference state at target time
-        ref_state = self.env.motion_lib.get_motion_state(
-            self.env.motion_manager.motion_ids, target_motion_times
-        )
-        
-        target_pos = ref_state.rigid_body_pos.clone()
-        target_pos += (
-            self.env.get_spawn_to_ref_pose_offset_with_terrain_height_correction(
-                target_pos
+        small_bodies = self.inputs.robot.mimic_small_marker_bodies or ()
+        body_markers = [
+            MarkerConfig(size="small" if body_name in small_bodies else "regular")
+            for body_name in self.inputs.robot.trackable_bodies_subset
+        ]
+        return {
+            name: VisualizationMarkerConfig(
+                type="sphere", color=color, markers=body_markers
             )
-        )
-        
-        # Extract only conditionable bodies
+            for name, color in self._MARKER_COLORS.items()
+        }
+
+    def get_markers_state(self, state: RobotState) -> Dict[str, MarkerState]:
+        """Show the first visible target's translation goals, colored by time left."""
+        if self.inputs.headless or not bool(self.planned.any()):
+            return {}
+
+        num_envs, device = self.inputs.num_envs, self.inputs.device
+        stream = self.global_stream
+        env_ids = torch.arange(num_envs, device=device)
+        first_visible_frame = torch.argmax(stream.frame_masks.float(), dim=1)
+        target_motion_times = stream.times[env_ids, first_visible_frame]
+        reference = self.inputs.reference
+        time_remaining = target_motion_times - reference.times
+
+        target_pos = reference.poses_at(None, target_motion_times).rigid_body_pos
         target_pos = target_pos[:, self.conditionable_body_ids, :]
-        
-        # Get translation mask for first visible pose
-        bodies_masks_reshaped = self.masked_mimic_target_bodies_masks.view(
-            self.env.num_envs,
+
+        body_masks = stream.body_masks.view(
+            num_envs,
             self.config.num_masked_future_steps,
             self.num_conditionable_bodies,
             2,
         )
-        translation_view = bodies_masks_reshaped[env_indices, first_valid_indices, :, 0]
-        active_translations = (translation_view == 1)  # [num_envs, num_conditionable_bodies]
-        
-        # Create masks for each time range
-        blue_time_mask = (
-            (time_to_target > 1.0).unsqueeze(1).expand(-1, self.num_conditionable_bodies)
+        visible_positions = body_masks[env_ids, first_visible_frame, :, 0].clone()
+        if self.anchor_translation_mask is not None:
+            # A point marker implies a full XYZ goal, not an XY plane or height.
+            visible_positions[:, self._conditionable_anchor_index] &= (
+                self.anchor_translation_mask[env_ids, first_visible_frame].all(-1)
+            )
+
+        time_masks = (
+            time_remaining > 1.0,
+            (time_remaining > 0.1) & (time_remaining <= 1.0),
+            time_remaining <= 0.1,
         )
-        yellow_time_mask = (
-            ((time_to_target > 0.1) & (time_to_target <= 1.0))
-            .unsqueeze(1)
-            .expand(-1, self.num_conditionable_bodies)
-        )
-        red_time_mask = (
-            (time_to_target <= 0.1).unsqueeze(1).expand(-1, self.num_conditionable_bodies)
-        )
-        
-        # Combine time masks with active translations
-        blue_markers = active_translations & blue_time_mask
-        yellow_markers = active_translations & yellow_time_mask
-        red_markers = active_translations & red_time_mask
-        
-        # Create separate target positions for each color group
-        target_pos_blue = target_pos.clone()
-        target_pos_yellow = target_pos.clone()
-        target_pos_red = target_pos.clone()
-        
-        # Move inactive markers off screen (add large offset)
-        target_pos_blue[~blue_markers] += 100
-        target_pos_yellow[~yellow_markers] += 100
-        target_pos_red[~red_markers] += 100
-        
-        # Add marker states for each color group
-        markers_state["body_markers_blue"] = MarkerState(
-            translation=target_pos_blue.view(self.env.num_envs, -1, 3),
-            orientation=torch.zeros(
-                self.env.num_envs, self.num_conditionable_bodies, 4, device=self.env.device
-            ),
-        )
-        markers_state["body_markers_yellow"] = MarkerState(
-            translation=target_pos_yellow.view(self.env.num_envs, -1, 3),
-            orientation=torch.zeros(
-                self.env.num_envs, self.num_conditionable_bodies, 4, device=self.env.device
-            ),
-        )
-        markers_state["body_markers_red"] = MarkerState(
-            translation=target_pos_red.view(self.env.num_envs, -1, 3),
-            orientation=torch.zeros(
-                self.env.num_envs, self.num_conditionable_bodies, 4, device=self.env.device
-            ),
-        )
-        
+        markers_state = {}
+        for name, time_mask in zip(self._MARKER_COLORS, time_masks):
+            positions = target_pos.clone()
+            # Move inactive markers off screen.
+            positions[~(visible_positions & time_mask[:, None])] += 100
+            markers_state[name] = MarkerState(
+                translation=positions.view(num_envs, -1, 3),
+                orientation=torch.zeros(
+                    num_envs, self.num_conditionable_bodies, 4, device=device
+                ),
+            )
         return markers_state

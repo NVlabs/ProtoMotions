@@ -214,7 +214,7 @@ def test_prior_model_uses_generic_optimizer_field():
 
 
 def test_prior_context_encoder_owns_context_normalization(tmp_path):
-    config = _small_prior_config(tmp_path / "missing.ckpt")
+    config = _small_prior_config("")
     config.latent_decoder.module_config = DummyDiscreteCodecConfig()
     model = DiscreteAutoregressiveLatentPriorModel(config)
     model.eval()
@@ -237,7 +237,7 @@ def test_prior_context_encoder_owns_context_normalization(tmp_path):
 
 
 def test_prior_derives_multiple_context_inputs_from_prior_config(tmp_path):
-    config = _small_prior_config(tmp_path / "missing.ckpt")
+    config = _small_prior_config("")
     config.latent_decoder.module_config = DummyDiscreteCodecConfig()
     config.prior.in_keys = ["state", "phase", "prior_tokens"]
     config.prior.context_encoder = ModuleContainerConfig(
@@ -273,7 +273,7 @@ def test_prior_derives_multiple_context_inputs_from_prior_config(tmp_path):
 
 
 def test_prior_setup_materialize_initializes_embedded_target_encoder(tmp_path):
-    config = _small_prior_config(tmp_path / "missing.ckpt")
+    config = _small_prior_config("")
     config.latent_decoder.module_config = DummyLazyDiscreteCodecConfig()
     model = DiscreteAutoregressiveLatentPriorModel(config)
     model.eval()
@@ -307,13 +307,29 @@ def test_prior_model_uses_strict_standard_state_dict_loading():
     assert "load_state_dict" not in DiscreteAutoregressiveLatentPriorModel.__dict__
 
 
-def test_pretrained_loader_requires_checkpoint_and_resolved_config(tmp_path):
+def test_pretrained_loader_requires_checkpoint_and_resolved_config(monkeypatch, tmp_path):
+    import protomotions.agents.common.pretrained as pretrained
+    from protomotions.utils.experiment_configs import ExperimentConfigs
+
     model_config = DummyCheckpointModelConfig()
     model = DummyCheckpointModel(model_config)
     checkpoint_path = tmp_path / "tracker.ckpt"
-    torch.save(
-        {"agent": DummyAgentConfig(model=model_config)},
-        tmp_path / "resolved_configs.pt",
+
+    # The saved bundle rebuilds through real constructors; these Dummy stand-ins
+    # don't round-trip, so patch the loader to return the in-memory bundle.
+    bundle = ExperimentConfigs(
+        robot=None,
+        simulator=None,
+        terrain=None,
+        scene_lib=None,
+        motion_lib=None,
+        env=None,
+        agent=DummyAgentConfig(model=model_config),
+    )
+    monkeypatch.setattr(
+        pretrained,
+        "load_experiment_configs_from_checkpoint",
+        lambda ckpt: bundle,
     )
     torch.save({"model": model.state_dict()}, checkpoint_path)
 
@@ -340,15 +356,22 @@ def test_prior_model_crashes_when_latent_decoder_checkpoint_is_missing(
         raise AssertionError("Expected missing pretrained decoder checkpoint to fail")
 
 
-def test_prior_model_instantiates_embedded_latent_decoder_without_checkpoint(tmp_path):
+def test_prior_model_rejects_a_missing_checkpoint_even_with_embedded_config(tmp_path):
+    """A set-but-missing decoder checkpoint raises even with an embedded config.
+
+    Only a blank path falls back to module_config (inference blanks it); a
+    missing path must not silently build untrained weights. The blank-path build
+    is covered by the test below.
+    """
     config = _small_prior_config(tmp_path / "missing.ckpt")
     config.latent_decoder.module_config = DummyDiscreteCodecConfig()
 
-    model = DiscreteAutoregressiveLatentPriorModel(config)
-
-    assert model.latent_decoder.num_fsq_levels == DummyDiscreteQuantizer.num_fsq_levels
-    assert model.latent_decoder.num_fsq_scalars == DummyDiscreteQuantizer.num_fsq_scalars
-    assert model.target_latent_encoder.in_keys == ["target"]
+    try:
+        DiscreteAutoregressiveLatentPriorModel(config)
+    except FileNotFoundError as error:
+        assert "Pretrained model checkpoint not found" in str(error)
+    else:
+        raise AssertionError("Expected a missing checkpoint to fail")
 
 
 def test_prior_model_instantiates_embedded_latent_decoder_without_checkpoint_path():
@@ -361,25 +384,71 @@ def test_prior_model_instantiates_embedded_latent_decoder_without_checkpoint_pat
     assert model.latent_decoder.num_fsq_scalars == DummyDiscreteQuantizer.num_fsq_scalars
 
 
-def test_prior_config_embeds_latent_decoder_module_config_for_inference(tmp_path):
-    tracker_module_config = DummyDiscreteCodecConfig()
-    tracker_model_config = SimpleNamespace(
-        actor=SimpleNamespace(mu_model=tracker_module_config)
+def test_loader_blanks_a_frozen_prior_decoder_path_via_the_inference_view(
+    monkeypatch, tmp_path
+):
+    """Loading a frozen GPC prior succeeds when its decoder's tracker path is gone.
+
+    The prior's saved bundle records latent_decoder.checkpoint_path as the tracker
+    checkpoint used at training. load_pretrained_model_module derives the bundle's
+    agent inference view first, which blanks that path when the decoder config is
+    embedded, so the decoder rebuilds from the embedded config and the prior
+    checkpoint supplies its weights -- the tracker checkpoint is never opened.
+    Regression for item 43 (a prior that moved, or runs from another directory,
+    must still load for PEFT).
+    """
+    import protomotions.agents.common.pretrained as pretrained
+    from protomotions.utils.experiment_configs import ExperimentConfigs
+    from protomotions.agents.supervised.latent_prior_config import (
+        DiscreteAutoregressiveLatentSupervisedAgentConfig,
     )
-    tracker_checkpoint = tmp_path / "tracker.ckpt"
+
+    # The prior checkpoint holds the decoder's weights (and the rest of the prior):
+    # build the model from the embedded config and save its state dict.
+    built = _small_prior_config("")
+    built.latent_decoder.module_config = DummyDiscreteCodecConfig()
+    prior_checkpoint = tmp_path / "prior.ckpt"
     torch.save(
-        {"agent": DummyAgentConfig(model=tracker_model_config)},
-        tmp_path / "resolved_configs.pt",
+        {"model": DiscreteAutoregressiveLatentPriorModel(built).state_dict()},
+        prior_checkpoint,
     )
 
-    config = _small_prior_config(tracker_checkpoint)
-    config.latent_decoder.module_config_path = "agent.model.actor.mu_model"
+    # The saved bundle beside that checkpoint: the decoder path is the tracker
+    # checkpoint, which is not here; the decoder config is embedded.
+    tracker_path = tmp_path / "tracker_that_is_not_here.ckpt"
+    assert not tracker_path.exists()
+    bundle_model = _small_prior_config(tracker_path)
+    bundle_model.latent_decoder.module_config = DummyDiscreteCodecConfig()
+    bundle = ExperimentConfigs(
+        robot=None,
+        simulator=None,
+        terrain=None,
+        scene_lib=None,
+        motion_lib=None,
+        env=SimpleNamespace(observation_components={}),
+        agent=DiscreteAutoregressiveLatentSupervisedAgentConfig(
+            model=bundle_model, batch_size=1, training_max_steps=1
+        ),
+    )
+    monkeypatch.setattr(
+        pretrained,
+        "load_experiment_configs_from_checkpoint",
+        lambda ckpt: bundle,
+    )
 
-    config.prepare_inference_config_for_save()
+    module = load_pretrained_model_module(
+        PretrainedModelConfig(
+            checkpoint_path=str(prior_checkpoint),
+            config_path="agent.model",
+            module_path="",
+        ),
+        device=torch.device("cpu"),
+    )
 
-    assert isinstance(config.latent_decoder.module_config, DummyDiscreteCodecConfig)
-    assert config.latent_decoder.module_config._target_ == tracker_module_config._target_
-    assert config.latent_decoder.checkpoint_path == ""
+    assert isinstance(module, DiscreteAutoregressiveLatentPriorModel)
+    # The inference-view derivation blanked the decoder path on the loaded bundle,
+    # which is why the tracker checkpoint was never opened.
+    assert bundle.agent.model.latent_decoder.checkpoint_path == ""
 
 
 def test_prior_model_rejects_missing_decoder_source_and_token_only_prior(tmp_path):
@@ -393,7 +462,7 @@ def test_prior_model_rejects_missing_decoder_source_and_token_only_prior(tmp_pat
     else:
         raise AssertionError("Expected missing latent decoder source to fail")
 
-    config = _small_prior_config(tmp_path / "missing.ckpt")
+    config = _small_prior_config("")
     config.latent_decoder.module_config = DummyDiscreteCodecConfig()
     config.prior.in_keys = [config.prior.token_key]
 
@@ -406,7 +475,7 @@ def test_prior_model_rejects_missing_decoder_source_and_token_only_prior(tmp_pat
 
 
 def test_prior_model_runtime_paths_with_embedded_discrete_codec(tmp_path):
-    config = _small_prior_config(tmp_path / "missing.ckpt")
+    config = _small_prior_config("")
     config.latent_decoder.module_config = DummyDiscreteCodecConfig()
     config.rollout_action_std = 0.05
     model = DiscreteAutoregressiveLatentPriorModel(config)
@@ -416,7 +485,7 @@ def test_prior_model_runtime_paths_with_embedded_discrete_codec(tmp_path):
 
     assert model.reset_rollout_context() is None
     assert model.optimization_module() is model.prior
-    assert model.get_inference_in_keys() == ["state"]
+    assert model.deployable_in_keys == ["state"]
 
     model.train(True)
     assert model.training

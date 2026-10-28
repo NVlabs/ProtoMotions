@@ -24,8 +24,10 @@ reproduce the motion while maintaining physical plausibility.
 
 * ``mlp.py`` - MLP policy for flat terrain
 * ``mlp_complex_terrain.py`` - MLP policy for complex terrains (stairs, slopes, etc.)
-* ``mlp_bm_l2c2.py`` - BeyondMimic policy with a torso anchor and L2C2 smoothness regularization, aimed at sim2real
+* ``mlp_bm_l2c2.py`` - BeyondMimic policy with a torso anchor, L2C2 smoothness regularization, and a self-contact cost on non-foot/non-hand bodies, aimed at sim2real
 * ``fsq.py`` - FSQ tracker over max-coordinates proprioception and target poses
+* ``../metatron/g1_teacher.py`` - five-body hybrid FSQ/PPO tracker for G1.
+  See the Metatron section below for training entry points.
 
 The BM recipe uses ``q_target = q_default + 0.25 * effort_limit / stiffness * action``
 without clipping the raw action or changing the robot's PD gains. Its action-rate
@@ -37,7 +39,7 @@ The scale change applies to all newly built configs using
 ``make_bm_pd_action_config``. The raw action-rate reward is selected explicitly
 by the BM L2C2 recipe; other recipes keep their existing reward bindings.
 Resume and inference use the action
-scales and reward bindings saved in ``resolved_configs.pt``; existing pretrained
+scales and reward bindings saved in ``resolved_configs.json``; existing pretrained
 configs are not rewritten. Use a new experiment name to train with this recipe.
 
 **Example command**:
@@ -50,6 +52,28 @@ configs are not rewritten. Use a new experiment name to train with this recipe.
        --simulator isaacgym \
        --motion-file <path_to_motion_file> \
        --experiment-name smpl_mimic
+
+Metatron
+--------
+
+The ``examples/experiments/metatron/`` directory groups the public entry points:
+
+* ``soma_teacher.py``: SOMA23 full-body FSQ/PPO animation tracking, retaining the
+  original motor gains and PD mapping without domain randomization.
+* ``g1_teacher.py``: five-body hybrid FSQ/PPO tracking with G1's robot settings.
+* ``g1_student.py``: basic single-teacher conditional-VAE distillation, documented
+  in :doc:`metatron_student`. No co-distillation runtime is required.
+* ``soma_student.py``: basic SOMA23 single-teacher Transformer conditional-VAE distillation.
+
+The directory README has complete training commands. Use matching retargeted
+motion data for each robot and a new experiment name for scratch training.
+The SAMP-capable **Metatron v1** G1 package is hosted on
+`Hugging Face <https://huggingface.co/nvidia/Metatron-v1/tree/main/G1>`__.
+Run ``python scripts/download_metatron.py`` to fetch its checkpoint, configs,
+model card and NVIDIA Open Model License to ``data/pretrained_models/metatron/G1/``.
+See :doc:`../getting_started/pretrained_models` for playback.
+Its bundled ``experiment_config.py`` is inference-only, not an exact
+training reproduction using the basic student recipe.
 
 ADD (Adversarial Differential Discriminators)
 ---------------------------------------------
@@ -89,8 +113,11 @@ text descriptions, or scene information).
 
 .. note::
 
-   MaskedMimic requires a pre-trained Mimic expert model. First, train Mimic on multiple motions, then provide
-   the checkpoint path via ``--overrides``.
+   MaskedMimic distils a pre-trained Mimic expert: the supervised loss targets the expert's
+   actions. First train Mimic on multiple motions, then pass its checkpoint with
+   ``--expert-model-path``. The recipe reads the expert's config bundle beside the checkpoint
+   to add the expert's observations to the environment, so the path must be given on the
+   command line, not through ``--overrides``.
 
 **Example command**:
 
@@ -101,7 +128,7 @@ text descriptions, or scene information).
        --robot-name smpl \
        --simulator isaacgym \
        --motion-file <path_to_motions> \
-       --overrides "agent.config.expert_model_path='<path_to_expert_model>/last.ckpt'" \
+       --expert-model-path <path_to_expert_model>/last.ckpt \
        --experiment-name smpl_masked_mimic
 
 GPC and PEFT

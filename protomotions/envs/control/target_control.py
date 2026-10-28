@@ -1,104 +1,51 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Target-reaching control component."""
+"""Target-reaching control component.
+
+Owns the target position of a target-reaching task; the source that moves it
+(random draws for training, keyboard keys for a viewer) is a
+``command_source.TargetCommandSource`` the control constructs from its
+config's ``_target_``. Publishes the ``target.*`` names, and owns the task's
+three episode-ending checks as bound
+kernels (``terminations``): ``fall`` (a forbidden body touching the terrain
+while low over the fall reference height), ``gap`` (the anchor dropped below
+the last elevated support) and ``stuck`` (little movement over a window while
+below the last support). The checks read what ``advance`` latches and
+``publish`` hands out under ``failure_checks``: the fall reference height
+(the ground under the anchor or the last elevated support, whichever is
+higher), the last-support root height and the oldest anchor position of the
+stuck window.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 from torch import Tensor
 
-from protomotions.envs.context_views import EnvContext, TargetContext
+from protomotions.components.pose_lib import build_body_ids_tensor
+from protomotions.envs.context_views import EnvContext
 from protomotions.envs.control.base import ControlComponent, ControlComponentConfig
+
+# The module, not its names: a name imported here would be an attribute of
+# this module too, and a bundle written before the sources moved (naming
+# ``...target_control.RandomTargetCommandSourceConfig``) would then load
+# instead of being refused with the regenerate message.
+from protomotions.envs.control import command_source as command_sources
+from protomotions.envs.control.task_inputs import TaskInputs
+from protomotions.envs.mdp_component import MdpComponent
+from protomotions.envs.terminations.base import named_contact_fall_termination
+from protomotions.envs.terminations.rule import TerminationRule
 from protomotions.simulator.base_simulator.config import (
     MarkerConfig,
     MarkerState,
     VisualizationMarkerConfig,
 )
+from protomotions.simulator.base_simulator.simulator_state import RobotState
 from protomotions.utils.hydra_replacement import get_class
-from protomotions.utils.rotations import calc_heading_quat, quat_rotate
-
-if TYPE_CHECKING:
-    from protomotions.envs.base_env.env import BaseEnv
-
-
-@dataclass
-class TargetKeyBindingConfig:
-    """Keyboard binding for interactive target updates.
-
-    ``action`` becomes the attribute name on the scope returned by
-    :meth:`UserInterface.scope`. Must be a valid non-private Python
-    identifier (e.g. ``move_forward``); validation happens at registration.
-    """
-
-    key: str
-    action: str
-    delta_xy: Tuple[float, float]
-    description: str
-
-
-@dataclass
-class TargetCommandSourceConfig:
-    """Base config for target command sources."""
-
-    _target_: str = "protomotions.envs.control.target_control.TargetCommandSource"
-
-
-@dataclass
-class RandomTargetCommandSourceConfig(TargetCommandSourceConfig):
-    """Training-time target sampler."""
-
-    _target_: str = (
-        "protomotions.envs.control.target_control.RandomTargetCommandSource"
-    )
-
-    tar_change_time_min: float = 6.0
-    tar_change_time_max: float = 8.0
-    tar_dist_max: float = 6.0
-
-    target_bounds: Optional[Tuple[float, float, float, float]] = None
-    fixed_target_position: Optional[Tuple[float, float]] = None
-    target_positions: Optional[Tuple[Tuple[float, float], ...]] = None
-
-
-@dataclass
-class KeyboardTargetCommandSourceConfig(TargetCommandSourceConfig):
-    """Interactive target source driven by registered simulator UI keys."""
-
-    _target_: str = (
-        "protomotions.envs.control.target_control.KeyboardTargetCommandSource"
-    )
-
-    key_bindings: Tuple[TargetKeyBindingConfig, ...] = (
-        TargetKeyBindingConfig(
-            key="W",
-            action="move_forward",
-            delta_xy=(0.0, 1.0),
-            description="Move target forward",
-        ),
-        TargetKeyBindingConfig(
-            key="S",
-            action="move_backward",
-            delta_xy=(0.0, -1.0),
-            description="Move target backward",
-        ),
-        TargetKeyBindingConfig(
-            key="A",
-            action="move_left",
-            delta_xy=(-1.0, 0.0),
-            description="Move target left",
-        ),
-        TargetKeyBindingConfig(
-            key="D",
-            action="move_right",
-            delta_xy=(1.0, 0.0),
-            description="Move target right",
-        ),
-    )
-    fail_if_headless: bool = True
 
 
 @dataclass
@@ -108,8 +55,8 @@ class TargetControlConfig(ControlComponentConfig):
     _target_: str = "protomotions.envs.control.target_control.TargetControl"
 
     tar_proximity_threshold: float = 0.25
-    command_source: TargetCommandSourceConfig = field(
-        default_factory=RandomTargetCommandSourceConfig
+    command_source: command_sources.TargetCommandSourceConfig = field(
+        default_factory=command_sources.RandomTargetCommandSourceConfig
     )
 
     enable_fall_termination: bool = True
@@ -123,304 +70,275 @@ class TargetControlConfig(ControlComponentConfig):
     reset_grace_period: int = 5
 
 
-class TargetCommandSource:
-    """Source of target updates for :class:`TargetControl`."""
-
-    def __init__(self, config: TargetCommandSourceConfig, control: "TargetControl"):
-        self.config = config
-        self.control = control
-
-    def reset(self, env_ids: Tensor) -> None:
-        raise NotImplementedError
-
-    def step(self) -> None:
-        raise NotImplementedError
-
-    def close(self) -> None:
-        pass
+def _checks_enabled(config: TargetControlConfig) -> bool:
+    return bool(
+        config.enable_fall_termination
+        or config.enable_gap_termination
+        or config.enable_stuck_termination
+    )
 
 
-class RandomTargetCommandSource(TargetCommandSource):
-    """Sample target positions from the training configuration."""
-
-    config: RandomTargetCommandSourceConfig
-
-    def __init__(
-        self, config: RandomTargetCommandSourceConfig, control: "TargetControl"
-    ):
-        super().__init__(config, control)
-        self.config = config
-        self._target_bounds = config.target_bounds
-
-    def reset(self, env_ids: Tensor) -> None:
-        self._set_random_target(env_ids)
-
-    def step(self) -> None:
-        control = self.control
-        progress_time = control.env.progress_buf * control.env.dt
-        reset_ids = (progress_time >= control._tar_change_time).nonzero(
-            as_tuple=False
-        ).flatten()
-        if len(reset_ids) > 0:
-            self._set_random_target(reset_ids)
-
-    def _set_random_target(self, env_ids: Tensor) -> None:
-        control = self.control
-        robot_state = control.env.simulator.get_robot_state(env_ids)
-        anchor_body_index = control.env.robot_config.anchor_body_index
-        root_pos = robot_state.rigid_body_pos[:, anchor_body_index]
-        root_rot = robot_state.rigid_body_rot[:, anchor_body_index]
-
-        if self.config.target_positions is not None:
-            self._sample_from_target_positions(env_ids)
-            return
-
-        if self.config.fixed_target_position is not None:
-            fixed_x, fixed_y = self.config.fixed_target_position
-            control._tar_pos[env_ids, 0] = fixed_x
-            control._tar_pos[env_ids, 1] = fixed_y
-            control._update_target_heights(env_ids)
-            control._tar_change_time[env_ids] = float("inf")
-            return
-
-        self._sample_heading_relative_target(env_ids, root_pos, root_rot)
-
-        tar_change = torch.rand(len(env_ids), device=control.env.device) * (
-            self.config.tar_change_time_max - self.config.tar_change_time_min
-        ) + self.config.tar_change_time_min
-        current_time = control.env.progress_buf[env_ids] * control.env.dt
-        is_env_reset = control.env.reset_buf[env_ids] | control.env.terminate_buf[
-            env_ids
-        ]
-        current_time = torch.where(
-            is_env_reset, torch.zeros_like(current_time), current_time
-        )
-        control._tar_change_time[env_ids] = current_time + tar_change
-
-    def _sample_from_target_positions(self, env_ids: Tensor) -> None:
-        control = self.control
-        positions = self.config.target_positions
-        indices = torch.randint(
-            0, len(positions), (len(env_ids),), device=control.env.device
-        )
-        for row, env_id in enumerate(env_ids):
-            control._tar_pos[env_id, 0] = positions[indices[row].item()][0]
-            control._tar_pos[env_id, 1] = positions[indices[row].item()][1]
-        control._update_target_heights(env_ids)
-        control._tar_change_time[env_ids] = float("inf")
-
-    def _sample_heading_relative_target(
-        self, env_ids: Tensor, root_pos: Tensor, root_rot: Tensor
-    ) -> None:
-        control = self.control
-        num_envs = len(env_ids)
-        rand_dist = (
-            torch.rand(num_envs, device=control.env.device) * self.config.tar_dist_max
-        )
-        rand_angle = torch.rand(num_envs, device=control.env.device) * 2 * torch.pi
-
-        local_offset = torch.zeros(num_envs, 3, device=control.env.device)
-        local_offset[:, 0] = rand_dist * torch.cos(rand_angle)
-        local_offset[:, 1] = rand_dist * torch.sin(rand_angle)
-        heading_rot = calc_heading_quat(root_rot, w_last=True)
-        world_offset = quat_rotate(heading_rot, local_offset, w_last=True)
-        control._tar_pos[env_ids, :2] = root_pos[:, :2] + world_offset[:, :2]
-
-        if self._target_bounds is not None:
-            x_min, x_max, y_min, y_max = self._target_bounds
-            control._tar_pos[env_ids, 0] = control._tar_pos[env_ids, 0].clamp(
-                x_min, x_max
-            )
-            control._tar_pos[env_ids, 1] = control._tar_pos[env_ids, 1].clamp(
-                y_min, y_max
-            )
-        control._update_target_heights(env_ids)
+# ---------------------------------------------------------------------------
+# The episode-ending checks, as kernels over the context
+# ---------------------------------------------------------------------------
 
 
-class KeyboardTargetCommandSource(TargetCommandSource):
-    """Move one active environment target from registered keyboard bindings."""
+def fall_bodies(robot_config) -> Tuple[List[str], Tensor]:
+    """The bodies whose terrain contact is a fall: every body not in
+    ``robot.non_termination_contact_bodies`` (``"all"`` allows every body).
+    Returns their names (the contact matrix's rows) and ids (the kinematics')."""
+    names = list(robot_config.kinematic_info.body_names)
+    allowed = robot_config.non_termination_contact_bodies
+    allowed = set(names) if allowed == "all" else set(allowed)
+    forbidden = [name for name in names if name not in allowed]
+    return forbidden, build_body_ids_tensor(names, forbidden, torch.device("cpu"))
 
-    config: KeyboardTargetCommandSourceConfig
 
-    def __init__(
-        self, config: KeyboardTargetCommandSourceConfig, control: "TargetControl"
-    ):
-        super().__init__(config, control)
-        self.config = config
-        if config.fail_if_headless and control.env.simulator.headless:
-            raise RuntimeError(
-                "Keyboard target command source requires a non-headless simulator"
-            )
-        ui = control.env.simulator.user_interface
-        self._key_bindings = ui.scope("target_control")
-        self._action_bindings = []
-        for binding in config.key_bindings:
-            handle = self._key_bindings.register(
-                binding.key,
-                binding.action,
-                binding.description,
-            )
-            self._action_bindings.append((handle, binding.delta_xy))
+def target_fall(
+    rigid_body_pos: Tensor = EnvContext.current.rigid_body_pos,
+    contact_forces: Tensor = EnvContext.contact_forces,
+    contact_body_index: Dict[str, int] = EnvContext.contact_body_index,
+    contact_partner_index: Dict[str, int] = EnvContext.contact_partner_index,
+    fall_ref_height: Tensor = EnvContext.target.fall_ref_height,
+    progress_buf: Tensor = EnvContext.progress_buf,
+    *,
+    body_ids: Tensor,
+    body_names: List[str],
+    partner_names: List[str],
+    termination_height: float,
+    reset_grace_period: int,
+) -> Tensor:
+    """Boolean: a forbidden body touches the terrain while low over the fall
+    reference height, past the reset grace period. Stays a boolean kernel: a
+    contact conjunction under a grace mask has no one scalar to cut."""
+    fallen = named_contact_fall_termination(
+        rigid_body_pos=rigid_body_pos,
+        contact_forces=contact_forces,
+        contact_body_index=contact_body_index,
+        contact_partner_index=contact_partner_index,
+        ground_heights=fall_ref_height,
+        progress_buf=progress_buf,
+        body_ids=body_ids,
+        body_names=body_names,
+        partner_names=partner_names,
+        termination_height=termination_height,
+    )
+    return fallen & (progress_buf > reset_grace_period)
 
-    def reset(self, env_ids: Tensor) -> None:
-        robot_state = self.control.env.simulator.get_robot_state(env_ids)
-        anchor_body_index = self.control.env.robot_config.anchor_body_index
-        self.control._tar_pos[env_ids] = robot_state.rigid_body_pos[:, anchor_body_index]
-        self.control._update_target_heights(env_ids)
-        self.control._tar_change_time[env_ids] = float("inf")
 
-    def step(self) -> None:
-        ui = self.control.env.simulator.user_interface
-        for handle, (dx, dy) in self._action_bindings:
-            if handle.consume():
-                env_id = int(ui.active_env_id)
-                if env_id < 0 or env_id >= self.control.env.num_envs:
-                    raise IndexError(
-                        f"Active env id {env_id} is outside [0, {self.control.env.num_envs})"
-                    )
-                self.control._move_targets(
-                    torch.tensor([env_id], device=self.control.env.device),
-                    dx=dx,
-                    dy=dy,
-                )
+def target_gap(
+    anchor_pos: Tensor = EnvContext.current.anchor_pos,
+    last_support_root_height: Tensor = EnvContext.target.last_support_root_height,
+    progress_buf: Tensor = EnvContext.progress_buf,
+    *,
+    gap_threshold: float,
+    reset_grace_period: int,
+) -> Tensor:
+    """Boolean: the anchor is more than ``gap_threshold`` below the root height at
+    the last elevated support, outside the reset grace period. The comparison is
+    the old ``z < last_support - threshold`` as written, so the two agree at the
+    one float boundary where ``last_support - z > threshold`` would not."""
+    below = anchor_pos[..., 2] < last_support_root_height - gap_threshold
+    return below & (progress_buf > reset_grace_period)
 
-    def close(self) -> None:
-        self._key_bindings.unregister_all()
+
+def target_stuck(
+    anchor_pos: Tensor = EnvContext.current.anchor_pos,
+    oldest_root_pos: Tensor = EnvContext.target.oldest_root_pos,
+    last_support_root_height: Tensor = EnvContext.target.last_support_root_height,
+    progress_buf: Tensor = EnvContext.progress_buf,
+    *,
+    movement_threshold: float,
+    height_threshold: float,
+    window_frames: int,
+    reset_grace_period: int,
+) -> Tensor:
+    """Boolean: the anchor moved less than ``movement_threshold`` over the
+    stuck window while more than ``height_threshold`` below the last support,
+    with a full window of history and past the grace period. Stays a boolean
+    kernel: two cuts in one check."""
+    displacement = torch.linalg.norm(anchor_pos - oldest_root_pos, dim=-1)
+    is_stuck = displacement < movement_threshold
+    is_below_support = anchor_pos[..., 2] < (
+        last_support_root_height - height_threshold
+    )
+    enough_history = progress_buf >= window_frames
+    return (
+        is_stuck
+        & is_below_support
+        & enough_history
+        & (progress_buf > reset_grace_period)
+    )
+
+
+# ---------------------------------------------------------------------------
+# The control
+# ---------------------------------------------------------------------------
 
 
 class TargetControl(ControlComponent):
     """Stateful target sampler for target-reaching tasks."""
 
     config: TargetControlConfig
+    namespaces = ("target",)
 
-    def __init__(self, config: TargetControlConfig, env: "BaseEnv"):
-        super().__init__(config, env)
-        self.config = config
-        self._tar_pos = torch.zeros(env.num_envs, 3, device=env.device)
-        self._tar_change_time = torch.zeros(env.num_envs, device=env.device)
-        self._last_support_root_height = torch.zeros(env.num_envs, device=env.device)
-        self._last_support_ground_height = torch.zeros(env.num_envs, device=env.device)
-        self._root_pos_history = torch.zeros(
-            env.num_envs, config.stuck_window_frames, 3, device=env.device
+    @classmethod
+    def provides(cls, config: TargetControlConfig, tag: str) -> bool:
+        """``failure_checks`` (the three names the checks read) is on when
+        any of the three checks is; every other tag reads the config field."""
+        if tag == "failure_checks":
+            return _checks_enabled(config)
+        return super().provides(config, tag)
+
+    @classmethod
+    def terminations(
+        cls, config: TargetControlConfig, robot_config
+    ) -> Dict[str, TerminationRule]:
+        """``fall``, ``gap`` and ``stuck``, each only when its switch is on.
+        A robot without contact bodies is refused on the ``contact_forces``
+        binding by the standard absence sentence; a forbidden body missing
+        from the contact matrix by ``required_keys``."""
+        entries: Dict[str, TerminationRule] = {}
+        grace = config.reset_grace_period
+        if config.enable_fall_termination:
+            body_names, body_ids = fall_bodies(robot_config)
+            entries["fall"] = TerminationRule(
+                MdpComponent.from_kernel(
+                    target_fall,
+                    body_ids=body_ids,
+                    body_names=body_names,
+                    partner_names=["terrain"],
+                    termination_height=config.fall_termination_height,
+                    reset_grace_period=grace,
+                    required_keys={
+                        "contact_body_index": body_names,
+                        "contact_partner_index": ["terrain"],
+                    },
+                )
+            )
+        if config.enable_gap_termination:
+            entries["gap"] = TerminationRule(
+                MdpComponent.from_kernel(
+                    target_gap,
+                    gap_threshold=config.gap_termination_threshold,
+                    reset_grace_period=grace,
+                )
+            )
+        if config.enable_stuck_termination:
+            entries["stuck"] = TerminationRule(
+                MdpComponent.from_kernel(
+                    target_stuck,
+                    movement_threshold=config.stuck_movement_threshold,
+                    height_threshold=config.stuck_height_threshold,
+                    window_frames=config.stuck_window_frames,
+                    reset_grace_period=grace,
+                )
+            )
+        return entries
+
+    def __init__(self, config: TargetControlConfig, inputs: TaskInputs):
+        super().__init__(config, inputs)
+        add = self.state.add
+        self.tar_pos = add("tar_pos", (3,), torch.float, 0.0)
+        self.tar_change_time = add("tar_change_time", (), torch.float, 0.0)
+        # What the checks read: the root and ground heights at the last
+        # elevated support, the fall reference height, the stuck window.
+        self.last_support_root_height = add(
+            "last_support_root_height", (), torch.float, 0.0
         )
-        self._root_pos_history_idx = 0
+        self.last_support_ground_height = add(
+            "last_support_ground_height", (), torch.float, 0.0
+        )
+        self.fall_ref_height = add("fall_ref_height", (), torch.float, 0.0)
+        self.root_pos_history = add(
+            "root_pos_history", (config.stuck_window_frames, 3), torch.float, 0.0
+        )
+        # The ring's write cursor is one for every env: a shared tensor.
+        self.history_index = self.state.shared(
+            "history_index", torch.zeros((), dtype=torch.long, device=inputs.device)
+        )
+        self.checks_enabled = _checks_enabled(config)
         command_source_cls = get_class(config.command_source._target_)
         self.command_source = command_source_cls(config.command_source, self)
 
-    def reset(self, env_ids: Tensor):
+    def reset_rows(self, env_ids: Tensor, state: RobotState) -> None:
         if len(env_ids) == 0:
             return
-        self.command_source.reset(env_ids)
+        super().reset_rows(env_ids, state)
+        anchor = self.inputs.robot.anchor_body_index
+        root_pos = state.rigid_body_pos[:, anchor]
+        self.command_source.reset(env_ids, root_pos, state.rigid_body_rot[:, anchor])
 
-        robot_state = self.env.simulator.get_robot_state(env_ids)
-        anchor_body_index = self.env.robot_config.anchor_body_index
-        root_pos = robot_state.rigid_body_pos[:, anchor_body_index]
-        self._last_support_root_height[env_ids] = root_pos[:, 2]
-        self._last_support_ground_height[env_ids] = self._ground_heights(root_pos)
-        self._root_pos_history[env_ids] = root_pos.unsqueeze(1).expand(
+        self.last_support_root_height[env_ids] = root_pos[:, 2]
+        ground = self._ground_heights(root_pos)
+        self.last_support_ground_height[env_ids] = ground
+        self.fall_ref_height[env_ids] = ground
+        self.root_pos_history[env_ids] = root_pos.unsqueeze(1).expand(
             -1, self.config.stuck_window_frames, -1
         )
 
-    def step(self):
-        self.command_source.step()
+    def advance(self, state: RobotState) -> Dict[str, Tensor]:
+        """Move the target when due, then latch what the checks read: the
+        stuck window's newest anchor position, the last elevated support and
+        the fall reference height."""
+        self.command_source.advance(state)
+        if self.checks_enabled:
+            root_pos = state.rigid_body_pos[:, self.inputs.robot.anchor_body_index]
+            index = int(self.history_index)
+            self.root_pos_history[:, index] = root_pos
+            self.history_index.fill_((index + 1) % self.config.stuck_window_frames)
 
-        if self.config.enable_stuck_termination:
-            robot_state = self.env.simulator.get_robot_state()
-            anchor_body_index = self.env.robot_config.anchor_body_index
-            root_pos = robot_state.rigid_body_pos[:, anchor_body_index]
-            self._root_pos_history[:, self._root_pos_history_idx] = root_pos
-            self._root_pos_history_idx = (
-                self._root_pos_history_idx + 1
-            ) % self.config.stuck_window_frames
+            root_z = root_pos[:, 2]
+            ground_z = self._ground_heights(root_pos)
+            on_elevated_ground = ground_z > 0.0
+            self.last_support_root_height[on_elevated_ground] = root_z[
+                on_elevated_ground
+            ]
+            self.last_support_ground_height[on_elevated_ground] = ground_z[
+                on_elevated_ground
+            ]
+            self.fall_ref_height[:] = torch.maximum(
+                ground_z, self.last_support_ground_height
+            )
+        return {}
 
     def close(self) -> None:
         """Release UI handles held by the command source."""
         self.command_source.close()
 
-    def check_resets_and_terminations(self) -> Tuple[Tensor, Tensor]:
-        terminated = torch.zeros(
-            self.env.num_envs, dtype=torch.bool, device=self.env.device
-        )
-        if not (
-            self.config.enable_fall_termination
-            or self.config.enable_gap_termination
-            or self.config.enable_stuck_termination
-        ):
-            return terminated.clone(), terminated
-
-        robot_state = self.env.simulator.get_robot_state()
-        anchor_body_index = self.env.robot_config.anchor_body_index
-        root_pos = robot_state.rigid_body_pos[:, anchor_body_index]
-        root_z = root_pos[:, 2]
-        ground_z = self._ground_heights(root_pos)
-        past_grace = self.env.progress_buf > self.config.reset_grace_period
-
-        on_elevated_ground = ground_z > 0.0
-        self._last_support_root_height[on_elevated_ground] = root_z[on_elevated_ground]
-        self._last_support_ground_height[on_elevated_ground] = ground_z[
-            on_elevated_ground
-        ]
-
-        if self.config.enable_fall_termination:
-            from protomotions.envs.terminations import fall_termination
-
-            fall_ref_height = torch.maximum(ground_z, self._last_support_ground_height)
-            has_fallen = fall_termination(
-                rigid_body_pos=robot_state.rigid_body_pos,
-                rigid_body_contacts=robot_state.rigid_body_contacts,
-                ground_heights=fall_ref_height,
-                termination_height=self.config.fall_termination_height,
-                non_termination_contact_body_ids=(
-                    self.env.non_termination_contact_body_ids
-                ),
-                progress_buf=self.env.progress_buf,
+    def publish(self, env_ids: Optional[Tensor]) -> Dict[str, Any]:
+        """Publish the ``target.*`` names (see ``TargetContext``); the three
+        failure-check names only when a check is enabled."""
+        rows = slice(None) if env_ids is None else env_ids
+        published: Dict[str, Any] = {
+            "target.tar_pos": self.tar_pos[rows],
+            "target.tar_proximity_threshold": self.config.tar_proximity_threshold,
+        }
+        if self.checks_enabled:
+            published.update(
+                {
+                    "target.fall_ref_height": self.fall_ref_height[rows],
+                    "target.last_support_root_height": self.last_support_root_height[
+                        rows
+                    ],
+                    "target.oldest_root_pos": self.root_pos_history[
+                        rows, int(self.history_index)
+                    ],
+                }
             )
-            terminated = terminated | (has_fallen & past_grace)
-
-        if self.config.enable_gap_termination:
-            fell_in_gap = root_z < (
-                self._last_support_root_height - self.config.gap_termination_threshold
-            )
-            terminated = terminated | (fell_in_gap & past_grace)
-
-        if self.config.enable_stuck_termination:
-            oldest_pos = self._root_pos_history[:, self._root_pos_history_idx]
-            displacement = torch.linalg.norm(root_pos - oldest_pos, dim=-1)
-            is_stuck = displacement < self.config.stuck_movement_threshold
-            is_below_support = root_z < (
-                self._last_support_root_height - self.config.stuck_height_threshold
-            )
-            enough_history = self.env.progress_buf >= self.config.stuck_window_frames
-            terminated = terminated | (
-                is_stuck & is_below_support & enough_history & past_grace
-            )
-
-        # Fall, gap, and stuck failures are terminal resets: value bootstrap should
-        # be zeroed for the same envs that reset. Return a separate reset tensor so
-        # callers can safely mutate reset_buf without aliasing terminate_buf.
-        return terminated.clone(), terminated
-
-    def populate_context(self, ctx: EnvContext) -> None:
-        env_ids = getattr(ctx, "env_ids", None)
-        tar_pos = self._tar_pos if env_ids is None else self._tar_pos[env_ids]
-        ctx.target = TargetContext(
-            tar_pos=tar_pos,
-            tar_proximity_threshold=self.config.tar_proximity_threshold,
-        )
+        return published
 
     def _ground_heights(self, positions: Tensor) -> Tensor:
-        if self.env.terrain is None:
-            return torch.zeros(positions.shape[0], device=self.env.device)
-        return self.env.terrain.get_ground_heights(positions).squeeze(-1)
+        return self.inputs.ground_height(positions)
 
     def _update_target_heights(self, env_ids: Tensor) -> None:
         if len(env_ids) == 0:
             return
-        self._tar_pos[env_ids, 2] = self._ground_heights(self._tar_pos[env_ids])
+        self.tar_pos[env_ids, 2] = self._ground_heights(self.tar_pos[env_ids])
 
     def _move_targets(self, env_ids: Tensor, dx: float, dy: float) -> None:
-        self._tar_pos[env_ids, 0] += dx
-        self._tar_pos[env_ids, 1] += dy
+        self.tar_pos[env_ids, 0] += dx
+        self.tar_pos[env_ids, 1] += dy
         self._update_target_heights(env_ids)
 
     def create_visualization_markers(
@@ -436,11 +354,12 @@ class TargetControl(ControlComponent):
             )
         }
 
-    def get_markers_state(self) -> Dict[str, MarkerState]:
-        if self.env.simulator.headless:
+    def get_markers_state(self, state: RobotState) -> Dict[str, MarkerState]:
+        if self.inputs.headless:
             return {}
-        tar_pos = self._tar_pos.view(self.env.num_envs, 1, 3).clone()
+        num_envs, device = self.inputs.num_envs, self.inputs.device
+        tar_pos = self.tar_pos.view(num_envs, 1, 3).clone()
         tar_pos[..., 2] += 0.1
-        tar_rot = torch.zeros(self.env.num_envs, 1, 4, device=self.env.device)
+        tar_rot = torch.zeros(num_envs, 1, 4, device=device)
         tar_rot[..., -1] = 1.0
         return {"target_markers": MarkerState(translation=tar_pos, orientation=tar_rot)}

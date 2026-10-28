@@ -27,23 +27,6 @@ def test_base_reward_primitives_handle_shapes_indices_and_exp_modes():
     indices = torch.tensor([1])
 
     assert torch.allclose(
-        base.mean_squared_error(x, ref),
-        torch.tensor([0.5, 10.0]),
-    )
-    assert torch.allclose(
-        base.mean_squared_error(x, ref, indices=indices),
-        torch.tensor([1.0, 16.0]),
-    )
-    assert torch.allclose(
-        base.mean_squared_error(torch.tensor([[1.0, 3.0]]), torch.zeros(1, 2)),
-        torch.tensor([5.0]),
-    )
-    assert torch.allclose(
-        base.mean_squared_error(torch.tensor([2.0]), torch.zeros(1)),
-        torch.tensor([4.0]),
-    )
-
-    assert torch.allclose(
         base.mean_squared_error_exp(x, ref, coefficient=-1.0),
         torch.exp(torch.tensor([-0.5, -10.0])),
     )
@@ -75,48 +58,12 @@ def test_base_reward_primitives_handle_shapes_indices_and_exp_modes():
     )
 
     assert torch.allclose(
-        base.norm(torch.tensor([[[3.0, 4.0], [5.0, 12.0]]])),
-        torch.tensor([[5.0, 13.0]]),
-    )
-    assert torch.allclose(
-        base.norm(torch.tensor([[[3.0, 4.0], [5.0, 12.0]]]), indices=indices),
-        torch.tensor([[13.0]]),
-    )
-    assert torch.allclose(
         base.delta_norm(torch.tensor([[3.0, 4.0]]), torch.zeros(1, 2)),
         torch.tensor([5.0]),
     )
     assert torch.allclose(
         base.delta_norm(x, ref, indices=indices),
         torch.tensor([[2.0**0.5], [32.0**0.5]]),
-    )
-    assert torch.allclose(
-        base.delta_logmeanexp(
-            torch.tensor([[1.0, 3.0]]),
-            torch.zeros(1, 2),
-            beta=2.0,
-        ),
-        (torch.logsumexp(torch.tensor([[2.0, 6.0]]), dim=-1) - math.log(2)) / 2.0,
-    )
-    assert torch.allclose(
-        base.delta_logmeanexp(x, ref, indices=indices, beta=2.0),
-        torch.tensor([[1.0], [4.0]]),
-    )
-    assert torch.allclose(
-        base.absolute_difference_sum(x, ref),
-        torch.tensor([2.0, 12.0]),
-    )
-    assert torch.allclose(
-        base.absolute_difference_sum(x, ref, indices=indices),
-        torch.tensor([2.0, 8.0]),
-    )
-    assert torch.allclose(
-        base.absolute_difference_sum(torch.tensor([[1.0, -2.0]]), torch.zeros(1, 2)),
-        torch.tensor([3.0]),
-    )
-    assert torch.allclose(
-        base.absolute_difference_sum(torch.tensor([-3.0]), torch.zeros(1)),
-        torch.tensor([3.0]),
     )
 
 
@@ -140,11 +87,6 @@ def test_base_rotation_and_power_primitives():
         torch.ones(2),
     )
     assert base.rotation_error_exp(quat, ref_quat, coefficient=-1.0)[1] < 1.0
-    assert torch.allclose(base.rotation_error(quat, quat), torch.zeros(2))
-    assert torch.allclose(
-        base.rotation_error(quat, quat, indices=torch.tensor([1])),
-        torch.zeros(2),
-    )
 
     dof_forces = torch.tensor([[2.0, -3.0], [4.0, 5.0]])
     dof_vel = torch.tensor([[10.0, -2.0], [0.5, -1.0]])
@@ -163,35 +105,6 @@ def test_base_rotation_and_power_primitives():
     assert torch.allclose(
         base.power_consumption_sum(dof_forces, dof_vel, use_torque_squared=True),
         torch.tensor([13.0, 41.0]),
-    )
-    assert torch.allclose(
-        base.power_consumption_exp(dof_forces, dof_vel, coefficient=-0.1),
-        torch.exp(torch.tensor([-2.6, -0.7])),
-    )
-    assert torch.allclose(
-        base.power_consumption_exp(
-            dof_forces,
-            dof_vel,
-            coefficient=-0.1,
-            use_torque_squared=True,
-            indices=torch.tensor([1]),
-        ),
-        torch.exp(torch.tensor([-0.9, -2.5])),
-    )
-    assert torch.allclose(
-        base.velocity_squared_sum(torch.tensor([[[1.0, 2.0], [3.0, 4.0]]])),
-        torch.tensor([30.0]),
-    )
-    assert torch.allclose(
-        base.velocity_squared_sum(torch.tensor([[1.0, 2.0, 3.0]])),
-        torch.tensor([14.0]),
-    )
-    assert torch.allclose(
-        base.velocity_squared_sum(
-            torch.tensor([[[1.0, 2.0], [3.0, 4.0]]]),
-            indices=torch.tensor([1]),
-        ),
-        torch.tensor([25.0]),
     )
 
 
@@ -215,14 +128,6 @@ def test_regularization_rewards_and_helpers():
         torch.zeros(2),
     )
     assert torch.allclose(
-        regularization.compute_action_smoothness_logmeanexp(
-            current_action,
-            previous_action,
-            beta=2.0,
-        ),
-        base.delta_logmeanexp(current_action, previous_action, beta=2.0),
-    )
-    assert torch.allclose(
         regularization.compute_pow_rew(
             torch.tensor([[2.0, -3.0]]),
             torch.tensor([[10.0, -2.0]]),
@@ -241,21 +146,14 @@ def test_regularization_rewards_and_helpers():
         regularization.compute_soft_pos_limit_rew(dof_pos, lower, upper),
         torch.tensor([1.0, 2.0]),
     )
-    assert torch.allclose(
-        regularization.joint_limit_violation(
-            dof_pos,
-            lower,
-            upper,
-            indices=torch.tensor([0, 2]),
-        ),
-        torch.tensor([1.0, 1.0]),
-    )
 
     sim_contacts = torch.tensor([[True, False, True], [False, True, False]])
+    forces = torch.zeros(2, 3, 4, 3)
+    forces[:, :, 0, 2] = sim_contacts.float()
     ref_contacts = torch.tensor([[True, True, False], [True, True, False]])
     assert torch.allclose(
         regularization.compute_contact_match_rew(
-            sim_contacts,
+            forces[:, [1, 2]],
             ref_contacts,
             contact_body_ids=torch.tensor([1, 2]),
         ),
@@ -271,7 +169,12 @@ def test_regularization_rewards_and_helpers():
     )
     assert torch.allclose(
         regularization.compute_contact_force_change_rew(
-            torch.tensor([[10.0, 50.0], [100.0, 0.0]]),
+            torch.tensor(
+                [
+                    [[[0.0, 0.0, 10.0]], [[0.0, 0.0, 50.0]]],
+                    [[[0.0, 0.0, 100.0]], [[0.0, 0.0, 0.0]]],
+                ]
+            ),
             torch.tensor([[0.0, 0.0], [20.0, 40.0]]),
             threshold=30.0,
         ),
@@ -350,85 +253,107 @@ def test_tracking_rewards_cover_standard_and_beyond_mimic_variants():
     current_vel = torch.ones(2, 2, 3)
     current_anchor_pos = current_pos[:, 0, :]
     current_anchor_rot = current_rot[:, 0, :]
+    ref_anchor_pos = ref_pos[:, 0, :]
+    ref_anchor_rot = ref_rot[:, 0, :]
 
-    assert torch.allclose(tracking.compute_gt_rew(current_pos, current_pos), torch.ones(2))
-    assert torch.allclose(tracking.compute_gr_rew(current_rot, current_rot), torch.ones(2))
-    assert torch.allclose(tracking.compute_gv_rew(current_vel, current_vel), torch.ones(2))
-    assert torch.allclose(tracking.compute_gav_rew(current_vel, current_vel), torch.ones(2))
     assert torch.allclose(
-        tracking.compute_rh_rew(current_pos[:, 0, 2], current_pos),
+        tracking.compute_gt_rew(current_pos, current_pos), torch.ones(2)
+    )
+    assert torch.allclose(
+        tracking.compute_gr_rew(current_rot, current_rot), torch.ones(2)
+    )
+    assert torch.allclose(
+        tracking.compute_gv_rew(current_vel, current_vel), torch.ones(2)
+    )
+    assert torch.allclose(
+        tracking.compute_gav_rew(current_vel, current_vel), torch.ones(2)
+    )
+    assert torch.allclose(
+        tracking.compute_rh_rew(current_anchor_pos, current_anchor_pos),
         torch.ones(2),
     )
     assert torch.allclose(
         tracking.compute_global_position_error_exp(current_pos, current_pos, sigma=0.5),
         torch.ones(2),
     )
-    assert tracking.compute_global_position_error_exp(
-        current_pos,
-        ref_pos,
-        sigma=1.0,
-        indices=torch.tensor([1]),
-    )[1] < 1.0
+    assert (
+        tracking.compute_global_position_error_exp(
+            current_pos,
+            ref_pos,
+            sigma=1.0,
+            indices=torch.tensor([1]),
+        )[1]
+        < 1.0
+    )
     assert torch.allclose(
         tracking.compute_global_anchor_pos_rew(
             current_anchor_pos,
-            ref_pos,
-            anchor_idx=0,
+            ref_anchor_pos,
             sigma=1.0,
         ),
         torch.tensor([1.0, math.exp(-1.0)]),
     )
     assert torch.allclose(
-        tracking.compute_global_orientation_error_exp(current_rot, current_rot, sigma=1.0),
+        tracking.compute_global_orientation_error_exp(
+            current_rot, current_rot, sigma=1.0
+        ),
         torch.ones(2),
     )
-    assert tracking.compute_global_anchor_ori_rew(
-        current_anchor_rot,
-        ref_rot,
-        anchor_idx=0,
-        sigma=1.0,
-    )[1] < 1.0
+    assert (
+        tracking.compute_global_anchor_ori_rew(
+            current_anchor_rot,
+            ref_anchor_rot,
+            sigma=1.0,
+        )[1]
+        < 1.0
+    )
 
     assert torch.allclose(
         tracking.compute_relative_body_pos_rew(
             current_pos,
             current_pos,
             current_anchor_rot,
-            current_rot,
+            current_anchor_rot,
             current_anchor_pos,
-            anchor_idx=0,
+            current_anchor_pos,
             sigma=1.0,
         ),
         torch.ones(2),
     )
-    assert tracking.compute_relative_body_pos_rew(
-        current_pos,
-        ref_pos,
-        current_anchor_rot,
-        ref_rot,
-        current_anchor_pos,
-        anchor_idx=0,
-        sigma=1.0,
-        body_indices=torch.tensor([1]),
-    )[1] < 1.0
+    assert (
+        tracking.compute_relative_body_pos_rew(
+            current_pos,
+            ref_pos,
+            current_anchor_rot,
+            ref_anchor_rot,
+            current_anchor_pos,
+            ref_anchor_pos,
+            sigma=1.0,
+            body_indices=torch.tensor([1]),
+        )[1]
+        < 1.0
+    )
     assert torch.allclose(
         tracking.compute_relative_body_ori_rew(
             current_rot,
             current_rot,
             current_anchor_rot,
-            anchor_idx=0,
+            current_anchor_rot,
             sigma=1.0,
         ),
         torch.ones(2),
     )
-    assert tracking.compute_relative_body_ori_rew(
-        current_rot,
-        ref_rot,
-        current_anchor_rot,
-        anchor_idx=0,
-        sigma=1.0,
-        body_indices=torch.tensor([0]),
-    )[1] < 1.0
+    assert (
+        tracking.compute_relative_body_ori_rew(
+            current_rot,
+            ref_rot,
+            current_anchor_rot,
+            ref_anchor_rot,
+            sigma=1.0,
+            body_indices=torch.tensor([0]),
+        )[1]
+        < 1.0
+    )
     assert torch.allclose(
         tracking.compute_global_body_lin_vel_rew(current_vel, current_vel),
         torch.ones(2),
@@ -442,24 +367,77 @@ def test_tracking_rewards_cover_standard_and_beyond_mimic_variants():
             current_pos,
             current_pos,
             current_anchor_rot,
-            current_rot,
-            anchor_idx=0,
+            current_anchor_rot,
+            current_anchor_pos,
+            current_anchor_pos,
             body_indices=[0, 1],
         ),
         torch.ones(2),
     )
-    assert tracking.compute_gt_rel_rew(
-        current_pos,
-        ref_pos,
-        current_anchor_rot,
-        ref_rot,
-        anchor_idx=0,
-    )[1] < 1.0
-    assert torch.allclose(
-        tracking.compute_anchor_xy_rew(
-            current_anchor_pos,
+    assert (
+        tracking.compute_gt_rel_rew(
             current_pos,
-            anchor_idx=0,
-        ),
+            ref_pos,
+            current_anchor_rot,
+            ref_anchor_rot,
+            current_anchor_pos,
+            ref_anchor_pos,
+        )[1]
+        < 1.0
+    )
+    assert torch.allclose(
+        tracking.compute_anchor_xy_rew(current_anchor_pos, current_anchor_pos),
         torch.ones(2),
     )
+
+
+def test_anchor_defaults_equal_the_root_bindings_only_when_the_anchor_is_body_0():
+    """compute_heading_velocity_rew and compute_rh_rew read the robot's declared
+    anchor through their defaults. On a robot whose anchor is body 0 that is
+    the old root binding, number for number; on a two-body fixture whose
+    anchor is body 1 both rewards differ from the root's."""
+    from protomotions.envs.mdp_component import MdpComponent
+
+    pos = torch.tensor(
+        [
+            [[0.0, 0.0, 0.9], [0.3, 0.0, 1.2]],
+            [[1.0, 0.0, 0.8], [1.2, 0.1, 1.1]],
+        ]
+    )
+    ref_pos = pos.clone()
+    ref_pos[:, 1, 2] += 0.1  # body 1's reference height differs, body 0's does not
+    rot = _identity_quat(2, 2)
+    rot[:, 1] = torch.tensor([0.0, 0.0, math.sin(0.25), math.cos(0.25)])  # yawed
+    step = torch.tensor([0.1, 0.0, 0.0])
+    tar_dir = torch.tensor([[1.0, 0.0], [1.0, 0.0]])
+    tar_speed = torch.tensor([1.0, 1.0])
+
+    def context(anchor: int) -> dict:
+        return {
+            "current.anchor_pos": pos[:, anchor],
+            "current.anchor_rot": rot[:, anchor],
+            "mimic.ref_anchor_pos": ref_pos[:, anchor],
+            "steering.prev_root_pos": pos[:, anchor] - step,
+            "steering.tar_dir": tar_dir,
+            "steering.tar_speed": tar_speed,
+            "steering.tar_face_dir": tar_dir,
+            "dt": 0.1,
+        }
+
+    heading = MdpComponent.from_kernel(task.compute_heading_velocity_rew)
+    height = MdpComponent.from_kernel(tracking.compute_rh_rew)
+    assert heading.dynamic_vars["root_pos"].path == "current.anchor_pos"
+    assert heading.dynamic_vars["root_rot"].path == "current.anchor_rot"
+    assert height.dynamic_vars["anchor_pos"].path == "current.anchor_pos"
+    assert height.dynamic_vars["ref_anchor_pos"].path == "mimic.ref_anchor_pos"
+
+    # The old root bindings: body 0's position, rotation and height.
+    root_heading = task.compute_heading_velocity_rew(
+        pos[:, 0], pos[:, 0] - step, rot[:, 0], tar_dir, tar_speed, tar_dir, 0.1
+    )
+    root_height = base.mean_squared_error_exp(pos[:, 0, 2], ref_pos[:, 0, 2], -100.0)
+
+    torch.testing.assert_close(heading.compute(context(0)), root_heading)
+    torch.testing.assert_close(height.compute(context(0)), root_height)
+    assert not torch.allclose(heading.compute(context(1)), root_heading)
+    assert not torch.allclose(height.compute(context(1)), root_height)

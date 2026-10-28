@@ -6,33 +6,52 @@
 from argparse import Namespace
 from types import SimpleNamespace
 
-import torch
-
 from examples.experiments.gpc import prior
 
 
-def test_gpc_prior_loads_tracker_future_steps(tmp_path):
+def test_gpc_prior_loads_tracker_future_steps(monkeypatch, tmp_path):
+    # The saved bundle rebuilds through the real constructors; these SimpleNamespace
+    # stand-ins can't round-trip, so patch the bundle loader to return them.
+    import protomotions.utils.experiment_configs as experiment_configs
+    from protomotions.utils.experiment_configs import ExperimentConfigs
+
     checkpoint_path = tmp_path / "score_based.ckpt"
     checkpoint_path.write_bytes(b"")
-    torch.save(
-        {
-            "env": SimpleNamespace(
-                control_components={
-                    "mimic": SimpleNamespace(future_steps=[2, 4, 9])
-                },
+
+    bundle = ExperimentConfigs(
+        robot=None,
+        simulator=None,
+        terrain=None,
+        scene_lib=None,
+        motion_lib=None,
+        env=SimpleNamespace(
+            control_components={"mimic": SimpleNamespace(future_steps=[2, 4, 9])},
+        ),
+        agent=None,
+    )
+    monkeypatch.setattr(
+        experiment_configs,
+        "load_experiment_configs_from_checkpoint",
+        lambda ckpt: bundle,
+    )
+
+    future_steps = prior._tracker_future_steps(str(checkpoint_path))
+
+    # The saved list comes back as the normalised step tuple.
+    assert future_steps == (2, 4, 9)
+
+
+def test_gpc_prior_context_encoder_owns_normalization(monkeypatch):
+    # agent_config embeds the tracker's mu_model at build; fake the cached read.
+    monkeypatch.setattr(
+        prior,
+        "_tracker",
+        lambda ckpt: SimpleNamespace(
+            agent=SimpleNamespace(
+                model=SimpleNamespace(actor=SimpleNamespace(mu_model="fsq"))
             )
-        },
-        tmp_path / "resolved_configs.pt",
+        ),
     )
-
-    future_steps = prior._tracker_future_steps(
-        Namespace(tracker_checkpoint=str(checkpoint_path)),
-    )
-
-    assert future_steps == [2, 4, 9]
-
-
-def test_gpc_prior_context_encoder_owns_normalization():
     config = prior.agent_config(
         robot_config=None,
         env_config=None,

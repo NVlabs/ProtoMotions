@@ -9,12 +9,17 @@ a transformer prior from ``max_coords_obs`` to that token sequence.
 """
 
 import argparse
+from copy import deepcopy
+from typing import Tuple
 
 from protomotions.agents.base_agent.config import OptimizerConfig
 from protomotions.agents.supervised.latent_prior_config import (
     DiscreteAutoregressiveLatentSupervisedAgentConfig,
 )
 from protomotions.envs.base_env.config import EnvConfig
+from protomotions.envs.presets import tracking_playback
+from protomotions.envs.steps import normalize_steps
+from protomotions.utils.experiment_configs import ExperimentConfigs
 from protomotions.robot_configs.base import RobotConfig
 from protomotions.simulator.base_simulator.config import SimulatorConfig
 
@@ -22,20 +27,29 @@ from protomotions.simulator.base_simulator.config import SimulatorConfig
 TRACKER_MODULE_CONFIG_PATH = "agent.model.actor.mu_model"
 
 
-def _tracker_future_steps(args: argparse.Namespace):
-    from protomotions.utils.config_utils import load_resolved_configs_from_checkpoint
+def _tracker(tracker_checkpoint: str) -> ExperimentConfigs:
+    """The frozen tracker's resolved configs, loaded afresh on each call.
 
-    tracker_checkpoint = args.tracker_checkpoint
-    tracker_resolved_configs = load_resolved_configs_from_checkpoint(
-        tracker_checkpoint
+    Both the student's env (for the mimic future steps) and its agent (for the
+    embedded decoder config) read from this one bundle.
+    """
+    from protomotions.utils.experiment_configs import (
+        load_experiment_configs_from_checkpoint,
     )
-    mimic_config = tracker_resolved_configs["env"].control_components.get("mimic")
+
+    return load_experiment_configs_from_checkpoint(tracker_checkpoint)
+
+
+def _tracker_future_steps(tracker_checkpoint: str) -> Tuple[int, ...]:
+    """The tracker's published future steps, as the tuple the student repeats
+    (the saved value may still be the int an override wrote)."""
+    mimic_config = _tracker(tracker_checkpoint).env.control_components.get("mimic")
     if mimic_config is None:
         raise ValueError(
             f"Tracker checkpoint '{tracker_checkpoint}' does not define a "
             "'mimic' control component."
         )
-    return mimic_config.future_steps
+    return normalize_steps(mimic_config.future_steps)
 
 
 def additional_experiment_arguments(parser: argparse.ArgumentParser):
@@ -55,7 +69,7 @@ def terrain_config(args: argparse.Namespace):
 def scene_lib_config(args: argparse.Namespace):
     from protomotions.components.scene_lib import SceneLibConfig
 
-    scene_file = getattr(args, "scenes_file", None)
+    scene_file = args.scenes_file
     return SceneLibConfig(
         scene_file=scene_file,
     )
@@ -69,15 +83,19 @@ def motion_lib_config(args: argparse.Namespace):
 
 def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
     from protomotions.envs.action import make_pd_action_config
-    from protomotions.envs.component_factories import (
-        max_coords_obs_factory,
-        mimic_target_poses_max_coords_factory,
-        tracking_error_term_factory,
+    from protomotions.envs.mdp_component import MdpComponent
+    from protomotions.envs.obs.humanoid import (
+        compute_humanoid_max_coords_observations,
     )
+    from protomotions.envs.obs.target_poses import (
+        build_max_coords_target_poses,
+    )
+    from protomotions.envs.terminations.tracking import max_body_pos_error
+    from protomotions.envs.terminations.rule import TerminationRule
     from protomotions.envs.control.mimic_control import MimicControlConfig
     from protomotions.envs.motion_manager.config import MimicMotionManagerConfig
 
-    future_steps = _tracker_future_steps(args)
+    future_steps = _tracker_future_steps(args.tracker_checkpoint)
 
     return EnvConfig(
         ref_contact_smooth_window=7,
@@ -91,13 +109,17 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
             )
         },
         observation_components={
-            "max_coords_obs": max_coords_obs_factory(),
-            "mimic_target_poses": mimic_target_poses_max_coords_factory(
-                with_velocities=True
+            "max_coords_obs": MdpComponent.from_kernel(
+                compute_humanoid_max_coords_observations
+            ),
+            "mimic_target_poses": MdpComponent.from_kernel(
+                build_max_coords_target_poses, with_velocities=True
             ),
         },
         termination_components={
-            "tracking_error": tracking_error_term_factory(threshold=0.5),
+            "tracking_error": TerminationRule(
+                MdpComponent.from_kernel(max_body_pos_error), 0.5
+            ),
         },
         action_config=make_pd_action_config(robot_cfg),
         motion_manager=MimicMotionManagerConfig(
@@ -131,6 +153,7 @@ def agent_config(
         DiscreteAutoregressiveLatentPriorModelConfig,
     )
     from protomotions.agents.supervised.config import RolloutActor
+    from protomotions.agents.common.pretrained import get_path
 
     tracker_checkpoint = args.tracker_checkpoint
 
@@ -172,7 +195,12 @@ def agent_config(
         latent_decoder=PretrainedModelConfig(
             checkpoint_path=tracker_checkpoint,
             module_path="actor.mu",
-            module_config_path=TRACKER_MODULE_CONFIG_PATH,
+            # Embed the decoder's config from the tracker bundle at build, so the
+            # student bundle is self-contained and inference never opens the
+            # tracker (the decoder's weights load with the student checkpoint).
+            module_config=deepcopy(
+                get_path(_tracker(tracker_checkpoint), TRACKER_MODULE_CONFIG_PATH)
+            ),
         ),
         prior=prior_transformer_config,
         fsq_scalars_per_prior_token=fsq_scalars_per_prior_token,
@@ -214,16 +242,7 @@ def configure_robot_and_simulator(
 
 
 def apply_inference_overrides(
-    robot_cfg: RobotConfig,
-    simulator_cfg: SimulatorConfig,
-    env_cfg,
-    agent_cfg,
-    terrain_cfg,
-    motion_lib_cfg,
-    scene_lib_cfg,
-    args: argparse.Namespace,
-):
-    env_cfg.termination_components = {}
-    env_cfg.max_episode_length = 1000000
-    env_cfg.motion_manager.resample_on_reset = True
-    env_cfg.motion_manager.init_start_prob = 1.0
+    configs: ExperimentConfigs, args: argparse.Namespace
+) -> None:
+    """Play each clip through to its end for evaluation."""
+    tracking_playback(configs.env)

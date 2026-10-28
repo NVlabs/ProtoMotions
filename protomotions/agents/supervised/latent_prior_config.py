@@ -63,33 +63,6 @@ class DiscreteAutoregressiveLatentPriorModelConfig(BaseModelConfig):
         metadata={"help": "Gaussian action std used when collecting supervised rollouts."},
     )
 
-    def prepare_inference_config_for_save(self) -> None:
-        """Embed frozen decoder construction config for self-contained inference.
-
-        The prior checkpoint saves the frozen latent decoder weights under this
-        model. Embedding the decoder's module config into the inference resolved
-        config lets `load_pretrained_model_module` rebuild that decoder even when
-        the original tracker checkpoint is not available at inference time.
-        """
-        decoder_config = self.latent_decoder
-        if decoder_config.module_config is not None:
-            decoder_config.checkpoint_path = ""
-            return
-        if not decoder_config.checkpoint_path or not decoder_config.module_config_path:
-            return
-
-        from protomotions.agents.common.pretrained import get_path
-        from protomotions.utils.config_utils import load_resolved_configs_from_checkpoint
-
-        resolved_configs = load_resolved_configs_from_checkpoint(
-            decoder_config.checkpoint_path
-        )
-        decoder_config.module_config = get_path(
-            resolved_configs,
-            decoder_config.module_config_path,
-        )
-        decoder_config.checkpoint_path = ""
-
     optimizer: OptimizerConfig = field(
         default_factory=lambda: OptimizerConfig(
             _target_="torch.optim.AdamW",
@@ -104,9 +77,16 @@ class DiscreteAutoregressiveLatentPriorModelConfig(BaseModelConfig):
 class DiscreteAutoregressiveLatentSupervisedAgentConfig(SupervisedAgentConfig):
     """Supervised config for training a GPC autoregressive latent prior."""
 
-    def prepare_inference_config_for_save(self) -> None:
-        """Prepare nested model config before writing inference artifacts."""
-        self.model.prepare_inference_config_for_save()
+    def apply_inference_defaults(self, env) -> None:
+        """Student alone (the supervised cleanup); the decoder needs no checkpoint.
+
+        When the latent decoder's config is embedded in the bundle, clear its
+        checkpoint path so inference rebuilds it from the embedded config and
+        never opens the tracker checkpoint.
+        """
+        super().apply_inference_defaults(env)
+        if self.model.latent_decoder.module_config is not None:
+            self.model.latent_decoder.checkpoint_path = ""
 
     model: DiscreteAutoregressiveLatentPriorModelConfig = field(
         default_factory=DiscreteAutoregressiveLatentPriorModelConfig,

@@ -31,7 +31,7 @@ from typing import Tuple, Dict, Optional
 from pathlib import Path
 from protomotions.agents.ase.config import ASEAgentConfig
 from protomotions.agents.utils.normalization import RewardRunningMeanStd
-from protomotions.agents.ppo.utils import discount_values
+from protomotions.agents.ppo.utils.advantages import discount_values
 from protomotions.utils.hydra_replacement import instantiate
 
 
@@ -94,7 +94,7 @@ class ASE(AMP):
         else:
             self.running_mi_enc_norm = None
 
-    def setup(self):
+    def setup(self, *, training: bool = True):
         self.latents = torch.zeros(
             (self.num_envs, self.config.ase_parameters.latent_dim),
             dtype=torch.float,
@@ -107,7 +107,7 @@ class ASE(AMP):
             max_steps=self.config.ase_parameters.latent_steps_max,
             device=self.device,
         )
-        super().setup()
+        super().setup(training=training)
 
     def create_optimizers(self, model: ASEModel):
         super().create_optimizers(model)

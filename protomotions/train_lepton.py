@@ -6,8 +6,8 @@ Lepton (DGX Cloud) Training Launcher for ProtoMotions
 =====================================================
 
 Submits ProtoMotions training to NVIDIA DGX Cloud Lepton. This is the Lepton
-counterpart to `train_slurm.py`; the two share only the inner train_agent.py
-command line (see `_train_launch_common.py`) because the systems differ deeply:
+counterpart to `train_slurm.py`; the two share only the code-snapshot rsync
+exclude list (see `_train_launch_common.py`) because the systems differ deeply:
 
   SLURM (train_slurm.py)          Lepton (this file)
   ---------------------          ------------------
@@ -30,8 +30,8 @@ HOW IT WORKS
 
 BEFORE USING
 ------------
-Write a `lepton_site.yaml` describing your workspace (keys in SITE_DEFAULTS
-below), or pass --site-config PATH. Confirm it with --print-site. Prerequisites
+Copy `lepton_site.example.yaml` to `lepton_site.yaml` (gitignored) and fill in
+your workspace, or pass --site-config PATH. Confirm it with --print-site. Prerequisites
 (one-time): `lep login`, a Teleport-enabled dev pod reachable as the host above
 (`tsh login` + `tsh config`), a registry-auth secret for the private image, and
 (for W&B) a WANDB_API_KEY workspace secret.
@@ -71,10 +71,8 @@ import sys
 # install. Same standalone invocation train_slurm.py supports.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from protomotions._train_launch_common import (  # noqa: E402
-    RSYNC_EXCLUDES,
-    build_train_agent_argv,
-)
+from protomotions._train_launch_common import RSYNC_EXCLUDES  # noqa: E402
+from protomotions.launch.training_cli import apply_launch_facts  # noqa: E402
 
 
 # =============================================================================
@@ -82,9 +80,10 @@ from protomotions._train_launch_common import (  # noqa: E402
 # =============================================================================
 # Shipped defaults are deliberately unusable placeholders, so a mis-configured
 # submission fails loudly instead of going somewhere unexpected. Point the script
-# at your workspace with a `lepton_site.yaml` rather than editing this block --
-# editing here makes every `git pull` a merge conflict, and the file is excluded
-# from the release projection so it never ships.
+# at your workspace by copying `lepton_site.example.yaml` to `lepton_site.yaml`
+# rather than editing this block -- editing here makes every `git pull` a merge
+# conflict, and lepton_site.yaml is gitignored (and fence-excluded) so it never
+# ships.
 SITE_DEFAULTS = {
     # Lepton workspace id (short code, e.g. from `lep workspace id`). Used to
     # build the Teleport SSH host <workspace_id>-<pod_name>.<teleport_cluster>.
@@ -199,63 +198,25 @@ def create_parser():
     parser = argparse.ArgumentParser(
         description="Launch ProtoMotions training on DGX Cloud Lepton",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        allow_abbrev=False,
+        epilog=(
+            "All other arguments are the training command line, forwarded to "
+            "protomotions/train_agent.py verbatim; run "
+            "'python protomotions/train_agent.py --help' to list them."
+        ),
     )
 
-    # --- training arguments (same names as train_slurm.py) ---
-    parser.add_argument(
-        "--robot-name", type=str, required=True, help="Robot name (e.g. 'g1')"
-    )
-    parser.add_argument(
-        "--simulator",
-        type=str,
-        required=True,
-        help="Simulator (isaacgym/isaaclab/newton)",
-    )
-    parser.add_argument(
-        "--num-envs", type=int, required=True, help="Number of parallel environments"
-    )
-    parser.add_argument(
-        "--batch-size", type=int, required=True, help="Training batch size"
-    )
-    parser.add_argument(
-        "--motion-file", type=str, required=True, help="Path to motion data file"
-    )
-    parser.add_argument(
-        "--experiment-path", type=str, required=True, help="Path to experiment config"
-    )
-    parser.add_argument(
-        "--experiment-name", type=str, required=True, help="Experiment name for logging"
-    )
-    parser.add_argument(
-        "--scenes-file", type=str, default=None, help="Path to scenes file (optional)"
-    )
-    training_limit_group = parser.add_mutually_exclusive_group()
-    training_limit_group.add_argument(
-        "--training-max-steps", type=int, default=10000000000, help="Max training steps"
-    )
-    training_limit_group.add_argument(
-        "--training-max-iterations",
-        type=int,
-        default=None,
-        help="Max complete training iterations",
-    )
-    parser.add_argument(
-        "--checkpoint", type=str, default=None, help="Warm-start from checkpoint"
-    )
-    parser.add_argument(
-        "--use-wandb", action="store_true", help="Enable Weights & Biases logging"
-    )
-    parser.add_argument(
-        "--wandb-project",
-        type=str,
-        default="physical_animation",
-        help="W&B project name",
-    )
-    parser.add_argument("--ngpu", type=int, default=1, help="GPUs per node")
-    parser.add_argument("--nodes", type=int, default=1, help="Number of nodes")
-    parser.add_argument(
-        "--overrides", nargs="*", default=[], help="Config overrides (key=value)"
-    )
+    # The launcher declares only its own workspace/submit flags. Every training
+    # flag (--robot-name, --simulator, --num-envs, --batch-size, --motion-file,
+    # --experiment-path, --experiment-name, --scenes-file, --checkpoint,
+    # --use-wandb, --wandb-project, --training-max-steps/-iterations, --ngpu,
+    # --nodes, --seed, --torch-deterministic, --headless, --overrides) belongs to
+    # protomotions/train_agent.py and rides the forwarded tail verbatim; Lepton
+    # has no walltime, so unlike SLURM it prepends no --use-slurm and resumes from
+    # the filesystem instead. The few values the submission itself needs --
+    # simulator, experiment name, ngpu, nodes, use_wandb -- are read off that tail
+    # with training_cli.read_launch_facts; allow_abbrev=False keeps an own-flag
+    # prefix from eating a forwarded token.
 
     # --- Lepton / workspace arguments (CLI wins over the site file) ---
     parser.add_argument(
@@ -389,6 +350,21 @@ def create_parser():
     return parser
 
 
+def parse_launcher_args(argv=None):
+    """Parse the launcher's own flags and read the forwarded tail's job facts.
+
+    Returns ``(args, passthrough_args)``. ``passthrough_args`` is the training
+    command line forwarded to train_agent.py verbatim (Lepton prepends no
+    --use-slurm). ``args`` carries the launcher's own workspace flags plus the
+    handful of training values the submission needs -- simulator, experiment
+    name, ngpu, nodes, use_wandb, and checkpoint (for the relative-path warning)
+    -- read off the tail so no training flag is declared twice.
+    """
+    args, passthrough_args = create_parser().parse_known_args(argv)
+    apply_launch_facts(args, passthrough_args, extra=("checkpoint",))
+    return args, passthrough_args
+
+
 def teleport_host(site, user):
     """root@<workspace-id>-<pod>.<teleport-cluster>: the dev pod over managed Teleport."""
     return f"root@{site['workspace_id']}-{site['pod_name']}.{site['teleport_cluster']}"
@@ -426,6 +402,11 @@ def stage_code(host, exp_folder, local_repo, execute):
 def build_container_command(python_path, args, exp_folder, passthrough=None):
     """The bash the job runs: cd into the snapshot and hand off to the resume loop.
 
+    ``passthrough`` is the forwarded training command line (every token
+    parse_known_args did not claim), handed to train_agent.py verbatim -- Lepton
+    prepends no --use-slurm, since it has no walltime and resumes from the
+    filesystem.
+
     Every positional handed to lepton_train_loop.sh is shlex-quoted individually,
     so the container shell splits this command back into exactly these arguments --
     no value is word-split on a space it happens to contain, and no quoting is lost
@@ -439,7 +420,7 @@ def build_container_command(python_path, args, exp_folder, passthrough=None):
         args.experiment_name,
         exp_folder,
         str(args.max_runs),
-        *build_train_agent_argv(args, passthrough),
+        *(passthrough or []),
     ]
     quoted = " ".join(shlex.quote(p) for p in positionals)
     return (
@@ -499,6 +480,11 @@ def build_lep_job_create(args, site, exp_folder, container_command):
         "PYTHONUNBUFFERED=1",
         "--env",
         "PYTHONDONTWRITEBYTECODE=1",
+        # expandable_segments reduces CUDA allocator fragmentation. It has no
+        # effect on results, but rescued a run that OOM'd on allocator
+        # fragmentation, so it is a default here.
+        "--env",
+        "PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True",
         "--env",
         f"STALL_TIMEOUT_MIN={args.stall_timeout_min}",
         "--env",
@@ -571,11 +557,14 @@ def main():
         print_site(load_site_config(pre_args.site_config))
         return
 
-    # parse_known_args, not parse_args: experiment files contribute their own CLI
-    # flags via additional_experiment_arguments (e.g. gpc/prior.py's required
-    # --tracker-checkpoint), which train_agent.py parses but this launcher does
-    # not. Forward the unknowns to train_agent.py rather than rejecting them.
-    args, passthrough_args = create_parser().parse_known_args()
+    # The launcher declares only its own workspace flags; the whole training command
+    # line (including any experiment-contributed flag) comes back as passthrough_args
+    # and is forwarded to train_agent.py verbatim (see build_container_command), while
+    # the few values the submission needs are read off that tail. A command missing a
+    # required training flag fails here on the submit host, as it did when the launcher
+    # re-declared them.
+    args, passthrough_args = parse_launcher_args()
+
     site = load_site_config(args.site_config)
 
     # CLI overrides win over the site file; reflect them back before the placeholder
@@ -612,8 +601,9 @@ def main():
             f"Searched: --site-config, ${SITE_CONFIG_ENV}, "
             f"{_repo_root() / SITE_CONFIG_DEFAULT_RELPATH}\n"
             f"Loaded:   {site['_source'] or '(nothing)'}\n\n"
-            "Write a lepton_site.yaml with the keys you need, or pass them on the "
-            "command line. `--print-site` shows what was resolved."
+            "Copy lepton_site.example.yaml to lepton_site.yaml and fill in the "
+            "values, or pass them on the command line. `--print-site` shows what "
+            "was resolved."
         )
 
     reject_unqualified_multinode(args.nodes)

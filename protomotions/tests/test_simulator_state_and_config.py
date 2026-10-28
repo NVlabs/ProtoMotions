@@ -54,7 +54,6 @@ def _robot_state(state_conversion=StateConversion.COMMON) -> RobotState:
         rigid_body_vel=torch.ones(2, 2, 3),
         rigid_body_ang_vel=torch.ones(2, 2, 3) * 2.0,
         rigid_body_contacts=torch.tensor([[True, False], [False, True]]),
-        rigid_body_contact_forces=torch.ones(2, 2, 3) * 3.0,
         local_rigid_body_rot=_identity_quat(2, 2),
     )
 
@@ -70,7 +69,9 @@ def _conversion(sim_w_last: bool = True) -> DataConversionMapping:
 
 
 def test_simulator_config_matching_and_domain_randomization_validation():
-    assert get_matching_indices(["left_foot", "right_foot", "head"], names_to_match=[".*foot"]) == [0, 1]
+    assert get_matching_indices(
+        ["left_foot", "right_foot", "head"], names_to_match=[".*foot"]
+    ) == [0, 1]
     assert get_matching_indices(["a", "b"], indices_to_match=[1]) == [1]
     with pytest.raises(AssertionError, match="Either names_to_match"):
         get_matching_indices(["a"])
@@ -84,7 +85,10 @@ def test_simulator_config_matching_and_domain_randomization_validation():
         dof_indices=[0],
     )
     for kwargs, message in [
-        ({"action_noise_range": (0.0, 1.0), "dof_names": ["a"], "dof_indices": [0]}, "Only one"),
+        (
+            {"action_noise_range": (0.0, 1.0), "dof_names": ["a"], "dof_indices": [0]},
+            "Only one",
+        ),
         ({"action_noise_range": (0.0, 1.0)}, "Either dof_names"),
         ({"action_noise_range": None, "dof_indices": [0]}, "action_noise_range"),
         ({"action_noise_range": (1.0, 1.0), "dof_indices": [0]}, "first value"),
@@ -118,11 +122,15 @@ def test_simulator_config_matching_and_domain_randomization_validation():
     with pytest.raises(ValueError, match="Only one"):
         BodyMassDomainRandomizationConfig(body_names=["hand"], body_indices=[0])
 
-    CenterOfMassDomainRandomizationConfig(com_range={"x": (-0.1, 0.1)}, body_names=["torso"])
+    CenterOfMassDomainRandomizationConfig(
+        com_range={"x": (-0.1, 0.1)}, body_names=["torso"]
+    )
     with pytest.raises(ValueError, match="valid keys"):
         CenterOfMassDomainRandomizationConfig(com_range=None, body_indices=[0])
     with pytest.raises(ValueError, match="valid keys"):
-        CenterOfMassDomainRandomizationConfig(com_range={"bad": (0.0, 1.0)}, body_indices=[0])
+        CenterOfMassDomainRandomizationConfig(
+            com_range={"bad": (0.0, 1.0)}, body_indices=[0]
+        )
     with pytest.raises(ValueError, match="Either body_names"):
         CenterOfMassDomainRandomizationConfig(com_range={"x": (-0.1, 0.1)})
     with pytest.raises(ValueError, match="Only one"):
@@ -135,24 +143,33 @@ def test_simulator_config_matching_and_domain_randomization_validation():
     assert RobotNoiseConfig().has_noise() is False
     assert RobotNoiseConfig(dof_pos_noise=[0.0, 0.1]).has_noise() is True
     assert PushDomainRandomizationConfig().has_push() is False
-    assert PushDomainRandomizationConfig(max_linear_velocity=(0.0, 1.0, 0.0)).has_push() is True
+    assert (
+        PushDomainRandomizationConfig(max_linear_velocity=(0.0, 1.0, 0.0)).has_push()
+        is True
+    )
     with pytest.raises(ValueError, match="positive"):
         PushDomainRandomizationConfig(push_interval_range=(0.0, 1.0))
     with pytest.raises(ValueError, match="<="):
         PushDomainRandomizationConfig(push_interval_range=(2.0, 1.0))
 
-    assert ProjectileConfig(num_projectiles=1, cube_half_size_range=(0.1, 0.3)).get_sizes() == [0.1]
-    assert ProjectileConfig(num_projectiles=3, cube_half_size_range=(0.1, 0.3)).get_sizes() == [0.1, 0.2, 0.3]
+    assert ProjectileConfig(
+        num_projectiles=1, cube_half_size_range=(0.1, 0.3)
+    ).get_sizes() == [0.1]
+    assert ProjectileConfig(
+        num_projectiles=3, cube_half_size_range=(0.1, 0.3)
+    ).get_sizes() == [0.1, 0.2, 0.3]
     SimulatorConfig(
         _target_="fake.Sim",
         w_last=True,
         headless=True,
         num_envs=2,
-        sim=SimParams(fps=60, decimation=2),
+        sim=SimParams(fps=60),
         experiment_name="unit",
     )
     with pytest.raises(AssertionError, match="SimulatorConfig._target_"):
-        SimulatorConfig(w_last=True, headless=True, num_envs=1, sim=SimParams(), experiment_name="x")
+        SimulatorConfig(
+            w_last=True, headless=True, num_envs=1, sim=SimParams(), experiment_name="x"
+        )
 
 
 def test_robot_state_properties_indexing_assignment_and_dict_roundtrip(capsys):
@@ -198,7 +215,9 @@ def test_robot_state_properties_indexing_assignment_and_dict_roundtrip(capsys):
     with pytest.raises(TypeError, match="BaseBatchedState"):
         state[torch.tensor([0])] = object()
     with pytest.raises(TypeError, match="Type mismatch"):
-        state[torch.tensor([0])] = RootOnlyState(state_conversion=StateConversion.COMMON)
+        state[torch.tensor([0])] = RootOnlyState(
+            state_conversion=StateConversion.COMMON
+        )
 
     restored = RobotState.from_dict(
         {"dof_pos": torch.ones(1, 2), "bad": torch.ones(1)},
@@ -272,13 +291,17 @@ def test_robot_state_conversion_translation_height_and_merge_paths():
 
     assert state.state_conversion is StateConversion.COMMON
     assert torch.equal(state.dof_pos, torch.tensor([[1.0, 0.0], [3.0, 2.0]]))
-    assert torch.equal(state.rigid_body_pos[:, 0], torch.tensor([[1.0, 0.0, 0.0], [1.0, 0.0, 3.0]]))
+    assert torch.equal(
+        state.rigid_body_pos[:, 0], torch.tensor([[1.0, 0.0, 0.0], [1.0, 0.0, 3.0]])
+    )
     state.convert_to_sim(_conversion(sim_w_last=True))
     assert state.state_conversion is StateConversion.SIMULATOR
 
     translated = _robot_state()
     translated.translate(torch.tensor([1.0, 2.0, 3.0]))
-    assert torch.allclose(translated.rigid_body_pos[0, 0], torch.tensor([1.0, 2.0, 2.0]))
+    assert torch.allclose(
+        translated.rigid_body_pos[0, 0], torch.tensor([1.0, 2.0, 2.0])
+    )
     translated.translate(torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]))
     translated.translate(torch.zeros(2, 1, 3))
     with pytest.raises(ValueError, match="Invalid translation"):
@@ -292,12 +315,20 @@ def test_robot_state_conversion_translation_height_and_merge_paths():
     assert lifts.shape == (2, 3)
     assert torch.all(per_frame.rigid_body_pos[..., 2].min(dim=1)[0] >= 0.5)
 
-    target = RobotState(state_conversion=StateConversion.COMMON, dof_pos=torch.ones(1, 2))
-    source = RobotState(state_conversion=StateConversion.COMMON, dof_vel=torch.ones(1, 2))
+    target = RobotState(
+        state_conversion=StateConversion.COMMON, dof_pos=torch.ones(1, 2)
+    )
+    source = RobotState(
+        state_conversion=StateConversion.COMMON, dof_vel=torch.ones(1, 2)
+    )
     target.merge_fields_from(source)
     assert torch.equal(target.dof_vel, torch.ones(1, 2))
     with pytest.raises(AssertionError, match="already has a value"):
-        target.merge_fields_from(RobotState(state_conversion=StateConversion.COMMON, dof_pos=torch.ones(1, 2)))
+        target.merge_fields_from(
+            RobotState(
+                state_conversion=StateConversion.COMMON, dof_pos=torch.ones(1, 2)
+            )
+        )
 
     with pytest.raises(AssertionError, match="rigid_body_pos is not finite"):
         RobotState(
@@ -350,7 +381,6 @@ def test_root_reset_and_object_state_paths():
         root_rot=_identity_quat(2, 2),
         root_vel=torch.ones(2, 2, 3),
         root_ang_vel=torch.ones(2, 2, 3) * 2.0,
-        contact_forces=torch.ones(2, 2, 3) * 3.0,
     )
     assert obj.motion_num_frames == 2
     obj.translate(torch.tensor([1.0, 0.0, 0.0]))

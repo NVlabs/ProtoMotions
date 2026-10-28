@@ -124,12 +124,8 @@ def build_motion_data(
         motion_data["dof_vel"] = torch.zeros(
             (num_frames, num_dof), device=device, dtype=dtype
         )
-    if "rigid_body_contacts" not in motion_data:
-        motion_data["rigid_body_contacts"] = torch.zeros(
-            (num_frames, num_bodies), device=device, dtype=torch.bool
-        )
-    else:
-        # Ensure contacts are boolean type
+    # Missing contact reporting is unknown, not an all-airborne annotation.
+    if "rigid_body_contacts" in motion_data:
         motion_data["rigid_body_contacts"] = motion_data["rigid_body_contacts"].bool()
 
     return motion_data

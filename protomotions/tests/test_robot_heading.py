@@ -3,22 +3,20 @@
 
 """Tests for robot anatomical heading helpers."""
 
-from types import SimpleNamespace
-
+import pytest
 import torch
 
 
-def test_semantic_forward_axis_normalizes_and_supports_legacy_configs():
-    from protomotions.utils.robot_heading import (
-        robot_semantic_forward_axis_tensor,
-        semantic_forward_axis_tensor,
-    )
+def test_semantic_forward_axis_normalizes_and_refuses_none():
+    from protomotions.utils.robot_heading import semantic_forward_axis_tensor
 
     axis = semantic_forward_axis_tensor((3.0, 4.0))
     torch.testing.assert_close(axis, torch.tensor([0.6, 0.8]))
 
-    legacy_axis = robot_semantic_forward_axis_tensor(SimpleNamespace())
-    torch.testing.assert_close(legacy_axis, torch.tensor([1.0, 0.0]))
+    # No legacy +X fallback: every robot config declares the axis, so None is
+    # a caller's mistake, refused with the constructor's wording.
+    with pytest.raises(ValueError, match="semantic_forward_axis_xy"):
+        semantic_forward_axis_tensor(None)
 
 
 def test_semantic_forward_xy_uses_the_declared_robot_axis():

@@ -3,22 +3,26 @@
 
 """Regularization reward compute kernels.
 
-Pure tensor functions (kernels) for computing regularization rewards.
-Use MdpComponent in experiment configs to bind kernels to context paths:
+Pure tensor functions (kernels) for computing regularization rewards. Each
+kernel's state inputs default to the context names it reads, so a recipe binds
+it with ``MdpComponent.from_kernel`` and supplies only the constants that have
+no default (the contact readers' name lists) or that it wants to change::
 
-    from protomotions.envs.context_views import EnvContext
     from protomotions.envs.mdp_component import MdpComponent
+    from protomotions.envs.rewards.meta import RewardMeta
     from protomotions.envs.rewards.regularization import compute_action_smoothness
-    
+
     reward_components = {
-        "action_smoothness": MdpComponent(
-            compute_func=compute_action_smoothness,
-            dynamic_vars={
-                "current_processed_action": EnvContext.current_processed_action,
-                "previous_processed_action": EnvContext.previous_processed_action,
-            },
+        "action_smoothness": MdpComponent.from_kernel(
+            compute_action_smoothness, meta=RewardMeta(weight=-0.02)
         ),
     }
+
+The three contact readers (``compute_self_contacts``,
+``compute_contact_match_rew``, ``compute_terrain_foot_contact_match_rew``) take
+the names of the rows and columns they read; the recipe also lists them in
+``required_keys=`` so the build refuses a selection the simulator does not
+measure.
 
 Includes:
 - Action smoothness (L2 and Log-Mean-Exp variants)
@@ -30,34 +34,50 @@ Includes:
 
 import torch
 from torch import Tensor
-from typing import Optional
+from typing import Dict, List, Optional
+from protomotions.envs.contact_features import (
+    check_force_threshold,
+    contact_flags,
+    contact_magnitudes,
+    contact_rows,
+)
+from protomotions.envs.context_views import EnvContext
+from protomotions.simulator.base_simulator.contacts import CONTACT_FORCE_THRESHOLD
 
-from protomotions.envs.rewards.base import power_consumption_sum, delta_norm, delta_logmeanexp
+from protomotions.envs.rewards.base import (
+    power_consumption_sum,
+    delta_norm,
+)
 
 
 # =============================================================================
 # Regularization Reward Kernels
 # =============================================================================
 
+
 def compute_action_smoothness(
-    current_processed_action: Tensor,
-    previous_processed_action: Tensor,
+    current_processed_action: Tensor = EnvContext.current_processed_action,
+    previous_processed_action: Tensor = EnvContext.previous_processed_action,
 ) -> Tensor:
     """Action smoothness reward (L2 norm of processed action changes).
-    
-    Requires num_state_history_steps >= 1 in env config.
-    
+
+    Reads the action history: ``previous_processed_action`` is its most recent
+    slot (the default binding).
+
     Args:
         current_processed_action: Current processed action [num_envs, action_dim].
         previous_processed_action: Previous processed action [num_envs, action_dim].
-    
+
     Returns:
         Smoothness penalty tensor [num_envs].
     """
     return delta_norm(current_processed_action, previous_processed_action)
 
 
-def compute_action_rate_l2(raw_action: Tensor, previous_raw_action: Tensor) -> Tensor:
+def compute_action_rate_l2(
+    raw_action: Tensor = EnvContext.current_action,
+    previous_raw_action: Tensor = EnvContext.previous_action,
+) -> Tensor:
     """Sum squared raw policy-action changes over joints, per environment.
 
     Inputs are dimensionless policy outputs [num_envs, action_dim], before
@@ -66,42 +86,18 @@ def compute_action_rate_l2(raw_action: Tensor, previous_raw_action: Tensor) -> T
     return (raw_action - previous_raw_action).square().sum(dim=-1)
 
 
-def compute_action_smoothness_logmeanexp(
-    current_processed_action: Tensor,
-    previous_processed_action: Tensor,
-    beta: float = 3.0,
-) -> Tensor:
-    """Action smoothness using Log-Mean-Exp (soft L_infinity).
-    
-    Requires num_state_history_steps >= 1 in env config.
-    
-    Args:
-        current_processed_action: Current processed action [num_envs, action_dim].
-        previous_processed_action: Previous processed action [num_envs, action_dim].
-        beta: Temperature parameter. Lower = more like mean, higher = more like max.
-    
-    Returns:
-        Smoothness penalty tensor [num_envs].
-    """
-    return delta_logmeanexp(
-        current_processed_action,
-        previous_processed_action,
-        beta=beta,
-    )
-
-
 def compute_pow_rew(
-    dof_forces: Tensor,
-    dof_vel: Tensor,
+    dof_forces: Tensor = EnvContext.current.dof_forces,
+    dof_vel: Tensor = EnvContext.current.dof_vel,
     use_torque_squared: bool = False,
 ) -> Tensor:
     """Power consumption reward.
-    
+
     Args:
         dof_forces: Joint forces/torques [num_envs, num_dofs].
         dof_vel: Joint velocities [num_envs, num_dofs].
         use_torque_squared: Whether to use torque squared instead of absolute.
-    
+
     Returns:
         Power consumption tensor [num_envs].
     """
@@ -144,82 +140,127 @@ def compute_soft_pos_limit_rew(
     return total
 
 
+def compute_self_contacts(
+    body_names: List[str],
+    partner_names: List[str],
+    contact_forces: Tensor = EnvContext.contact_forces,
+    contact_body_index: Dict[str, int] = EnvContext.contact_body_index,
+    contact_partner_index: Dict[str, int] = EnvContext.contact_partner_index,
+    force_threshold: float = 1.0,
+) -> Tensor:
+    """Count bodies whose largest named-partner normal force exceeds threshold.
+
+    Forces are [env, body, partner, xyz], world frame, N. ``body_names`` are
+    robot link names and ``partner_names`` exact ``robot/<link>`` names, so the
+    count is a self-contact count; both selections must be measured by the
+    simulator (list them in ``required_keys=``). Count each selected body at
+    most once, even when several partners exceed the threshold. Equality does
+    not count. Return an unweighted float count per environment.
+
+    A partner outside the robot (``terrain``, an object) is refused: it would
+    count as a self contact. Exact names and a finite, nonnegative threshold
+    are checked as in :func:`contact_rows` / :func:`check_force_threshold`.
+    """
+    check_force_threshold(force_threshold)
+    for name in partner_names:
+        if not name.startswith("robot/") or name == "robot/":
+            raise ValueError(
+                "compute_self_contacts: partner_names are robot/<link> names, "
+                f"got {name!r}"
+            )
+    rows = contact_rows(contact_body_index, body_names, "body_names")
+    partners = contact_rows(contact_partner_index, partner_names, "partner_names")
+    forces = contact_forces[:, rows][:, :, partners]
+    return (forces.norm(dim=-1).amax(dim=-1) > force_threshold).float().sum(dim=-1)
+
+
 def compute_contact_match_rew(
-    sim_contacts: Tensor,
-    ref_contacts: Tensor,
-    contact_body_ids: Tensor,
+    contact_forces: Tensor = EnvContext.contact_forces,
+    ref_contacts: Tensor = EnvContext.mimic.ref_state.rigid_body_contacts,
+    contact_body_ids: Tensor = EnvContext.contact_body_ids,
+    partner_ids: Optional[Tensor] = None,
+    force_threshold: float = CONTACT_FORCE_THRESHOLD,
 ) -> Tensor:
     """Contact matching reward using foot contact bodies.
-    
+
     Penalizes mismatch between simulated and reference foot contacts.
-    Uses contact_body_ids (typically foot bodies).
-    
+    The matrix already contains selected rows. ``contact_body_ids`` maps them
+    back to full common-order kinematic contact annotations.
+
     Args:
-        sim_contacts: Simulated contact flags [num_envs, num_bodies].
+        contact_forces: Normal forces [env, body, partner, xyz], world axes, N.
         ref_contacts: Reference contact flags [num_envs, num_bodies].
         contact_body_ids: Indices of bodies to track contacts for [num_contact_bodies].
-    
+
     Returns:
         Contact mismatch penalty tensor [num_envs].
     """
-    sim_contacts_subset = sim_contacts[:, contact_body_ids]
+    sim_contacts_subset = contact_flags(
+        contact_forces, partner_ids=partner_ids, force_threshold=force_threshold
+    )
     ref_contacts_subset = ref_contacts[:, contact_body_ids]
-    return torch.abs(sim_contacts_subset.float() - ref_contacts_subset.float()).sum(dim=1)
+    return torch.abs(sim_contacts_subset.float() - ref_contacts_subset.float()).sum(
+        dim=1
+    )
+
+
+def compute_terrain_foot_contact_match_rew(
+    contact_body_ids: Tensor,
+    body_names: List[str],
+    contact_forces: Tensor = EnvContext.contact_forces,
+    ref_contacts: Tensor = EnvContext.mimic.ref_state.rigid_body_contacts,
+    contact_body_index: Dict[str, int] = EnvContext.contact_body_index,
+    contact_partner_index: Dict[str, int] = EnvContext.contact_partner_index,
+    force_threshold: float = CONTACT_FORCE_THRESHOLD,
+) -> Tensor:
+    """Compare foot-to-terrain contacts with reference labels (including soft labels).
+
+    Select named foot rows and the terrain column from the privileged matrix
+    [envs, selected robot bodies, selected partners, xyz], in world-frame N. Robot,
+    object, and projectile columns never contribute to the summed mismatch.
+
+    ``body_names`` selects the rows to match and ``contact_body_ids`` maps them
+    to the reference labels' common body order: the recipe builds it once with
+    ``build_body_ids_tensor(robot_cfg.kinematic_info.body_names, body_names,
+    device=torch.device("cpu"))`` and lists the names (and ``"terrain"``) in
+    ``required_keys=`` so the build refuses an unmeasured selection.
+    ``force_threshold`` is in newtons (finite and nonnegative); the reference
+    may contain soft labels.
+    """
+    check_force_threshold(force_threshold)
+    rows = contact_rows(contact_body_index, body_names, "body_names")
+    terrain_forces = contact_forces[:, rows, contact_partner_index["terrain"]]
+    contacts = terrain_forces.norm(dim=-1) > force_threshold
+    return contact_mismatch_sum(contacts, ref_contacts[:, contact_body_ids])
 
 
 def compute_contact_force_change_rew(
-    current_contact_force_magnitudes: Tensor,
-    prev_contact_force_magnitudes: Tensor,
+    contact_forces: Tensor = EnvContext.contact_forces,
+    prev_contact_force_magnitudes: Tensor = EnvContext.prev_contact_force_magnitudes,
     threshold: float = 30.0,
 ) -> Tensor:
     """Contact force change penalty.
-    
+
     Penalizes sudden contact force changes above a threshold (impact penalty).
-    
+
     Args:
-        current_contact_force_magnitudes: Current contact forces [num_envs, num_bodies].
-        prev_contact_force_magnitudes: Previous contact forces [num_envs, num_bodies].
+        contact_forces: Current normal-force matrix [env, body, partner, xyz], N.
+        prev_contact_force_magnitudes: Previous maximum pair magnitude [env, body], N.
         threshold: Force change threshold below which changes are ignored (default: 30.0).
-    
+
     Returns:
         Total force change above threshold [num_envs].
     """
-    force_changes = torch.abs(current_contact_force_magnitudes - prev_contact_force_magnitudes)
-    force_changes = torch.clamp(force_changes - threshold, min=0)
-    return force_changes.sum(dim=-1)
+    return impact_force_penalty(
+        contact_magnitudes(contact_forces),
+        prev_contact_force_magnitudes,
+        threshold=threshold,
+    )
 
 
 # =============================================================================
 # Helper Functions (used by kernels or for advanced use cases)
 # =============================================================================
-
-def joint_limit_violation(
-    dof_pos: Tensor,
-    dof_limits_lower: Tensor,
-    dof_limits_upper: Tensor,
-    indices: Optional[Tensor] = None,
-) -> Tensor:
-    """Sum of joint position limit violations.
-
-    Penalizes positions outside [lower, upper] limits.
-
-    Args:
-        dof_pos: Joint positions [num_envs, num_dofs].
-        dof_limits_lower: Lower limits [num_dofs].
-        dof_limits_upper: Upper limits [num_dofs].
-        indices: Optional DOF indices to subset.
-
-    Returns:
-        Total violation [num_envs].
-    """
-    if indices is not None:
-        dof_pos = dof_pos[:, indices]
-        dof_limits_lower = dof_limits_lower[indices]
-        dof_limits_upper = dof_limits_upper[indices]
-
-    below_lower = -(dof_pos - dof_limits_lower).clip(max=0.0)
-    above_upper = (dof_pos - dof_limits_upper).clip(min=0.0)
-    return torch.sum(below_lower + above_upper, dim=1)
 
 
 def contact_mismatch_sum(
@@ -278,13 +319,12 @@ def impact_force_penalty(
 __all__ = [
     # Main reward kernels
     "compute_action_smoothness",
-    "compute_action_smoothness_logmeanexp",
     "compute_pow_rew",
     "compute_soft_pos_limit_rew",
     "compute_contact_match_rew",
+    "compute_self_contacts",
     "compute_contact_force_change_rew",
     # Helper functions
-    "joint_limit_violation",
     "contact_mismatch_sum",
     "impact_force_penalty",
 ]

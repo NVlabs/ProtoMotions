@@ -6,16 +6,17 @@
 Provides functions for computing humanoid observations and transformations.
 """
 
-from typing import Dict
+from typing import Dict, Optional
 import torch
 from torch import Tensor
+from protomotions.envs.contact_features import contact_flags
+from protomotions.envs.context_views import EnvContext
+from protomotions.simulator.base_simulator.contacts import CONTACT_FORCE_THRESHOLD
 
 from protomotions.utils import rotations
-from protomotions.utils.rotations import angle_from_matrix_axis
 from protomotions.components.pose_lib import (
     extract_transforms_from_qpos_non_root_ignore_fixed_helper,
     matrix_to_quaternion,
-    quaternion_to_matrix,
 )
 
 
@@ -49,62 +50,12 @@ def dof_to_local(
     return local_rot_quats
 
 
-def dof_to_obs(
-    pose: Tensor, hinge_axes_map: Dict[int, torch.Tensor], w_last: bool
-) -> Tensor:
-    local_joint_quats = dof_to_local(
-        pose, hinge_axes_map, w_last
-    )  # [B, num_articulated_joints, 4]
-
-    dof_obs = rotations.quat_to_tan_norm(
-        local_joint_quats, w_last
-    )  # [B, num_articulated_joints, 6]
-    dof_obs = dof_obs.view(pose.shape[0], -1)
-
-    return dof_obs
-
-
-def obs_to_dof(
-    obs_6d: Tensor, hinge_axes_map: Dict[int, torch.Tensor], w_last: bool
-) -> Tensor:
-    """Inverse of dof_to_obs. Converts 6D tan-norm back to DOF angles."""
-    device = obs_6d.device
-    dtype = obs_6d.dtype
-    B = obs_6d.shape[0]
-    num_joints = len(hinge_axes_map)
-    
-    obs_6d = obs_6d.view(B, num_joints, 6)
-    flat_6d = obs_6d.view(B * num_joints, 6)
-    flat_quat = rotations.tan_norm_to_quat(flat_6d, w_last)
-    joint_quats = flat_quat.view(B, num_joints, 4)
-    joint_rot_mats = quaternion_to_matrix(joint_quats, w_last)
-    
-    hinge_axes_map = {k: v.to(device).to(dtype) for k, v in hinge_axes_map.items()}
-    
-    dof_list = []
-    for i, (body_idx, axes) in enumerate(hinge_axes_map.items()):
-        num_body_dofs = len(axes)
-        rot_mat = joint_rot_mats[:, i, :, :]
-        
-        if num_body_dofs == 1:
-            angle = angle_from_matrix_axis(rot_mat, axes[0])
-            dof_list.append(angle.unsqueeze(-1))
-        elif num_body_dofs == 3:
-            quat = matrix_to_quaternion(rot_mat, w_last=False)
-            exp_map = rotations.quat_to_exp_map(quat, w_last=False)
-            dof_list.append(exp_map)
-        else:
-            raise ValueError(f"Unsupported number of DOFs: {num_body_dofs}")
-    
-    return torch.cat(dof_list, dim=-1)
-
-
 def root_projected_gravity(root_rot: Tensor, w_last: bool = True) -> torch.Tensor:
     """
     Computes the direction of gravity in the root's local frame.
 
     Given the root orientation quaternion(s) and assuming gravity points as [0, 0, -1] in world coordinates,
-    this function transforms the gravity vector into the local (body) frame of the root by applying the 
+    this function transforms the gravity vector into the local (body) frame of the root by applying the
     inverse rotation. The resulting vector describes how gravity would be measured relative to the root's axes.
 
     Args:
@@ -131,33 +82,35 @@ def compute_local_ang_vel(
     w_last: bool = True,
 ) -> Tensor:
     """Transform angular velocity from world frame to local (body) frame.
-    
+
     Args:
         root_rot: Root orientation quaternion [num_envs, 4] or [num_envs, num_steps, 4].
         root_ang_vel: Root angular velocity in world frame, same shape as root_rot but last dim is 3.
         w_last: Whether quaternion w component is last.
-    
+
     Returns:
         Angular velocity in local frame, same shape as input root_ang_vel.
     """
     original_shape = root_ang_vel.shape
-    
+
     # Handle both 2D [envs, 3] and 3D [envs, steps, 3] tensors
     if root_ang_vel.dim() == 3:
         flat_rot = root_rot.reshape(-1, 4)
         flat_ang_vel = root_ang_vel.reshape(-1, 3)
-        flat_local_ang_vel = rotations.quat_rotate_inverse(flat_rot, flat_ang_vel, w_last)
+        flat_local_ang_vel = rotations.quat_rotate_inverse(
+            flat_rot, flat_ang_vel, w_last
+        )
         return flat_local_ang_vel.reshape(original_shape)
     else:
         return rotations.quat_rotate_inverse(root_rot, root_ang_vel, w_last)
 
 
 def compute_humanoid_reduced_coords_observations(
-    dof_pos: Tensor,
-    dof_vel: Tensor,
-    anchor_rot: Tensor,
-    root_local_ang_vel: Tensor,
-    w_last: bool,
+    dof_pos: Tensor = EnvContext.current.dof_pos,
+    dof_vel: Tensor = EnvContext.current.dof_vel,
+    anchor_rot: Tensor = EnvContext.current.anchor_rot,
+    root_local_ang_vel: Tensor = EnvContext.current.root_local_ang_vel,
+    w_last: bool = True,
     root_rot: Tensor = None,
     root_pos: Tensor = None,
     root_vel: Tensor = None,
@@ -166,7 +119,7 @@ def compute_humanoid_reduced_coords_observations(
     root_vel_obs: bool = False,
 ) -> Tensor:
     """Compute reduced coordinates observations for humanoid.
-    
+
     Output format (in order):
         - dof_pos [num_dofs]
         - dof_vel [num_dofs]
@@ -174,7 +127,7 @@ def compute_humanoid_reduced_coords_observations(
         - proj_gravity [3]: projected gravity vector
         - root_vel [3]: root linear velocity in local frame (if root_vel_obs=True)
         - root_height [1]: root height above ground (if root_height_obs=True)
-    
+
     Args:
         dof_pos: Joint positions [num_envs, num_dofs].
         dof_vel: Joint velocities [num_envs, num_dofs].
@@ -187,7 +140,7 @@ def compute_humanoid_reduced_coords_observations(
         ground_height: Ground height beneath root [num_envs] or [num_envs, 1].
         root_height_obs: Whether to include root height observation.
         root_vel_obs: Whether to include root velocity observation.
-    
+
     Returns:
         Concatenated observation tensor [num_envs, obs_dim].
     """
@@ -226,29 +179,64 @@ def compute_humanoid_reduced_coords_observations(
 # Context mapping for ONNX export
 
 
+def compute_humanoid_max_coords_contact_observations(
+    body_pos: Tensor = EnvContext.current.rigid_body_pos,
+    body_rot: Tensor = EnvContext.current.rigid_body_rot,
+    body_vel: Tensor = EnvContext.current.rigid_body_vel,
+    body_ang_vel: Tensor = EnvContext.current.rigid_body_ang_vel,
+    ground_height: Optional[Tensor] = EnvContext.current.ground_heights,
+    contact_forces: Tensor = EnvContext.contact_forces,
+    local_obs: bool = True,
+    root_height_obs: bool = True,
+    w_last: bool = True,
+    anchor_body_index: int = EnvContext.current.anchor_idx,
+    partner_ids: Optional[Tensor] = None,
+    force_threshold: float = CONTACT_FORCE_THRESHOLD,
+) -> Tensor:
+    """Maximal-coordinate state with flags derived from current normal forces (N).
+
+    Includes the configured contact rows against the configured partners.
+    Reference-pose and historical observations use the same pose kernel below
+    with already annotated or derived contact flags.
+    """
+    return compute_humanoid_max_coords_observations(
+        body_pos=body_pos,
+        body_rot=body_rot,
+        body_vel=body_vel,
+        body_ang_vel=body_ang_vel,
+        ground_height=ground_height,
+        body_contacts=contact_flags(
+            contact_forces, partner_ids=partner_ids, force_threshold=force_threshold
+        ),
+        local_obs=local_obs,
+        root_height_obs=root_height_obs,
+        observe_contacts=True,
+        w_last=w_last,
+        anchor_body_index=anchor_body_index,
+    )
+
+
 def compute_humanoid_max_coords_observations(
-    body_pos: Tensor,
-    body_rot: Tensor,
-    body_vel: Tensor,
-    body_ang_vel: Tensor,
-    ground_height: Tensor,
-    body_contacts: Tensor,
-    local_obs: bool,
-    root_height_obs: bool,
-    observe_contacts: bool,
-    w_last: bool,
-    anchor_body_index: int = 0,
+    body_pos: Tensor = EnvContext.current.rigid_body_pos,
+    body_rot: Tensor = EnvContext.current.rigid_body_rot,
+    body_vel: Tensor = EnvContext.current.rigid_body_vel,
+    body_ang_vel: Tensor = EnvContext.current.rigid_body_ang_vel,
+    ground_height: Optional[Tensor] = EnvContext.current.ground_heights,
+    body_contacts: Optional[Tensor] = None,
+    local_obs: bool = True,
+    root_height_obs: bool = True,
+    observe_contacts: bool = False,
+    w_last: bool = True,
+    anchor_body_index: int = EnvContext.current.anchor_idx,
 ) -> Tensor:
     """Compute humanoid max-coords observations from body state.
 
     Positions, rotations, velocities, and anchor height are expressed relative
-    to ``anchor_body_index`` when local observations are enabled.
+    to ``anchor_body_index`` when local observations are enabled; bound as a
+    component, that is the published anchor index unless the recipe rebinds it.
 
     This is the helper function used for both training and ONNX export.
     """
-    if ground_height.dim() == 1:
-        ground_height = ground_height.unsqueeze(-1)
-
     num_bodies = body_pos.shape[1]
     if not 0 <= anchor_body_index < num_bodies:
         raise ValueError(
@@ -262,6 +250,9 @@ def compute_humanoid_max_coords_observations(
     if not root_height_obs:
         root_h_obs = torch.zeros_like(anchor_h)
     else:
+        assert ground_height is not None
+        if ground_height.dim() == 1:
+            ground_height = ground_height.unsqueeze(-1)
         root_h_obs = anchor_h - ground_height
 
     flat_body_rot = body_rot.reshape(
@@ -347,6 +338,7 @@ def compute_humanoid_max_coords_observations(
     if observe_contacts:
         # body_contacts is binary flags: [num_envs, num_contact_bodies]
         # Convert to float for observation
+        assert body_contacts is not None
         contact_obs = body_contacts.float()
         obs.append(contact_obs)
 

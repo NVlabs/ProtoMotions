@@ -287,11 +287,10 @@ class RobotState(BaseBatchedState):
         rigid_body_ang_vel (Optional[torch.Tensor]): Angular velocities of rigid bodies.
             Expected shape: [batch_size, num_bodies, 3].
 
-        rigid_body_contacts (Optional[torch.Tensor]): Contacts of rigid bodies.
+        rigid_body_contacts (Optional[torch.Tensor]): Motion contact annotations;
+            not populated by simulator state getters. Simulated contacts are
+            reported by Simulator.get_contact_forces().
             Expected shape: [batch_size, num_bodies], True if in contact, False otherwise.
-        rigid_body_contact_forces (Optional[torch.Tensor]): Contact forces of rigid bodies.
-            (usually only obtained from simulator, not from reference motion data)
-            Expected shape: [batch_size, num_bodies, 3].
 
         # redundant fields for caching
         local_rigid_body_rot (Optional[torch.Tensor]): Local rotations of rigid bodies.
@@ -306,7 +305,6 @@ class RobotState(BaseBatchedState):
     rigid_body_vel: Optional[torch.Tensor] = None
     rigid_body_ang_vel: Optional[torch.Tensor] = None
     rigid_body_contacts: Optional[torch.Tensor] = None
-    rigid_body_contact_forces: Optional[torch.Tensor] = None
 
     # redundant fields for caching
     local_rigid_body_rot: Optional[torch.Tensor] = None
@@ -433,7 +431,6 @@ class RobotState(BaseBatchedState):
         self._convert_helper(body_conv_map, "rigid_body_vel")
         self._convert_helper(body_conv_map, "rigid_body_ang_vel")
         self._convert_helper(body_conv_map, "rigid_body_contacts")
-        self._convert_helper(body_conv_map, "rigid_body_contact_forces")
 
     def convert_to_common(self, conversion: DataConversionMapping) -> "RobotState":
         """
@@ -483,7 +480,7 @@ class RobotState(BaseBatchedState):
         """
         Translate the robot state by the given translation vector.
         NOTE: this function is in-place, use clone() to make a copy first if needed.
-        
+
         Args:
             translation: Translation vector with shape (3,), (B, 3), or (B, 1, 3)
                 where B is batch_size and must match self.rigid_body_pos.shape[0]
@@ -525,7 +522,7 @@ class RobotState(BaseBatchedState):
         Args:
             z_up (bool): Whether Z axis is up (True) or Y axis is up (False). Default is True.
             height_offset (float): Minimum height above ground. Default is 0.0.
-            
+
         Returns:
             translation_vecs: The translation vectors applied to each frame (B, 3)
         """
@@ -545,7 +542,7 @@ class RobotState(BaseBatchedState):
         translation_vecs[:, axis] = lift_amounts
 
         self.translate(translation_vecs)
-        
+
         return translation_vecs
 
     def __post_init__(self):
@@ -622,7 +619,7 @@ class RootOnlyState(BaseBatchedState):
         """
         Translate the root state by the given translation vector.
         NOTE: this function is in-place, use clone() to make a copy first if needed.
-        
+
         Args:
             translation: Translation vector with shape (3,) or (B, 3)
                 where B is batch_size and must match self.root_pos.shape[0]
@@ -725,7 +722,7 @@ class ResetState(BaseBatchedState):
         """
         Translate the root state by the given translation vector.
         NOTE: this function is in-place, use clone() to make a copy first if needed.
-        
+
         Args:
             translation: Translation vector with shape (3,) or (B, 3)
                 where B is batch_size and must match self.root_pos.shape[0]
@@ -788,7 +785,6 @@ class ObjectState(BaseBatchedState):
     root_rot: Optional[torch.Tensor] = None
     root_vel: Optional[torch.Tensor] = None
     root_ang_vel: Optional[torch.Tensor] = None
-    contact_forces: Optional[torch.Tensor] = None
 
     @property
     def motion_num_frames(self) -> Optional[torch.Tensor]:
@@ -813,7 +809,7 @@ class ObjectState(BaseBatchedState):
         """
         Translate the object state by the given translation vector.
         NOTE: this function is in-place, use clone() to make a copy first if needed.
-        
+
         Args:
             translation: Translation vector with shape (3,), (B, 3), or (B, num_objects, 3)
                 where B is batch_size and must match self.root_pos.shape[0]

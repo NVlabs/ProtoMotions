@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import torch
 from torch import Tensor
@@ -31,8 +31,7 @@ class MimicEpisodeContext:
 class MimicEvaluator(BaseEvaluator):
     """Evaluator for Mimic agent's motion tracking performance."""
 
-    def __init__(self, agent: Any, fabric: Any, config: MimicEvaluatorConfig):
-        super().__init__(agent, fabric, config)
+    config: MimicEvaluatorConfig
 
     @property
     def motion_lib(self) -> MotionLib:
@@ -42,7 +41,7 @@ class MimicEvaluator(BaseEvaluator):
     @property
     def motion_manager(self) -> MimicMotionManager:
         """Motion manager (from env)."""
-        return self.env.motion_manager
+        return self.env.reference_motion.motion_manager
 
     def _register_plugins(self) -> None:
         """Register metric computation plugins."""
@@ -72,8 +71,8 @@ class MimicEvaluator(BaseEvaluator):
     def initialize_eval(self) -> Dict:
         """Initialize evaluation tracking and cache the state eval will overwrite.
 
-        Saves the env state, the model's rollout context, and the motion manager's
-        clip assignment, all restored by ``cleanup_after_evaluation``.
+        Saves the env state (the clip assignment is part of it) and the model's
+        rollout context, both restored by ``cleanup_after_evaluation``.
         """
         num_motions = self.motion_lib.num_motions()
         motion_lengths = self.motion_lib.get_motion_length(None)
@@ -81,13 +80,10 @@ class MimicEvaluator(BaseEvaluator):
         motion_num_frames = motion_num_frames.clamp(max=self.config.max_eval_steps)
         self._init_eval_component_buffers(num_motions)
 
-        # Cache env, model rollout context, and motion manager state (restored in
+        # Cache env and model rollout context (restored in
         # cleanup_after_evaluation). Evaluation reseeds the model context of every
         # env it resets, so training would otherwise resume with eval's context.
-        self._env_snapshot = self.env.save_state()
-        self._model_context_snapshot = self.agent.model.save_rollout_context()
-        self._cached_motion_ids = self.motion_manager.motion_ids.clone()
-        self._cached_motion_times = self.motion_manager.motion_times.clone()
+        self._save_training_state()
 
         return self._create_metrics(
             num_motions, motion_num_frames, self.config.max_eval_steps
@@ -104,13 +100,15 @@ class MimicEvaluator(BaseEvaluator):
         filename = f"failed_motions_epoch_{epoch}_rank_{self.fabric.global_rank}.txt"
         self._save_list_to_file(failed_motions, filename, subdirectory="failed_motions")
 
-    def _update_motion_sampling_weights(self) -> None:
+    def _update_motion_sampling_weights(self, result) -> None:
         """Update motion sampling weights based on evaluation component failures."""
-        if self._motion_failed is None:
+        if result.evaluated is None or not self.config.failure_components:
             return
 
-        failed_motions = torch.nonzero(self._motion_failed).flatten().tolist()
-        success_motions = torch.nonzero(~self._motion_failed).flatten().tolist()
+        failed_motions = torch.nonzero(result.failed & result.evaluated).flatten().tolist()
+        success_motions = torch.nonzero(~result.failed & result.evaluated).flatten().tolist()
+        if not failed_motions and not success_motions:
+            return
 
         self._save_failed_motions(failed_motions, self.agent.current_epoch)
 
@@ -122,14 +120,18 @@ class MimicEvaluator(BaseEvaluator):
             self.config.motion_weights_rules.motion_weights_update_failure_discount,
             self.config.eval_metrics_every,
         )
-        new_weights = self.env.motion_manager.motion_weights.clone()
+        new_weights = self.env.reference_motion.motion_manager.motion_weights.clone()
         new_weights[success_motions] *= success_discount
         if failure_discount != 0:
             new_weights[failed_motions] /= failure_discount
         else:
             new_weights[failed_motions] = 1.0
-        new_weights.clamp_(min=self._resolved_min_motion_weight(new_weights.shape[0]))
-        self.env.motion_manager.update_sampling_weights(new_weights)
+        # The writer floors every eligible clip and keeps the ineligible at 0.
+        self.env.reference_motion.motion_manager.set_sampling_weights(
+            new_weights,
+            floor=self._resolved_min_motion_weight(new_weights.shape[0]),
+            ceiling=float("inf"),
+        )
 
     def _resolved_min_motion_weight(self, num_motions: int) -> float:
         """Resolve ``min_motion_weight``, which may be the string '1/num_motions'.
@@ -150,8 +152,8 @@ class MimicEvaluator(BaseEvaluator):
             return float(min_weight)
         return float(min_weight)
 
-    def evaluate_episode(self, env_ids: torch.Tensor, max_steps: int) -> None:
-        """Run a single episode batch with the policy's own actions.
+    def _reset_episode(self, env_ids: torch.Tensor):
+        """Reset the full physics batch while scoring only unique motion IDs.
 
         Evaluation is an ordinary rollout in which only ``env_ids`` are scored. Every
         other env plays its background clip (see ``_background_motion_ids``) and, like
@@ -166,34 +168,17 @@ class MimicEvaluator(BaseEvaluator):
         (for example MaskedMimic's per-episode latent noise), as training does after
         an env finishes. ``env.reset`` already clears the env's own history.
         """
-        self._on_episode_start(env_ids)
         all_env_ids = torch.arange(self.num_envs, device=self.device)
-        obs, _ = self.env.reset(all_env_ids, **self._get_reset_kwargs())
-        self.agent.model.reset_rollout_context(env_ids=all_env_ids)
-        unscored = torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
-        unscored[env_ids] = False
-        self.agent.pre_collect_step(0)
-        obs = self.agent.add_agent_info_to_obs(obs)
-        obs_td = self.agent.obs_dict_to_tensordict(obs)
+        return super()._reset_episode(all_env_ids)
 
-        for step_idx in range(max_steps):
-            actions = self._policy_action(obs_td)
-            obs, rewards, dones, terminated, extras = self.env.step(actions)
-
-            # Score before restarting anything: a reset discards the cached env
-            # context that the failure checks read.
-            self._check_eval_components(env_ids, step_idx)
-            self._on_episode_step(env_ids, extras, actions)
-
-            restart_ids = (dones.bool() & unscored).nonzero(as_tuple=False).flatten()
-            if restart_ids.numel() > 0:
-                self.motion_manager.motion_times[restart_ids] = 0.0
-                obs, _ = self.env.reset(restart_ids, **self._get_reset_kwargs())
-                self.agent.model.reset_rollout_context(env_ids=restart_ids)
-
-            self.agent.pre_collect_step(step_idx + 1)
-            obs = self.agent.add_agent_info_to_obs(obs)
-            obs_td = self.agent.obs_dict_to_tensordict(obs)
+    def _reset_envs(self, env_ids: Tensor):
+        self.motion_manager.assign(
+            env_ids,
+            motion_times=torch.zeros_like(
+                env_ids, dtype=self.motion_manager.motion_times.dtype
+            ),
+        )
+        return super()._reset_envs(env_ids)
 
     def run_evaluation(self) -> None:
         """Run evaluation across multiple motions."""
@@ -249,7 +234,7 @@ class MimicEvaluator(BaseEvaluator):
         """
         env_ids = torch.arange(self.num_envs, device=self.device)
         motion_ids = env_ids % self.motion_lib.num_motions()
-        fixed = getattr(self.motion_manager, "_fixed_motion_ids_per_env", None)
+        fixed = self.motion_manager.fixed_motion_ids_per_env
         if fixed is not None:
             motion_ids = torch.where(fixed != -1, fixed, motion_ids)
         return motion_ids
@@ -260,26 +245,26 @@ class MimicEvaluator(BaseEvaluator):
         Every env starts its background clip from frame 0, then the scored
         subset is overlaid with this batch's motions.
         """
-        self.motion_manager.motion_ids[:] = self._background_motion_ids()
-        self.motion_manager.motion_times[:] = 0.0
-        self.motion_manager.motion_ids[env_ids] = self._episode_ctx.motion_ids
+        self.motion_manager.set_assignment(
+            self._background_motion_ids(),
+            torch.zeros_like(self.motion_manager.motion_times),
+        )
+        self.motion_manager.assign(env_ids, motion_ids=self._episode_ctx.motion_ids)
 
     def _get_reset_kwargs(self) -> dict:
         """Customize env.reset() for mimic evaluation."""
         return {"sample_flat": True, "disable_motion_resample": True}
 
-    def _check_eval_components(self, env_ids: Tensor, step_idx: int) -> None:
-        """Filter by frame limits and check failures only for active clips."""
-        still_active = self._episode_ctx.frame_limits > step_idx
-        if still_active.any():
-            active_env_ids = env_ids[still_active]
-            active_motion_ids = self._episode_ctx.motion_ids[still_active]
-            self._check_evaluation_failures(active_env_ids, active_motion_ids)
+    def _scored_trials(self, env_ids: Tensor, step_idx: int):
+        """Score each motion only until its window ends or it fails."""
+        motion_ids = self._episode_ctx.motion_ids
+        active = (self._episode_ctx.frame_limits > step_idx) & ~self._evaluation.failed[motion_ids]
+        return env_ids[active], motion_ids[active]
 
-    def _on_episode_step(self, env_ids: Tensor, extras: Dict, actions: Tensor) -> None:
+    def _on_episode_step(self, env_ids: Tensor, trial_ids: Tensor, extras: Dict, actions: Tensor) -> None:
         """Collect smoothness metrics each step."""
         self._record_trajectory_step(
-            self._metrics, extras, env_ids, self._episode_ctx.motion_ids, actions
+            self._metrics, extras, env_ids, trial_ids, actions
         )
 
     def _record_trajectory_step(
@@ -305,9 +290,8 @@ class MimicEvaluator(BaseEvaluator):
                 )
 
     def process_eval_results(self) -> Tuple[Dict, Optional[float], int]:
-        """Process results and update motion sampling weights."""
+        """Process results without changing training's sampling distribution."""
         to_log, success_rate, num_eval_items = super().process_eval_results()
-        self._update_motion_sampling_weights()
 
         additional_metrics = self._compute_additional_metrics(self._metrics)
         to_log.update(additional_metrics)
@@ -323,49 +307,8 @@ class MimicEvaluator(BaseEvaluator):
 
         return to_log, success_rate, num_eval_items
 
-    def cleanup_after_evaluation(self) -> None:
-        """Restore the env, model rollout context, and motion manager state.
-
-        ``env.restore_state`` first clears the simulator's contact memory (see
-        ``Simulator.flush_contact_cache``), then writes every env's saved state
-        back, so training continues the episodes it was running before eval.
-        """
-        self.motion_manager.motion_ids = self._cached_motion_ids
-        self.motion_manager.motion_times = self._cached_motion_times
-        self.env.restore_state(self._env_snapshot)
-        self.agent.model.load_rollout_context(self._model_context_snapshot)
-
-        del self._env_snapshot
-        del self._model_context_snapshot
-        del self._cached_motion_ids
-        del self._cached_motion_times
-        super().cleanup_after_evaluation()
-
-    def _plot_per_frame_metrics(
-        self, metrics: Dict, actions_storage: list = None
-    ) -> None:
-        """
-        Plot per-frame metrics vs time when evaluating a single motion.
-        Uses base class plotting with custom colors for contact forces.
-
-        Args:
-            metrics: Dictionary of MotionMetrics objects
-            actions_storage: List of action arrays for plotting (optional, currently unused)
-        """
-        # Define custom colors for specific metrics
-        custom_colors = {}
-
-        # Only plot metrics that were actually collected
-        eval_metric_keys = list(self.config.evaluation_components.keys())
-        available_keys = [k for k in eval_metric_keys if k in metrics]
-
-        # Use base class generic plotting with custom colors
-        super()._plot_per_frame_metrics(
-            metrics,
-            keys_to_plot=available_keys if available_keys else None,
-            custom_colors=custom_colors,
-            output_filename="metrics_per_frame_plot.png",
-        )
+    def update_training_state(self, result):
+        self._update_motion_sampling_weights(result)
 
     def _save_predicted_motion_lib(
         self, metrics: Dict[str, MotionMetrics], epoch: int
@@ -386,8 +329,9 @@ class MimicEvaluator(BaseEvaluator):
             "rigid_body_rot",
             "rigid_body_vel",
             "rigid_body_ang_vel",
-            "rigid_body_contacts",
         ]
+        if self.env.simulator.has_complete_contact_labels:
+            required_keys.append("rigid_body_contacts")
 
         # Ensure required data exists
         for k in required_keys:
@@ -416,11 +360,14 @@ class MimicEvaluator(BaseEvaluator):
                 f"Predicted MotionLib: masking {num_skipped} / {num_motions} "
                 f"un-rolled-out motions (length set to 0)"
             )
-        motion_num_frames = torch.where(
-            rolled_out,
-            motion_num_frames,
-            torch.zeros_like(motion_num_frames),
-        )
+        # Every packed channel must contain that frame; a scheduled length is
+        # only an upper bound. Never export an unwritten zero-filled tail.
+        for key in required_keys:
+            metric = metrics[key]
+            motion_num_frames = torch.minimum(
+                motion_num_frames,
+                metric.frame_counts.to(device=device).long().clamp(max=metric.data.shape[1]),
+            )
 
         lengths_shifted = motion_num_frames.roll(1)
         lengths_shifted[0] = 0
@@ -470,54 +417,26 @@ class MimicEvaluator(BaseEvaluator):
         gvs = gvs_flat.view(-1, num_bodies, 3)
         gavs = gavs_flat.view(-1, num_bodies, 3)
 
-        # Rigid body positions captured via "raw/rigid_body_pos" are in the
-        # simulator's world frame, so they include the per-env respawn offset
-        # the env applies on reset. The replay-time counterpart
-        # ``get_spawn_to_ref_pose_offset_with_terrain_height_correction`` adds
-        # back only ``scene_xy + fresh terrain height correction`` (and
-        # deliberately NOT ``ref_respawn_offset``, which is a spawn-only
-        # safety bump for physics). So to keep the saved lib replay-faithful,
-        # we undo exactly what replay will re-add — no more, no less.
-        #
-        # Concretely: stored ``respawn_root_offset.z`` equals
-        # ``terrain_height_at_spawn + ref_respawn_offset``; subtracting just
-        # the ``terrain_height_at_spawn`` portion leaves the 5 cm spawn bump
-        # baked into ``gts[0, root, z]`` so playback renders the "drop from
-        # 5 cm, then settle" trajectory the policy actually experienced.
-        # Velocities/rotations are invariant under a constant translation.
+        # The recorded positions are in the simulator's world frame, so they
+        # carry each env's spawn placement. A replay adds back the scene XY
+        # and the terrain height but not the spawn-only height bump, so exactly
+        # that is removed here (``PlacedReference.spawn_translation``): the saved clip
+        # keeps the "drop from the bump, then settle" trajectory the policy
+        # experienced. Velocities and rotations are translation-invariant.
         per_motion_offset = torch.zeros(num_motions, 3, device=device, dtype=gts.dtype)
         unique_motion_ids, first_env_indices = (
             self.motion_manager.get_unique_fixed_motions()
         )
         if unique_motion_ids.numel() > 0:
-            env_offsets = (
-                self.env.respawn_root_offset[first_env_indices]
-                .to(device=device, dtype=gts.dtype)
-                .clone()
-            )
-            # Strip the spawn-only ref_respawn_offset from z; keep terrain
-            # correction and scene xy.
-            env_offsets[:, 2] -= float(self.env.config.ref_respawn_offset)
-            per_motion_offset[unique_motion_ids] = env_offsets
+            per_motion_offset[unique_motion_ids] = self.env.reference.spawn_translation(
+                first_env_indices
+            ).to(device=device, dtype=gts.dtype)
         for m in range(num_motions):
             nframes = int(motion_num_frames[m].item())
             if nframes == 0:
                 continue
             start = int(length_starts[m].item())
             gts[start : start + nframes] -= per_motion_offset[m].view(1, 1, 3)
-
-        # Pack predicted contacts from metrics
-        contacts_data = metrics[
-            "rigid_body_contacts"
-        ].data  # [num_motions, max_frames, num_bodies]
-        contacts_list = []
-        for m in range(num_motions):
-            f = motion_num_frames[m].item()
-            # Clamp to available frames
-            f = min(f, contacts_data.shape[1])
-            # Convert float contacts to bool for consistency with MotionLib format
-            contacts_list.append(contacts_data[m, :f].bool().detach().clone())
-        contacts = torch.cat(contacts_list, dim=0)
 
         # Copy ground-truth motion weights and files
         gt_lib = self.motion_lib
@@ -545,8 +464,11 @@ class MimicEvaluator(BaseEvaluator):
             "motion_num_frames": motion_num_frames,
             "motion_weights": motion_weights,
             "motion_files": motion_files,
-            "contacts": contacts,  # Always save predicted contacts
+            "contacts": None,
         }
+        # Disabled contact reporting means unknown labels, not all-false labels.
+        if self.env.simulator.has_complete_contact_labels:
+            save_data["contacts"] = pack_metric("rigid_body_contacts").bool()
 
         # create dir if not exists
         output_dir = self.root_dir / "results"

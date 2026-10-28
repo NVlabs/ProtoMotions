@@ -4,11 +4,9 @@
 """Configuration for discrete-prior PEFT with AMP style rewards."""
 
 from dataclasses import dataclass, field
-from typing import Dict, TYPE_CHECKING
+from typing import Dict
 
-if TYPE_CHECKING:
-    from protomotions.envs.mdp_component import MdpComponent
-
+from protomotions.envs.mdp_component import MdpComponent
 from protomotions.agents.amp.config import AMPParametersConfig, DiscriminatorConfig
 from protomotions.agents.common.config import ModuleContainerConfig
 from protomotions.agents.base_agent.config import OptimizerConfig

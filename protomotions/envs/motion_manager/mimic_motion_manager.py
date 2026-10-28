@@ -25,6 +25,8 @@ class MimicMotionManager(MotionManager):
         device: torch.device,
         motion_lib: MotionLib,
         fixed_motion_ids_per_env: Optional[torch.Tensor] = None,
+        *,
+        generator: Optional[torch.Generator],
     ):
         """A motion manager that handles motion sampling and tracking for mimic environments.
 
@@ -36,7 +38,15 @@ class MimicMotionManager(MotionManager):
             motion_lib (MotionLib): Motion library containing reference motions
             fixed_motion_ids_per_env (Optional[torch.Tensor], optional): If provided, specifies fixed motion IDs to use for each environment. Defaults to None.
         """
-        super().__init__(config, num_envs, env_dt, device, motion_lib, fixed_motion_ids_per_env)
+        super().__init__(
+            config,
+            num_envs,
+            env_dt,
+            device,
+            motion_lib,
+            fixed_motion_ids_per_env,
+            generator=generator,
+        )
 
     def get_done_tracks(self, env_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
         """Check which motion tracks have reached their end time.

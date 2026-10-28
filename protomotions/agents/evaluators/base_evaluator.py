@@ -12,7 +12,7 @@ Key Classes:
 
 Key Features:
     - Periodic evaluation during training
-    - Hook pattern for subclass customization (4 hooks: start, reset_kwargs, check, step)
+    - One rollout loop with hooks for motion coverage and action selection
     - MdpComponent-based evaluation with threshold failure detection
     - Aggregate metrics via plugin system (see aggregate_metrics.py)
     - Episode statistics aggregation
@@ -24,8 +24,6 @@ Note:
     accumulated MotionMetrics trajectories.
 """
 
-import logging
-import numpy as np
 import torch
 from torch import Tensor
 from typing import Dict, Optional, Tuple, Any
@@ -33,16 +31,12 @@ from lightning.fabric import Fabric
 
 from protomotions.agents.evaluators.metrics import MotionMetrics
 from protomotions.envs.base_env.env import BaseEnv
-from protomotions.envs.component_manager import ComponentManager
-from protomotions.envs.base_env.utils import combine_evaluation
+from protomotions.agents.evaluators.manager import EvaluationManager, EvaluationResult
 from protomotions.agents.evaluators.config import EvaluatorConfig
 from protomotions.agents.evaluators.aggregate_metrics import (
     SmoothnessAggregateMetric,
     ActionSmoothnessAggregateMetric,
 )
-
-log = logging.getLogger(__name__)
-
 
 class BaseEvaluator:
     """Base class for agent evaluation and metrics computation.
@@ -58,7 +52,7 @@ class BaseEvaluator:
 
     Example:
         >>> evaluator = BaseEvaluator(agent, fabric, config)
-        >>> metrics, score, num_items = evaluator.evaluate()
+        >>> result = evaluator.evaluate()
     """
 
     def __init__(self, agent: Any, fabric: Fabric, config: EvaluatorConfig):
@@ -72,19 +66,14 @@ class BaseEvaluator:
         self.agent = agent
         self.fabric = fabric
         self.config = config
+        self.config.validate()
+
 
         self.metric_plugins = []
         self._register_plugins()
         self.eval_count = 0
 
-        self._component_manager: Optional[ComponentManager] = None
-        self._motion_failed: Optional[Tensor] = None
-        self._eval_mask: Optional[Tensor] = None
-        self._per_component_failures: Dict[str, Tensor] = {}
-        self._component_value_sum: Dict[str, Tensor] = {}
-        self._component_value_min: Dict[str, Tensor] = {}
-        self._component_value_max: Dict[str, Tensor] = {}
-        self._component_step_count: Dict[str, Tensor] = {}
+        self._evaluation: Optional[EvaluationManager] = None
 
         # Instance state for metrics collection during evaluation
         self._metrics: Optional[Dict] = None
@@ -105,36 +94,43 @@ class BaseEvaluator:
         return self.agent.root_dir
 
     @torch.no_grad()
-    def evaluate(self) -> Tuple[Dict, Optional[float], int]:
+    def evaluate(self) -> EvaluationResult:
         """
         Evaluate the agent and calculate metrics.
         This is the main entry point that orchestrates the evaluation process.
 
+        Action selection belongs to the evaluator config. This method only
+        measures; the training caller decides whether to apply its results.
+
         Returns:
-            Tuple containing:
-                - Dict of evaluation metrics for logging
-                - Optional score value for determining best model
-                - Number of items evaluated (for proper weighted aggregation
-                  across ranks with heterogeneous motion counts)
+            Logs, optional checkpoint score, evaluated count and trial outcomes.
         """
-        if not self.config.evaluation_components:
-            return {}, None, 0
+        if not (self.config.metric_components or self.config.failure_components):
+            return EvaluationResult({}, None, 0)
 
-        self.agent.eval()
-        self._disable_perturbations()
-        self._metrics = self.initialize_eval()
-        if self._metrics is None:
-            self._restore_perturbations()
-            return {}, None, 0
-
-        self.run_evaluation()
-
-        evaluation_log, evaluated_score, num_eval_items = self.process_eval_results()
-        self.cleanup_after_evaluation()
-        self._restore_perturbations()
-        self.eval_count += 1
-
-        return evaluation_log, evaluated_score, num_eval_items
+        modes = [(module, module.training) for module in self.agent.model.modules()]
+        try:
+            self.agent.eval()
+            self._disable_perturbations()
+            self._metrics = self.initialize_eval()
+            if self._metrics is None:
+                return EvaluationResult({}, None, 0)
+            self.run_evaluation()
+            result = EvaluationResult(
+                *self.process_eval_results(),
+                failed=self._evaluation.failed.clone(),
+                evaluated=self._evaluation.evaluated,
+            )
+            self.eval_count += 1
+            return result
+        finally:
+            try:
+                self.cleanup_after_evaluation()
+            finally:
+                self._restore_perturbations()
+                # Preserve mixed modes (e.g. frozen expert eval, student train).
+                for module, training in modes:
+                    module.training = training
 
     @property
     def num_envs(self) -> int:
@@ -148,8 +144,13 @@ class BaseEvaluator:
 
     def initialize_eval(self) -> Dict:
         """Initialize evaluation tracking."""
+        self._save_training_state()
         self._init_eval_component_buffers(self.num_envs)
         return {}
+
+    def _save_training_state(self):
+        self._env_snapshot = self.env.save_state()
+        self._model_context_snapshot = self.agent.model.save_rollout_context()
 
     def run_evaluation(self) -> None:
         """Run the evaluation process."""
@@ -159,11 +160,14 @@ class BaseEvaluator:
     def evaluate_episode(self, env_ids: Tensor, max_steps: int) -> None:
         """Run a single episode batch.
 
-        Subclasses customize behavior via 4 hooks:
+        Subclasses customize scheduling and collection through hooks:
         - _on_episode_start: pre-reset setup
         - _get_reset_kwargs: customize env.reset() call
-        - _check_eval_components: per-step evaluation component checking
+        - _scored_trials: map active environments to trial IDs
         - _on_episode_step: per-step data collection
+
+        Failed trials stop collecting immediately. Their environments restart as
+        unscored background environments while the remaining trials finish.
 
         Args:
             env_ids: Environment IDs to evaluate [num_envs]
@@ -171,21 +175,49 @@ class BaseEvaluator:
         """
         self._on_episode_start(env_ids)
 
-        obs, _ = self.env.reset(env_ids, **self._get_reset_kwargs())
+        obs = self._reset_episode(env_ids)
+        self._unscored_envs = torch.ones(self.num_envs, dtype=torch.bool, device=self.device)
+        self._unscored_envs[env_ids] = False
         self.agent.pre_collect_step(0)
         obs = self.agent.add_agent_info_to_obs(obs)
         obs_td = self.agent.obs_dict_to_tensordict(obs)
 
+        active_envs, trial_ids = self._scored_trials(env_ids, 0)
         for step_idx in range(max_steps):
+            if active_envs.numel() == 0:
+                break
             actions = self._policy_action(obs_td)
 
             obs, rewards, dones, terminated, extras = self.env.step(actions)
+            # Measure before any background reset invalidates the step context.
+            self._check_evaluation_failures(active_envs, trial_ids)
+            self._on_episode_step(active_envs, trial_ids, extras, actions)
+            # Failure is latched in the manager, not the environment. A reset
+            # cannot re-add a trial: this set only shrinks within a batch.
+            # The manager enforces exclusion; filtering here also avoids needless rollout.
+            active_envs, trial_ids = self._scored_trials(env_ids, step_idx + 1)
+            # No more actions are needed when this batch has finished. The
+            # outer scheduler still visits the remaining motion batches.
+            if active_envs.numel() == 0 or step_idx + 1 == max_steps:
+                break
+            next_unscored = torch.ones_like(self._unscored_envs)
+            next_unscored[active_envs] = False
+            just_finished = next_unscored & ~self._unscored_envs
+            self._unscored_envs = next_unscored
+            restart_ids = (just_finished | (dones.bool() & next_unscored)).nonzero().flatten()
+            if restart_ids.numel() > 0:
+                obs = self._reset_envs(restart_ids)
             self.agent.pre_collect_step(step_idx + 1)
             obs = self.agent.add_agent_info_to_obs(obs)
             obs_td = self.agent.obs_dict_to_tensordict(obs)
 
-            self._check_eval_components(env_ids, step_idx)
-            self._on_episode_step(env_ids, extras, actions)
+    def _reset_episode(self, env_ids: Tensor):
+        return self._reset_envs(env_ids)
+
+    def _reset_envs(self, env_ids: Tensor):
+        obs, _ = self.env.reset(env_ids, **self._get_reset_kwargs())
+        self.agent.model.reset_rollout_context(env_ids=env_ids)
+        return obs
 
     def _on_episode_start(self, env_ids: Tensor) -> None:
         """Hook called before episode reset. Override in subclasses for pre-reset setup.
@@ -203,37 +235,26 @@ class BaseEvaluator:
         """
         return {}
 
-    def _check_eval_components(self, env_ids: Tensor, step_idx: int) -> None:
-        """Hook for per-step evaluation component checking. Override in subclasses.
+    def _scored_trials(self, env_ids: Tensor, step_idx: int):
+        """Base trials use environment IDs; failed trials never re-enter."""
+        active = ~self._evaluation.failed[env_ids]
+        return env_ids[active], env_ids[active]
 
-        Default behavior: check all env_ids, mapping env_ids to eval_ids 1:1.
-        Subclasses can filter env_ids (e.g., skip finished motion clips) and
-        provide custom env-to-eval-ID mapping.
-
-        Args:
-            env_ids: Environment IDs active this step
-            step_idx: Current step index in the episode
-        """
-        self._check_evaluation_failures(env_ids, env_ids)
-
-    def _on_episode_step(self, env_ids: Tensor, extras: Dict, actions: Tensor) -> None:
+    def _on_episode_step(self, env_ids: Tensor, trial_ids: Tensor, extras: Dict, actions: Tensor) -> None:
         """Hook called after each step. Override in subclasses to collect metrics.
 
         Args:
             env_ids: Environment IDs active this step
+            trial_ids: Corresponding trial IDs for collection
             extras: Extra data from env.step()
             actions: Actions taken this step
         """
         pass
 
     def _policy_action(self, obs_td) -> Tensor:
-        """Run the policy and select the deterministic action when available."""
-        model_outs = self.agent.model(obs_td)
-        return (
-            model_outs["mean_action"]
-            if "mean_action" in model_outs
-            else model_outs["action"]
-        )
+        """Run the policy and select the action it drives the robot from."""
+        model_outs = self.agent.inference_step(obs_td)
+        return model_outs[self.agent.model.deployable_action_key]
 
     def process_eval_results(self) -> Tuple[Dict, Optional[float], int]:
         """Process collected metrics and prepare for logging.
@@ -244,73 +265,30 @@ class BaseEvaluator:
                 - Optional score value for determining best model
                 - Number of items evaluated (for weighted cross-rank aggregation)
         """
-        to_log = {}
-
-        if self._motion_failed is not None:
-            evaluated = self._eval_mask
-            num_eval_items = evaluated.sum().item()
-            if num_eval_items > 0:
-                success_rate = (
-                    1.0 - self._motion_failed[evaluated].float().mean().item()
-                )
-            else:
-                success_rate = 1.0
-            to_log["eval/success_rate"] = success_rate
-            to_log["eval/num_evaluated"] = num_eval_items
-
-            for name, component in self.config.evaluation_components.items():
-                threshold = component.static_params.get("threshold", None)
-                if threshold is not None:
-                    if num_eval_items > 0:
-                        failure_rate = (
-                            self._per_component_failures[name][evaluated]
-                            .float()
-                            .mean()
-                            .item()
-                        )
-                    else:
-                        failure_rate = 0.0
-                    to_log[f"eval/{name}/failure_rate"] = failure_rate
-
-            for name in self._component_value_sum.keys():
-                step_count = self._component_step_count[name].float()
-                valid = step_count > 0
-
-                if valid.any():
-                    mean_per_motion = self._component_value_sum[
-                        name
-                    ] / step_count.clamp(min=1)
-                    to_log[f"eval/{name}/mean"] = mean_per_motion[valid].mean().item()
-                    to_log[f"eval/{name}/max"] = (
-                        self._component_value_max[name][valid].max().item()
-                    )
-                    to_log[f"eval/{name}/min"] = (
-                        self._component_value_min[name][valid].min().item()
-                    )
-
-            return to_log, success_rate, num_eval_items
-
-        return to_log, None, 0
+        return self._evaluation.results() if self._evaluation is not None else ({}, None, 0)
 
     def get_state_dict(self) -> Dict:
-        """Get evaluator state for checkpointing. Override in subclasses."""
         return {"eval_count": self.eval_count}
 
     def load_state_dict(self, state_dict: Dict) -> None:
-        """Load evaluator state from checkpoint. Override in subclasses."""
-        self.eval_count = state_dict.get("eval_count", 0)
+        self.eval_count = state_dict["eval_count"]
+
+    def update_training_state(self, result: EvaluationResult):
+        """Apply results when explicitly requested by the training caller."""
 
     def cleanup_after_evaluation(self) -> None:
         """Clean up after evaluation."""
+        # Initialization can fail between snapshots. Restore each captured part.
+        env_snapshot = self.__dict__.pop("_env_snapshot", None)
+        model_snapshot = self.__dict__.pop("_model_context_snapshot", None)
+        try:
+            if env_snapshot is not None:
+                self.env.restore_state(env_snapshot)
+        finally:
+            if model_snapshot is not None:
+                self.agent.model.load_rollout_context(model_snapshot)
         self._metrics = None
-        self._motion_failed = None
-        self._eval_mask = None
-        self._per_component_failures = {}
-        self._component_value_sum = {}
-        self._component_value_min = {}
-        self._component_value_max = {}
-        self._component_step_count = {}
-        self._component_manager = None
+        self._evaluation = None
 
     def _disable_perturbations(self) -> None:
         """Temporarily disable perturbations for clean evaluation metrics.
@@ -318,122 +296,34 @@ class BaseEvaluator:
         During training, perturbations (push randomization and reset noise) are
         active in the shared environment. These must be disabled during evaluation
         so that the success metric reflects pure tracking ability, not robustness
-        to disturbances. This is critical for curriculum advancement, which gates
-        on success_rate.
+        to disturbances. Two things act on these results: when ``score_key`` is
+        set, the best success rate so far decides which checkpoint is saved as
+        ``score_based.ckpt``, and ``MimicEvaluator.update_training_state`` uses
+        each motion's pass or fail to re-weight how often training samples it.
+        The env owns the switch (``set_perturbations_enabled``); this only
+        remembers the state to put back.
         """
-        self._saved_reset_noise = self.env.robot_config.reset_noise
-        self.env.robot_config.reset_noise = None
-
-        self._saved_push_enabled = self.env.simulator._push_enabled
-        self.env.simulator._push_enabled = False
+        self._saved_perturbations_enabled = self.env.perturbations_enabled
+        self.env.set_perturbations_enabled(False)
 
     def _restore_perturbations(self) -> None:
         """Restore perturbation state after evaluation."""
-        self.env.robot_config.reset_noise = self._saved_reset_noise
-        self.env.simulator._push_enabled = self._saved_push_enabled
+        if "_saved_perturbations_enabled" in self.__dict__:
+            self.env.set_perturbations_enabled(
+                self.__dict__.pop("_saved_perturbations_enabled")
+            )
 
     def _init_eval_component_buffers(self, num_eval_ids: int) -> None:
-        """Initialize per-component failure and value accumulators for this evaluation run."""
-        if not self.config.evaluation_components:
-            return
-
-        self._motion_failed = torch.zeros(
-            num_eval_ids, dtype=torch.bool, device=self.device
+        self._evaluation = EvaluationManager(
+            self.config, self.env.robot_config, num_eval_ids, self.num_envs, self.device
         )
-        self._eval_mask = torch.zeros(
-            num_eval_ids, dtype=torch.bool, device=self.device
-        )
-        self._per_component_failures = {
-            name: torch.zeros(num_eval_ids, dtype=torch.bool, device=self.device)
-            for name in self.config.evaluation_components.keys()
-        }
-        self._component_value_sum = {
-            name: torch.zeros(num_eval_ids, device=self.device)
-            for name in self.config.evaluation_components.keys()
-        }
-        self._component_value_min = {
-            name: torch.full((num_eval_ids,), float("inf"), device=self.device)
-            for name in self.config.evaluation_components.keys()
-        }
-        self._component_value_max = {
-            name: torch.full((num_eval_ids,), float("-inf"), device=self.device)
-            for name in self.config.evaluation_components.keys()
-        }
-        self._component_step_count = {
-            name: torch.zeros(num_eval_ids, dtype=torch.long, device=self.device)
-            for name in self.config.evaluation_components.keys()
-        }
-
-        self._component_manager = ComponentManager(self.device)
-
-    def _check_evaluation_failures(
-        self,
-        active_env_ids: Tensor,
-        active_motion_ids: Tensor,
-    ) -> None:
-        """Check evaluation components and accumulate values/failures for active motions."""
-        if self._component_manager is None:
-            return
-
-        raw_values = self._component_manager.execute_all(
-            self.config.evaluation_components, self.env.context
-        )
-        failed_buf, component_values, component_failures = combine_evaluation(
-            raw_values=raw_values,
-            configs=self.config.evaluation_components,
-            num_envs=self.agent.num_envs,
-            device=self.device,
+        self._evaluation.validate_bindings(
+            self._evaluation.components, self.env.context, group="evaluation"
         )
 
-        # Vectorized update of motion failures
-        active_failed = failed_buf[active_env_ids]
-        self._motion_failed[active_motion_ids] = (
-            self._motion_failed[active_motion_ids] | active_failed
-        )
-        self._eval_mask[active_motion_ids] = True
-
-        for name, failures in component_failures.items():
-            active_failures = failures[active_env_ids]
-            self._per_component_failures[name][active_motion_ids] = (
-                self._per_component_failures[name][active_motion_ids] | active_failures
-            )
-
-        for name, values in component_values.items():
-            active_vals = values[active_env_ids]
-            self._component_value_sum[name][active_motion_ids] += active_vals
-            self._component_value_min[name][active_motion_ids] = torch.minimum(
-                self._component_value_min[name][active_motion_ids], active_vals
-            )
-            self._component_value_max[name][active_motion_ids] = torch.maximum(
-                self._component_value_max[name][active_motion_ids], active_vals
-            )
-            self._component_step_count[name][active_motion_ids] += 1
-
-    def _create_base_metrics(
-        self,
-        metric_keys: list,
-        num_motions: int,
-        motion_num_frames: torch.Tensor,
-        max_eval_steps: int,
-    ) -> Dict[str, MotionMetrics]:
-        """
-        Create MotionMetrics objects for a list of keys.
-
-        Args:
-            metric_keys: List of metric keys to create
-            num_motions: Number of motions to evaluate
-            motion_num_frames: Number of frames per motion
-            max_eval_steps: Maximum evaluation steps
-
-        Returns:
-            Dictionary of MotionMetrics objects
-        """
-        metrics = {}
-        for k in metric_keys:
-            metrics[k] = MotionMetrics(
-                num_motions, motion_num_frames, max_eval_steps, device=self.device
-            )
-        return metrics
+    def _check_evaluation_failures(self, active_env_ids: Tensor, active_motion_ids: Tensor) -> None:
+        if self._evaluation is not None:
+            self._evaluation.update(self.env.context, active_env_ids, active_motion_ids)
 
     def _add_robot_state_metrics(
         self,
@@ -452,26 +342,17 @@ class BaseEvaluator:
             motion_num_frames: Number of frames per motion
             max_eval_steps: Maximum evaluation steps
         """
-        # Default implementation for humanoid robot state
-        if not hasattr(self.env, "simulator"):
-            return
-
-        try:
-            from protomotions.simulator.base_simulator.simulator_state import RobotState
-
-            dummy_state: RobotState = self.env.simulator.get_robot_state()
-            shape_mapping = dummy_state.get_shape_mapping(flattened=True)
-
-            for k, shape in shape_mapping.items():
-                metrics[k] = MotionMetrics(
-                    num_motions,
-                    motion_num_frames,
-                    max_eval_steps,
-                    num_sub_features=shape[0],
-                    device=self.device,
-                )
-        except (AttributeError, KeyError, IndexError) as e:
-            log.warning("Could not add robot state metrics: %s", e)
+        state = self.env.simulator.get_robot_state()
+        for key, shape in state.get_shape_mapping(flattened=True).items():
+            if (
+                key == "rigid_body_contacts"
+                and not self.env.simulator.has_complete_contact_labels
+            ):
+                continue
+            metrics[key] = MotionMetrics(
+                num_motions, motion_num_frames, max_eval_steps,
+                num_sub_features=shape[0], device=self.device,
+            )
 
     def _register_plugins(self) -> None:
         """Register metric computation plugins. Override in subclasses."""
@@ -488,16 +369,12 @@ class BaseEvaluator:
             high_jerk_threshold: Threshold for classifying high jerk frames
 
         Returns:
-            True if plugin was registered successfully, False otherwise
+            True when registered. Invalid settings raise at construction.
         """
-        try:
-            self.metric_plugins.append(
-                SmoothnessAggregateMetric(self, window_sec, high_jerk_threshold)
-            )
-            return True
-        except ValueError as e:
-            log.warning("Skipping smoothness plugin: %s", e)
-            return False
+        self.metric_plugins.append(
+            SmoothnessAggregateMetric(self, window_sec, high_jerk_threshold)
+        )
+        return True
 
     def _register_action_smoothness_plugin(self) -> bool:
         """
@@ -506,14 +383,10 @@ class BaseEvaluator:
         Measures how much actions change between consecutive timesteps.
 
         Returns:
-            True if plugin was registered successfully, False otherwise
+            True when registered. Invalid settings raise at construction.
         """
-        try:
-            self.metric_plugins.append(ActionSmoothnessAggregateMetric(self))
-            return True
-        except (ValueError, TypeError) as e:
-            log.warning("Skipping action smoothness plugin: %s", e)
-            return False
+        self.metric_plugins.append(ActionSmoothnessAggregateMetric(self))
+        return True
 
     def _compute_additional_metrics(
         self, metrics: Dict[str, MotionMetrics]
@@ -529,44 +402,8 @@ class BaseEvaluator:
         """
         additional_metrics = {}
         for plugin in self.metric_plugins:
-            try:
-                plugin_metrics = plugin.compute(metrics)
-                additional_metrics.update(plugin_metrics)
-            except Exception as e:
-                log.warning("Plugin %s failed: %s", plugin.__class__.__name__, e)
+            additional_metrics.update(plugin.compute(metrics))
         return additional_metrics
-
-    def _gen_metrics(
-        self, metrics: Dict[str, MotionMetrics], keys_to_log: list, prefix: str = "eval"
-    ) -> Dict[str, float]:
-        """
-        Log metrics with mean/max/min aggregations across motions.
-
-        For each metric, computes:
-        - mean: average across all per-motion means (overall performance)
-        - max: maximum of per-motion means (worst performing motion)
-        - min: minimum of per-motion means (best performing motion)
-
-        This gives you 3 separate line plot groups that track over time:
-        - {prefix}_mean/{metric}: How well you perform on average
-        - {prefix}_max/{metric}: How well you perform on the hardest motion
-        - {prefix}_min/{metric}: How well you perform on the easiest motion
-
-        Args:
-            metrics: Dictionary of MotionMetrics
-            keys_to_log: List of metric keys to log
-            prefix: Base prefix for logged metric names (default: "eval")
-
-        Returns:
-            Dictionary of logged metrics
-        """
-        to_log = {}
-        for k in keys_to_log:
-            if k in metrics:
-                to_log[f"{prefix}_mean/{k}"] = metrics[k].mean_mean_reduce().item()
-                to_log[f"{prefix}_max/{k}"] = metrics[k].mean_max_reduce().item()
-                to_log[f"{prefix}_min/{k}"] = metrics[k].mean_min_reduce().item()
-        return to_log
 
     def _save_list_to_file(
         self, items: list, filename: str, subdirectory: Optional[str] = None
@@ -591,118 +428,17 @@ class BaseEvaluator:
             for item in items:
                 f.write(f"{item}\n")
 
-    def _plot_per_frame_metrics(
-        self,
-        metrics: Dict[str, MotionMetrics],
-        keys_to_plot: Optional[list] = None,
-        motion_id: int = 0,
-        custom_colors: Optional[Dict[str, str]] = None,
-        output_filename: str = "metrics_per_frame_plot.png",
-    ) -> None:
-        """
-        Plot per-frame metrics vs time for a single motion.
-        Only plots single-feature metrics (ignores multi-feature metrics).
-
-        Args:
-            metrics: Dictionary of MotionMetrics objects
-            keys_to_plot: List of keys to plot (None = plot all single-feature metrics)
-            motion_id: Which motion to plot (default: 0)
-            custom_colors: Optional dict mapping metric keys to colors
-            output_filename: Name of output file
-        """
-        try:
-            import matplotlib.pyplot as plt
-        except ImportError:
-            print("matplotlib not available, skipping plotting")
-            return
-
-        dt = self.env.dt
-        custom_colors = custom_colors or {}
-
-        # Filter to only single-feature metrics
-        single_feature_metrics = {}
-        valid_frames = {}
-
-        # Determine which keys to plot
-        if keys_to_plot is None:
-            keys_to_plot = list(metrics.keys())
-
-        for k in keys_to_plot:
-            if k in metrics and metrics[k].num_sub_features == 1:
-                single_feature_metrics[k] = metrics[k]
-                valid_frames[k] = metrics[k].frame_counts[motion_id].item()
-
-        if not single_feature_metrics:
-            print("No single-feature metrics found for plotting")
-            return
-
-        # Create subplots for each single-feature metric
-        num_metrics = len(single_feature_metrics)
-        fig, axes = plt.subplots(num_metrics, 1, figsize=(12, 4 * num_metrics))
-        if num_metrics == 1:
-            axes = [axes]
-
-        for i, k in enumerate(single_feature_metrics.keys()):
-            metric = single_feature_metrics[k]
-            num_valid_frames = valid_frames[k]
-
-            if num_valid_frames == 0:
-                axes[i].text(
-                    0.5,
-                    0.5,
-                    f"No data for {k}",
-                    horizontalalignment="center",
-                    verticalalignment="center",
-                    transform=axes[i].transAxes,
-                )
-                axes[i].set_title(f"{k}")
-                continue
-
-            # Extract data for the single motion (single feature)
-            data = metric.data[motion_id, :num_valid_frames, 0].cpu().numpy()
-            time_steps = np.arange(num_valid_frames) * dt
-
-            # Use custom color if provided, otherwise matplotlib default
-            plot_kwargs = {"label": k, "linewidth": 2}
-            if k in custom_colors:
-                plot_kwargs["color"] = custom_colors[k]
-
-            axes[i].plot(time_steps, data, **plot_kwargs)
-            axes[i].set_xlabel("Time (s)")
-            axes[i].set_ylabel(f"{k}")
-            axes[i].set_title(f"{k} vs Time")
-            axes[i].grid(True, alpha=0.3)
-            axes[i].legend()
-
-        plt.tight_layout()
-
-        # Save the plot
-        if hasattr(self, "root_dir") and self.root_dir is not None:
-            plot_path = self.root_dir / output_filename
-            plt.savefig(plot_path, dpi=150, bbox_inches="tight")
-            print(f"Per-frame metrics plot saved to: {plot_path}")
-
-        plt.close(fig)
-        print("Per-frame metrics plotted successfully")
-
     @torch.no_grad()
-    def simple_test_policy(self, collect_metrics: bool = False) -> None:
+    def simple_test_policy(self) -> None:
         """
         Simple evaluation loop for interactive testing.
 
-        Runs policy indefinitely, collecting running average of metrics.
-        Press Ctrl+C to stop and print summary.
-
-        Args:
-            collect_metrics: If True, collect and print average metrics on exit.
+        Runs the policy indefinitely, resetting the envs that finish; press
+        Ctrl+C to stop.
         """
         self.agent.eval()
         done_indices = None
         step = 0
-
-        # Running averages for metrics
-        metric_sums: Dict[str, float] = {}
-        metric_counts: Dict[str, int] = {}
 
         print("Evaluating policy... (Ctrl+C to stop)")
         try:
@@ -714,21 +450,9 @@ class BaseEvaluator:
 
                 action = self._policy_action(obs_td)
 
-                _, _, dones, _, extras = self.env.step(action)
-
-                # Accumulate metrics
-                if collect_metrics and "eval_values" in extras:
-                    for k, v in extras["eval_values"].items():
-                        val = v.mean().item()
-                        metric_sums[k] = metric_sums.get(k, 0.0) + val
-                        metric_counts[k] = metric_counts.get(k, 0) + 1
+                _, _, dones, _, _ = self.env.step(action)
 
                 done_indices = dones.nonzero(as_tuple=False).squeeze(-1)
                 step += 1
         except KeyboardInterrupt:
             print(f"\nStopped after {step} steps.")
-            if collect_metrics and metric_counts:
-                print("Average metrics:")
-                for k in sorted(metric_counts.keys()):
-                    avg = metric_sums[k] / metric_counts[k]
-                    print(f"  {k}: {avg:.4f}")

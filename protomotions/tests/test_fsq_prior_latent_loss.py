@@ -95,7 +95,9 @@ def test_prior_peft_sft_agent_create_model_initializes_no_external_expert(
         lambda self: object(),
     )
     agent = object.__new__(DiscretePriorPEFTSFTAgent)
+    agent.config = SimpleNamespace(expert_model_path=None)
 
+    SupervisedAgent._before_create_model(agent)
     DiscretePriorPEFTSFTAgent.create_model(agent)
     SupervisedAgent.register_algorithm_experience_buffer_keys(agent)
 

@@ -27,7 +27,6 @@ from protomotions.agents.common.latent import (
     PRIVILEGED_LATENT_KEY,
     PRIVILEGED_LATENT_LOGVAR_KEY,
     PRIVILEGED_LATENT_MU_KEY,
-    VAE_LATENT_KEY,
 )
 from protomotions.agents.common.autoencoder.config import AutoEncoderConfig
 from protomotions.agents.common.config import (
@@ -37,7 +36,10 @@ from protomotions.agents.common.config import (
     PretrainedModelConfig,
 )
 from protomotions.agents.common.fsq_config import FSQAutoEncoderConfig
-from protomotions.agents.supervised.masked_mimic_config import MaskedMimicModelConfig
+from protomotions.agents.supervised.masked_mimic_config import (
+    MaskedMimicModelConfig,
+    MaskedMimicVAEConfig,
+)
 from protomotions.utils.hydra_replacement import get_class
 
 
@@ -164,7 +166,10 @@ class _CheckpointModel(BaseModel):
         return self._actor.mu.decoder(tensordict)
 
 
-def _write_checkpoint_model(tmp_path, decoder_config, source_td):
+def _write_checkpoint_model(monkeypatch, tmp_path, decoder_config, source_td):
+    import protomotions.agents.common.pretrained as pretrained
+    from protomotions.utils.experiment_configs import ExperimentConfigs
+
     source_config = SimpleNamespace(
         _target_="protomotions.tests.test_common_autoencoder._CheckpointModel",
         actor=SimpleNamespace(decoder=decoder_config),
@@ -173,17 +178,30 @@ def _write_checkpoint_model(tmp_path, decoder_config, source_td):
     source_model._actor.mu.decoder(source_td)
 
     checkpoint_path = tmp_path / "model.ckpt"
+
     torch.save({"model": source_model.state_dict()}, checkpoint_path)
-    torch.save(
-        {"agent": SimpleNamespace(model=source_config)},
-        tmp_path / "resolved_configs.pt",
+    # The saved bundle rebuilds through real constructors; the SimpleNamespace
+    # stand-in config can't round-trip, so patch the loader to return it.
+    bundle = ExperimentConfigs(
+        robot=None,
+        simulator=None,
+        terrain=None,
+        scene_lib=None,
+        motion_lib=None,
+        env=None,
+        agent=SimpleNamespace(model=source_config),
+    )
+    monkeypatch.setattr(
+        pretrained,
+        "load_experiment_configs_from_checkpoint",
+        lambda ckpt: bundle,
     )
     return checkpoint_path, source_model
 
 
 def test_masked_mimic_model_owns_resettable_noise_and_returns_it():
     latent_dim = 2
-    config = SimpleNamespace(
+    config = MaskedMimicModelConfig(
         encoder=ModuleContainerConfig(
             in_keys=["priv_obs"],
             out_keys=["encoder_mu", "encoder_logvar"],
@@ -205,7 +223,7 @@ def test_masked_mimic_model_owns_resettable_noise_and_returns_it():
             out_keys=["decoded_action"],
             models=[_mlp(["obs", "vae_latent"], "decoded_action", 1)],
         ),
-        vae=SimpleNamespace(vae_latent_dim=latent_dim, vae_noise_type="zeros"),
+        vae=MaskedMimicVAEConfig(vae_latent_dim=latent_dim, vae_noise_type="zeros"),
     )
     model = MaskedMimicModel(config)
     model.reset_rollout_context(num_envs=3, device="cpu")
@@ -237,7 +255,7 @@ def test_masked_mimic_model_owns_resettable_noise_and_returns_it():
 
 def test_masked_mimic_kl_uses_configured_module_out_keys():
     latent_dim = 2
-    config = SimpleNamespace(
+    config = MaskedMimicModelConfig(
         encoder=ModuleContainerConfig(
             in_keys=["priv_obs"],
             out_keys=["posterior_delta_mu", "posterior_logvar"],
@@ -259,7 +277,7 @@ def test_masked_mimic_kl_uses_configured_module_out_keys():
             out_keys=["decoded_action"],
             models=[_mlp(["obs", "vae_latent"], "decoded_action", 1)],
         ),
-        vae=SimpleNamespace(vae_latent_dim=latent_dim, vae_noise_type="zeros"),
+        vae=MaskedMimicVAEConfig(vae_latent_dim=latent_dim, vae_noise_type="zeros"),
     )
     model = MaskedMimicModel(config)
     model.reset_rollout_context(num_envs=3, device="cpu")
@@ -283,56 +301,9 @@ def test_masked_mimic_kl_uses_configured_module_out_keys():
     assert torch.allclose(model.kl_loss(out), expected_kl)
 
 
-def test_masked_mimic_forward_inference_uses_prior_only():
-    latent_dim = 2
-    config = SimpleNamespace(
-        encoder=ModuleContainerConfig(
-            in_keys=["priv_obs"],
-            out_keys=["encoder_mu", "encoder_logvar"],
-            models=[
-                _mlp(["priv_obs"], "encoder_mu", latent_dim),
-                _mlp(["priv_obs"], "encoder_logvar", latent_dim),
-            ],
-        ),
-        prior=ModuleContainerConfig(
-            in_keys=["obs"],
-            out_keys=["prior_mu", "prior_logvar"],
-            models=[
-                _mlp(["obs"], "prior_mu", latent_dim),
-                _mlp(["obs"], "prior_logvar", latent_dim),
-            ],
-        ),
-        trunk=ModuleContainerConfig(
-            in_keys=["obs", "terrain", VAE_LATENT_KEY],
-            out_keys=["decoded_action"],
-            models=[_mlp(["obs", "terrain", VAE_LATENT_KEY], "decoded_action", 1)],
-        ),
-        vae=SimpleNamespace(vae_latent_dim=latent_dim, vae_noise_type="zeros"),
-    )
-    model = MaskedMimicModel(config)
-    model.reset_rollout_context(num_envs=2, device="cpu")
-
-    out = model.forward_inference(
-        TensorDict(
-            {
-                "obs": torch.randn(2, 3),
-                "terrain": torch.randn(2, 1),
-                "priv_obs": torch.randn(2, 2),
-            },
-            batch_size=2,
-        )
-    )
-
-    assert out["action"].shape == (2, 1)
-    assert "privileged_action" not in out.keys()
-    assert torch.equal(out[LATENT_MU_KEY], out["prior_mu"])
-    assert torch.equal(out[LATENT_LOGVAR_KEY], out["prior_logvar"])
-    assert model.get_inference_in_keys() == ["obs", "terrain"]
-
-
 def test_masked_mimic_reset_resamples_only_done_env_noise():
     latent_dim = 2
-    config = SimpleNamespace(
+    config = MaskedMimicModelConfig(
         encoder=ModuleContainerConfig(
             in_keys=["priv_obs"],
             out_keys=["encoder_mu", "encoder_logvar"],
@@ -354,7 +325,7 @@ def test_masked_mimic_reset_resamples_only_done_env_noise():
             out_keys=["decoded_action"],
             models=[_mlp(["obs", "vae_latent"], "decoded_action", 1)],
         ),
-        vae=SimpleNamespace(vae_latent_dim=latent_dim, vae_noise_type="normal"),
+        vae=MaskedMimicVAEConfig(vae_latent_dim=latent_dim, vae_noise_type="normal"),
     )
     model = MaskedMimicModel(config)
 
@@ -372,7 +343,7 @@ def test_masked_mimic_reset_resamples_only_done_env_noise():
 
 def test_masked_mimic_uses_recorded_noise_when_provided():
     latent_dim = 2
-    config = SimpleNamespace(
+    config = MaskedMimicModelConfig(
         encoder=ModuleContainerConfig(
             in_keys=["priv_obs"],
             out_keys=["encoder_mu", "encoder_logvar"],
@@ -394,7 +365,7 @@ def test_masked_mimic_uses_recorded_noise_when_provided():
             out_keys=["decoded_action"],
             models=[_mlp(["obs", "vae_latent"], "decoded_action", 1)],
         ),
-        vae=SimpleNamespace(vae_latent_dim=latent_dim, vae_noise_type="zeros"),
+        vae=MaskedMimicVAEConfig(vae_latent_dim=latent_dim, vae_noise_type="zeros"),
     )
     model = MaskedMimicModel(config)
     model.reset_rollout_context(num_envs=3, device="cpu")
@@ -419,7 +390,9 @@ def test_masked_mimic_model_config_targets_named_student():
     assert not issubclass(MaskedMimicModel, AutoEncoder)
 
 
-def test_load_pretrained_model_module_resolves_nested_private_paths(tmp_path):
+def test_load_pretrained_model_module_resolves_nested_private_paths(
+    monkeypatch, tmp_path
+):
     decoder_config = ModuleContainerConfig(
         in_keys=["obs", "vae_latent"],
         out_keys=["decoded_action"],
@@ -433,6 +406,7 @@ def test_load_pretrained_model_module_resolves_nested_private_paths(tmp_path):
         batch_size=3,
     )
     checkpoint_path, source_model = _write_checkpoint_model(
+        monkeypatch,
         tmp_path,
         decoder_config,
         source_td,

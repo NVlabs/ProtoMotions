@@ -13,8 +13,6 @@ from protomotions.simulator.isaaclab.config import (
     IsaacLabPhysXParams,
     IsaacLabSimParams,
 )
-from protomotions.simulator.genesis.config import GenesisSimParams
-from protomotions.simulator.newton.config import NewtonSimParams
 from protomotions.simulator.mujoco.config import MujocoSimParams
 from protomotions.components.pose_lib import ControlInfo
 from typing import List, Dict, Tuple
@@ -94,38 +92,24 @@ class Soma23RobotConfig(RobotConfig):
         )
     )
 
+    control_hz: int = 30
+    # Each passed block replaces (not merges with) the humanoid template for its
+    # backend, so fields it omits are class defaults, not the humanoid tuning;
+    # newton falls back to the humanoid default (120 fps). implicitfast treats
+    # the PD damping implicitly (Euler only does that for joint damping), which
+    # keeps stiff gains on light links stable.
     simulation_params: SimulatorParams = field(
-        default_factory=lambda: SimulatorParams(
-            isaacgym=IsaacGymSimParams(
-                fps=60,
-                decimation=2,
-                substeps=2,
-            ),
+        default_factory=lambda: SimulatorParams.humanoid(
+            30,
+            isaacgym=IsaacGymSimParams(fps=60),
             isaaclab=IsaacLabSimParams(
                 fps=120,
-                decimation=4,
                 physx=IsaacLabPhysXParams(
                     num_position_iterations=4,
                     num_velocity_iterations=4,
                     max_depenetration_velocity=1,
                 ),
             ),
-            genesis=GenesisSimParams(
-                fps=60,
-                decimation=2,
-                substeps=2,
-            ),
-            newton=NewtonSimParams(
-                fps=120,
-                decimation=4,
-            ),
-            # Same 30 Hz control rate as the other simulators. implicitfast
-            # also treats the PD damping implicitly (Euler only does that for
-            # joint damping), which keeps stiff gains on light links stable.
-            mujoco=MujocoSimParams(
-                fps=960,
-                decimation=32,
-                integrator="implicitfast",
-            ),
+            mujoco=MujocoSimParams(fps=960, integrator="implicitfast"),
         )
     )

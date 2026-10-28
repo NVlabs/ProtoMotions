@@ -78,7 +78,7 @@ def test_transformer_concatenates_tokens_and_builds_padding_mask():
             ]
         ),
     )
-    assert torch.equal(out["transformer_out"], td["single"] + 1.0)
+    assert torch.equal(out["transformer_out"], capture.last_tokens[:, 0] + 1.0)
 
 
 def test_transformer_expands_short_masks_to_sequence_length():
@@ -174,9 +174,11 @@ def test_transformer_real_encoder_uses_context_and_respects_padding_mask():
     valid_b = run(context_b, context_valid=True)
     masked_a = run(context_a, context_valid=False)
     masked_b = run(context_b, context_valid=False)
+    masked_nan = run(torch.full_like(context_b, float("nan")), context_valid=False)
 
     assert not torch.allclose(valid_a, valid_b)
     torch.testing.assert_close(masked_a, masked_b, atol=1e-6, rtol=1e-6)
+    torch.testing.assert_close(masked_a, masked_nan, atol=1e-6, rtol=1e-6)
 
 
 def test_transformer_config_validates_mask_mapping_keys():

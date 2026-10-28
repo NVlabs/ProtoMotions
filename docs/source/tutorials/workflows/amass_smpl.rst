@@ -59,22 +59,21 @@ Key Metrics to Monitor
 
 With ``--use-wandb``, track these metrics:
 
-* **Eval/gt_err**: Position tracking error (lower is better). This is unbiased - 
-  evaluates all motions equally.
-* **Eval/success_rate**: Fraction of motions completed without falling.
-* **Train/episode_reward**: Training reward. May fluctuate due to prioritized 
-  sampling focusing on harder motions.
-* **Train/clip_frac**: Fraction of policy updates clipped by PPO. Keep this under 
-  ~0.3 for stable training. If consistently higher, consider lowering the learning rate.
-* **Train/actor_grad_norm** and **Train/critic_grad_norm**: Monitor these to ensure 
-  gradients are not exploding. Sudden spikes may indicate issues with your changes 
-  or reward configuration.
+* ``eval/gt_error/mean``: Position tracking error (lower is better).
+  The evaluator averages each evaluated trial's scored frames, then averages
+  those trial means equally.
+* ``eval/success_rate``: Fraction of evaluated trials passing the configured
+  failure rules. The mimic MLP recipe uses a position-error threshold.
+* ``info/episode_reward``: Training reward, affected by prioritized sampling.
+* ``actor/clip_frac``: Fraction of samples whose PPO probability ratio is clipped.
+* ``actor/grad_norm_before_clip`` and ``critic/grad_norm_before_clip``: Gradient
+  magnitudes before clipping; sudden spikes can help diagnose unstable updates.
 
 .. note::
 
-   If ``Train/episode_reward`` drops, it can mean that the evaluator 
-   re-weighted motions (ref. mimic_evaluator.py) and training is now focusing on harder cases. Check 
-   ``Eval/gt_err`` for unbiased metric, where each motion is evaluated fully once.
+   Evaluation metrics cover only scored frames. Trials may stop scoring after
+   an any-frame failure; a lower tracking error alone does not imply a better
+   policy. Compare it with ``eval/success_rate`` and ``eval/num_evaluated``.
 
 .. tip::
 
@@ -90,7 +89,7 @@ The ``mlp.py`` experiment defines:
 **Environment Config:**
 
 * 1000 step episodes
-* Early termination on large tracking error (>0.5 rad max joint error)
+* Early termination when any body is more than 0.5 m from its reference position
 * Bootstrap on episode end for value estimation
 
 **Reward Components:**
@@ -128,7 +127,7 @@ For purely motion imitation (DeepMimic) rewards:
 
 .. code-block:: bash
 
-   --overrides "env.reward_config.contact_match_rew.weight=0.0" \
+   --overrides "env.reward_components.contact_match_rew.static_params.weight=0.0" \
 
 (yes, such string-based overrides will work with the factory method rewards)
 
@@ -195,4 +194,3 @@ Next Steps
 * :doc:`retargeting_pyroki` - Retarget these motions to robots like G1
 * :doc:`domain_randomization` - Add domain randomization for sim2sim
 * :doc:`../../concepts/abstractions` - Understand the underlying architecture
-

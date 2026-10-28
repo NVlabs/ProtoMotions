@@ -5,7 +5,7 @@ Learn ProtoMotions through 8 progressive Python tutorials in ``examples/tutorial
 
 .. warning::
 
-   **GPU Required**: These simulators (IsaacGym, IsaacLab, Genesis, Newton) are designed for GPU acceleration.
+   **GPU Required**: These simulators (IsaacGym, IsaacLab, Newton) are designed for GPU acceleration.
    While ``--cpu-only`` is available, it is **highly experimental** and not recommended for most use cases.
 
 Overview
@@ -21,7 +21,7 @@ is a complete, runnable Python script that builds on previous concepts.
 3. Examine the code to understand implementation
 4. Modify and experiment
 
-**Prerequisites**: ProtoMotions installed with a simulator (isaacgym, isaaclab, genesis, or newton)
+**Prerequisites**: ProtoMotions installed with a simulator (isaacgym, isaaclab, or newton)
 
 Tutorial 0: Create Simulator
 -----------------------------
@@ -229,7 +229,9 @@ Learn to create a complete RL environment using ``BaseEnv``.
    env_config = EnvConfig(
        max_episode_length=1000,
        observation_components={
-           "max_coords_obs": max_coords_obs_factory(),
+           "max_coords_obs": MdpComponent.from_kernel(
+               compute_humanoid_max_coords_observations
+           ),
        },
    )
 
@@ -325,23 +327,30 @@ Learn to create motion imitation environments using ``Mimic``.
        "mimic": MimicControlConfig(bootstrap_on_episode_end=True),
    }
    observation_components = {
-       "max_coords_obs": max_coords_obs_factory(),
-       "previous_actions": previous_actions_factory(history_steps=1),
-       "mimic_target_poses": mimic_target_poses_max_coords_factory(with_velocities=True),
+       "max_coords_obs": MdpComponent.from_kernel(
+           compute_humanoid_max_coords_observations
+       ),
+       "previous_actions": MdpComponent.from_kernel(
+           compute_historical_actions_from_state, history_steps=1
+       ),
+       "mimic_target_poses": MdpComponent.from_kernel(
+           build_max_coords_target_poses, with_velocities=True
+       ),
    }
    reward_components = {
-       "action_smoothness": action_smoothness_factory(weight=-0.02),
-       **mimic_tracking_rewards_factory(
-           gt_weight=0.5,
-           gr_weight=0.3,
-           gv_weight=0.1,
-           gav_weight=0.1,
+       "action_smoothness": MdpComponent.from_kernel(
+           compute_action_smoothness, meta=RewardMeta(weight=-0.02)
+       ),
+       "gt_rew": MdpComponent.from_kernel(compute_gt_rew, meta=RewardMeta(weight=0.5)),
+       "gr_rew": MdpComponent.from_kernel(compute_gr_rew, meta=RewardMeta(weight=0.3)),
+       "gv_rew": MdpComponent.from_kernel(compute_gv_rew, meta=RewardMeta(weight=0.1)),
+       "gav_rew": MdpComponent.from_kernel(
+           compute_gav_rew, meta=RewardMeta(weight=0.1)
        ),
    }
 
    env_config = EnvConfig(
        max_episode_length=300,
-       num_state_history_steps=2,
        control_components=control_components,
        observation_components=observation_components,
        reward_components=reward_components,
@@ -387,21 +396,24 @@ Learn to train a complete motion tracking agent with PPO.
 .. code-block:: python
 
    reward_components = {
-       "action_smoothness": action_smoothness_factory(weight=-0.02),
-       **mimic_tracking_rewards_factory(
-           gt_weight=0.5,
-           gr_weight=0.3,
-           gv_weight=0.1,
-           gav_weight=0.1,
+       "action_smoothness": MdpComponent.from_kernel(
+           compute_action_smoothness, meta=RewardMeta(weight=-0.02)
+       ),
+       "gt_rew": MdpComponent.from_kernel(compute_gt_rew, meta=RewardMeta(weight=0.5)),
+       "gr_rew": MdpComponent.from_kernel(compute_gr_rew, meta=RewardMeta(weight=0.3)),
+       "gv_rew": MdpComponent.from_kernel(compute_gv_rew, meta=RewardMeta(weight=0.1)),
+       "gav_rew": MdpComponent.from_kernel(
+           compute_gav_rew, meta=RewardMeta(weight=0.1)
        ),
    }
    termination_components = {
-       "tracking_error": tracking_error_term_factory(threshold=0.5),
+       "tracking_error": TerminationRule(
+           MdpComponent.from_kernel(max_body_pos_error), 0.5
+       ),
    }
 
    env_config = EnvConfig(
        max_episode_length=200,
-       num_state_history_steps=2,
        control_components=control_components,
        observation_components=observation_components,
        reward_components=reward_components,

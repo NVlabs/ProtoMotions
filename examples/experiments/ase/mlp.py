@@ -2,9 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from protomotions.robot_configs.base import RobotConfig
-from protomotions.simulator.base_simulator.config import SimulatorConfig
 from protomotions.envs.base_env.config import EnvConfig
 from protomotions.agents.ase.config import ASEAgentConfig
+
+# ASE reuses AMP's inference hook unchanged (start every clip at its first frame).
+from examples.experiments.amp.mlp import (
+    apply_inference_overrides as apply_inference_overrides,
+)
 import argparse
 
 # Historical steps for discriminator reference observations
@@ -22,7 +26,7 @@ def scene_lib_config(args: argparse.Namespace):
     """Build scene library configuration."""
     from protomotions.components.scene_lib import SceneLibConfig
 
-    scene_file = args.scenes_file if hasattr(args, "scenes_file") else None
+    scene_file = args.scenes_file
     return SceneLibConfig(scene_file=scene_file)
 
 
@@ -36,34 +40,39 @@ def motion_lib_config(args: argparse.Namespace):
 def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
     """Build environment configuration (training defaults).
     
-    Uses factory functions from protomotions.envs.component_factories for common components.
+    Binds the observation kernels with ``MdpComponent.from_kernel``.
     """
     from protomotions.envs.motion_manager.config import MotionManagerConfig
     from protomotions.envs.action import make_pd_action_config
-    from protomotions.envs.component_factories import (
-        max_coords_obs_factory,
-        historical_max_coords_obs_factory,
+    from protomotions.envs.mdp_component import MdpComponent
+    from protomotions.envs.obs.humanoid import (
+        compute_humanoid_max_coords_observations,
+    )
+    from protomotions.envs.obs.humanoid_historical import (
+        compute_historical_max_coords_from_state,
     )
 
     # Observation components configuration
     observation_components = {
         # Humanoid self-observations (current state)
-        "max_coords_obs": max_coords_obs_factory(
+        "max_coords_obs": MdpComponent.from_kernel(
+            compute_humanoid_max_coords_observations,
             local_obs=True,
             root_height_obs=True,
             observe_contacts=False,
         ),
         # Historical observations for AMP/ASE discriminator (from StateHistoryBuffer)
-        "historical_max_coords_obs": historical_max_coords_obs_factory(
+        "historical_max_coords_obs": MdpComponent.from_kernel(
+            compute_historical_max_coords_from_state,
             local_obs=True,
             root_height_obs=True,
             observe_contacts=False,
+            history_steps=HISTORY_STEPS,
         ),
     }
 
     env_config: EnvConfig = EnvConfig(
         max_episode_length=300,  # Training default (eval override applied automatically)
-        num_state_history_steps=HISTORY_STEPS,  # Historical obs for AMP/ASE discriminator
         observation_components=observation_components,
         action_config=make_pd_action_config(robot_cfg),
         motion_manager=MotionManagerConfig(
@@ -93,7 +102,7 @@ def agent_config(
     )
     from protomotions.agents.amp.config import AMPParametersConfig
     from protomotions.agents.ase.config import ASEModelConfig
-    from protomotions.envs.obs import compute_historical_max_coords_from_motion_lib
+    from protomotions.envs.obs.humanoid_historical import compute_historical_max_coords_from_motion_lib
     from protomotions.envs.mdp_component import MdpComponent
 
     conditional_discriminator = False
@@ -113,7 +122,6 @@ def agent_config(
         actor_logstd=-2.9,
         in_keys=["max_coords_obs", "latents"],
         mu_model=ModuleContainerConfig(
-            in_keys=["max_coords_obs", "latents"],
             out_keys=["actor_trunk_out"],
             models=[
                 ModuleContainerConfig(
@@ -190,7 +198,7 @@ def agent_config(
             + (["latents"] if not conditional_discriminator else []),
             out_keys=["disc_logits", "mi_enc_output"],
             models=[  # Models in the sequential module
-                # Trunk: process historical_max_coords_obs_factory to features
+                # Trunk: process historical max-coords observations to features
                 MLPWithConcatConfig(
                     in_keys=["historical_max_coords_obs"],
                     normalize_obs=True,
@@ -286,17 +294,6 @@ def agent_config(
 
     agent_config: ASEAgentConfig = ASEAgentConfig(
         model=ASEModelConfig(
-            in_keys=["max_coords_obs", "historical_max_coords_obs", "latents"],
-            out_keys=[
-                "action",
-                "mean_action",
-                "neglogp",
-                "value",
-                "disc_logits",
-                "mi_enc_output",
-                "disc_value",
-                "mi_value",
-            ],
             actor=actor_config,
             critic=critic_config,
             discriminator=discriminator_encoder_config,
@@ -329,23 +326,3 @@ def agent_config(
     return agent_config
 
 
-def apply_inference_overrides(
-    robot_cfg: RobotConfig,
-    simulator_cfg: SimulatorConfig,
-    env_cfg,
-    agent_cfg,
-    terrain_cfg,
-    motion_lib_cfg,
-    scene_lib_cfg,
-    args: argparse.Namespace,
-):
-    """Apply evaluation-specific overrides."""
-    # Reuse the amp apply_inference_overrides function
-    from protomotions.utils.config_utils import (
-        import_experiment_relative_eval_overrides,
-    )
-
-    apply_inference_overrides_fn = import_experiment_relative_eval_overrides(
-        "../amp/mlp.py"
-    )
-    apply_inference_overrides_fn(robot_cfg, simulator_cfg, env_cfg, agent_cfg, terrain_cfg, motion_lib_cfg, scene_lib_cfg, args)

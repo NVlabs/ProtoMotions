@@ -4,7 +4,7 @@
 """Base simulator interface for physics engines.
 
 This module defines the abstract base class for physics simulators. It provides a
-unified interface across different physics engines (IsaacGym, IsaacLab, Genesis, Newton)
+unified interface across different physics engines (IsaacGym, IsaacLab, Newton, MuJoCo)
 while handling simulator-specific details in subclasses.
 
 Key Classes:
@@ -57,14 +57,17 @@ from protomotions.simulator.base_simulator.config import (
 from protomotions.robot_configs.base import ControlType, RobotConfig
 from protomotions.simulator.base_simulator.record import RecordingMixin
 from protomotions.simulator.base_simulator.user_interface import UserInterface
+from protomotions.simulator.base_simulator.contacts import ContactLayout
 from protomotions.assets import resolve_asset_root
-from protomotions.simulator.base_simulator.robot_mass_properties import prepare_robot_mjcf
+from protomotions.simulator.base_simulator.robot_mass_properties import (
+    prepare_robot_mjcf,
+)
 
 
 class Simulator(RecordingMixin, ABC):
     """Base class for physics simulators.
 
-    Provides a unified interface for different physics engines (IsaacGym, IsaacLab, Genesis, Newton).
+    Provides a unified interface for different physics engines (IsaacGym, IsaacLab, Newton, MuJoCo).
     Handles robot spawning, environment setup, scene management, terrain integration,
     and state management. Subclasses implement simulator-specific details while
     maintaining a consistent API.
@@ -153,8 +156,23 @@ class Simulator(RecordingMixin, ABC):
         self.num_envs: int = self.config.num_envs
 
         self.control_type: ControlType = self.robot_config.control.control_type
-        self.decimation: int = self.config.sim.decimation
-        self.dt: float = self.decimation * 1.0 / self.config.sim.fps
+        # The policy's control rate is the robot's; physics steps per control
+        # step are derived from it and the backend's fps.
+        hz = self.robot_config.control_hz
+        fps = self.config.sim.fps
+        if fps is None:
+            raise ValueError(
+                f"{type(self).__name__}: sim.fps is not set; the robot's "
+                f"simulation_params must carry a concrete fps (None derives from "
+                f"control_hz via SimulatorParams.humanoid)"
+            )
+        if fps % hz != 0:
+            raise ValueError(
+                f"{type(self).__name__}: sim.fps={fps} is not a multiple of "
+                f"robot.control_hz={hz}"
+            )
+        self.decimation: int = fps // hz
+        self.dt: float = 1.0 / hz
 
         latency_config = (
             self.config.domain_randomization.latency
@@ -164,11 +182,27 @@ class Simulator(RecordingMixin, ABC):
         self._max_action_latency_ms = (
             latency_config.max_latency_ms if latency_config is not None else 0.0
         )
+        # One control interval is 1000 / control_hz ms; a longer action latency
+        # would delay the command past the step it belongs to.
+        if self._max_action_latency_ms > 1000.0 / hz:
+            raise ValueError(
+                "max_latency_ms must not exceed one control interval "
+                "(1000 / control_hz milliseconds)."
+            )
 
         self._num_bodies: int = self.robot_config.kinematic_info.num_bodies
         self._num_dof: int = self.robot_config.kinematic_info.num_dofs
         self._dof_names: List[str] = self.robot_config.kinematic_info.dof_names
         self._body_names: List[str] = self.robot_config.kinematic_info.body_names
+        self.contacts_enabled = bool(self.robot_config.contact_bodies)
+        if self.contacts_enabled:
+            self.contact_layout = ContactLayout.build(
+                self._body_names,
+                self.scene_lib.num_objects_per_scene,
+                self.config.projectile.num_projectiles,
+                contact_bodies=self.robot_config.contact_bodies,
+                contact_partners=self.robot_config.contact_partners,
+            )
         # Joint limits are now parsed from MJCF by pose_lib.py
         # Simulator-specific limits are only retrieved for verification via _get_simulator_dof_limits_for_verification()
 
@@ -241,6 +275,21 @@ class Simulator(RecordingMixin, ABC):
         self._create_simulation()
         # Setup data conversion and finalize
         self._finalize_setup()
+        if self.contacts_enabled:
+            # Read once to validate backend support and shape, but no forces
+            # have been measured for the initial episode yet.
+            forces = self._get_simulator_contact_forces()
+            expected = (
+                self.num_envs,
+                len(self.contact_layout.body_index),
+                len(self.contact_layout.partner_index),
+                3,
+            )
+            if forces.shape != expected:
+                raise ValueError(
+                    f"Contact matrix shape {tuple(forces.shape)} != {expected}"
+                )
+            self._contact_forces = torch.zeros_like(forces)
         self._initialized = True
 
     @abstractmethod
@@ -323,6 +372,9 @@ class Simulator(RecordingMixin, ABC):
             push_cfg = self.config.domain_randomization.push
 
         self._push_enabled = push_cfg is not None
+        # Whether the config has push randomization at all; set_push_enabled
+        # may only turn pushes back on when it does.
+        self._has_push_randomization = self._push_enabled
 
         if self._push_enabled:
             self._simulation_time = torch.zeros(self.num_envs, device=self.device)
@@ -335,6 +387,35 @@ class Simulator(RecordingMixin, ABC):
                 push_cfg.max_angular_velocity, device=self.device, dtype=torch.float
             )
             self._schedule_push(torch.arange(self.num_envs, device=self.device))
+
+    @property
+    def push_enabled(self) -> bool:
+        """Whether push randomization is applied (see set_push_enabled)."""
+        return self._push_enabled
+
+    @property
+    def has_push_randomization(self) -> bool:
+        """Whether the config has push randomization, so pushes can be enabled."""
+        return self._has_push_randomization
+
+    def set_push_enabled(self, enabled: bool) -> None:
+        """Switch push randomization on or off and leave the pending push
+        schedule untouched.
+
+        Only the flag changes: no push is rescheduled and no random number is
+        drawn, so re-enabling resumes the pushes that were pending when they
+        were switched off. Disabling is always allowed; enabling pushes on a
+        simulator whose config has no push randomization raises ``ValueError``
+        because no push schedule exists.
+        """
+        enabled = bool(enabled)
+        if enabled and not self._has_push_randomization:
+            raise ValueError(
+                "cannot enable pushes: the simulator config has no push "
+                "randomization (domain_randomization.push), so no push schedule "
+                "exists"
+            )
+        self._push_enabled = enabled
 
     def _schedule_push(self, env_ids: torch.Tensor) -> None:
         """Schedule next push time for specified environments."""
@@ -719,6 +800,52 @@ class Simulator(RecordingMixin, ABC):
             return self._common_actions[env_ids]
         return self._common_actions
 
+    def save_state(self) -> Dict[str, torch.Tensor]:
+        """Snapshot simulator-side temporal state mutated by stepping.
+
+        Physical robot/object state is saved separately by ``BaseEnv``. These
+        tensors are the last measured contact matrix, commands, latency, reset
+        age, pushes, and projectile clocks that must agree with the physical
+        state when evaluation returns. This is a snapshot, not contact history.
+        """
+        names = (
+            "_contact_forces",
+            "_common_actions",
+            "_previous_actions",
+            "_prev_prev_actions",
+            "_sampled_action_latency_ms",
+            "_action_latency_elapsed_ms",
+            "_steps_since_reset",
+            "_simulation_time",
+            "_push_next_time",
+            "_proj_next_idx",
+            "_proj_throw_time",
+            "_proj_sim_time",
+        )
+        return {
+            name: getattr(self, name).detach().clone()
+            for name in names
+            if torch.is_tensor(getattr(self, name, None))
+        }
+
+    def restore_state(self, state: Dict[str, torch.Tensor]) -> None:
+        """Restore a snapshot returned by :meth:`save_state`."""
+        for name, saved in state.items():
+            current = getattr(self, name, None)
+            if not torch.is_tensor(current):
+                raise KeyError(f"Simulator runtime tensor no longer exists: {name}")
+            if (
+                current.shape != saved.shape
+                or current.dtype != saved.dtype
+                or current.device != saved.device
+            ):
+                raise ValueError(
+                    f"Simulator runtime tensor changed contract for {name}: "
+                    f"{tuple(current.shape)}/{current.dtype}/{current.device} != "
+                    f"{tuple(saved.shape)}/{saved.dtype}/{saved.device}"
+                )
+            current.copy_(saved)
+
     def step(
         self,
         common_actions: torch.Tensor,
@@ -755,6 +882,8 @@ class Simulator(RecordingMixin, ABC):
 
         self._steps_since_reset += 1
         self._physics_step()
+        if self.contacts_enabled:
+            self._contact_forces = self._get_simulator_contact_forces()
 
         # Update simulation time and apply push randomization
         if self._push_enabled:
@@ -804,6 +933,8 @@ class Simulator(RecordingMixin, ABC):
             else:
                 new_object_states = None
         self._set_simulator_env_state(new_states, new_object_states, env_ids)
+        if self.contacts_enabled:
+            self._contact_forces[env_ids] = 0
 
         # Reset push randomization state for reset environments
         if self._push_enabled:
@@ -812,6 +943,19 @@ class Simulator(RecordingMixin, ABC):
 
         # Reset projectiles for reset environments
         self._reset_projectiles(env_ids)
+
+    def save_backend_state(self) -> Dict[str, torch.Tensor]:
+        """Clone backend-owned solver state needed across temporary evaluation.
+
+        Robot/object poses are saved separately by BaseEnv. Backends with
+        persistent solver state override this and restore it after reset_envs.
+        """
+        return {}
+
+    def restore_backend_state(self, state: Dict[str, torch.Tensor]) -> None:
+        """Restore solver state after the physical state has been written back."""
+        if state:
+            raise ValueError("This simulator does not support backend snapshot state")
 
     def flush_contact_cache(self) -> None:
         """Make the simulator forget every env's current contacts.
@@ -1023,10 +1167,8 @@ class Simulator(RecordingMixin, ABC):
         """
         bodies_state: RobotState = self.get_bodies_state(env_ids)
         dof_state: RobotState = self.get_dof_state(env_ids)
-        contact_state: RobotState = self.get_binary_body_contacts(env_ids)
         dof_forces: torch.Tensor = self.get_dof_forces(env_ids)
         bodies_state.merge_fields_from(dof_state)
-        bodies_state.merge_fields_from(contact_state)
         bodies_state.merge_fields_from(dof_forces)
         return bodies_state
 
@@ -1139,67 +1281,33 @@ class Simulator(RecordingMixin, ABC):
         """
         raise NotImplementedError
 
-    def get_bodies_contact_buf(
-        self, env_ids: Optional[torch.Tensor] = None
-    ) -> RobotState:
-        """
-        Retrieve the bodies' contact buffer.
+    @property
+    def has_complete_contact_labels(self) -> bool:
+        """Whether all-body, all-partner motion annotations can be recorded."""
+        return self.contacts_enabled and self.contact_layout.is_complete
 
-        Args:
-            env_ids (Optional[torch.Tensor]): Optional tensor of environment ids.
-
-        Returns:
-            torch.Tensor: Tensor containing contact forces for bodies in the common ordering.
-        """
-        simulator_bodies_contact_forces: RobotState = (
-            self._get_simulator_bodies_contact_buf(env_ids)
-        )
-        simulator_bodies_contact_forces = (
-            simulator_bodies_contact_forces.convert_to_common(self.data_conversion)
-        )
-        return simulator_bodies_contact_forces
-
-    def get_binary_body_contacts(
-        self, env_ids: Optional[torch.Tensor] = None, threshold: float = 0.01
-    ) -> RobotState:
-        """
-        Get binary contact flags for specified bodies.
-
-        Converts contact forces to binary contact indicators based on force magnitude.
-        This is the canonical method for computing contact states from simulator forces.
-
-        Args:
-            body_ids: Indices of bodies to get contacts for [num_bodies]
-            threshold: Force magnitude threshold in Newtons (default: 0.01)
-            env_ids: Optional environment indices to query
-
-        Returns:
-            Binary contact flags [num_envs, num_bodies] as float (0.0 or 1.0)
-        """
-        contact_state = self.get_bodies_contact_buf(env_ids)
-        force_magnitudes = torch.norm(
-            contact_state.rigid_body_contact_forces, dim=-1
-        )  # [num_envs, num_bodies]
-        binary_contacts = (force_magnitudes > threshold).float()
-        contact_state.rigid_body_contacts = binary_contacts
-
-        contact_state = contact_state.convert_to_common(self.data_conversion)
-        return contact_state
-
-    @abstractmethod
-    def _get_simulator_bodies_contact_buf(
+    def get_contact_forces(
         self, env_ids: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
-        """
-        Retrieve the raw simulator buffer of bodies' contact forces.
+        """Copy privileged normal forces [env, body, partner, xyz], world axes, N.
 
-        Args:
-            env_ids (Optional[torch.Tensor]): Optional tensor of environment ids.
-
-        Returns:
-            torch.Tensor: Raw bodies contact buffer.
+        ``contact_layout`` names the selected axes. Each cell sums
+        normal_magnitude * world_normal_on_source across that pair's contact
+        points. This is a force vector, not a unit normal; opposing normals
+        within one pair can cancel. Only the last physics substep contributes,
+        not control decimation. Reset environments report zero until stepped.
+        No history, tangential friction, torque, or sensor estimate is included.
         """
-        raise NotImplementedError
+        if not self.contacts_enabled:
+            raise ValueError("Contact reporting requires nonempty robot.contact_bodies")
+        if env_ids is None:
+            return self._contact_forces.clone()
+        return self._contact_forces[env_ids]
+
+    def _get_simulator_contact_forces(self) -> torch.Tensor:
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement partner-resolved contact forces"
+        )
 
     def get_object_root_state(
         self, env_ids: Optional[torch.Tensor] = None
@@ -1236,38 +1344,6 @@ class Simulator(RecordingMixin, ABC):
 
         Returns:
             RobotState: The raw environment state for object roots.
-        """
-        raise NotImplementedError
-
-    def get_object_contact_buf(
-        self, env_ids: Optional[torch.Tensor] = None
-    ) -> ObjectState:
-        """
-        Retrieve object contact forces from the simulator.
-
-        Args:
-            env_ids (Optional[torch.Tensor]): Optional tensor of environment ids.
-
-        Returns:
-            ObjectState: Containing tensor of object contact forces.
-        """
-        simulator_object_contact_forces = self._get_simulator_object_contact_buf(
-            env_ids
-        )
-        return simulator_object_contact_forces
-
-    @abstractmethod
-    def _get_simulator_object_contact_buf(
-        self, env_ids: Optional[torch.Tensor] = None
-    ) -> ObjectState:
-        """
-        Retrieve the raw object contact buffer.
-
-        Args:
-            env_ids (Optional[torch.Tensor]): Optional tensor of environment ids.
-
-        Returns:
-            ObjectState: Raw object contact forces.
         """
         raise NotImplementedError
 
@@ -1455,28 +1531,23 @@ class Simulator(RecordingMixin, ABC):
             device=self.device,
             requires_grad=False,
         )
-        dof_effort_limits = torch.ones(
+        dof_effort_limits = torch.zeros(
             self.robot_config.number_of_actions,
             dtype=torch.float,
             device=self.device,
             requires_grad=False,
         )
 
-        # Populate from robot config
+        # Populate from robot config. The PD gains and effort limit must be set
+        # (require() raises on None rather than defaulting silently); every index
+        # is written, so the zero init above is never read.
         for dof_name in self.robot_config.kinematic_info.dof_names:
             dof_idx = self.robot_config.kinematic_info.dof_names.index(dof_name)
             dof_info = self.robot_config.control.control_info[dof_name]
 
-            # PD gains
-            assert (
-                dof_info.stiffness is not None and dof_info.damping is not None
-            ), f"PD gains must be defined for DOF {dof_name}"
-            p_gains[dof_idx] = dof_info.stiffness
-            d_gains[dof_idx] = dof_info.damping
-
-            # Effort limits
-            if dof_info.effort_limit is not None:
-                dof_effort_limits[dof_idx] = dof_info.effort_limit
+            p_gains[dof_idx] = dof_info.require("stiffness")
+            d_gains[dof_idx] = dof_info.require("damping")
+            dof_effort_limits[dof_idx] = dof_info.require("effort_limit")
 
         self._common_p_gains = p_gains
         self._common_d_gains = d_gains

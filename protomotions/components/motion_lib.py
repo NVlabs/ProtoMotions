@@ -111,12 +111,12 @@ def _smooth_contacts_segmented(
     in_motion_sum = prefix[right_indices] - prefix[left_indices]
 
     # Replicate padding repeats the first/last sample rather than zero-padding.
-    left_repeat_count = (starts + padding - frame_indices).clamp_min(0).to(
-        contacts.dtype
+    left_repeat_count = (
+        (starts + padding - frame_indices).clamp_min(0).to(contacts.dtype)
     )
     right_repeat_count = (
-        frame_indices + padding + 1 - ends
-    ).clamp_min(0).to(contacts.dtype)
+        (frame_indices + padding + 1 - ends).clamp_min(0).to(contacts.dtype)
+    )
     left_edge = contacts[starts]
     right_edge = contacts[ends - 1]
     smoothed = (
@@ -127,7 +127,10 @@ def _smooth_contacts_segmented(
     return smoothed
 
 
-def _discover_shard_files(pattern: str) -> Dict[int, str]:
+def discover_motion_shards(
+    pattern: str, shard_indices: Optional[List[int]] = None
+) -> Dict[int, str]:
+    """Return selected shard paths in configured order (numeric order by default)."""
     pattern_path = Path(pattern)
     filename = pattern_path.name
     if filename.count("slurmrank") != 1:
@@ -158,16 +161,26 @@ def _discover_shard_files(pattern: str) -> Dict[int, str]:
 
     if not shards:
         raise ValueError(f"No shard files match pattern: {pattern}")
-    return shards
+    indices = list(shard_indices) if shard_indices is not None else sorted(shards)
+    if not indices:
+        raise ValueError("At least one shard index is required")
+    if len(set(indices)) != len(indices):
+        raise ValueError(f"Duplicate shard index in explicit selection: {indices}")
+    for index in indices:
+        if index not in shards:
+            raise ValueError(f"No shard with index {index} matches pattern: {pattern}")
+    return {index: shards[index] for index in indices}
 
 
 def resolve_shard_file(pattern: str, index: int) -> str:
     """Return the shard matching an exact numeric ``slurmrank`` suffix."""
-    shards = _discover_shard_files(pattern)
+    shards = discover_motion_shards(pattern)
     try:
         return shards[index]
     except KeyError as error:
-        raise ValueError(f"No shard with index {index} matches pattern: {pattern}") from error
+        raise ValueError(
+            f"No shard with index {index} matches pattern: {pattern}"
+        ) from error
 
 
 def select_motion_shard(
@@ -186,15 +199,8 @@ def select_motion_shard(
     if cycle < 0:
         raise ValueError(f"cycle must be non-negative, got {cycle}")
 
-    discovered = _discover_shard_files(pattern)
-    indices = list(shard_indices) if shard_indices is not None else sorted(discovered)
-    if not indices:
-        raise ValueError("At least one shard index is required")
-    if len(set(indices)) != len(indices):
-        raise ValueError(f"Duplicate shard index in explicit selection: {indices}")
-    for index in indices:
-        if index not in discovered:
-            raise ValueError(f"No shard with index {index} matches pattern: {pattern}")
+    discovered = discover_motion_shards(pattern, shard_indices)
+    indices = list(discovered)
 
     num_shards = len(indices)
     if world_size < num_shards:
@@ -295,7 +301,8 @@ class MotionLibConfig:
                     "exactly one 'slurmrank' placeholder"
                 )
 
-    def prepare_inference_config_for_save(self):
+    def apply_inference_defaults(self):
+        """Pin the clip selection for inference: one fixed shard, validated."""
         self.motion_file_switch_mode = MotionFileSwitchMode.FIXED
         self.validate()
 
@@ -602,6 +609,16 @@ class MotionLib:
             self._goal_state_time_cache = self.get_goal_state_times(all_ids)
         return self._goal_state_time_cache[motion_ids]
 
+    def get_motion_positions(self, motion_ids, motion_times) -> torch.Tensor:
+        """Interpolate body positions [N, B, 3] without materializing full states."""
+        frame0, frame1, blend = self._calc_frame_blend_from_id_and_time(
+            motion_ids, motion_times
+        )
+        starts = self.length_starts[motion_ids]
+        return interpolate_pos(
+            self.gts[starts + frame0], self.gts[starts + frame1], blend
+        )
+
     def get_motion_state(
         self, motion_ids, motion_times, joint_3d_format="exp_map"
     ) -> RobotState:
@@ -691,6 +708,20 @@ class MotionLib:
         Returns:
             RobotState: The robot state at the specified frames
         """
+
+        # A frame past a clip's end would index into the next clip through
+        # length_starts; refuse it instead, naming the first offender. The
+        # time-indexed path (get_motion_state) clamps before it gets here.
+        num_frames = self.motion_num_frames[motion_ids]
+        out_of_range = (frame_indices < 0) | (frame_indices >= num_frames)
+        if bool(out_of_range.any()):
+            first = int(out_of_range.reshape(-1).nonzero(as_tuple=True)[0][0])
+            frame = int(frame_indices.reshape(-1)[first])
+            motion_id = int(motion_ids.reshape(-1)[first])
+            raise IndexError(
+                f"frame {frame} is out of range for clip {motion_id} "
+                f"({int(num_frames.reshape(-1)[first])} frames)"
+            )
 
         # Get global indices by adding offsets
         fl = frame_indices + self.length_starts[motion_ids]
@@ -1037,6 +1068,10 @@ class MotionLib:
                 motion_idx
             ].item()  # Use motion_num_frames instead of motion_lengths
             end_idx = start_idx + length
+            # Predicted libraries saved by evaluation keep clips that never
+            # played as zero-length entries; they have no first frame to move.
+            if length == 0:
+                continue
 
             # Get the first frame's root position for this motion
             first_frame_root_pos = self.gts[start_idx, 0, :]  # [3] - root body position

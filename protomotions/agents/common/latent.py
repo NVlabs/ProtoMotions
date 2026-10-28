@@ -22,9 +22,6 @@ PRIVILEGED_LATENT_KEY = "privileged_latent"
 PRIVILEGED_LATENT_MU_KEY = "privileged_latent_mu"
 PRIVILEGED_LATENT_LOGVAR_KEY = "privileged_latent_logvar"
 TARGET_LATENT_KEY = "target_latent"
-TARGET_LATENT_LOGITS_KEY = "target_latent_logits"
-TARGET_LATENT_MU_KEY = "target_latent_mu"
-TARGET_LATENT_LOGVAR_KEY = "target_latent_logvar"
 
 
 def compute_discrete_latent_ppo_loss(

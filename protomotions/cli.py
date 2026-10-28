@@ -67,7 +67,6 @@ def _info_payload() -> dict:
         "simulators": {
             name: _module_available(module)
             for name, module in {
-                "genesis": "genesis",
                 "isaacgym": "isaacgym",
                 "isaaclab": "isaaclab",
                 "mujoco": "mujoco",

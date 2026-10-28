@@ -99,17 +99,6 @@ isaaclab = [
   "torchvision>=0.26,<0.27; sys_platform == 'linux' and platform_machine == 'x86_64'",
   "wandb==0.23.0",
 ]
-genesis = [
-  "genesis-world",
-  "lightning==2.5.0.post0",
-  "mink==0.0.7",
-  "onnxruntime>=1.17",
-  "open3d==0.19.0",
-  "PyOpenGL==3.1.4",
-  "tensordict==0.9.0",
-  "torch==2.5.0",
-  "wandb==0.15.12",
-]
 docs = [
   "myst-parser",
   "nvidia-sphinx-theme",
@@ -195,14 +184,11 @@ protomotions = [
 # The same functions take an `env_config` parameter that shadows the helper
 # imported from the format module, which reads as F811. Both are intentional
 # and documented in examples/experiments/format.py.
-# F401 is here for a sharper reason than tidiness. A derived experiment
-# re-exports its base's helpers by importing them, and the harness fetches
-# apply_inference_overrides off the module by attribute name -- see
-# import_experiment_relative_eval_overrides in protomotions/utils/config_utils.py,
-# which raises AttributeError when it is absent. Ruff cannot see that use, so
-# removing the "unused" import breaks evaluation at runtime rather than at import
-# time, which is a bad way to find out.
-"examples/experiments/**/*.py" = ["F401", "F821", "F811"]
+# F401 is enforced here. A recipe that reuses a base's inference hook re-exports
+# it with an explicit `import apply_inference_overrides as apply_inference_overrides`,
+# which ruff recognises as a re-export, so a genuinely unused import is a real
+# finding again rather than hidden behind this ignore.
+"examples/experiments/**/*.py" = ["F821", "F811"]
 "data/pretrained_models/**/*.py" = ["F401", "F821", "F811"]
 
 # Test doubles read better as one-line lambdas than as nested defs.
@@ -230,6 +216,7 @@ addopts = "--strict-markers"
 strict_markers = true
 markers = [
   "needs_lfs: test reads a real Git LFS payload rather than the pointer file. CI jobs that check out without payloads run `-m 'not needs_lfs'`; the jobs that fetch payloads run the whole suite.",
+  "parity_slow: BaseEnv parity harness test that builds MuJoCo scenarios (minutes). Skipped unless PROTOMOTIONS_PARITY_SLOW=1; see protomotions/tests/parity.",
 ]
 
 [tool.uv]
@@ -247,10 +234,6 @@ conflicts = [
     { extra = "isaaclab" },
   ],
   [
-    { extra = "mujoco" },
-    { extra = "genesis" },
-  ],
-  [
     { extra = "newton" },
     { extra = "isaacgym" },
   ],
@@ -259,19 +242,7 @@ conflicts = [
     { extra = "isaaclab" },
   ],
   [
-    { extra = "newton" },
-    { extra = "genesis" },
-  ],
-  [
     { extra = "isaaclab" },
     { extra = "isaacgym" },
-  ],
-  [
-    { extra = "isaacgym" },
-    { extra = "genesis" },
-  ],
-  [
-    { extra = "isaaclab" },
-    { extra = "genesis" },
   ],
 ]

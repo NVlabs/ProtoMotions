@@ -18,8 +18,8 @@ Each control step (50 Hz by default):
    via helpers in ``deployment.state_utils``.
 3. **Query future motion** frames from ``MotionPlayer`` (25 steps ahead).
 4. **Run ONNX inference** → PD position targets.
-5. **Apply action post-processing** (acceleration clamp + EMA filter — both
-   match the ProtoMotions MuJoCo simulator).
+5. **Apply action post-processing** (acceleration clamp — matches the
+   ProtoMotions MuJoCo simulator).
 6. **Step MuJoCo** for *decimation* substeps.
 
 Important conventions
@@ -59,8 +59,6 @@ Action post-processing (NOT baked into ONNX)
 ---------------------------------------------
 - **PD acceleration clamp** (``pd_target_max_accel``): limits second derivative
   of PD targets.  Matches ``base_simulator._apply_accel_clamp()``.
-- **EMA action filter** (``action_ema_alpha``): exponential moving average on
-  PD targets.  Matches ``MujocoSimulator._action_filter_alpha``.
 
 Reference frames
 ----------------
@@ -147,7 +145,6 @@ import sys
 import mujoco
 import numpy as np
 import onnxruntime as ort
-import yaml
 
 # Ensure the repo root is on sys.path so `deployment.*` imports work
 # regardless of where the script is invoked from.
@@ -158,6 +155,7 @@ if _REPO_ROOT not in sys.path:
 from deployment.motion_utils import MotionPlayer  # noqa: E402
 from deployment.state_utils import mujoco_wxyz_to_xyzw, quat_rotate_np  # noqa: E402
 from deployment.tracker_inputs import (  # noqa: E402
+    ActionFeedback,
     align_future_motion_refs,
     build_tracker_onnx_inputs,
     compute_odom_disp_start,
@@ -357,7 +355,7 @@ def read_robot_state(data, anchor_body_index: int, root_body_index: int = 0):
     """
     # Collect body quaternions (wxyz -> xyzw), skip world body at index 0.
     # xquat provides FK-computed orientations for all bodies.
-    body_rot_wxyz = data.xquat[1:].copy()          # [num_bodies, 4] wxyz
+    body_rot_wxyz = data.xquat[1:].copy()  # [num_bodies, 4] wxyz
     body_rot = mujoco_wxyz_to_xyzw(body_rot_wxyz)  # [num_bodies, 4] xyzw
     body_pos = data.xpos[1:].copy().astype(np.float32)  # [num_bodies, 3]
 
@@ -371,11 +369,11 @@ def read_robot_state(data, anchor_body_index: int, root_body_index: int = 0):
     root_local_ang_vel = data.qvel[3:6].copy().astype(np.float32)  # [3]
 
     return {
-        "dof_pos":            data.qpos[7:].copy().astype(np.float32),  # [num_dofs]
-        "dof_vel":            data.qvel[6:].copy().astype(np.float32),  # [num_dofs]
-        "body_pos":           body_pos,
-        "body_rot":           body_rot.astype(np.float32),               # [nb, 4]
-        "root_local_ang_vel": root_local_ang_vel,                        # [3]
+        "dof_pos": data.qpos[7:].copy().astype(np.float32),  # [num_dofs]
+        "dof_vel": data.qvel[6:].copy().astype(np.float32),  # [num_dofs]
+        "body_pos": body_pos,
+        "body_rot": body_rot.astype(np.float32),  # [nb, 4]
+        "root_local_ang_vel": root_local_ang_vel,  # [3]
     }
 
 
@@ -384,14 +382,14 @@ def set_initial_pose(model, data, motion_player: MotionPlayer) -> None:
     frame0 = motion_player.get_state_at_frame(0)
 
     # Root position/orientation from first body (pelvis)
-    root_pos  = frame0["body_pos"][0]       # [3]
-    root_quat = frame0["body_rot"][0]       # [4] xyzw
+    root_pos = frame0["body_pos"][0]  # [3]
+    root_quat = frame0["body_rot"][0]  # [4] xyzw
 
     # Set free-joint state
     data.qpos[0:3] = root_pos
     # MuJoCo qpos uses wxyz quaternion
     data.qpos[3:7] = root_quat[[3, 0, 1, 2]]  # xyzw -> wxyz
-    data.qpos[7:]  = frame0["dof_pos"]
+    data.qpos[7:] = frame0["dof_pos"]
 
     data.qvel[:] = 0.0
     mujoco.mj_forward(model, data)
@@ -414,7 +412,6 @@ def run(
     num_loops: int = 1,
     render: bool = False,
     realtime: bool = True,
-    action_ema_alpha: float | None = None,
     synthetic_odom_corruption: bool = False,
     odom_scale_range: tuple[float, float] = (0.7, 1.3),
     odom_yaw_range_deg: float = 6.0,
@@ -443,47 +440,55 @@ def run(
     realtime:
         If True (default), pace the simulation to wall-clock real time.
         When False, runs as fast as possible.
-    action_ema_alpha:
-        Exponential moving average filter on PD targets.  Matches
-        ``MujocoSimulator._action_filter_alpha``.
-        ``a_applied = alpha * a_policy + (1 - alpha) * a_prev``.
-        Set to 1.0 to disable filtering.  If None, loads from the YAML
-        metadata (``control.action_ema_alpha``).
     """
-    onnx_path  = str(onnx_path)
-    yaml_path  = onnx_path.replace(".onnx", ".yaml")
+    onnx_path = str(onnx_path)
+    yaml_path = onnx_path.replace(".onnx", ".yaml")
 
     # ------------------------------------------------------------------
     # Load YAML metadata
     # ------------------------------------------------------------------
-    with open(yaml_path) as f:
-        meta = yaml.safe_load(f)
+    from deployment.contract import DeploymentContract
 
-    robot_meta  = meta["robot"]
-    timing      = meta["timing"]
-    motion_meta = meta["motion"]
-    control     = meta["control"]
-    runtime     = meta["_runtime"]
+    # The typed contract the host drives from: it refuses a sidecar whose schema
+    # it does not know, and every robot/timing/control/motion fact below is read
+    # off it, not a second parse of the raw YAML.
+    contract = DeploymentContract.from_yaml(yaml_path)
 
-    anchor_body_index = robot_meta["anchor_body_index"]
-    root_body_index   = robot_meta["root_body_index"]
-    num_bodies        = robot_meta["num_bodies"]
-    num_dofs          = robot_meta["num_dofs"]
-    mjcf_path         = robot_meta["mjcf_path"]
-    control_dt        = timing["control_dt"]
-    decimation        = timing["decimation"]
-    future_step_indices = motion_meta["future_step_indices"]
-    stiffness           = control["stiffness"]
-    damping             = control["damping"]
-    pd_target_max_accel = control.get("pd_target_max_accel")
-    if action_ema_alpha is None:
-        action_ema_alpha = control.get("action_ema_alpha", 1.0)
-    onnx_name_to_key    = runtime["onnx_name_to_in_key"]
-    requirements = get_tracker_input_requirements(onnx_name_to_key)
+    anchor_body_index = contract.robot.anchor_body_index
+    root_body_index = contract.robot.root_body_index
+    num_bodies = len(contract.robot.body_names)
+    num_dofs = len(contract.robot.joint_names)
+    mjcf_path = contract.robot.mjcf_path
+    control_dt = contract.timing.control_dt
+    decimation = contract.timing.decimation
+    future_step_indices = contract.motion.future_step_indices
+    stiffness = contract.control.stiffness
+    damping = contract.control.damping
+    pd_target_max_accel = contract.control.pd_target_max_accel
+    pd_action_offset = contract.control.pd_action_offset
+    requirements = get_tracker_input_requirements(contract)
+    # The policy's action-history inputs: its own outputs from `steps_back`
+    # calls ago, as each input's typed HistorySlotSpec declares. Joint targets
+    # feed the processed histories; policy outputs feed the raw one.
+    action_feedbacks = {
+        spec.key: ActionFeedback.from_history_spec(
+            spec, num_dofs, pd_action_offset=pd_action_offset
+        )
+        for spec in contract.inputs
+        # A sensor history (output_key None) is fed from the host's own ring, not
+        # replayed from a graph output, so it has no ActionFeedback.
+        if spec.history is not None and spec.history.output_key is not None
+    }
+    for key, feedback in action_feedbacks.items():
+        log.info(
+            f"Action history {key}: {feedback.output_name}, "
+            f"steps_back={list(feedback.steps_back)}, "
+            f"fill={'zeros' if not feedback.fill.any() else 'default pose'}"
+        )
     # onnx_out_names are read from the session directly (actual_out_names)
 
-    anchor_body_name = robot_meta.get("anchor_body_name", f"body_{anchor_body_index}")
-    root_body_name = robot_meta.get("root_body_name", f"body_{root_body_index}")
+    anchor_body_name = contract.robot.anchor_body_name
+    root_body_name = contract.robot.root_body_name
 
     log.info(f"ONNX: {onnx_path}")
     log.info(f"MJCF: {mjcf_path}")
@@ -503,18 +508,19 @@ def run(
     # Load ONNX session
     # ------------------------------------------------------------------
     session = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
-    actual_in_names  = [inp.name for inp in session.get_inputs()]
+    actual_in_names = [inp.name for inp in session.get_inputs()]
     actual_out_names = [out.name for out in session.get_outputs()]
     log.info(f"ONNX inputs:  {actual_in_names}")
     log.info(f"ONNX outputs: {actual_out_names}")
 
     # Warm-up run
-    dummy = {n: np.zeros([1] + list(i.shape)[1:], dtype=np.float32)
-             for n, i in zip(actual_in_names, session.get_inputs())}
+    dummy = {
+        n: np.zeros([1] + list(i.shape)[1:], dtype=np.float32)
+        for n, i in zip(actual_in_names, session.get_inputs())
+    }
     # Use shape from actual inputs (shape[0] may be None for dynamic batch)
     for inp in session.get_inputs():
-        shape = [1 if (d is None or isinstance(d, str)) else d
-                 for d in inp.shape]
+        shape = [1 if (d is None or isinstance(d, str)) else d for d in inp.shape]
         dummy[inp.name] = np.zeros(shape, dtype=np.float32)
     try:
         session.run(actual_out_names, dummy)
@@ -550,7 +556,7 @@ def run(
     # ------------------------------------------------------------------
     # Load MuJoCo model
     # ------------------------------------------------------------------
-    physics_dt = timing["physics_dt"]
+    physics_dt = contract.timing.physics_dt
     model, data = load_mujoco_model(mjcf_path, stiffness, damping, physics_dt)
 
     # ------------------------------------------------------------------
@@ -562,7 +568,10 @@ def run(
             from mujoco import viewer as mj_viewer
 
             viewer = mj_viewer.launch_passive(
-                model, data, show_left_ui=False, show_right_ui=False,
+                model,
+                data,
+                show_left_ui=False,
+                show_right_ui=False,
             )
             # Match ProtoMotions MujocoSimulator camera settings
             viewer.cam.distance = 3.0
@@ -609,24 +618,12 @@ def run(
     # ------------------------------------------------------------------
 
     # ------------------------------------------------------------------
-    # Action EMA filter
-    #
-    # Matches MujocoSimulator._action_filter_alpha (default 0.8):
-    #   targets_applied = alpha * targets_policy + (1 - alpha) * targets_prev
-    # Set alpha=1.0 to disable.
-    # ------------------------------------------------------------------
-    use_ema = action_ema_alpha < 1.0
-    if use_ema:
-        log.info(f"Action EMA filter: alpha={action_ema_alpha}")
-    ema_prev_targets: np.ndarray | None = None
-
-    # ------------------------------------------------------------------
     # Simulation loop
     # ------------------------------------------------------------------
-    total_steps  = 0
+    total_steps = 0
     total_ort_ms = 0.0
     total_sim_ms = 0.0
-    max_pd_diff  = 0.0
+    max_pd_diff = 0.0
 
     # Accel clamp history (3 consecutive PD target frames)
     prev_pd: np.ndarray | None = None
@@ -634,15 +631,21 @@ def run(
 
     loop_idx = 0
     while loop_idx < num_loops:
-        loop_label = f"{loop_idx + 1}/{num_loops}" if num_loops < 1_000_000 else f"{loop_idx + 1}"
+        loop_label = (
+            f"{loop_idx + 1}/{num_loops}"
+            if num_loops < 1_000_000
+            else f"{loop_idx + 1}"
+        )
         log.info(f"\n--- Loop {loop_label} ---")
         set_initial_pose(model, data, player)
         prev_pd = None
         prev_prev_pd = None
-        ema_prev_targets = None
-        prev_actions = None
+        for feedback in action_feedbacks.values():
+            feedback.reset()
         alignment = None
-        motion_anchor_start = player.get_state_at_frame(0)["body_pos"][anchor_body_index]
+        motion_anchor_start = player.get_state_at_frame(0)["body_pos"][
+            anchor_body_index
+        ]
         odom_scale = 1.0
         odom_yaw_cos_sin = np.array([1.0, 0.0], dtype=np.float32)
         if synthetic_odom_corruption:
@@ -663,7 +666,9 @@ def run(
             # ---- compute spatial alignment on first step ----
             if alignment is None:
                 robot_anchor_rot = robot_state["body_rot"][anchor_body_index]
-                motion_anchor_rot = player.get_state_at_frame(0)["body_rot"][anchor_body_index]
+                motion_anchor_rot = player.get_state_at_frame(0)["body_rot"][
+                    anchor_body_index
+                ]
                 alignment = init_tracker_alignment(
                     robot_anchor_pos=robot_state["body_pos"][anchor_body_index],
                     robot_anchor_rot=robot_anchor_rot,
@@ -680,7 +685,9 @@ def run(
             if requirements.odom_from_start or requirements.odom_start_xy:
                 corruption_fn = None
                 if synthetic_odom_corruption:
-                    from protomotions.utils.odom_corruption import apply_odom_corruption_np
+                    from protomotions.utils.odom_corruption import (
+                        apply_odom_corruption_np,
+                    )
 
                     def corruption_fn(xy):
                         return apply_odom_corruption_np(
@@ -719,16 +726,16 @@ def run(
 
             # ---- build ONNX inputs ----
             onnx_inputs = build_tracker_onnx_inputs(
-                onnx_input_names=actual_in_names,
+                contract,
                 dof_pos=robot_state["dof_pos"],
                 dof_vel=robot_state["dof_vel"],
                 anchor_rot=robot_state["body_rot"][anchor_body_index],
                 root_local_ang_vel=robot_state["root_local_ang_vel"],
                 future_refs=future_refs,
-                onnx_name_to_key=onnx_name_to_key,
-                anchor_body_index=anchor_body_index,
-                num_dofs=num_dofs,
-                prev_actions=prev_actions,
+                action_histories={
+                    key: feedback.as_input()
+                    for key, feedback in action_feedbacks.items()
+                },
                 odom_start_xy=alignment.odom_start_xy
                 if requirements.odom_start_xy
                 else None,
@@ -748,30 +755,30 @@ def run(
             # Outputs: actions, joint_pos_targets, stiffness, damping
             pd_targets = ort_out[1].squeeze().copy()  # [num_dofs]
 
+            # ---- feedback for later steps' action-history inputs ----
+            # Training stores the graph's outputs before the clamp below, so
+            # record them here.
+            outputs_by_name = dict(zip(actual_out_names, ort_out))
+            for feedback in action_feedbacks.values():
+                feedback.record(outputs_by_name[feedback.output_name])
+
             # ---- PD target acceleration clamp ----
-            if pd_target_max_accel is not None and prev_pd is not None and prev_prev_pd is not None:
+            if (
+                pd_target_max_accel is not None
+                and prev_pd is not None
+                and prev_prev_pd is not None
+            ):
                 delta = pd_targets - prev_pd
                 prev_delta = prev_pd - prev_prev_pd
                 accel = delta - prev_delta
-                clamped_accel = np.clip(accel, -pd_target_max_accel, pd_target_max_accel)
+                clamped_accel = np.clip(
+                    accel, -pd_target_max_accel, pd_target_max_accel
+                )
                 pd_targets = prev_pd + prev_delta + clamped_accel
 
             # Shift accel clamp history
             prev_prev_pd = prev_pd
             prev_pd = pd_targets.copy()
-
-            # ---- EMA action filter ----
-            if use_ema:
-                if ema_prev_targets is None:
-                    ema_prev_targets = pd_targets.copy()
-                pd_targets = (
-                    action_ema_alpha * pd_targets
-                    + (1.0 - action_ema_alpha) * ema_prev_targets
-                )
-                ema_prev_targets = pd_targets.copy()
-
-            # ---- feedback for next step's historical.processed_actions ----
-            prev_actions = pd_targets.copy()
 
             # ---- write PD targets to MuJoCo ----
             data.ctrl[:] = pd_targets
@@ -894,15 +901,6 @@ def _parse_args():
         help="Disable real-time pacing (run as fast as possible)",
     )
     p.add_argument(
-        "--action-ema-alpha",
-        type=float,
-        default=None,
-        help=(
-            "EMA filter on PD targets. Overrides the value from the YAML metadata "
-            "(control.action_ema_alpha). 1.0 = no filtering, lower = more smoothing."
-        ),
-    )
-    p.add_argument(
         "--synthetic-odom-corruption",
         action="store_true",
         default=False,
@@ -940,7 +938,9 @@ def _parse_args():
 if __name__ == "__main__":
     args = _parse_args()
     # Default: loop forever with --render, once without
-    num_loops = args.loops if args.loops is not None else (10_000_000 if args.render else 1)
+    num_loops = (
+        args.loops if args.loops is not None else (10_000_000 if args.render else 1)
+    )
     run(
         onnx_path=args.onnx,
         motion_file=args.motion,
@@ -949,7 +949,6 @@ if __name__ == "__main__":
         num_loops=num_loops,
         render=args.render,
         realtime=not args.no_realtime,
-        action_ema_alpha=args.action_ema_alpha,
         synthetic_odom_corruption=args.synthetic_odom_corruption,
         odom_scale_range=tuple(args.odom_scale_range),
         odom_yaw_range_deg=args.odom_yaw_range_deg,

@@ -10,6 +10,8 @@ import torch
 from tensordict import TensorDict
 from torch import nn
 
+from protomotions.agents.ppo.config import StdMode
+
 from protomotions.agents.amp import component as amp_component_module
 from protomotions.agents.amp.agent import AMP
 from protomotions.agents.ppo.agent import PPO
@@ -21,7 +23,7 @@ from protomotions.envs.obs.humanoid_historical import (
     compute_historical_max_coords_from_motion_lib,
     compute_historical_max_coords_from_state,
 )
-from protomotions.envs.obs.state_history_buffer import StateHistoryBuffer
+from protomotions.tests.support.reference_history import roll_reference_history
 
 
 def _new_amp_agent(agent_cls=AMP):
@@ -156,9 +158,7 @@ class _DeterministicMotionLib:
         self.num_bodies = num_bodies
         self.num_dofs = num_dofs
         self.motion_lengths = (
-            motion_lengths
-            if motion_lengths is not None
-            else torch.full((16,), 100.0)
+            motion_lengths if motion_lengths is not None else torch.full((16,), 100.0)
         )
 
     def get_motion_state(self, motion_ids, motion_times):
@@ -196,7 +196,9 @@ class _DeterministicMotionLib:
             dim=-1,
         )
         dof_base = torch.arange(self.num_dofs, dtype=torch.float).view(1, self.num_dofs)
-        dof_pos = motion_ids.float().unsqueeze(-1) + motion_times.unsqueeze(-1) + dof_base
+        dof_pos = (
+            motion_ids.float().unsqueeze(-1) + motion_times.unsqueeze(-1) + dof_base
+        )
         dof_vel = motion_times.unsqueeze(-1) * 0.5 + dof_base
 
         return SimpleNamespace(
@@ -210,18 +212,18 @@ class _DeterministicMotionLib:
         )
 
 
-def _simulator_historical_max_coords_from_reference_reset(
+def _simulator_historical_max_coords_from_reference_sequence(
     motion_lib,
     motion_ids,
     motion_times,
     *,
     dt,
-    num_state_history_steps,
+    num_history_steps,
     history_steps,
     local_obs,
     root_height_obs,
 ):
-    buffer_size = num_state_history_steps + 1
+    buffer_size = num_history_steps + 1
     time_offsets = -dt * torch.arange(buffer_size)
     expanded_motion_ids = motion_ids.unsqueeze(1).expand(-1, buffer_size)
     expanded_motion_times = motion_times.unsqueeze(1) + time_offsets.unsqueeze(0)
@@ -236,56 +238,27 @@ def _simulator_historical_max_coords_from_reference_reset(
         expanded_motion_ids.reshape(-1),
         expanded_motion_times.reshape(-1),
     )
-    history = StateHistoryBuffer(
-        num_envs=motion_ids.shape[0],
-        num_history_steps=num_state_history_steps,
-        num_bodies=motion_lib.num_bodies,
-        num_dofs=motion_lib.num_dofs,
-        action_dim=2,
-        num_contact_bodies=motion_lib.num_bodies,
-        anchor_body_index=0,
-        device=torch.device("cpu"),
-    )
-    history.reset_from_states(
-        env_ids=torch.arange(motion_ids.shape[0]),
-        rigid_body_pos=historical_state.rigid_body_pos.view(
-            motion_ids.shape[0], buffer_size, motion_lib.num_bodies, 3
-        ),
-        rigid_body_rot=historical_state.rigid_body_rot.view(
-            motion_ids.shape[0], buffer_size, motion_lib.num_bodies, 4
-        ),
-        rigid_body_vel=historical_state.rigid_body_vel.view(
-            motion_ids.shape[0], buffer_size, motion_lib.num_bodies, 3
-        ),
-        rigid_body_ang_vel=historical_state.rigid_body_ang_vel.view(
-            motion_ids.shape[0], buffer_size, motion_lib.num_bodies, 3
-        ),
-        dof_pos=historical_state.dof_pos.view(
-            motion_ids.shape[0], buffer_size, motion_lib.num_dofs
-        ),
-        dof_vel=historical_state.dof_vel.view(
-            motion_ids.shape[0], buffer_size, motion_lib.num_dofs
-        ),
-        ground_heights=torch.zeros(motion_ids.shape[0], buffer_size),
-        body_contacts=torch.zeros(
-            motion_ids.shape[0],
-            buffer_size,
-            motion_lib.num_bodies,
-            dtype=torch.bool,
+    history = roll_reference_history(
+        historical_state,
+        motion_ids.shape[0],
+        num_history_steps,
+        torch.zeros(
+            motion_ids.shape[0] * buffer_size, motion_lib.num_bodies, dtype=torch.bool
         ),
     )
     return compute_historical_max_coords_from_state(
-        historical_rigid_body_pos=history.historical_rigid_body_pos,
-        historical_rigid_body_rot=history.historical_rigid_body_rot,
-        historical_rigid_body_vel=history.historical_rigid_body_vel,
-        historical_rigid_body_ang_vel=history.historical_rigid_body_ang_vel,
-        historical_ground_heights=history.historical_ground_heights,
-        historical_body_contacts=history.historical_body_contacts,
+        historical_rigid_body_pos=history.rigid_body_pos,
+        historical_rigid_body_rot=history.rigid_body_rot,
+        historical_rigid_body_vel=history.rigid_body_vel,
+        historical_rigid_body_ang_vel=history.rigid_body_ang_vel,
+        historical_ground_heights=history.ground_heights,
+        historical_body_contacts=history.rigid_body_contacts,
         local_obs=local_obs,
         root_height_obs=root_height_obs,
         observe_contacts=False,
         w_last=True,
-        history_steps=history_steps,
+        history_steps=tuple(history_steps),
+        anchor_body_index=0,
     )
 
 
@@ -356,7 +329,7 @@ def _amp_config(**amp_overrides):
         batch_size=2,
         task_reward_w=1.0,
         model=SimpleNamespace(
-            actor=SimpleNamespace(learnable_std=True),
+            actor=SimpleNamespace(std_mode=StdMode.GLOBAL),
             critic=True,
         ),
         advantage_normalization=SimpleNamespace(enabled=False, use_ema=False),
@@ -548,20 +521,30 @@ def test_amp_model_load_delegates_full_amp_checkpoint(monkeypatch):
 
     AMP._load_model_state_dict(agent, model_state)
 
-    assert agent._warm_start_from_non_amp_checkpoint is False
     assert calls == [model_state]
 
 
 def test_amp_load_parameters_warm_starts_from_non_amp_checkpoint():
-    class _WarmStartModel:
-        def load_state_dict(self, model_state, strict=True):
-            assert strict is False
-            agent.actor.logstd.data.fill_(9.0)
-            return ["_discriminator.weight"], ["unused"]
+    class _WarmStartModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self._actor = nn.Linear(1, 1, bias=False)
+            self._actor.logstd = nn.Parameter(torch.ones(2))
+            self._discriminator = nn.Linear(1, 1)
+
+        def materialize_from_state_dict(self, state_dict):
+            pass
+
+        def optional_checkpoint_modules(self):
+            return ("_discriminator",)
 
     agent = _new_amp_agent()
     agent.model = _WarmStartModel()
-    agent.actor = SimpleNamespace(logstd=nn.Parameter(torch.ones(2)))
+    agent.actor = agent.model._actor
+    fresh_disc = {
+        key: value.clone()
+        for key, value in agent.model._discriminator.state_dict().items()
+    }
     agent.actor_optimizer = _OptimizerRecorder()
     agent.critic_optimizer = _OptimizerRecorder()
     agent.running_reward_norm = _RewardNorm(offset=0.0)
@@ -569,13 +552,17 @@ def test_amp_load_parameters_warm_starts_from_non_amp_checkpoint():
     agent.adv_std_ema = torch.zeros(1)
     agent.evaluator = None
     agent.config = _amp_config()
-    agent.config.model.actor.learnable_std = False
+    agent.config.model.actor.std_mode = StdMode.FIXED
+    agent.config.model.actor.actor_logstd = 1.0
     agent.config.advantage_normalization = SimpleNamespace(
         enabled=True,
         use_ema=True,
     )
     state = {
-        "model": {"_actor.weight": torch.tensor([1.0])},
+        "model": {
+            "_actor.weight": torch.tensor([[2.0]]),
+            "_actor.logstd": torch.full((2,), 9.0),
+        },
         "epoch": 3,
         "step_count": 12,
         "run_start_time": 45.0,
@@ -595,6 +582,9 @@ def test_amp_load_parameters_warm_starts_from_non_amp_checkpoint():
     assert agent.fit_start_time == 45.0
     assert agent.best_evaluated_score == 6.0
     assert torch.equal(agent.actor.logstd, torch.ones(2))
+    assert torch.equal(agent.actor.weight, torch.tensor([[2.0]]))
+    for key, value in fresh_disc.items():
+        assert torch.equal(agent.model._discriminator.state_dict()[key], value)
     assert torch.equal(
         agent.running_reward_norm.loaded_state["reward"],
         torch.tensor([1.0]),
@@ -620,6 +610,7 @@ def test_amp_restores_full_amp_training_state(monkeypatch):
     agent.amp_component.disc_critic_optimizer = _OptimizerRecorder()
     agent.amp_component.running_reward_norm = _RewardNorm(offset=0.0)
     state = {
+        "model": {"_discriminator.weight": torch.ones(1), "_disc_critic.weight": torch.ones(1)},
         "discriminator_optimizer": {"disc": 1},
         "disc_critic_optimizer": {"disc_critic": 2},
         "running_amp_reward_norm": {"amp": torch.tensor([3.0])},
@@ -646,7 +637,9 @@ def test_amp_get_state_dict_adds_amp_optimizers_and_reward_norm(monkeypatch):
     agent.amp_component.use_disc_critic = True
     agent.config = _amp_config()
     agent.amp_component.discriminator_optimizer = _OptimizerRecorder(state={"disc": 1})
-    agent.amp_component.disc_critic_optimizer = _OptimizerRecorder(state={"disc_critic": 2})
+    agent.amp_component.disc_critic_optimizer = _OptimizerRecorder(
+        state={"disc_critic": 2}
+    )
     agent.amp_component.running_reward_norm = _RewardNorm(offset=3.0)
 
     state = AMP.get_state_dict(agent, {})
@@ -683,7 +676,9 @@ def test_amp_disc_replay_buffer_filters_overfull_buffer_and_caps_large_batches()
     real_buffer_agent = _new_amp_agent()
     real_buffer_agent.device = torch.device("cpu")
     real_buffer_agent.config = _amp_config()
-    real_buffer_agent.amp_component.replay_buffer = ReplayBuffer(3, device=torch.device("cpu"))
+    real_buffer_agent.amp_component.replay_buffer = ReplayBuffer(
+        3, device=torch.device("cpu")
+    )
     torch.manual_seed(0)
     AMP.update_disc_replay_buffer(
         real_buffer_agent,
@@ -725,15 +720,18 @@ def test_amp_reference_observation_sampling_chunks_and_filters_router_inputs():
     agent.num_envs = 2
     agent.env = SimpleNamespace(
         robot_config=SimpleNamespace(anchor_body_index=0),
+        contact_body_ids=torch.tensor([], dtype=torch.long),
         simulator=SimpleNamespace(dt=0.25),
-        config=SimpleNamespace(num_state_history_steps=4),
+        config=SimpleNamespace(),
     )
     agent.config = _amp_config()
     agent.config.reference_obs_components = {
         "disc_obs": _Router(ref_obs, {"scale": 2.0, "unused": "ignored"}),
         "ignored_obs": _Router(ref_obs, {"scale": 100.0}),
     }
-    agent.amp_component.discriminator = SimpleNamespace(module=SimpleNamespace(in_keys=["disc_obs"]))
+    agent.amp_component.discriminator = SimpleNamespace(
+        module=SimpleNamespace(in_keys=["disc_obs"])
+    )
 
     expert_obs = AMP.get_expert_disc_obs(agent, num_samples=5)
 
@@ -745,11 +743,33 @@ def test_amp_reference_observation_sampling_chunks_and_filters_router_inputs():
     )
 
 
-def test_amp_reference_historical_obs_matches_simulator_reset_history_buffer():
+def test_amp_expert_obs_context_takes_contact_body_ids_from_the_env():
+    # The context carries the env's selected contact bodies; an env without
+    # them is an error, not a silent None.
+    agent = _new_amp_agent()
+    agent.env = SimpleNamespace(
+        robot_config=SimpleNamespace(anchor_body_index=0),
+        contact_body_ids=torch.tensor([1, 3]),
+        simulator=SimpleNamespace(dt=0.25),
+        config=SimpleNamespace(),
+    )
+    context = agent.amp_component._build_expert_obs_context(
+        2, torch.tensor([0, 1]), torch.tensor([0.0, 0.5])
+    )
+    assert torch.equal(context["contact_body_ids"], torch.tensor([1, 3]))
+
+    del agent.env.contact_body_ids
+    with pytest.raises(AttributeError, match="contact_body_ids"):
+        agent.amp_component._build_expert_obs_context(
+            2, torch.tensor([0, 1]), torch.tensor([0.0, 0.5])
+        )
+
+
+def test_amp_reference_historical_obs_matches_rolling_simulator_history():
     motion_ids = torch.tensor([0, 2, 4])
     motion_times = torch.tensor([1.2, 1.6, 2.0])
     dt = 0.1
-    num_state_history_steps = 5
+    num_history_steps = 5
     history_steps = [1, 3, 5]
     motion_lib = _DeterministicMotionLib(num_bodies=3, num_dofs=2)
 
@@ -759,8 +779,9 @@ def test_amp_reference_historical_obs_matches_simulator_reset_history_buffer():
     agent.num_envs = 2
     agent.env = SimpleNamespace(
         robot_config=SimpleNamespace(anchor_body_index=0),
+        contact_body_ids=torch.tensor([], dtype=torch.long),
         simulator=SimpleNamespace(dt=dt),
-        config=SimpleNamespace(num_state_history_steps=num_state_history_steps),
+        config=SimpleNamespace(),
     )
     agent.config = _amp_config()
     agent.config.reference_obs_components = {
@@ -780,12 +801,12 @@ def test_amp_reference_historical_obs_matches_simulator_reset_history_buffer():
 
     expert_obs = AMP.get_expert_disc_obs(agent, num_samples=motion_ids.shape[0])
 
-    simulator_obs = _simulator_historical_max_coords_from_reference_reset(
+    simulator_obs = _simulator_historical_max_coords_from_reference_sequence(
         motion_lib,
         motion_ids,
         motion_times,
         dt=dt,
-        num_state_history_steps=num_state_history_steps,
+        num_history_steps=num_history_steps,
         history_steps=history_steps,
         local_obs=True,
         root_height_obs=True,
@@ -798,12 +819,12 @@ def test_amp_reference_historical_obs_matches_simulator_reset_history_buffer():
     )
 
 
-def test_amp_reference_historical_obs_clamps_to_motion_lengths_like_simulator_reset():
+def test_amp_reference_historical_obs_clamps_to_motion_lengths_like_rolling_simulator_history():
     motion_ids = torch.tensor([0, 1])
     motion_times = torch.tensor([0.9, 0.75])
     motion_lengths = torch.tensor([0.65, 0.55])
     dt = 0.1
-    num_state_history_steps = 3
+    num_history_steps = 3
     history_steps = [1, 2, 3]
     motion_lib = _DeterministicMotionLib(
         num_bodies=3,
@@ -817,8 +838,9 @@ def test_amp_reference_historical_obs_clamps_to_motion_lengths_like_simulator_re
     agent.num_envs = 1
     agent.env = SimpleNamespace(
         robot_config=SimpleNamespace(anchor_body_index=0),
+        contact_body_ids=torch.tensor([], dtype=torch.long),
         simulator=SimpleNamespace(dt=dt),
-        config=SimpleNamespace(num_state_history_steps=num_state_history_steps),
+        config=SimpleNamespace(),
     )
     agent.config = _amp_config()
     agent.config.reference_obs_components = {
@@ -838,12 +860,12 @@ def test_amp_reference_historical_obs_clamps_to_motion_lengths_like_simulator_re
 
     expert_obs = AMP.get_expert_disc_obs(agent, num_samples=motion_ids.shape[0])
 
-    simulator_obs = _simulator_historical_max_coords_from_reference_reset(
+    simulator_obs = _simulator_historical_max_coords_from_reference_sequence(
         motion_lib,
         motion_ids,
         motion_times,
         dt=dt,
-        num_state_history_steps=num_state_history_steps,
+        num_history_steps=num_history_steps,
         history_steps=history_steps,
         local_obs=False,
         root_height_obs=True,
@@ -907,14 +929,17 @@ def test_amp_process_dataset_adds_discriminator_training_views_and_stores_replay
     agent.motion_lib = object()
     agent.env = SimpleNamespace(
         robot_config=SimpleNamespace(anchor_body_index=0),
+        contact_body_ids=torch.tensor([], dtype=torch.long),
         simulator=SimpleNamespace(dt=0.25),
-        config=SimpleNamespace(num_state_history_steps=1),
+        config=SimpleNamespace(),
     )
     agent.config.reference_obs_components = {
         "disc_obs": _Router(ref_obs, {}),
     }
     agent.model = SimpleNamespace(_discriminator=SimpleNamespace(in_keys=["disc_obs"]))
-    agent.amp_component.discriminator = SimpleNamespace(module=SimpleNamespace(in_keys=["disc_obs"]))
+    agent.amp_component.discriminator = SimpleNamespace(
+        module=SimpleNamespace(in_keys=["disc_obs"])
+    )
     agent.amp_component.replay_buffer = ReplayBuffer(8, device=torch.device("cpu"))
     dataset = {
         "disc_obs": torch.arange(4, dtype=torch.float).view(4, 1),
@@ -938,7 +963,9 @@ def test_amp_process_dataset_adds_discriminator_training_views_and_stores_replay
         torch.tensor([0.25, 1.75, 3.25, 4.75]),
     )
     assert len(agent.amp_component.replay_buffer) == 4
-    assert torch.equal(agent.amp_component.replay_buffer.disc_obs[:4], dataset["disc_obs"])
+    assert torch.equal(
+        agent.amp_component.replay_buffer.disc_obs[:4], dataset["disc_obs"]
+    )
 
 
 def test_amp_process_dataset_samples_existing_replay_when_available():
@@ -956,12 +983,15 @@ def test_amp_process_dataset_samples_existing_replay_when_available():
     agent.motion_lib = object()
     agent.env = SimpleNamespace(
         robot_config=SimpleNamespace(anchor_body_index=0),
+        contact_body_ids=torch.tensor([], dtype=torch.long),
         simulator=SimpleNamespace(dt=0.25),
-        config=SimpleNamespace(num_state_history_steps=1),
+        config=SimpleNamespace(),
     )
     agent.config.reference_obs_components = {"disc_obs": _Router(ref_obs, {})}
     agent.model = SimpleNamespace(_discriminator=SimpleNamespace(in_keys=["disc_obs"]))
-    agent.amp_component.discriminator = SimpleNamespace(module=SimpleNamespace(in_keys=["disc_obs"]))
+    agent.amp_component.discriminator = SimpleNamespace(
+        module=SimpleNamespace(in_keys=["disc_obs"])
+    )
     agent.amp_component.replay_buffer = ReplayBuffer(8, device=torch.device("cpu"))
     agent.amp_component.replay_buffer.store(
         {"disc_obs": torch.tensor([[10.0], [11.0], [12.0], [13.0]])}
@@ -1018,8 +1048,12 @@ def test_amp_record_rollout_step_updates_ppo_disc_critic_and_amp_rewards():
     agent.amp_component.use_disc_critic = True
     agent.model = SimpleNamespace(_critic=_ConstantCritic("value", value=7.0))
     agent.amp_component.discriminator = _ModuleWrapper(_LinearDiscriminator())
-    agent.amp_component.disc_critic = _ModuleWrapper(_ConstantCritic("disc_value", value=5.0))
-    agent.amp_component.num_cumulative_bad_transitions = torch.zeros(3, dtype=torch.int32)
+    agent.amp_component.disc_critic = _ModuleWrapper(
+        _ConstantCritic("disc_value", value=5.0)
+    )
+    agent.amp_component.num_cumulative_bad_transitions = torch.zeros(
+        3, dtype=torch.int32
+    )
     next_obs_td = TensorDict(
         {"disc_obs": torch.tensor([[2.0, 0.0], [-2.0, 0.0], [0.0, 1.0]])},
         batch_size=3,
@@ -1157,8 +1191,8 @@ def test_amp_compute_advantages_uses_discriminator_critic_when_enabled():
         next_disc_value=torch.zeros(2, 1),
     )
     updates = {}
-    agent.experience_buffer.batch_update_data = (
-        lambda key, value: updates.setdefault(key, value.clone())
+    agent.experience_buffer.batch_update_data = lambda key, value: updates.setdefault(
+        key, value.clone()
     )
 
     advantages = AMP.compute_advantages(agent)
@@ -1189,8 +1223,8 @@ def test_amp_compute_advantages_uses_normalized_disc_critic_inputs_and_returns()
         unnormalized_next_disc_value=torch.zeros(1, 1),
     )
     updates = {}
-    agent.experience_buffer.batch_update_data = (
-        lambda key, value: updates.setdefault(key, value.clone())
+    agent.experience_buffer.batch_update_data = lambda key, value: updates.setdefault(
+        key, value.clone()
     )
 
     advantages = AMP.compute_advantages(agent)
@@ -1232,7 +1266,9 @@ def test_amp_perform_optimization_step_skips_disc_when_ppo_skips_actor(monkeypat
     agent._skip_actor_for_epoch = True
     agent.amp_component.use_disc_critic = True
     agent.disc_critic_step = lambda batch_dict: pytest.fail("disc critic should skip")
-    agent.discriminator_step = lambda batch_dict: pytest.fail("discriminator should skip")
+    agent.discriminator_step = lambda batch_dict: pytest.fail(
+        "discriminator should skip"
+    )
 
     log_dict = AMP.perform_optimization_step(agent, {}, batch_idx=0)
 
@@ -1315,7 +1351,9 @@ def test_amp_disc_critic_step_uses_clipped_value_loss_and_reports_diagnostics():
     agent = _new_amp_agent()
     agent.config = _amp_config()
     agent.e_clip = agent.config.e_clip
-    agent.amp_component.disc_critic = _ModuleWrapper(_ConstantCritic("disc_value", value=1.0))
+    agent.amp_component.disc_critic = _ModuleWrapper(
+        _ConstantCritic("disc_value", value=1.0)
+    )
     batch = {
         "action": torch.zeros(3, 1),
         "disc_obs": torch.zeros(3, 2),
@@ -1335,7 +1373,9 @@ def test_amp_disc_critic_step_supports_unclipped_loss_and_zero_return_variance()
     agent = _new_amp_agent()
     agent.config = _amp_config()
     agent.config.clip_critic_loss = False
-    agent.amp_component.disc_critic = _ModuleWrapper(_ConstantCritic("disc_value", value=1.0))
+    agent.amp_component.disc_critic = _ModuleWrapper(
+        _ConstantCritic("disc_value", value=1.0)
+    )
     batch = {
         "action": torch.zeros(2, 1),
         "disc_obs": torch.zeros(2, 2),
@@ -1399,12 +1439,15 @@ def test_amp_discriminator_step_trains_against_expert_agent_and_replay_batches()
     assert "discriminator/grad_penalty" in log_dict
     assert "discriminator/l2_loss" in log_dict
     assert "discriminator/negative_logit_mean" in log_dict
-    expected_weight_total = agent.amp_component.discriminator.module.linear.weight.pow(2).sum()
-    torch.testing.assert_close(log_dict["discriminator/l2_total"], expected_weight_total)
+    expected_weight_total = agent.amp_component.discriminator.module.linear.weight.pow(
+        2
+    ).sum()
+    torch.testing.assert_close(
+        log_dict["discriminator/l2_total"], expected_weight_total
+    )
     torch.testing.assert_close(
         log_dict["discriminator/l2_loss"],
-        expected_weight_total
-        * agent.config.amp_parameters.discriminator_weight_decay,
+        expected_weight_total * agent.config.amp_parameters.discriminator_weight_decay,
     )
     torch.testing.assert_close(
         log_dict["discriminator/l2_logit_total"],
@@ -1426,9 +1469,7 @@ def test_amp_component_accepts_explicit_negative_and_integer_expert_obs():
         discriminator_logit_weight_decay=0.0,
     )
     agent.amp_component.discriminator = _ModuleWrapper(_LinearDiscriminator())
-    negative_expert_obs = {
-        "disc_obs": torch.tensor([[3.0, 3.0], [4.0, 4.0]])
-    }
+    negative_expert_obs = {"disc_obs": torch.tensor([[3.0, 3.0], [4.0, 4.0]])}
     batch = {
         "agent_disc_obs": torch.tensor([[0.0, 1.0], [1.0, 0.0]]),
         "replay_disc_obs": torch.tensor([[0.5, 0.5], [1.0, 1.0]]),

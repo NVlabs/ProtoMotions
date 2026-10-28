@@ -1,0 +1,18 @@
+{
+  "robot_name": "soma23",
+  "simulator": "isaaclab",
+  "num_envs": 1,
+  "batch_size": 8192,
+  "motion_file": "data/motion_for_trackers/soma23_bones_seed_mini.pt",
+  "experiment_path": "data/pretrained_models/motion_tracker/soma-bones/experiment_config.py",
+  "experiment_name": "soma23_tracker",
+  "scenes_file": null,
+  "checkpoint": null,
+  "headless": true,
+  "seed": 0,
+  "torch_deterministic": false,
+  "overrides": [
+    "simulator.default_robot_friction=0.5"
+  ],
+  "create_config_only": true
+}

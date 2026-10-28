@@ -6,14 +6,12 @@
 import pytest
 import torch
 
-from protomotions.envs.obs import humanoid
+import protomotions.envs.obs.humanoid as humanoid
 from protomotions.envs.obs.humanoid import (
     compute_humanoid_max_coords_observations,
     compute_humanoid_reduced_coords_observations,
     compute_local_ang_vel,
     dof_to_local,
-    dof_to_obs,
-    obs_to_dof,
     root_projected_gravity,
 )
 from protomotions.envs.obs.masked_mimic import (
@@ -27,11 +25,6 @@ from protomotions.envs.obs.target_poses import (
     build_max_coords_target_poses_future_rel,
     build_reduced_coords_target_poses,
     build_sparse_target_poses,
-    build_target_height,
-    build_target_root_ang_vel,
-    build_target_root_rot,
-    build_target_root_vel,
-    build_target_xy_offset,
 )
 
 
@@ -65,7 +58,7 @@ def _future_body_state(num_envs=1, future_steps=3, num_bodies=2):
     }
 
 
-def test_dof_conversion_helpers_cover_shape_validation_and_round_trips(monkeypatch):
+def test_dof_to_local_covers_shape_validation(monkeypatch):
     hinge_axes_map = {
         1: torch.tensor([[1.0, 0.0, 0.0]]),
         2: torch.eye(3),
@@ -82,18 +75,11 @@ def test_dof_conversion_helpers_cover_shape_validation_and_round_trips(monkeypat
 
     pose = torch.zeros(2, 4)
     local = dof_to_local(pose, hinge_axes_map, w_last=True)
-    obs = dof_to_obs(pose, hinge_axes_map, w_last=True)
-    recovered = obs_to_dof(obs, hinge_axes_map, w_last=True)
 
     assert local.shape == (2, 2, 4)
-    assert obs.shape == (2, 12)
-    assert torch.allclose(recovered, torch.zeros(2, 4), atol=1e-5)
 
     with pytest.raises(ValueError, match="Input pose must be 2D"):
         dof_to_local(torch.zeros(2, 2, 2), hinge_axes_map, w_last=True)
-
-    with pytest.raises(ValueError, match="Unsupported number of DOFs"):
-        obs_to_dof(torch.zeros(2, 6), {0: torch.ones(2, 3)}, w_last=True)
 
 
 def test_projected_gravity_and_local_ang_vel_handle_identity_and_batched_history():
@@ -188,6 +174,7 @@ def test_max_coords_observations_cover_local_global_height_and_contact_options()
         root_height_obs=False,
         observe_contacts=False,
         w_last=True,
+        anchor_body_index=0,
     )
     local_obs = compute_humanoid_max_coords_observations(
         body_pos=state["pos"],
@@ -200,6 +187,7 @@ def test_max_coords_observations_cover_local_global_height_and_contact_options()
         root_height_obs=True,
         observe_contacts=True,
         w_last=True,
+        anchor_body_index=0,
     )
 
     assert global_obs.shape == (1, 28)
@@ -284,37 +272,6 @@ def test_max_coords_and_target_builders_use_a_nonzero_anchor_body():
     )
 
 
-def test_target_pose_scalar_builders_select_steps_and_transform_identity_frames():
-    current_pos = torch.tensor([[1.0, 2.0, 3.0]])
-    current_rot = _identity_quat(1)
-    ref_pos = torch.tensor([[[4.0, 5.0, 1.0], [6.0, 7.0, 2.0], [8.0, 9.0, 3.0]]])
-    ref_rot = _identity_quat(1, 3, 1)
-    ref_vel = torch.tensor([[[1.0, 0.0, 0.0], [2.0, 0.0, 0.0], [3.0, 0.0, 0.0]]])
-    ref_ang_vel = ref_vel + 10.0
-
-    assert build_target_root_rot(current_rot, ref_rot, future_steps=[1, 3]).shape == (1, 12)
-    assert torch.equal(
-        build_target_xy_offset(
-            current_pos,
-            current_rot,
-            ref_pos,
-            future_steps=2,
-            current_ref_anchor_pos=torch.tensor([[0.5, 1.5, 3.0]]),
-        ),
-        torch.tensor([[0.5, 0.5, 0.5, 0.5]]),
-    )
-    assert torch.equal(
-        build_target_xy_offset(current_pos, current_rot, ref_pos, future_steps=2, zero_xy_offset=True),
-        torch.zeros(1, 4),
-    )
-    assert torch.equal(build_target_height(ref_pos, future_steps=[1, 3]), torch.tensor([[1.0, 3.0]]))
-    assert torch.equal(build_target_root_vel(current_rot, ref_vel, future_steps=2), ref_vel[:, :2].reshape(1, -1))
-    assert torch.equal(
-        build_target_root_ang_vel(current_rot, ref_ang_vel, future_steps=[2]),
-        ref_ang_vel[:, 1:2].reshape(1, -1),
-    )
-
-
 def test_target_pose_composite_builders_cover_optional_components_and_errors():
     current = _body_state(num_envs=1, num_bodies=2)
     future = _future_body_state(num_envs=1, future_steps=3, num_bodies=2)
@@ -326,8 +283,9 @@ def test_target_pose_composite_builders_cover_optional_components_and_errors():
         current["rot"],
         future["pos"],
         future["rot"],
-        future_steps=[1, 3],
+        future_steps=(1, 3),
         w_last=True,
+        anchor_body_index=0,
     ).shape == (1, 72)
     assert build_max_coords_target_poses(
         current["pos"],
@@ -340,8 +298,9 @@ def test_target_pose_composite_builders_cover_optional_components_and_errors():
         future["ang_vel"],
         with_velocities=False,
         with_relative=False,
-        future_steps=2,
+        future_steps=(1, 2),
         w_last=True,
+        anchor_body_index=0,
     ).shape == (1, 36)
     assert build_max_coords_target_poses(
         current["pos"],
@@ -354,8 +313,9 @@ def test_target_pose_composite_builders_cover_optional_components_and_errors():
         future["ang_vel"],
         with_velocities=True,
         with_relative=True,
-        future_steps=2,
+        future_steps=(1, 2),
         w_last=True,
+        anchor_body_index=0,
     ).shape == (1, 96)
 
     reduced = build_reduced_coords_target_poses(
@@ -372,7 +332,7 @@ def test_target_pose_composite_builders_cover_optional_components_and_errors():
         include_dof_vel=True,
         include_anchor_vel=True,
         include_anchor_ang_vel=True,
-        future_steps=[1, 3],
+        future_steps=(1, 3),
         current_ref_anchor_pos=torch.zeros(1, 3),
         w_last=True,
     )
@@ -383,23 +343,30 @@ def test_target_pose_composite_builders_cover_optional_components_and_errors():
         current_state_anchor_pos=current["pos"][:, 0],
         mimic_ref_anchor_rot=future["rot"][:, :, 0],
         mimic_ref_anchor_pos=future["pos"][:, :, 0],
+        # The anchor velocities carry FieldPath defaults now; pass None to leave
+        # them unprovided (include_anchor_vel / _ang_vel are off here).
+        mimic_ref_anchor_vel=None,
+        mimic_ref_anchor_ang_vel=None,
         mimic_ref_dof_vel=dof_vel,
         mimic_ref_dof_pos=dof_pos,
         include_xy_offset=True,
         include_dof_vel=False,
         zero_xy_offset=True,
-        future_steps=1,
+        future_steps=(1,),
         w_last=True,
     )
     assert zeroed_offset.shape == (1, 10)
     assert torch.equal(zeroed_offset[:, 8:10], torch.zeros(1, 2))
 
+    # The required-when-enabled guard still fires when the tensor is explicitly
+    # None (what a recipe that unbinds the FieldPath default would produce).
     with pytest.raises(ValueError, match="mimic_ref_anchor_vel is required"):
         build_reduced_coords_target_poses(
             current["rot"][:, 0],
             future["rot"][:, :, 0],
             dof_vel,
             dof_pos,
+            mimic_ref_anchor_vel=None,
             include_anchor_vel=True,
         )
     with pytest.raises(ValueError, match="mimic_ref_anchor_ang_vel is required"):
@@ -408,8 +375,34 @@ def test_target_pose_composite_builders_cover_optional_components_and_errors():
             future["rot"][:, :, 0],
             dof_vel,
             dof_pos,
+            mimic_ref_anchor_ang_vel=None,
             include_anchor_ang_vel=True,
         )
+    # Measured XY offset needs the robot's own anchor position; the kernel
+    # default is None, so a recipe with include_xy_offset must bind it.
+    with pytest.raises(ValueError, match="current_state_anchor_pos is required"):
+        build_reduced_coords_target_poses(
+            current["rot"][:, 0],
+            future["rot"][:, :, 0],
+            dof_vel,
+            dof_pos,
+            mimic_ref_anchor_pos=future["pos"][:, :, 0],
+            current_state_anchor_pos=None,
+            include_xy_offset=True,
+        )
+    # ...but the zeroed inference form never dereferences it, so None is fine.
+    zeroed = build_reduced_coords_target_poses(
+        current["rot"][:, 0],
+        future["rot"][:, :, 0],
+        dof_vel,
+        dof_pos,
+        mimic_ref_anchor_pos=future["pos"][:, :, 0],
+        current_state_anchor_pos=None,
+        include_xy_offset=True,
+        zero_xy_offset=True,
+    )
+    assert zeroed.shape[0] == 1
+    assert torch.equal(zeroed[:, -2:], torch.zeros(1, 2))
 
 
 def test_sparse_masked_and_deploy_target_pose_builders_cover_masks_and_step_selection():
@@ -428,8 +421,9 @@ def test_sparse_masked_and_deploy_target_pose_builders_cover_masks_and_step_sele
         future["rot"],
         conditionable_body_ids=conditionable_body_ids,
         include_root_relative=True,
-        future_steps=[1, 3],
+        future_steps=(1, 3),
         w_last=True,
+        anchor_body_index=0,
     )
     sparse_reduced = build_sparse_target_poses(
         current["pos"],
@@ -438,17 +432,19 @@ def test_sparse_masked_and_deploy_target_pose_builders_cover_masks_and_step_sele
         future["rot"],
         conditionable_body_ids=conditionable_body_ids,
         include_root_relative=False,
-        future_steps=[1, 3],
+        future_steps=(1, 3),
         w_last=True,
+        anchor_body_index=0,
     )
     masked = compute_target_poses_only(
+        conditionable_body_ids,
         current["pos"],
         current["rot"],
         future["pos"],
         future["rot"],
         masks,
-        conditionable_body_ids,
-        future_steps=[1, 3],
+        anchor_body_index=0,
+        future_steps=(1, 3),
         include_root_relative=False,
     )
 
@@ -456,14 +452,16 @@ def test_sparse_masked_and_deploy_target_pose_builders_cover_masks_and_step_sele
     assert sparse_reduced.shape == (1, 24)
     assert masked.shape == (1, 24)
     assert torch.equal(masked[:, 6:12], torch.zeros(1, 6))
-    assert torch.equal(compute_target_masks_only(masks, conditionable_body_ids, None), masks)
     assert torch.equal(
-        compute_target_masks_only(masks, conditionable_body_ids, future_steps=[1, 3]),
+        compute_target_masks_only(conditionable_body_ids, masks, None), masks
+    )
+    assert torch.equal(
+        compute_target_masks_only(conditionable_body_ids, masks, future_steps=(1, 3)),
         torch.tensor([[1.0, 0.0, 1.0, 1.0]]),
     )
     assert torch.equal(compute_target_time_offsets(time_offsets, None), time_offsets)
     assert torch.equal(
-        compute_target_time_offsets(time_offsets, future_steps=[1, 3]),
+        compute_target_time_offsets(time_offsets, future_steps=(1, 3)),
         torch.tensor([[0.1, 0.3]]),
     )
 
@@ -473,7 +471,7 @@ def test_sparse_masked_and_deploy_target_pose_builders_cover_masks_and_step_sele
         mimic_ref_dof_pos=dof_pos,
         mimic_ref_dof_vel=dof_vel,
         include_dof_vel=True,
-        future_steps=[1, 3],
+        future_steps=(1, 3),
         w_last=True,
     )
     deploy_without_vel = build_deploy_target_poses(
@@ -482,7 +480,7 @@ def test_sparse_masked_and_deploy_target_pose_builders_cover_masks_and_step_sele
         mimic_ref_dof_pos=dof_pos,
         mimic_ref_dof_vel=dof_vel,
         include_dof_vel=False,
-        future_steps=1,
+        future_steps=(1,),
         w_last=True,
     )
     assert deploy.shape == (1, 32)

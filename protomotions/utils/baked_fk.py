@@ -60,13 +60,38 @@ ONNX-exportable and deployable from IMU plus joint encoders.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional
 
 import torch
 from torch import Tensor
 
+from protomotions.envs.steps import StepSelection, select_steps
+from protomotions.envs.context_views import EnvContext
+from protomotions.utils.config_schema import _REGEN
+
 if TYPE_CHECKING:
     from protomotions.components.pose_lib import KinematicInfo
+
+
+# The constants ``export_init`` writes and ``from_init`` takes, for both classes.
+_INIT_KEYS = frozenset({"anchor_idx", "trackable_body_indices"})
+
+
+def _check_init(class_name: str, init: dict) -> None:
+    """Refuse saved constants this code does not write.
+
+    A key the bundle carries that the class no longer takes would be ignored
+    silently, one it lacks would surface as a bare ``KeyError``; both mean the
+    bundle and the code have drifted apart, so both are named and the bundle
+    is to be regenerated.
+    """
+    unexpected = sorted(set(init) - _INIT_KEYS)
+    missing = sorted(_INIT_KEYS - set(init))
+    if unexpected or missing:
+        raise ValueError(
+            f"{class_name}.from_init: the saved constants do not match this code "
+            f"(unexpected {unexpected}, missing {missing}); {_REGEN}"
+        )
 
 
 def _build_skew_sym(axes: Tensor) -> Tensor:
@@ -105,8 +130,9 @@ class BakedAnchorFK:
     the current-state dof_pos from the simulator is always individual hinge
     angles regardless of robot type.
 
-    Picklability: stores plain tensors as instance attributes, compatible with
-    torch.save / torch.load(weights_only=False) for resolved_configs.pt.
+    Persistence: the config bundle saves this kernel by its JSON-able constants
+    (``export_init``) and rebuilds it from the bundle's robot (``from_init``), so
+    the kinematic tree is never carried on disk.
     """
 
     def __init__(
@@ -164,7 +190,11 @@ class BakedAnchorFK:
 
     # ─────────────────────────────────────────────────────────────────────────
 
-    def __call__(self, dof_pos: Tensor, current_anchor_rot: Tensor = None) -> Tensor:
+    def __call__(
+        self,
+        dof_pos: Tensor = EnvContext.current.dof_pos,
+        current_anchor_rot: Tensor = EnvContext.current.anchor_rot,
+    ) -> Tensor:
         """Compute FK obs for the robot's own body from joint angles.
 
         Args:
@@ -247,10 +277,54 @@ class BakedAnchorFK:
             f"anchor={self._anchor_idx}, n_trackable={len(self._trackable)})"
         )
 
+    def export_init(self) -> dict:
+        """The JSON-able constants that rebuild this kernel from a robot.
+
+        The class half of the kernel-object protocol the config bundle writes as
+        ``{"kernel_object", "init"}``. ``kinematic_info`` is deliberately NOT
+        exported: :meth:`from_init` takes it from the bundle's rebuilt robot, so a
+        saved observation can never carry a stale kinematic tree.
+        """
+        return {
+            "anchor_idx": int(self._anchor_idx),
+            "trackable_body_indices": self._trackable.tolist(),
+        }
+
+    @classmethod
+    def from_init(cls, robot_config, **init) -> "BakedAnchorFK":
+        """Rebuild the kernel from a robot's kinematic_info and exported constants."""
+        _check_init(cls.__name__, init)
+        return cls(
+            robot_config.kinematic_info,
+            init["anchor_idx"],
+            torch.as_tensor(init["trackable_body_indices"], dtype=torch.long),
+        )
+
     # Allow compute_func.__name__ lookup from MdpComponent.to_dict()
     __name__ = "BakedAnchorFK"
 
-    def _run_fk_raw(self, dof_pos: Tensor):
+    def body_kinematics(self, dof_pos: Tensor, dof_vel: Tensor):
+        """Root-frame body poses and the velocities the joints alone induce.
+
+        The root is held at the origin with identity orientation and zero
+        velocity, so the result depends only on joint angles and rates. Sensor
+        estimation then composes the measured base orientation, gyro and, when
+        measured, base velocity on top.
+
+        Args:
+            dof_pos, dof_vel: [B, num_dofs] scalar hinge angles (rad) and rates (rad/s).
+
+        Returns:
+            positions [B, Nb, 3], rotation matrices [B, Nb, 3, 3],
+            angular velocities [B, Nb, 3], linear velocities of body origins [B, Nb, 3].
+        """
+        if dof_pos.shape != dof_vel.shape or dof_pos.shape[-1] != self._num_dofs:
+            raise ValueError(
+                "body_kinematics needs matching [B, num_dofs] angle and rate arrays"
+            )
+        return self._run_fk_raw(dof_pos, dof_vel)
+
+    def _run_fk_raw(self, dof_pos: Tensor, dof_vel: Tensor = None):
         """Run FK and return raw world-frame positions and rotation matrices.
 
         Internal helper for BakedTargetFK.  Does not apply anchor-relative
@@ -259,9 +333,13 @@ class BakedAnchorFK:
 
         Args:
             dof_pos: [B, num_dofs] joint angles.
+            dof_vel: Optional [B, num_dofs] joint rates. When given, the
+                joint-induced angular and linear velocity of every body origin
+                are propagated down the tree and returned as well.
 
         Returns:
-            Tuple of (world_pos [B, Nb, 3], world_rot [B, Nb, 3, 3]).
+            Tuple of (world_pos [B, Nb, 3], world_rot [B, Nb, 3, 3]), followed by
+            (ang_vel [B, Nb, 3], lin_vel [B, Nb, 3]) when dof_vel is given.
         """
         B = dof_pos.shape[0]
         device = dof_pos.device
@@ -282,13 +360,23 @@ class BakedAnchorFK:
                 + sin_q[:, :, None, None] * K[None]
                 + (1.0 - cos_q[:, :, None, None]) * K_sq[None]
             )
+            # The hinge axis is recoverable from its skew matrix: K @ v = axis x v.
+            axes = torch.stack(
+                [K[:, 2, 1], K[:, 0, 2], K[:, 1, 0]], dim=-1
+            )  # [num_dofs, 3]
         else:
             hinge_rots = I3.unsqueeze(0).unsqueeze(0).expand(B, 0, 3, 3)
+            axes = torch.zeros(0, 3, device=device, dtype=dtype)
 
         world_rot: List = [None] * self._Nb
         world_pos: List = [None] * self._Nb
         world_rot[0] = I3.unsqueeze(0).expand(B, -1, -1)
         world_pos[0] = torch.zeros(B, 3, device=device, dtype=dtype)
+        if dof_vel is not None:
+            omega: List = [None] * self._Nb
+            velocity: List = [None] * self._Nb
+            omega[0] = torch.zeros(B, 3, device=device, dtype=dtype)
+            velocity[0] = torch.zeros(B, 3, device=device, dtype=dtype)
 
         for i in range(1, self._Nb):
             p: int = self._parent_indices[i]
@@ -308,12 +396,29 @@ class BakedAnchorFK:
                 eff_local = lrm[i] @ joint_rot
 
             world_rot[i] = p_rot @ eff_local
-            world_pos[i] = p_pos + (p_rot @ lp[i].unsqueeze(-1)).squeeze(-1)
+            offset = (p_rot @ lp[i].unsqueeze(-1)).squeeze(-1)
+            world_pos[i] = p_pos + offset
 
-        return (
-            torch.stack(world_pos, dim=1),
-            torch.stack(world_rot, dim=1),
-        )
+            if dof_vel is not None:
+                # Each hinge spins everything below it about its axis, which
+                # sits in the frame built by the reference rotation and the
+                # hinges before it. A body's own joint does not move the body's
+                # origin, so the origin velocity comes from the parent's motion.
+                frame = p_rot @ lrm[i]
+                joint_omega = torch.zeros(B, 3, device=device, dtype=dtype)
+                for k in range(d_count):
+                    axis_world = (frame @ axes[d_start + k].unsqueeze(-1)).squeeze(-1)
+                    joint_omega = (
+                        joint_omega + axis_world * dof_vel[:, d_start + k, None]
+                    )
+                    frame = frame @ hinge_rots[:, d_start + k]
+                omega[i] = omega[p] + joint_omega
+                velocity[i] = velocity[p] + torch.cross(omega[p], offset, dim=-1)
+
+        result = (torch.stack(world_pos, dim=1), torch.stack(world_rot, dim=1))
+        if dof_vel is not None:
+            result = (*result, torch.stack(omega, dim=1), torch.stack(velocity, dim=1))
+        return result
 
 
 class BakedTargetFK:
@@ -360,22 +465,27 @@ class BakedTargetFK:
 
     Call signature
     --------------
-    ``(future_dof_pos, current_anchor_rot, future_anchor_rot, odom_disp_start,
-    odom_start_xy, odom_start_heading_inv, future_ref_anchor_pos,
-    current_ref_anchor_pos) -> [B, n_selected * n_track * 9]``
+    ``(future_dof_pos, current_anchor_rot, future_anchor_rot,
+    future_ref_anchor_pos, current_ref_anchor_pos, future_steps=None, *,
+    odom_disp_start, odom_start_xy, odom_start_heading_inv)
+    -> [B, n_selected * n_track * 9]``.  The odometer inputs are keyword-only:
+    they are sensor-only quantities a recipe binds to its sensor source.
     """
+
+    # Bound as an MdpComponent kernel; its Python for-loop over bodies is a
+    # control-flow graph that torch.compile cannot trace, so it runs eagerly.
+    # (``BakedTargetFKNoOdom`` inherits this.)
+    run_eagerly = True
 
     def __init__(
         self,
         kinematic_info: "KinematicInfo",
         anchor_idx: int,
         trackable_body_indices: Tensor,
-        future_steps: List[int] = None,
     ) -> None:
         self._inner = BakedAnchorFK(kinematic_info, anchor_idx, trackable_body_indices)
         self._anchor_idx: int = anchor_idx
         self._trackable = trackable_body_indices.long().clone()
-        self._future_steps = future_steps
 
     def targets_in_current_frame(
         self,
@@ -384,6 +494,7 @@ class BakedTargetFK:
         future_anchor_rot: Tensor,
         future_ref_anchor_pos: Tensor,
         current_ref_anchor_pos: Tensor,
+        future_steps: Optional[StepSelection] = None,
     ):
         """Reference targets in the current heading frame, WITHOUT the odometer.
 
@@ -420,7 +531,7 @@ class BakedTargetFK:
 
         Both inputs are required.  They were briefly optional while we A/B-tested
         the term, but a missing binding silently fell back to the broken
-        translation-free behaviour, so a mis-wired component now fails loudly.
+        translation-free behaviour, so a miswired component now fails loudly.
 
         One frame throughout
         --------------------
@@ -437,9 +548,9 @@ class BakedTargetFK:
             current_anchor_rot: Current anchor quaternion [B, 4] (w-last).
             future_anchor_rot: Reference anchor quaternions [B, n_future, 4] (w-last).
             future_ref_anchor_pos: Where the reference anchor will be at each future
-                step [B, n_future, 3] (``ctx.mimic.future_anchor_pos``).
+                step [B, n_future, 3] (``mimic.future_anchor_pos``).
             current_ref_anchor_pos: Where the reference anchor is now [B, 3]
-                (``ctx.mimic.ref_anchor_pos``).
+                (``mimic.ref_anchor_pos``).
 
         Returns:
             Tuple ``(pos_in_current, rot_6d, B, n_future, n_track)`` where
@@ -454,34 +565,13 @@ class BakedTargetFK:
         B, n_future, D = future_dof_pos.shape
         device = future_dof_pos.device
 
-        if self._future_steps is not None:
-            from protomotions.envs.obs.utils import select_step_indices
-
-            # select_step_indices takes 1-indexed step numbers into the horizon
-            # MimicControl publishes. Asking for step 8 when the control was
-            # configured to publish only 4 steps is a config mismatch, not
-            # something to silently clamp or let fail as an index error.
-            requested = (
-                self._future_steps
-                if isinstance(self._future_steps, int)
-                else max(self._future_steps)
-            )
-            if requested > n_future:
-                raise ValueError(
-                    f"{type(self).__name__} was asked for future step {requested}, "
-                    f"but MimicControl publishes only {n_future} step(s). Either "
-                    f"widen MimicControlConfig.future_steps, or drop the "
-                    f"future_steps argument on this observation if the control "
-                    f"already publishes exactly the steps you want."
-                )
-
-            future_dof_pos = select_step_indices(future_dof_pos, self._future_steps)
-            future_anchor_rot = select_step_indices(
-                future_anchor_rot, self._future_steps
-            )
-            future_ref_anchor_pos = select_step_indices(
-                future_ref_anchor_pos, self._future_steps
-            )
+        if future_steps is not None:
+            # 1-based steps into the horizon MimicControl publishes. A step the
+            # control does not publish is refused when the environment is built
+            # (ComponentManager's window check), not clamped here.
+            future_dof_pos = select_steps(future_dof_pos, future_steps)
+            future_anchor_rot = select_steps(future_anchor_rot, future_steps)
+            future_ref_anchor_pos = select_steps(future_ref_anchor_pos, future_steps)
             n_future = future_dof_pos.shape[1]
 
         trackable = self._trackable.to(device=device)
@@ -583,14 +673,16 @@ class BakedTargetFK:
 
     def __call__(
         self,
-        future_dof_pos: Tensor,
-        current_anchor_rot: Tensor,
-        future_anchor_rot: Tensor,
+        future_dof_pos: Tensor = EnvContext.mimic.future_dof_pos,
+        current_anchor_rot: Tensor = EnvContext.current.anchor_rot,
+        future_anchor_rot: Tensor = EnvContext.mimic.future_anchor_rot,
+        future_ref_anchor_pos: Tensor = EnvContext.mimic.future_anchor_pos,
+        current_ref_anchor_pos: Tensor = EnvContext.mimic.ref_anchor_pos,
+        future_steps: Optional[StepSelection] = None,
+        *,
         odom_disp_start: Tensor,
         odom_start_xy: Tensor,
         odom_start_heading_inv: Tensor,
-        future_ref_anchor_pos: Tensor,
-        current_ref_anchor_pos: Tensor,
     ) -> Tensor:
         """Compute reference target poses in the current robot's heading frame.
 
@@ -608,11 +700,11 @@ class BakedTargetFK:
             odom_start_xy: Anchor XY at episode start [B, 2].
             odom_start_heading_inv: Inverse start-heading quaternion [B, 4].
             future_ref_anchor_pos: Where the reference anchor will be at each future
-                step [B, n_future, 3] (``ctx.mimic.future_anchor_pos``).  Required —
+                step [B, n_future, 3] (``mimic.future_anchor_pos``).  Required —
                 tells the policy how far the reference moves (see
                 ``targets_in_current_frame``).
             current_ref_anchor_pos: Where the reference anchor is now [B, 3]
-                (``ctx.mimic.ref_anchor_pos``).  Required — also the reference point
+                (``mimic.ref_anchor_pos``).  Required — also the reference point
                 for the odometer offset below.
 
         Returns:
@@ -628,6 +720,7 @@ class BakedTargetFK:
             future_anchor_rot,
             future_ref_anchor_pos=future_ref_anchor_pos,
             current_ref_anchor_pos=current_ref_anchor_pos,
+            future_steps=future_steps,
         )
 
         # Derive the heading-local odometer XY offset. The reference anchor position
@@ -635,9 +728,9 @@ class BakedTargetFK:
         odom_offset_local = compute_odom_offset_local(
             current_ref_anchor_pos,
             current_anchor_rot,
-            odom_disp_start,
-            odom_start_xy,
-            odom_start_heading_inv,
+            odom_disp_start=odom_disp_start,
+            odom_start_xy=odom_start_xy,
+            odom_start_heading_inv=odom_start_heading_inv,
         )
 
         # Shift by odometer XY displacement (broadcast across future steps and bodies)
@@ -657,8 +750,31 @@ class BakedTargetFK:
         inner = self._inner
         return (
             f"BakedTargetFK(Nb={inner._Nb}, num_dofs={inner._num_dofs}, "
-            f"anchor={self._anchor_idx}, n_trackable={len(self._trackable)}, "
-            f"future_steps={self._future_steps})"
+            f"anchor={self._anchor_idx}, n_trackable={len(self._trackable)})"
+        )
+
+    def export_init(self) -> dict:
+        """The JSON-able constants that rebuild this kernel from a robot.
+
+        See :meth:`BakedAnchorFK.export_init`. The step selection is not a
+        constructor constant: it is the ``future_steps`` kernel parameter, so
+        it travels in the component's ``static_params``. ``BakedTargetFKNoOdom``
+        inherits both methods unchanged, so ``cls`` in :meth:`from_init`
+        rebuilds the right subclass.
+        """
+        return {
+            "anchor_idx": int(self._anchor_idx),
+            "trackable_body_indices": self._trackable.tolist(),
+        }
+
+    @classmethod
+    def from_init(cls, robot_config, **init) -> "BakedTargetFK":
+        """Rebuild the kernel (or a NoOdom subclass via ``cls``) from a robot."""
+        _check_init(cls.__name__, init)
+        return cls(
+            robot_config.kinematic_info,
+            init["anchor_idx"],
+            torch.as_tensor(init["trackable_body_indices"], dtype=torch.long),
         )
 
     __name__ = "BakedTargetFK"
@@ -700,11 +816,12 @@ class BakedTargetFKNoOdom(BakedTargetFK):
 
     def __call__(
         self,
-        future_dof_pos: Tensor,
-        current_anchor_rot: Tensor,
-        future_anchor_rot: Tensor,
-        future_ref_anchor_pos: Tensor,
-        current_ref_anchor_pos: Tensor,
+        future_dof_pos: Tensor = EnvContext.mimic.future_dof_pos,
+        current_anchor_rot: Tensor = EnvContext.current.anchor_rot,
+        future_anchor_rot: Tensor = EnvContext.mimic.future_anchor_rot,
+        future_ref_anchor_pos: Tensor = EnvContext.mimic.future_anchor_pos,
+        current_ref_anchor_pos: Tensor = EnvContext.mimic.ref_anchor_pos,
+        future_steps: Optional[StepSelection] = None,
     ) -> Tensor:
         """Compute odom-free reference target poses in the current heading frame.
 
@@ -713,10 +830,12 @@ class BakedTargetFKNoOdom(BakedTargetFK):
             current_anchor_rot: Current anchor quaternion [B, 4] (w-last).
             future_anchor_rot: Reference anchor quaternions [B, n_future, 4] (w-last).
             future_ref_anchor_pos: Where the reference anchor will be at each future
-                step [B, n_future, 3] (``ctx.mimic.future_anchor_pos``).  Required —
+                step [B, n_future, 3] (``mimic.future_anchor_pos``).  Required —
                 read from the reference motion, no odometer involved.
             current_ref_anchor_pos: Where the reference anchor is now [B, 3]
-                (``ctx.mimic.ref_anchor_pos``).  Required.
+                (``mimic.ref_anchor_pos``).  Required.
+            future_steps: The 1-based steps of the published horizon to read, in
+                output order; None = every published step.
 
         Returns:
             [B, n_selected * n_trackable * 9] target obs in the current heading frame,
@@ -728,6 +847,7 @@ class BakedTargetFKNoOdom(BakedTargetFK):
             future_anchor_rot,
             future_ref_anchor_pos=future_ref_anchor_pos,
             current_ref_anchor_pos=current_ref_anchor_pos,
+            future_steps=future_steps,
         )
 
         obs = torch.cat([pos_in_current, rot_6d], dim=-1)  # [B*nf, n_track, 9]
@@ -738,8 +858,7 @@ class BakedTargetFKNoOdom(BakedTargetFK):
         inner = self._inner
         return (
             f"BakedTargetFKNoOdom(Nb={inner._Nb}, num_dofs={inner._num_dofs}, "
-            f"anchor={self._anchor_idx}, n_trackable={len(self._trackable)}, "
-            f"future_steps={self._future_steps})"
+            f"anchor={self._anchor_idx}, n_trackable={len(self._trackable)})"
         )
 
     __name__ = "BakedTargetFKNoOdom"

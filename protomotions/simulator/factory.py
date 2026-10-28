@@ -5,6 +5,7 @@ import dataclasses
 
 from protomotions.simulator.base_simulator.config import SimulatorConfig
 from protomotions.robot_configs.base import RobotConfig
+from protomotions.utils.hydra_replacement import get_class
 import logging
 
 log = logging.getLogger(__name__)
@@ -14,7 +15,7 @@ def get_simulator_config_class(simulator: str):
     """Get the simulator config class for a given simulator type.
 
     Args:
-        simulator: Simulator type (isaacgym, isaaclab, newton, genesis)
+        simulator: Simulator type (isaacgym, isaaclab, newton, mujoco)
 
     Returns:
         The simulator config class
@@ -34,10 +35,6 @@ def get_simulator_config_class(simulator: str):
         from protomotions.simulator.newton.config import NewtonSimulatorConfig
 
         return NewtonSimulatorConfig
-    elif simulator == "genesis":
-        from protomotions.simulator.genesis.config import GenesisSimulatorConfig
-
-        return GenesisSimulatorConfig
     elif simulator == "mujoco":
         from protomotions.simulator.mujoco.config import MujocoSimulatorConfig
 
@@ -56,7 +53,7 @@ def simulator_config(
     """Factory function to create simulator configuration based on simulator type.
 
     Args:
-        simulator: Simulator type (isaacgym, isaaclab, newton, genesis)
+        simulator: Simulator type (isaacgym, isaaclab, newton, mujoco)
         robot_config: Robot configuration object
         headless: Whether to run in headless mode
         num_envs: Number of parallel environments
@@ -78,27 +75,6 @@ def simulator_config(
     )
 
 
-def warn_on_control_rate_change(
-    train_sim_params, sim_params, simulator_name: str
-) -> bool:
-    """Warn when inference runs the policy at a different control rate than training.
-
-    The policy acts once per control step (fps / decimation), so a different
-    rate puts it in a regime it never trained in. Call this after all config
-    overrides are applied. Returns True if it warned.
-    """
-    train_rate = train_sim_params.fps / train_sim_params.decimation
-    rate = sim_params.fps / sim_params.decimation
-    if abs(train_rate - rate) <= 1e-6 * train_rate:
-        return False
-    log.warning(
-        f"Control rate changes from {train_rate:g} Hz (training) to {rate:g} Hz "
-        f"({simulator_name}). Match it with "
-        f"--overrides simulator.sim.fps=... simulator.sim.decimation=..."
-    )
-    return True
-
-
 def update_simulator_config_for_test(
     current_simulator_config: SimulatorConfig,
     new_simulator: str,
@@ -111,8 +87,9 @@ def update_simulator_config_for_test(
     (_target_, w_last, etc.) and updates the current config accordingly.
 
     Args:
-        current_simulator_config: The simulator config from training (loaded from resolved_configs_inference.pt)
-        new_simulator: The new simulator type to use (e.g., 'isaaclab', 'isaacgym', 'genesis', 'newton', 'mujoco')
+        current_simulator_config: The simulator config from the training bundle
+            (resolved_configs.json)
+        new_simulator: The new simulator type to use (e.g., 'isaaclab', 'isaacgym', 'newton', 'mujoco')
         robot_config: Robot configuration containing simulation_params for all simulators
 
     Returns:
@@ -150,6 +127,19 @@ def update_simulator_config_for_test(
     config_fields = SimConfigClass.__dataclass_fields__
 
     new_target = config_fields["_target_"].default
+    # The backend actually instantiated comes from --simulator here, not the bundle,
+    # so resolve its class now and refuse by name -- an install or code problem, for
+    # which "regenerate the bundle" is the wrong guidance -- rather than letting build
+    # raise a bare AttributeError later. The launcher imported this backend in the
+    # right order (before torch), so the import is safe here; config_schema's load
+    # skips simulator targets for exactly that reason.
+    try:
+        get_class(new_target)
+    except (ImportError, AttributeError) as error:
+        raise ValueError(
+            f"simulator {new_simulator!r}: {new_target} is not importable "
+            f"({error}); install the {new_simulator} simulator or fix the class path"
+        ) from error
     new_w_last = config_fields["w_last"].default
     new_sim_params = getattr(robot_config.simulation_params, new_simulator)
 
@@ -175,7 +165,7 @@ def update_simulator_config_for_test(
     log.info(f"  _target_ -> {current_simulator_config._target_}")
     log.info(f"  w_last -> {current_simulator_config.w_last}")
     log.info(
-        f"  sim params -> {new_simulator} (fps={current_simulator_config.sim.fps}, decimation={current_simulator_config.sim.decimation})"
+        f"  sim params -> {new_simulator} (fps={current_simulator_config.sim.fps})"
     )
 
     return current_simulator_config

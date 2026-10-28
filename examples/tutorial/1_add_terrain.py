@@ -16,7 +16,7 @@ parser.add_argument(
     "--simulator",
     type=str,
     required=True,
-    help="Simulator to use (e.g., 'isaacgym', 'isaaclab', 'newton', 'genesis')",
+    help="Simulator to use (e.g., 'isaacgym', 'isaaclab', 'newton', 'mujoco')",
 )
 parser.add_argument(
     "--cpu-only",

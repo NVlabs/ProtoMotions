@@ -9,7 +9,6 @@ from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.actuators import ImplicitActuatorCfg, IdealPDActuatorCfg
 from isaaclab.utils.configclass import configclass
 from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sensors import ContactSensorCfg
 from isaaclab.terrains.terrain_importer_cfg import TerrainImporterCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from protomotions.simulator.isaaclab.utils.usd_utils import TrimeshTerrainImporter
@@ -19,7 +18,6 @@ from protomotions.simulator.isaaclab.utils.actuator_groups import (
 )
 from protomotions.simulator.isaaclab.utils.mjcf_to_usd import convert_robot_mjcf_to_usd
 from protomotions.simulator.isaaclab.utils.usd_body_paths import (
-    contact_sensor_prim_path,
     resolve_robot_prim_paths,
 )
 from protomotions.simulator.isaaclab.config import IsaacLabSimulatorConfig
@@ -53,7 +51,7 @@ class SceneCfg(InteractiveSceneCfg):
     ):
         super().__init__(*args, **kwargs)
 
-        activate_contact_sensors = robot_config.contact_bodies is not None
+        activate_contact_sensors = bool(robot_config.contact_bodies)
 
         # lights
         if True:  # pretty:
@@ -73,9 +71,7 @@ class SceneCfg(InteractiveSceneCfg):
                 ),
             )
 
-        num_objects_per_scene = 0
         if scene_cfgs is not None:
-            num_objects_per_scene = len(scene_cfgs)
             for obj_idx, obj_configs in enumerate(scene_cfgs):
                 spawn_cfg = sim_utils.MultiAssetSpawnerCfg(
                     activate_contact_sensors=activate_contact_sensors,
@@ -89,20 +85,6 @@ class SceneCfg(InteractiveSceneCfg):
                     init_state=RigidObjectCfg.InitialStateCfg(),
                 )
                 setattr(self, f"object_{obj_idx}", object)
-
-                # Object contact sensors are used to detect collisions between objects.
-                object_contact_paths = ["/World/ground/terrain/mesh"]
-                for i in range(num_objects_per_scene):
-                    if i != obj_idx:
-                        object_contact_paths.append(f"/World/envs/env_.*/Object_{i}")
-                if activate_contact_sensors:
-                    object_sensor_cfg = ContactSensorCfg(
-                        prim_path=f"/World/envs/env_.*/Object_{obj_idx}",
-                        # debug_vis=True,
-                        filter_prim_paths_expr=object_contact_paths,
-                        history_length=config.sim.decimation,
-                    )
-                    setattr(self, f"object_{obj_idx}_contact_sensor", object_sensor_cfg)
 
         # Projectile rigid objects (always created, independent of scene objects)
         if projectile_config is not None:
@@ -160,9 +142,7 @@ class SceneCfg(InteractiveSceneCfg):
 
         # Derive USD from the robot MJCF via IsaacLab 3 MjcfConverter.
         robot_usd_path = convert_robot_mjcf_to_usd(robot_config.asset)
-        contact_body_names = (
-            robot_config.contact_bodies if activate_contact_sensors else []
-        )
+        contact_body_names = robot_config.contact_bodies or []
         articulation_root_prim_path, body_prim_paths = resolve_robot_prim_paths(
             robot_usd_path,
             contact_body_names,
@@ -213,18 +193,6 @@ class SceneCfg(InteractiveSceneCfg):
             # Only modify disable_gravity field, keeping all other settings
             new_rigid_props = self.robot.spawn.rigid_props.replace(disable_gravity=True)
             self.robot.spawn = self.robot.spawn.replace(rigid_props=new_rigid_props)
-
-        if activate_contact_sensors:
-            sensing_filter = ["/World/ground/terrain/mesh"]
-            for obj_idx in range(num_objects_per_scene):
-                sensing_filter.append(f"/World/envs/env_.*/Object_{obj_idx}")
-            for body_name in robot_config.contact_bodies:
-                contact_sensor_cfg = ContactSensorCfg(
-                    prim_path=contact_sensor_prim_path(body_name, body_prim_paths),
-                    filter_prim_paths_expr=sensing_filter,
-                    history_length=config.sim.decimation,
-                )
-                setattr(self, f"contact_sensor_{body_name}", contact_sensor_cfg)
 
         if terrain is not None:
             terrain_physics_material = sim_utils.RigidBodyMaterialCfg(

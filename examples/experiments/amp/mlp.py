@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from protomotions.robot_configs.base import RobotConfig
-from protomotions.simulator.base_simulator.config import SimulatorConfig
 from protomotions.envs.base_env.config import EnvConfig
 from protomotions.agents.amp.config import AMPAgentConfig
+from protomotions.utils.experiment_configs import ExperimentConfigs
 import argparse
 
 
@@ -23,7 +23,7 @@ def scene_lib_config(args: argparse.Namespace):
     """Build scene library configuration."""
     from protomotions.components.scene_lib import SceneLibConfig
 
-    scene_file = args.scenes_file if hasattr(args, "scenes_file") else None
+    scene_file = args.scenes_file
     return SceneLibConfig(scene_file=scene_file)
 
 
@@ -40,20 +40,28 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
     Uses MdpComponent-based component configuration with explicit context bindings:
         MdpComponent(compute_func=compute_fn, dynamic_vars={...}, static_params={...})
     """
-    from protomotions.envs.component_factories import max_coords_obs_factory, historical_max_coords_obs_factory
+    from protomotions.envs.mdp_component import MdpComponent
+    from protomotions.envs.obs.humanoid import (
+        compute_humanoid_max_coords_observations,
+    )
+    from protomotions.envs.obs.humanoid_historical import (
+        compute_historical_max_coords_from_state,
+    )
     from protomotions.envs.motion_manager.config import MotionManagerConfig
     from protomotions.envs.action import make_pd_action_config
 
     # Observation components configuration
     observation_components = {
         # Humanoid self-observations (current state)
-        "max_coords_obs": max_coords_obs_factory(
+        "max_coords_obs": MdpComponent.from_kernel(
+            compute_humanoid_max_coords_observations,
             local_obs=True,
             root_height_obs=True,
             observe_contacts=False,
         ),
         # Historical observations for AMP discriminator (from StateHistoryBuffer)
-        "historical_max_coords_obs": historical_max_coords_obs_factory(
+        "historical_max_coords_obs": MdpComponent.from_kernel(
+            compute_historical_max_coords_from_state,
             local_obs=True,
             root_height_obs=True,
             observe_contacts=False,
@@ -63,7 +71,6 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
 
     env_config: EnvConfig = EnvConfig(
         max_episode_length=300,  # Training default (eval override applied automatically)
-        num_state_history_steps=max(HISTORY_STEPS),  # Store enough history for max dilation
         observation_components=observation_components,
         action_config=make_pd_action_config(robot_cfg),
         motion_manager=MotionManagerConfig(
@@ -85,7 +92,7 @@ def agent_config(
         DiscriminatorConfig,
         AMPParametersConfig,
     )
-    from protomotions.envs.obs import compute_historical_max_coords_from_motion_lib
+    from protomotions.envs.obs.humanoid_historical import compute_historical_max_coords_from_motion_lib
 
     actor_config = PPOActorConfig(
         num_out=robot_config.kinematic_info.num_dofs,
@@ -93,7 +100,6 @@ def agent_config(
         in_keys=["max_coords_obs", "historical_max_coords_obs"],
         mu_key="actor_trunk_out",
         mu_model=MLPWithConcatConfig(
-            in_keys=["max_coords_obs", "historical_max_coords_obs"],
             out_keys=["actor_trunk_out"],
             normalize_obs=True,
             norm_clamp_value=5,
@@ -167,8 +173,6 @@ def agent_config(
 
     agent_config: AMPAgentConfig = AMPAgentConfig(
         model=AMPModelConfig(
-            in_keys=["max_coords_obs", "historical_max_coords_obs"],
-            out_keys=["action", "mean_action", "neglogp", "value", "disc_logits", "disc_value"],
             actor=actor_config,
             critic=critic_config,
             discriminator=discriminator_config,
@@ -193,23 +197,11 @@ def agent_config(
 
 
 def apply_inference_overrides(
-    robot_cfg: RobotConfig,
-    simulator_cfg: SimulatorConfig,
-    env_cfg,
-    agent_cfg,
-    terrain_cfg,
-    motion_lib_cfg,
-    scene_lib_cfg,
-    args: argparse.Namespace,
-):
-    """Apply evaluation-specific overrides."""
-    # For AMP: disable discriminator reward during evaluation
-    if agent_cfg is not None and hasattr(agent_cfg, "amp_parameters"):
-        agent_cfg.amp_parameters.discriminator_reward_threshold = 0.0
+    configs: ExperimentConfigs, args: argparse.Namespace
+) -> None:
+    """Start every clip from its first frame for evaluation.
 
-    if env_cfg is not None:
-        if hasattr(env_cfg, "max_episode_length"):
-            env_cfg.max_episode_length = 1000000
-        if hasattr(env_cfg, "motion_manager"):
-            if hasattr(env_cfg.motion_manager, "init_start_prob"):
-                env_cfg.motion_manager.init_start_prob = 1.0
+    The discriminator-reward threshold (AMP) and the episode length are
+    framework inference defaults now; only this stays a recipe choice.
+    """
+    configs.env.motion_manager.init_start_prob = 1.0

@@ -6,6 +6,10 @@
 This module owns PEFT-specific state: adapter injection, task conditioning,
 and the frozen KL/sampling reference. The generic autoregressive token loop stays
 on the common prior transformer.
+
+The reference is a frozen copy of the policy a training run starts from. This
+module holds its prior and FiLM input normalizer; the actor holds its copy of
+the conditioning network, and the RLFT agent decides when to pin it.
 """
 
 from __future__ import annotations
@@ -26,6 +30,29 @@ from protomotions.agents.peft.adapters import (
 )
 
 log = logging.getLogger(__name__)
+
+
+def frozen_copy(module: nn.Module) -> nn.Module:
+    """Return a frozen copy of ``module`` for the reference policy.
+
+    The copy is in eval mode, takes no gradients and never updates its
+    normalizers. Its running statistics share the live Lightning Fabric instead
+    of copying it: a Fabric can hold process handles that cannot be copied, and
+    frozen statistics never synchronize anyway.
+    """
+    fabrics = {
+        id(submodule.fabric): submodule.fabric
+        for submodule in module.modules()
+        if getattr(submodule, "fabric", None) is not None
+    }
+    copied = copy.deepcopy(module, fabrics)
+    copied.eval()
+    for parameter in copied.parameters():
+        parameter.requires_grad = False
+    for submodule in copied.modules():
+        if isinstance(submodule, NormObsBase):
+            submodule._freeze_running = True
+    return copied
 
 
 class DiscretePriorWithPEFT(nn.Module):
@@ -67,9 +94,9 @@ class DiscretePriorWithPEFT(nn.Module):
             temperature: Sampling temperature for the PEFT actor.
             top_p: Nucleus sampling threshold for the PEFT actor.
             sampling_mode: Sampling strategy - "nucleus" or "prior_constraint".
-            prior_top_p: Nucleus threshold for the frozen prior (only used when
-                sampling_mode="prior_constraint"). Controls how conservatively
-                the frozen prior caps the PEFT actor's distribution.
+            prior_top_p: Nucleus threshold for the frozen reference policy (only
+                used when sampling_mode="prior_constraint"). Controls how
+                conservatively the reference caps the PEFT actor's distribution.
             condition_key: TensorDict key carrying PEFT conditioning features.
             film_input_norm: Normalize PEFT conditioning before FiLM layers.
             film_input_norm_clamp: Clamp value for normalized conditioning.
@@ -82,6 +109,9 @@ class DiscretePriorWithPEFT(nn.Module):
         self.top_p = top_p
         self.prior_top_p = prior_top_p
         self.condition_key = condition_key
+        # The reference policy reads the condition computed by its own frozen
+        # copy of the conditioning network from this key.
+        self.reference_condition_key = f"reference_{condition_key}"
         self.conditioning_dim = conditioning_dim
         self.sampling_mode = sampling_mode
         self.film_input_norm = (
@@ -197,16 +227,13 @@ class DiscretePriorWithPEFT(nn.Module):
                 self.task_c_dim,
             )
 
-    @staticmethod
-    def reference_state_prefixes(prefix: str = "") -> tuple[str, ...]:
-        return (
-            f"{prefix}reference_prior.",
-            f"{prefix}reference_film_input_norm.",
-        )
-
     def optional_full_checkpoint_state_prefixes(self) -> tuple[str, ...]:
-        """State that is optional when loading full PEFT training checkpoints."""
-        return ("_anchor_", "film_input_norm.", *self.reference_state_prefixes())
+        """State that is optional when loading full PEFT training checkpoints.
+
+        The reference prior and FiLM input normalizer held here are declared by
+        the actor, which lists every reference network in one place.
+        """
+        return ("_anchor_", "film_input_norm.")
 
     @property
     def reference_ready(self) -> bool:
@@ -217,11 +244,6 @@ class DiscretePriorWithPEFT(nn.Module):
             if isinstance(module, NormObsBase):
                 module._freeze_running = True
 
-    def _freeze_normalizers(self) -> None:
-        self._freeze_base_normalizers()
-        if self.film_input_norm is not None:
-            self.film_input_norm._freeze_running = True
-
     @torch.no_grad()
     def _materialize_film_input_norm(self, warmup_obs: dict | None) -> None:
         if self.film_input_norm is None or warmup_obs is None:
@@ -229,57 +251,62 @@ class DiscretePriorWithPEFT(nn.Module):
         self._build_task_c(warmup_obs, self.film_input_norm)
 
     def ensure_reference_modules(self) -> None:
+        """Build the reference prior and FiLM input normalizer if missing.
+
+        Inside an actor, call ``DiscretePriorPEFTActor.ensure_reference_modules``,
+        which also builds the reference's copy of the conditioning network.
+        """
         if self.reference_prior is None:
-            self.reference_prior = copy.deepcopy(self.base_prior)
+            self.reference_prior = frozen_copy(self.base_prior)
         if self.film_input_norm is None:
             self.reference_film_input_norm = None
         elif self.reference_film_input_norm is None:
-            self.reference_film_input_norm = copy.deepcopy(self.film_input_norm)
-        self._freeze_reference_modules()
-
-    def _freeze_reference_modules(self) -> None:
-        if self.reference_prior is not None:
-            self.reference_prior.eval()
-            for parameter in self.reference_prior.parameters():
-                parameter.requires_grad = False
-            for module in self.reference_prior.modules():
-                if isinstance(module, NormObsBase):
-                    module._freeze_running = True
-        if self.reference_film_input_norm is not None:
-            self.reference_film_input_norm.eval()
-            self.reference_film_input_norm._freeze_running = True
-            for parameter in self.reference_film_input_norm.parameters():
-                parameter.requires_grad = False
+            self.reference_film_input_norm = frozen_copy(self.film_input_norm)
 
     def mark_reference_loaded(self) -> None:
+        """Mark the reference state just loaded as ready to use.
+
+        Inside an actor, call ``DiscretePriorPEFTActor.mark_reference_loaded``.
+        """
         self.ensure_reference_modules()
         self._reference_ready = True
         log.info("Loaded PEFT prior reference from checkpoint state.")
 
+    def reset_reference(self) -> None:
+        """Drop the reference prior and FiLM input normalizer.
+
+        Inside an actor, call ``DiscretePriorPEFTActor.reset_reference``, which
+        also drops the reference's copy of the conditioning network. Called
+        here alone, the copy stays behind, and a ``last.ckpt`` saved afterwards
+        fails to load.
+        """
+        self.reference_prior = None
+        self.reference_film_input_norm = None
+        self._reference_ready = False
+
     def require_reference(self) -> None:
         if self.reference_prior is None or not self._reference_ready:
             raise RuntimeError(
-                "PEFT RLFT requires a frozen reference policy for true resume. "
-                "Warm-start with load_training_state=False or use a checkpoint "
-                "saved after the reference-module migration."
+                "This operation requires a frozen reference policy. Load a checkpoint "
+                "containing its reference, or initialize a new training reference "
+                "explicitly after loading the policy weights."
             )
 
-    def capture_reference(self):
-        """Pin the complete KL/sampling reference to the current PEFT policy."""
-        self._freeze_normalizers()
-        if self.reference_ready:
-            log.debug("PEFT prior reference already pinned; leaving it unchanged.")
-            return False
+    def capture_reference(self) -> None:
+        """Pin the KL/sampling reference to the current adapters and FiLM normalizer.
+
+        This replaces any reference pinned or loaded earlier. Inside an actor,
+        call ``DiscretePriorPEFTActor.capture_reference``, which also pins the
+        reference's copy of the conditioning network.
+        """
         self.ensure_reference_modules()
         self.reference_prior.load_state_dict(self.base_prior.state_dict())
         if self.film_input_norm is not None:
             self.reference_film_input_norm.load_state_dict(
                 self.film_input_norm.state_dict()
             )
-        self._freeze_reference_modules()
         self._reference_ready = True
         log.info("Pinned PEFT prior reference from current adapter state.")
-        return True
 
     @torch.no_grad()
     def clear_peft(self):
@@ -294,18 +321,23 @@ class DiscretePriorWithPEFT(nn.Module):
         self,
         input_dict: dict,
         film_input_norm: NormObsBase | None,
+        condition_key: str | None = None,
     ) -> torch.Tensor:
-        """Return task features concatenated with raw frozen-prior context."""
+        """Return task features concatenated with raw frozen-prior context.
+
+        ``condition_key`` defaults to the student's condition.
+        """
         # Adapter layers see both the task command and the same raw context that
         # conditions the frozen prior. This lets PEFT modulate the prior relative
         # to the state the prior itself is using, without hard-coding terrain or
         # task-specific keys in the adapter wrapper.
-        if self.condition_key not in input_dict:
+        condition_key = condition_key or self.condition_key
+        if condition_key not in input_dict:
             raise RuntimeError(
-                f"DiscretePriorWithPEFT requires input_dict[{self.condition_key!r}]."
+                f"DiscretePriorWithPEFT requires input_dict[{condition_key!r}]."
             )
         task_c = torch.cat(
-            [input_dict[self.condition_key], self._context(input_dict)],
+            [input_dict[condition_key], self._context(input_dict)],
             dim=-1,
         )
         if film_input_norm is not None:
@@ -322,6 +354,7 @@ class DiscretePriorWithPEFT(nn.Module):
             "task_c": self._build_task_c(
                 input_dict,
                 self.reference_film_input_norm,
+                self.reference_condition_key,
             )
         }
 
@@ -424,10 +457,9 @@ class DiscretePriorWithPEFT(nn.Module):
             if self.sampling_mode == "prior_constraint":
                 # Nucleus+prior-constraint sampling first limits the candidate set by
                 # the frozen reference policy, then samples with the active adapter
-                # logits. The reference is fixed at RLFT start, so sampling remains
-                # stable while the student adapter changes.
-                if not self.reference_ready:
-                    self.capture_reference()
+                # logits. The reference, including its conditioning, is frozen once
+                # pinned, so the constraint stays fixed while the student changes.
+                self.require_reference()
                 reference = self.reference_prior
                 reference_context = self._context_embedding(input_dict, prior=reference)
                 reference_kwargs = self._reference_task_transformer_kwargs(input_dict)

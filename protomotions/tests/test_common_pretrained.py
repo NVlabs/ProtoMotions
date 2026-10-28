@@ -42,7 +42,7 @@ def test_load_pretrained_model_module_materializes_lazy_modules_from_state_dict(
     )
     monkeypatch.setattr(
         pretrained_module,
-        "load_resolved_configs_from_checkpoint",
+        "load_experiment_configs_from_checkpoint",
         lambda *args, **kwargs: {
             "agent": SimpleNamespace(
                 model=SimpleNamespace(
@@ -63,3 +63,70 @@ def test_load_pretrained_model_module_materializes_lazy_modules_from_state_dict(
 
     assert model.materialized_from_state is True
     assert torch.equal(model.linear.weight, torch.tensor([[2.0, 3.0]]))
+
+
+def test_load_pretrained_prefers_the_checkpoint_when_both_are_set(
+    tmp_path, monkeypatch
+):
+    """A present checkpoint_path wins over an embedded module_config.
+
+    The GPC bundle carries both at train time (the teacher checkpoint for its
+    weights, the embedded config so inference is self-contained once the path is
+    blanked). Training must load the teacher's trained weights, not build a fresh
+    module from the embedded config, so the frozen decoder is not random.
+    """
+    checkpoint_path = tmp_path / "teacher.pt"
+    torch.save(
+        {"model": {"linear.weight": torch.tensor([[2.0, 3.0]])}}, checkpoint_path
+    )
+    monkeypatch.setattr(
+        pretrained_module,
+        "load_experiment_configs_from_checkpoint",
+        lambda *args, **kwargs: {
+            "agent": SimpleNamespace(
+                model=SimpleNamespace(
+                    _target_="protomotions.tests.test_common_pretrained._LazyCheckpointModel"
+                )
+            )
+        },
+    )
+
+    model = load_pretrained_model_module(
+        PretrainedModelConfig(
+            checkpoint_path=str(checkpoint_path),
+            module_path="",
+            module_config=SimpleNamespace(
+                _target_="protomotions.tests.test_common_pretrained._LazyCheckpointModel"
+            ),
+            freeze=False,
+        ),
+        device=torch.device("cpu"),
+    )
+
+    # The checkpoint branch ran (weights loaded from state_dict), not the
+    # module_config branch (which builds an uninitialized module).
+    assert model.materialized_from_state is True
+    assert torch.equal(model.linear.weight, torch.tensor([[2.0, 3.0]]))
+
+
+def test_load_pretrained_raises_on_a_set_but_missing_checkpoint(tmp_path):
+    """A set-but-missing checkpoint_path raises, even with an embedded config.
+
+    Only a blank path (inference blanks it when a config is embedded) falls back
+    to module_config. A mistyped or moved teacher checkpoint must fail loudly
+    rather than silently build untrained weights from the embedded config.
+    """
+    import pytest
+
+    with pytest.raises(FileNotFoundError, match="checkpoint not found"):
+        load_pretrained_model_module(
+            PretrainedModelConfig(
+                checkpoint_path=str(tmp_path / "does_not_exist.ckpt"),
+                module_path="",
+                module_config=SimpleNamespace(
+                    _target_="protomotions.tests.test_common_pretrained._LazyCheckpointModel"
+                ),
+                freeze=False,
+            ),
+            device=torch.device("cpu"),
+        )

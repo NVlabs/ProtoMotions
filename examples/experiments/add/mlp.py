@@ -4,9 +4,13 @@
 import argparse
 from protomotions.components.terrains.config import TerrainConfig
 from protomotions.robot_configs.base import RobotConfig
-from protomotions.simulator.base_simulator.config import SimulatorConfig
 from protomotions.envs.base_env.config import EnvConfig
 from protomotions.agents.amp.config import AMPAgentConfig, AMPParametersConfig
+from protomotions.envs.presets import tracking_playback
+from protomotions.utils.experiment_configs import ExperimentConfigs
+from examples.experiments.amp.mlp import (
+    apply_inference_overrides as amp_apply_inference_overrides,
+)
 
 
 def terrain_config(args: argparse.Namespace):
@@ -18,7 +22,7 @@ def scene_lib_config(args: argparse.Namespace):
     """Build scene library configuration."""
     from protomotions.components.scene_lib import SceneLibConfig
 
-    scene_file = args.scenes_file if hasattr(args, "scenes_file") else None
+    scene_file = args.scenes_file
     return SceneLibConfig(scene_file=scene_file)
 
 
@@ -31,14 +35,18 @@ def motion_lib_config(args: argparse.Namespace):
 
 def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
     """Build environment configuration (training defaults).
-    
-    Uses factory functions for standard observations/rewards/terminations.
+
+    Binds the standard observation, reward and termination kernels directly
+    (``MdpComponent.from_kernel``).
     """
     from protomotions.envs.motion_manager.config import MimicMotionManagerConfig
     from protomotions.envs.control.mimic_control import MimicControlConfig
-    from protomotions.envs.component_factories import (
-        max_coords_obs_factory,
-        mimic_target_poses_reduced_coords_factory,
+    from protomotions.envs.mdp_component import MdpComponent
+    from protomotions.envs.obs.humanoid import (
+        compute_humanoid_max_coords_observations,
+    )
+    from protomotions.envs.obs.target_poses import (
+        build_reduced_coords_target_poses,
     )
     from protomotions.envs.action import make_pd_action_config
 
@@ -51,8 +59,12 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
 
     # Observation components configuration
     observation_components = {
-        "max_coords_obs": max_coords_obs_factory(),
-        "mimic_target_poses": mimic_target_poses_reduced_coords_factory(),
+        "max_coords_obs": MdpComponent.from_kernel(
+            compute_humanoid_max_coords_observations
+        ),
+        "mimic_target_poses": MdpComponent.from_kernel(
+            build_reduced_coords_target_poses
+        ),
     }
 
     return EnvConfig(
@@ -74,8 +86,15 @@ def agent_config(
     from protomotions.agents.ppo.config import PPOActorConfig
     from protomotions.agents.amp.config import AMPModelConfig, DiscriminatorConfig
     from protomotions.agents.base_agent.config import OptimizerConfig
+
+    from protomotions.envs.terminations.rule import TerminationRule
     from protomotions.agents.evaluators.config import MimicEvaluatorConfig
-    from protomotions.envs.component_factories import gt_error_factory, gr_error_factory, max_joint_error_factory
+    from protomotions.envs.mdp_component import MdpComponent
+    from protomotions.envs.terminations.tracking import (
+        max_body_pos_error,
+        mean_body_pos_error,
+        mean_body_rot_error,
+    )
 
     actor_config = PPOActorConfig(
         num_out=robot_config.kinematic_info.num_dofs,
@@ -83,7 +102,6 @@ def agent_config(
         in_keys=["max_coords_obs", "mimic_target_poses"],
         mu_key="actor_trunk_out",
         mu_model=MLPWithConcatConfig(
-            in_keys=["max_coords_obs", "mimic_target_poses"],
             out_keys=["actor_trunk_out"],
             normalize_obs=True,
             norm_clamp_value=5,
@@ -119,14 +137,23 @@ def agent_config(
         ],
     )
 
+    # Separate value baseline for discriminator rewards, not task rewards.
+    disc_critic_config = MLPWithConcatConfig(
+        in_keys=["max_coords_obs", "mimic_target_poses"],
+        out_keys=["disc_value"],
+        normalize_obs=True,
+        norm_clamp_value=5,
+        num_out=1,
+        layers=[MLPLayerConfig(units=1024, activation="relu") for _ in range(4)],
+    )
+
     agent_config: AMPAgentConfig = AMPAgentConfig(
         _target_="protomotions.agents.mimic.agent_add.MimicADD",
         model=AMPModelConfig(
-            in_keys=["max_coords_obs", "mimic_target_poses", "mimic_target_poses_diff"],
-            out_keys=["action", "mean_action", "neglogp", "value", "disc_logits"],
             actor=actor_config,
             critic=critic_config,
             discriminator=discriminator_config,
+            disc_critic=disc_critic_config,
             actor_optimizer=OptimizerConfig(_target_="torch.optim.Adam", lr=2e-5),
             critic_optimizer=OptimizerConfig(_target_="torch.optim.Adam", lr=1e-4),
             discriminator_optimizer=OptimizerConfig(
@@ -139,11 +166,17 @@ def agent_config(
         gradient_clip_val=50.0,
         clip_critic_loss=True,
         evaluator=MimicEvaluatorConfig(
-            evaluation_components={
-                "gt_error": gt_error_factory(threshold=0.5),
-                "gr_error": gr_error_factory(),
-                "max_joint_error": max_joint_error_factory(),
+            metric_components={
+                "gt_error": MdpComponent.from_kernel(mean_body_pos_error),
+                "gr_error": MdpComponent.from_kernel(mean_body_rot_error),
+                "max_joint_error": MdpComponent.from_kernel(max_body_pos_error),
             },
+            failure_components={
+                "gt_error": TerminationRule(
+                    MdpComponent.from_kernel(mean_body_pos_error), 0.5
+                ),
+            },
+            score_key="eval/success_rate",
         ),
         amp_parameters=AMPParametersConfig(
             discriminator_reward_threshold=0.03,
@@ -153,32 +186,8 @@ def agent_config(
 
 
 def apply_inference_overrides(
-    robot_cfg: RobotConfig,
-    simulator_cfg: SimulatorConfig,
-    env_cfg,
-    agent_cfg,
-    terrain_cfg,
-    motion_lib_cfg,
-    scene_lib_cfg,
-    args: argparse.Namespace,
-):
-    """Apply evaluation-specific overrides."""
-    # Reuse the mimic apply_inference_overrides function
-    from protomotions.utils.config_utils import (
-        import_experiment_relative_eval_overrides,
-    )
-
-    apply_inference_overrides_fn = import_experiment_relative_eval_overrides(
-        "../mimic/mlp.py"
-    )
-    apply_inference_overrides_fn(robot_cfg, simulator_cfg, env_cfg, agent_cfg, terrain_cfg, motion_lib_cfg, scene_lib_cfg, args)
-
-    # Reuse the amp apply_inference_overrides function
-    from protomotions.utils.config_utils import (
-        import_experiment_relative_eval_overrides,
-    )
-
-    apply_inference_overrides_fn = import_experiment_relative_eval_overrides(
-        "../amp/mlp.py"
-    )
-    apply_inference_overrides_fn(robot_cfg, simulator_cfg, env_cfg, agent_cfg, terrain_cfg, motion_lib_cfg, scene_lib_cfg, args)
+    configs: ExperimentConfigs, args: argparse.Namespace
+) -> None:
+    """Play each clip to its end (mimic) and start it at frame 0 (amp)."""
+    tracking_playback(configs.env)
+    amp_apply_inference_overrides(configs, args)

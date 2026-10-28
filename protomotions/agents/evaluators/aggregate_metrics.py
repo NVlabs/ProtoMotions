@@ -4,8 +4,13 @@
 """Aggregate metrics for post-hoc trajectory analysis.
 
 This module contains metrics computed over accumulated MotionMetrics trajectories
-after an evaluation episode completes, as opposed to per-step evaluation components
-(MdpComponents) which run during the episode with threshold-based failure detection.
+once an evaluation pass has finished, as opposed to metric_components
+(MdpComponents), which are reduced to a mean, min and max frame by frame while
+the rollout runs. Neither kind decides success; that comes from the
+ThresholdFailure rules in failure_components. A trial stops recording at the
+frame where a rule that fails on any single frame first fires, so for such a
+failure these metrics cover only the frames up to it. Rules judged over the
+whole window keep recording to the end of the clip.
 
 Key Classes:
     - AggregateMetric: Base class for post-hoc metrics
@@ -20,20 +25,21 @@ from protomotions.agents.evaluators.smoothness_calculator import SmoothnessCalcu
 
 class AggregateMetric:
     """Base class for metrics computed post-hoc over accumulated MotionMetrics trajectories.
-    
-    Unlike evaluation_components (MdpComponents) which run per-step with 
-    threshold-based failure detection, AggregateMetrics run after the full 
-    episode to compute summary statistics like smoothness or jerk.
-    
+
+    Unlike metric_components (MdpComponents), which are reduced frame by frame
+    during the rollout, AggregateMetrics run once evaluation has finished and
+    compute summary statistics like smoothness or jerk over the recorded
+    trajectories. A trial that fails an any-frame rule ends at that frame.
+
     Subclasses must implement the compute() method.
     """
-    
+
     def compute(self, metrics: Dict[str, MotionMetrics]) -> Dict[str, float]:
         """Compute aggregate metrics from collected motion data.
-        
+
         Args:
             metrics: Dictionary of MotionMetrics objects containing trajectory data
-        
+
         Returns:
             Dictionary of scalar metrics with "eval/" prefix for logging
         """
@@ -42,7 +48,7 @@ class AggregateMetric:
 
 class SmoothnessAggregateMetric(AggregateMetric):
     """Aggregate metric for computing motion smoothness from rigid body trajectories.
-    
+
     Computes normalized jerk and high-jerk frame percentage over sliding windows.
     """
 
@@ -88,7 +94,7 @@ class SmoothnessAggregateMetric(AggregateMetric):
 
 class ActionSmoothnessAggregateMetric(AggregateMetric):
     """Aggregate metric for computing action smoothness.
-    
+
     Measures how much actions change between consecutive timesteps.
     High action deltas indicate jerky/unstable control.
     """
@@ -121,7 +127,9 @@ class ActionSmoothnessAggregateMetric(AggregateMetric):
             return {}
 
         actions_data = metrics["actions"].data  # [num_motions, max_frames, num_dofs]
-        motion_lens = metrics["actions"].motion_lens  # [num_motions]
+        # A failed trial can end before its reference clip. Ignore the unfilled
+        # tail, including the artificial jump from the last action to zero.
+        frame_counts = metrics["actions"].frame_counts  # [num_motions]
 
         result = {}
         all_deltas = []
@@ -129,7 +137,7 @@ class ActionSmoothnessAggregateMetric(AggregateMetric):
 
         num_motions = actions_data.shape[0]
         for m in range(num_motions):
-            n_frames = int(motion_lens[m].item())
+            n_frames = int(frame_counts[m].item())
             if n_frames < 2:
                 continue
 

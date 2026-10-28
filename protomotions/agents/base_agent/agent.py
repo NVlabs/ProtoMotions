@@ -38,8 +38,9 @@ from tensordict import TensorDict
 from protomotions.utils.hydra_replacement import get_class
 
 from protomotions.agents.utils.metering import TimeReport, TensorAverageMeterDict
-from protomotions.agents.utils.data import DictDataset, ExperienceBuffer
+from protomotions.agents.utils.data import DictDataset, ExperienceBuffer, swap_and_flatten01
 from protomotions.envs.base_env.env import BaseEnv
+from protomotions.agents.utils.checkpoint import prepare_model_state_dict
 from protomotions.agents.utils.normalization import (
     RewardRunningMeanStd,
     RunningMeanStd,
@@ -49,6 +50,7 @@ from rich.progress import track
 from protomotions.agents.evaluators.base_evaluator import BaseEvaluator
 from protomotions.agents.base_agent.config import BaseAgentConfig
 from protomotions.agents.utils.training import (
+    aggregate_evaluation_results,
     aggregate_scalar_metrics,
     handle_model_grad_clipping,
 )
@@ -107,9 +109,9 @@ class BaseAgent:
         self.fabric = fabric
         self.device: torch.device = self.fabric.device
         self.env = env
-        self.motion_lib = self.env.motion_lib
-        self.motion_manager = self.env.motion_manager
-        self.motion_shard_cycle = self.env.motion_lib.motion_file_shard_cycle
+        self.motion_lib = self.env.reference_motion.motion_lib
+        self.motion_manager = self.env.reference_motion.motion_manager
+        self.motion_shard_cycle = self.motion_lib.motion_file_shard_cycle
         self.config = config
 
         self.num_envs: int = self.env.num_envs
@@ -201,7 +203,8 @@ class BaseAgent:
         """
         return False
 
-    def setup(self):
+    def setup(self, *, training: bool = True):
+        self.training_setup = training
         self.fabric.call("on_model_init_start")
         self._before_create_model()
         model = self.create_model()
@@ -237,15 +240,20 @@ class BaseAgent:
     def _before_create_model(self) -> None:
         """Hook for subclasses that need setup state before create_model()."""
 
+    def inference_step(self, obs_td):
+        """Evaluate the policy without requiring training-only inputs."""
+        return self.model.forward_deployable(obs_td)
+
     def _after_model_reset(self) -> None:
         """Hook after model creation, device transfer, and reset."""
 
-    def _attach_fabric_to_running_mean_std(self) -> None:
-        def pass_fabric_to_running_mean_std(module):
-            if isinstance(module, RunningMeanStd):
-                module.fabric = self.fabric
+    def _attach_fabric_to_running_mean_std(self, module=None) -> None:
+        def pass_fabric_to_running_mean_std(child):
+            if isinstance(child, RunningMeanStd):
+                child.fabric = self.fabric
 
-        self.model.apply(pass_fabric_to_running_mean_std)
+        target = self.model if module is None else module
+        target.apply(pass_fabric_to_running_mean_std)
 
     def _materialize_lazy_modules(self, dummy_obs_td: TensorDict) -> None:
         """Materialize LazyLinear/RunningMeanStd modules with a dummy forward."""
@@ -253,6 +261,11 @@ class BaseAgent:
 
     def _after_create_optimizers(self) -> None:
         """Hook after optimizers/DDP wrappers are created."""
+
+    def _before_fit(self) -> None:
+        """Hook at the start of ``fit()``: after every weight load, before the
+        buffer-registration forward and the first rollout. What a run does once
+        at training start (PEFT pins its reference policy here)."""
 
     @abstractmethod
     def create_model(self):
@@ -285,6 +298,8 @@ class BaseAgent:
         checkpoint: Path,
         load_env: bool = True,
         load_training_state: bool = True,
+        *,
+        for_inference: bool = False,
     ):
         if checkpoint is not None:
             self.fabric.call("on_load_checkpoint_start")
@@ -294,6 +309,10 @@ class BaseAgent:
 
             state_dict = torch.load(
                 checkpoint, map_location=self.device, weights_only=False
+            )
+            self._validate_checkpoint(
+                state_dict, load_training_state=load_training_state,
+                for_inference=for_inference,
             )
             self.load_parameters(
                 state_dict,
@@ -306,6 +325,9 @@ class BaseAgent:
                 self._load_environment_checkpoint()
 
             self.fabric.call("on_load_checkpoint_end")
+
+    def _validate_checkpoint(self, state_dict, *, load_training_state, for_inference):
+        """Validate operation-specific requirements before copying any weights."""
 
     def _load_environment_checkpoint(self) -> bool:
         """Load the saved environment state for the selected motion shard."""
@@ -340,6 +362,7 @@ class BaseAgent:
 
     def _load_model_state_dict(self, model_state_dict):
         """Load model parameters from a checkpoint model state dictionary."""
+        model_state_dict = prepare_model_state_dict(self.model, model_state_dict)
         materialize_lazy_running_stats_from_state_dict(self.model, model_state_dict)
         self.model.materialize_from_state_dict(model_state_dict)
         self.model.load_state_dict(model_state_dict)
@@ -588,14 +611,7 @@ class BaseAgent:
         rollout writes, and replay storage cannot silently drift apart.
         """
         self.model_output_keys = self.model.experience_buffer_keys()
-        rollout_state_specs_fn = getattr(
-            self.model,
-            "_rollout_state_specs_recursive",
-            None,
-        )
-        rollout_state_specs = (
-            rollout_state_specs_fn() if rollout_state_specs_fn is not None else {}
-        )
+        rollout_state_specs = self.model._rollout_state_specs_recursive()
         for key in self.model_output_keys:
             value = output_td[key]
             if not isinstance(value, torch.Tensor):
@@ -644,6 +660,43 @@ class BaseAgent:
 
         return output_td
 
+    def setup_experience_buffer(self, obs) -> TensorDict:
+        """Create the experience buffer and register every key a rollout writes.
+
+        ``obs`` is what ``env.reset`` returned. The environment's observation
+        keys (with the agent info) are registered from it; the model's output
+        keys from one forward in eval mode under ``no_grad``
+        (``_eval_model_for_buffer_registration``: no normalizer update, no
+        distributed collective; the lazy modules were materialized in
+        ``setup``), through ``_register_model_output_keys``, which checks a
+        declared rollout state's shape and dtype against its spec; then the
+        rewards, the dones and the algorithm's own keys. ``fit()`` runs this
+        once before the first rollout; the recipe build stage runs it on a
+        one-env build to prove the same registration. Returns the forward's
+        output.
+        """
+        self.experience_buffer = ExperienceBuffer(
+            self.num_envs, self.num_steps, device=self.device
+        )
+        obs = self.add_agent_info_to_obs(obs)
+        obs_td = self.obs_dict_to_tensordict(obs)
+        for key, env_tensor in obs_td.items():
+            self.experience_buffer.register_key(
+                key, shape=env_tensor.shape[1:], dtype=env_tensor.dtype
+            )
+        with self._eval_model_for_buffer_registration(), torch.no_grad():
+            output_td = self.model(obs_td)
+            # Track which keys are model outputs (not from environment).
+            self._register_model_output_keys(output_td)
+            log.info(f"Auto-registered model output keys: {self.model_output_keys}")
+        self.experience_buffer.register_key("rewards")
+        if self.config.normalize_rewards:
+            self.experience_buffer.register_key("unnormalized_rewards")
+        self.experience_buffer.register_key("dones", dtype=torch.long)
+        self.register_algorithm_experience_buffer_keys()
+        self.register_algorithm_experience_buffer_keys_from_obs(obs_td)
+        return output_td
+
     def fit(self):
         """Main training loop for the agent.
 
@@ -662,39 +715,11 @@ class BaseAgent:
         Note:
             This is the main entry point for training. Call setup() before fit().
         """
-        # Setup experience buffer
-        self.experience_buffer = ExperienceBuffer(
-            self.num_envs, self.num_steps, device=self.device
-        )
+        self._before_fit()
 
-        # Get initial observations from environment
+        # Size the experience buffer on the first observations.
         obs, _ = self.env.reset()
-        obs = self.add_agent_info_to_obs(obs)
-        obs_td = self.obs_dict_to_tensordict(obs)
-
-        # Register environment observation keys
-        for key, env_tensor in obs_td.items():
-            shape = env_tensor.shape
-            dtype = env_tensor.dtype
-            self.experience_buffer.register_key(key, shape=shape[1:], dtype=dtype)
-
-        # Auto-register model output keys with setup-only inference. Keep this
-        # in eval mode so normalizers do not update or run distributed collectives.
-        with self._eval_model_for_buffer_registration(), torch.no_grad():
-            output_td = self.model(obs_td)
-
-            # Track which keys are model outputs (not from environment).
-            self._register_model_output_keys(output_td)
-
-            log.info(f"Auto-registered model output keys: {self.model_output_keys}")
-
-        # Basic keys always needed
-        self.experience_buffer.register_key("rewards")
-        if self.config.normalize_rewards:
-            self.experience_buffer.register_key("unnormalized_rewards")
-        self.experience_buffer.register_key("dones", dtype=torch.long)
-        self.register_algorithm_experience_buffer_keys()
-        self.register_algorithm_experience_buffer_keys_from_obs(obs_td)
+        self.setup_experience_buffer(obs)
 
         # Force reset on fit start
         done_indices = torch.arange(self.num_envs, device=self.device, dtype=torch.long)
@@ -817,25 +842,17 @@ class BaseAgent:
             if should_evaluate:
                 self.fabric.call("on_eval_start", self)
 
-                eval_log_dict, evaluated_score, num_eval_items = (
-                    self.evaluator.evaluate()
-                )
+                result = self.evaluator.evaluate()
+                self.evaluator.update_training_state(result)
                 self.fabric.call("on_eval_end", self)
 
                 # Aggregate eval metrics across ranks weighted by num_eval_items
                 # (number of motions evaluated), not num_envs. This ensures
                 # proper averaging when ranks evaluate different motion counts
                 # (e.g., co-training with heterogeneous motion libraries).
-                eval_log_dict = aggregate_scalar_metrics(
-                    eval_log_dict, self.fabric, weight=num_eval_items
+                eval_log_dict, evaluated_score = aggregate_evaluation_results(
+                    result.logs, result.score, result.num_items, self.fabric
                 )
-                if evaluated_score is not None:
-                    score_dict = aggregate_scalar_metrics(
-                        {"_score": evaluated_score},
-                        self.fabric,
-                        weight=num_eval_items,
-                    )
-                    evaluated_score = score_dict["_score"]
 
                 if evaluated_score is not None:
                     if (
@@ -1044,7 +1061,19 @@ class BaseAgent:
 
     def optimize_model(self) -> Dict:
         self.pre_process_dataset()
-        dataset = self.process_dataset(self.experience_buffer.make_dict())
+        # Build targets before flattening, while adjacent times still belong to
+        # known environments. Use the buffer's same env-major flattening below.
+        rollout = dict(self.experience_buffer.named_buffers())
+        with torch.no_grad():
+            model_targets = self.model.build_training_targets(rollout)
+        data = self.experience_buffer.make_dict()
+        for key, value in model_targets.items():
+            if key in data:
+                raise ValueError(f"Model training target overwrites rollout key: {key}")
+            if value.shape[:2] != (self.num_steps, self.num_envs):
+                raise ValueError(f"Model training target {key} has invalid time/env shape")
+            data[key] = swap_and_flatten01(value)
+        dataset = self.process_dataset(data)
         self.train()
         training_log_dict = {}
 

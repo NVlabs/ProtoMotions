@@ -36,6 +36,9 @@ permissions:
   contents: read
 
 env:
+  # OpenMesh 1.2.1 vendors CMake projects with pre-3.5 policy versions.
+  # CMake 4 requires this policy floor when building the MuJoCo dependency.
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
   GITLEAKS_VERSION: "8.21.2"
   GITLEAKS_SHA256: "5bc41815076e6ed6ef8fbecc9d9b75bcae31f39029ceb55da08086315316e3ba"
 
@@ -49,6 +52,7 @@ jobs:
         with: { lfs: false }
       - uses: actions/setup-python@v5
         with: { python-version: "3.10" }
+      - run: python scripts/download_metatron.py --configs-only
       - run: python scripts/check_model_licenses.py
 
   # Catches a credential in a contributed pull request before it is merged --
@@ -194,13 +198,16 @@ jobs:
           # covers the converter logic rather than the exact deployed stack.
           pip install usd-core==26.8
 
+      - name: Fetch pinned Metatron config sidecars (no weights)
+        run: python scripts/download_metatron.py --configs-only
+
       # Skips the tests marked needs_lfs, which read a real payload this job
       # deliberately does not fetch; they run in test-full. The marker lives on
       # the test itself, so this cannot drift out of step with the suite the way
       # a hard-coded --deselect list did -- pytest ignores a --deselect naming a
       # test that has been renamed, and says nothing.
       - name: Run test suite (no LFS payloads)
-        env: { MUJOCO_GL: osmesa, PYOPENGL_PLATFORM: osmesa }
+        env: { MUJOCO_GL: osmesa, PYOPENGL_PLATFORM: osmesa, PROTOMOTIONS_REQUIRE_METATRON: "1" }
         run: |
           pytest protomotions/tests/ -q --durations=10 -m "not needs_lfs"
 
@@ -238,6 +245,9 @@ jobs:
           # A different OpenUSD build from the one inside Isaac Sim, so this
           # covers the converter logic rather than the exact deployed stack.
           pip install usd-core==26.8
+      - name: Fetch pinned Metatron package from Hugging Face
+        run: python scripts/download_metatron.py
+
       - name: Run full test suite
-        env: { MUJOCO_GL: osmesa, PYOPENGL_PLATFORM: osmesa }
+        env: { MUJOCO_GL: osmesa, PYOPENGL_PLATFORM: osmesa, PROTOMOTIONS_REQUIRE_METATRON: "1" }
         run: pytest protomotions/tests/ -q --durations=10

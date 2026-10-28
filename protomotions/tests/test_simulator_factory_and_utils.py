@@ -64,11 +64,13 @@ def test_simulator_factory_dispatches_config_classes_and_builds_config(monkeypat
         ("isaacgym", "IsaacGymSimulatorConfig"),
         ("isaaclab", "IsaacLabSimulatorConfig"),
         ("newton", "NewtonSimulatorConfig"),
-        ("genesis", "GenesisSimulatorConfig"),
         ("mujoco", "MujocoSimulatorConfig"),
     ]:
         _install_fake_sim_config(monkeypatch, simulator_name, class_name)
-        assert simulator_factory.get_simulator_config_class(simulator_name) is _FakeSimulatorConfig
+        assert (
+            simulator_factory.get_simulator_config_class(simulator_name)
+            is _FakeSimulatorConfig
+        )
 
     robot_config = SimpleNamespace(
         simulation_params=SimpleNamespace(newton=_FakeSimParams(fps=240, decimation=4))
@@ -91,12 +93,17 @@ def test_simulator_factory_dispatches_config_classes_and_builds_config(monkeypat
         simulator_factory.get_simulator_config_class("unknown")
 
 
-def test_update_simulator_config_for_test_adds_missing_params_and_new_fields(monkeypatch):
+def test_update_simulator_config_for_test_adds_missing_params_and_new_fields(
+    monkeypatch,
+):
     monkeypatch.setattr(
         simulator_factory,
         "get_simulator_config_class",
         lambda simulator_name: _FakeSimulatorConfig,
     )
+    # The swap now import-checks the new backend's _target_; the fake names a fake
+    # class, so stub the resolver (the real resolution is covered by its own test).
+    monkeypatch.setattr(simulator_factory, "get_class", lambda path: object)
     current = SimpleNamespace(
         _target_="old.Target",
         w_last=True,
@@ -123,22 +130,39 @@ def test_update_simulator_config_for_test_adds_missing_params_and_new_fields(mon
         "mujoco": object(),
     }
     with pytest.raises(ValueError, match="does not have simulation_params"):
-        simulator_factory.update_simulator_config_for_test(current, "mujoco", robot_config)
+        simulator_factory.update_simulator_config_for_test(
+            current, "mujoco", robot_config
+        )
 
 
-@pytest.mark.parametrize(
-    "train_sim, sim, warns",
-    [
-        (_FakeSimParams(120, 4), _FakeSimParams(1000, 20), True),  # 30 -> 50 Hz
-        (_FakeSimParams(120, 4), _FakeSimParams(960, 32), False),  # 30 -> 30 Hz
-    ],
-)
-def test_warn_on_control_rate_change(caplog, train_sim, sim, warns):
-    with caplog.at_level("WARNING", logger=simulator_factory.__name__):
-        warned = simulator_factory.warn_on_control_rate_change(train_sim, sim, "mujoco")
+def test_update_simulator_config_for_test_refuses_an_unimportable_backend(monkeypatch):
+    # The backend to swap to must be importable; if its class cannot be resolved
+    # (uninstalled or renamed), refuse by name at the swap rather than crashing at
+    # build. A simulator target is import-order-sensitive, so config_schema's bundle
+    # load skips it and the check lands here, where the launcher has already imported
+    # the backend in the right order (before torch).
+    monkeypatch.setattr(
+        simulator_factory,
+        "get_simulator_config_class",
+        lambda simulator_name: _FakeSimulatorConfig,
+    )
 
-    assert warned is warns
-    assert ("Control rate changes from 30 Hz" in caplog.text) is warns
+    def _unimportable(path):
+        raise ImportError(f"No module named {path.split('.')[0]!r}")
+
+    monkeypatch.setattr(simulator_factory, "get_class", _unimportable)
+    current = SimpleNamespace(
+        _target_="old.Target",
+        w_last=True,
+        sim=_FakeSimParams(fps=30, decimation=1),
+    )
+    robot_config = SimpleNamespace(
+        simulation_params=SimpleNamespace(newton=_FakeSimParams())
+    )
+    with pytest.raises(ValueError, match="simulator 'newton'.*not importable"):
+        simulator_factory.update_simulator_config_for_test(
+            current, "newton", robot_config
+        )
 
 
 def test_build_motion_data_maps_recorded_fields_and_fills_missing_values():
@@ -170,7 +194,7 @@ def test_build_motion_data_maps_recorded_fields_and_fills_missing_values():
         fps=60,
         num_dof=0,
     )
-    assert torch.equal(without_contacts["rigid_body_contacts"], torch.zeros(1, 1, dtype=torch.bool))
+    assert "rigid_body_contacts" not in without_contacts
 
 
 def test_friction_range_helpers_cover_combine_modes_and_validation():
@@ -180,10 +204,22 @@ def test_friction_range_helpers_cover_combine_modes_and_validation():
 
     assert _friction_ranges_match((1.0, 2.0), (1.0, 2.0 + 1e-7), 1e-6)
     assert not _friction_ranges_match((1.0, 2.0), (1.0, 2.1), 1e-6)
-    assert _compute_effective_friction_range((0.5, 1.5), 1.0, CombineMode.AVERAGE) == (0.75, 1.25)
-    assert _compute_effective_friction_range((0.5, 1.5), 1.0, CombineMode.MIN) == (0.5, 1.0)
-    assert _compute_effective_friction_range((0.5, 1.5), 1.0, CombineMode.MAX) == (1.0, 1.5)
-    assert _compute_effective_friction_range((0.5, 1.5), 2.0, CombineMode.MULTIPLY) == (1.0, 3.0)
+    assert _compute_effective_friction_range((0.5, 1.5), 1.0, CombineMode.AVERAGE) == (
+        0.75,
+        1.25,
+    )
+    assert _compute_effective_friction_range((0.5, 1.5), 1.0, CombineMode.MIN) == (
+        0.5,
+        1.0,
+    )
+    assert _compute_effective_friction_range((0.5, 1.5), 1.0, CombineMode.MAX) == (
+        1.0,
+        1.5,
+    )
+    assert _compute_effective_friction_range((0.5, 1.5), 2.0, CombineMode.MULTIPLY) == (
+        1.0,
+        3.0,
+    )
     assert _compute_effective_friction_range(None, 1.0, CombineMode.MAX) is None
 
     with pytest.raises(ValueError, match="Unknown combine mode"):
@@ -299,7 +335,9 @@ def test_convert_friction_for_simulator_handles_required_and_optional_modes():
     assert get_simulator_friction_combine_mode("mujoco") is None
 
     terrain = TerrainConfig(
-        sim_config=TerrainSimConfig(static_friction=1.0, combine_mode=CombineMode.AVERAGE)
+        sim_config=TerrainSimConfig(
+            static_friction=1.0, combine_mode=CombineMode.AVERAGE
+        )
     )
     simulator = SimulatorConfig(
         _target_="protomotions.simulator.newton.simulator.NewtonSimulator",
@@ -318,7 +356,9 @@ def test_convert_friction_for_simulator_handles_required_and_optional_modes():
         simulator,
     )
     assert adjusted_terrain.sim_config.combine_mode is CombineMode.MAX
-    assert adjusted_simulator.domain_randomization.friction.static_friction_range[0] == pytest.approx(0.75)
+    assert adjusted_simulator.domain_randomization.friction.static_friction_range[
+        0
+    ] == pytest.approx(0.75)
 
     unchanged_terrain, unchanged_simulator = convert_friction_for_simulator(
         terrain,
@@ -335,9 +375,14 @@ def test_convert_friction_for_simulator_handles_required_and_optional_modes():
     assert unchanged_simulator._target_.endswith("MujocoSimulator")
 
     terrain_without_sim = TerrainConfig(sim_config=None)
-    assert convert_friction_for_simulator(terrain_without_sim, simulator)[0] is terrain_without_sim
+    assert (
+        convert_friction_for_simulator(terrain_without_sim, simulator)[0]
+        is terrain_without_sim
+    )
     assert convert_friction_for_simulator(None, simulator)[0] is None
-    already_max = TerrainConfig(sim_config=TerrainSimConfig(combine_mode=CombineMode.MAX))
+    already_max = TerrainConfig(
+        sim_config=TerrainSimConfig(combine_mode=CombineMode.MAX)
+    )
     assert convert_friction_for_simulator(already_max, simulator)[0] is already_max
 
 
@@ -381,9 +426,7 @@ def test_convert_friction_for_simulator_maps_partial_ranges(
             source_ranges["dynamic"] if "dynamic" in configured_fields else None
         ),
         restitution_range=(
-            source_ranges["restitution"]
-            if "restitution" in configured_fields
-            else None
+            source_ranges["restitution"] if "restitution" in configured_fields else None
         ),
     )
     terrain = TerrainConfig(
@@ -445,9 +488,7 @@ def test_isaaclab_keeps_source_combine_mode_and_partial_ranges(source_mode):
         dynamic_friction_range=(0.3, 0.9),
         restitution_range=None,
     )
-    terrain = TerrainConfig(
-        sim_config=TerrainSimConfig(combine_mode=source_mode)
-    )
+    terrain = TerrainConfig(sim_config=TerrainSimConfig(combine_mode=source_mode))
     simulator = SimulatorConfig(
         _target_="protomotions.simulator.isaaclab.simulator.Simulator",
         w_last=False,

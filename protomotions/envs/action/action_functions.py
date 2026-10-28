@@ -10,15 +10,14 @@ with control gains (stiffness, damping).
 Basic Usage
 -----------
 
-In experiment configs, use the helper to create action config:
+In experiment configs, use the helper to create an action config:
 
     from protomotions.envs.action import make_pd_action_config
 
     action_config = make_pd_action_config(robot_cfg)
 
-This returns a dict that's processed in env.py:
-
-    {"fn": normalized_pd_fixed_gains_action, "pd_action_offset": ..., ...}
+The helpers live in ``protomotions.envs.action.config`` and return an
+``ActionConfig`` (fn plus the bound parameters), processed by the ActionStage.
 
 Adding New ONNX-Compilable Action Functions
 --------------------------------------------
@@ -117,7 +116,7 @@ Unlike observations, rewards, and terminations:
    are passed directly from robot config, not from environment context
 """
 
-from typing import Any, Dict, Literal
+from typing import Dict, Literal
 import numpy as np
 import torch
 from torch import Tensor
@@ -266,59 +265,6 @@ def build_pd_action_offset_scale(
     return pd_action_offset, pd_action_scale
 
 
-def make_pd_action_config(
-    robot_config,
-    action_transform: ActionTransform = "tanh",
-    clamp_value: float = 1.0,
-    action_scale: float = 1.0,
-) -> Dict[str, Any]:
-    """Create action config dict for normalized PD control.
-
-    Helper to extract control parameters from robot config and return
-    a ready-to-use action config dict.
-
-    Args:
-        robot_config: Robot configuration with kinematic_info and control fields.
-        action_transform: How to bound actions - "tanh" (default), "clamp", or None.
-        clamp_value: Max absolute action value for clamp mode.
-        action_scale: Scale factor beyond the PD range so the motor does not
-            lose strength near joint limits.
-
-    Returns:
-        Action config dict: {"fn": normalized_pd_fixed_gains_action, "pd_action_offset": ..., ...}
-
-    Example:
-        action_config = make_pd_action_config(robot_cfg)
-    """
-    pd_action_offset, pd_action_scale = build_pd_action_offset_scale(
-        robot_config.kinematic_info.hinge_axes_map,
-        robot_config.kinematic_info.dof_limits_lower,
-        robot_config.kinematic_info.dof_limits_upper,
-        action_scale,
-        torch.device("cpu"),
-    )
-
-    joint_names = robot_config.kinematic_info.dof_names
-    stiffness = torch.tensor(
-        [robot_config.control.control_info[j].stiffness for j in joint_names],
-        dtype=torch.float32,
-    )
-    damping = torch.tensor(
-        [robot_config.control.control_info[j].damping for j in joint_names],
-        dtype=torch.float32,
-    )
-
-    return {
-        "fn": normalized_pd_fixed_gains_action,
-        "pd_action_offset": pd_action_offset,
-        "pd_action_scale": pd_action_scale,
-        "stiffness": stiffness,
-        "damping": damping,
-        "action_transform": action_transform,
-        "clamp_value": clamp_value,
-    }
-
-
 def bm_pd_action(
     action: Tensor,
     pd_action_offset: Tensor,
@@ -353,84 +299,4 @@ def bm_pd_action(
         "processed_action": processed_action.clone(),
         "stiffness_targets": stiffness.unsqueeze(0).expand(batch_size, -1).clone(),
         "damping_targets": damping.unsqueeze(0).expand(batch_size, -1).clone(),
-    }
-
-
-def make_bm_pd_action_config(robot_config) -> Dict[str, Any]:
-    """Create action config dict for BeyondMimic-style PD action scaling.
-
-    Computes per-joint action scale as ``0.25 * effort_limit / stiffness``,
-    so unit policy output produces a proportional torque of 25% of the effort
-    limit at the default pose. Uses ``robot_config.default_dof_pos``
-    as the action offset (default standing pose).
-
-    Args:
-        robot_config: Robot configuration with kinematic_info, control, and
-            default_dof_pos fields.
-
-    Returns:
-        Action config dict: {"fn": bm_pd_action, "pd_action_offset": ..., ...}
-
-    Example:
-        action_config = make_bm_pd_action_config(robot_cfg)
-    """
-    joint_names = robot_config.kinematic_info.dof_names
-    stiffness = torch.tensor(
-        [robot_config.control.control_info[j].stiffness for j in joint_names],
-        dtype=torch.float32,
-    )
-    damping = torch.tensor(
-        [robot_config.control.control_info[j].damping for j in joint_names],
-        dtype=torch.float32,
-    )
-    effort_limit = torch.tensor(
-        [robot_config.control.control_info[j].effort_limit for j in joint_names],
-        dtype=torch.float32,
-    )
-
-    if torch.any(stiffness <= 0):
-        raise ValueError("BM PD action stiffness must be positive for all joints")
-
-    action_scale = 0.25 * effort_limit / stiffness
-
-    pd_action_offset = robot_config.default_dof_pos.clone()
-
-    return {
-        "fn": bm_pd_action,
-        "pd_action_offset": pd_action_offset,
-        "action_scale": action_scale,
-        "stiffness": stiffness,
-        "damping": damping,
-    }
-
-
-def make_passthrough_pd_action_config(robot_config) -> Dict[str, Any]:
-    """Create action config dict for passthrough PD control.
-
-    Extracts stiffness/damping from robot config but applies no transformation
-    to the policy output. Use when the policy outputs joint position targets directly.
-
-    Args:
-        robot_config: Robot configuration with kinematic_info and control fields.
-
-    Returns:
-        Action config dict: {"fn": passthrough_pd_action, "stiffness": ..., "damping": ...}
-
-    Example:
-        action_config = make_passthrough_pd_action_config(robot_cfg)
-    """
-    joint_names = robot_config.kinematic_info.dof_names
-    stiffness = torch.tensor(
-        [robot_config.control.control_info[j].stiffness for j in joint_names],
-        dtype=torch.float32,
-    )
-    damping = torch.tensor(
-        [robot_config.control.control_info[j].damping for j in joint_names],
-        dtype=torch.float32,
-    )
-
-    return {
-        "fn": passthrough_pd_action,
-        "stiffness": stiffness,
-        "damping": damping,
     }

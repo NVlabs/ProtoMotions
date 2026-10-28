@@ -1,0 +1,9 @@
+{
+  "name": "SOMA FSQ motion tracker",
+  "robot": "soma23",
+  "inference_checkpoint": "inference_last.ckpt",
+  "inference_checkpoint_sha256": "c742e5da3de834eefc47c3f35be4aa449dcd2993cf669831ac2d17ba8e87ed29",
+  "inference_checkpoint_bytes": 69540413,
+  "model_tensor_count": 44,
+  "resumable": false
+}

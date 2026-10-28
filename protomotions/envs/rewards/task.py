@@ -3,25 +3,18 @@
 
 """Task-specific reward compute kernels.
 
-Pure tensor functions (kernels) for computing task-specific rewards.
-Use MdpComponent in experiment configs to bind kernels to context paths:
+Pure tensor functions (kernels) for computing task-specific rewards. Each
+kernel's inputs default to the context names it reads (the control's commands
+and the robot's declared anchor body), so a recipe binds it with
+``MdpComponent.from_kernel`` and overrides only what differs::
 
-    from protomotions.envs.context_views import EnvContext
     from protomotions.envs.mdp_component import MdpComponent
+    from protomotions.envs.rewards.meta import RewardMeta
     from protomotions.envs.rewards.task import compute_heading_velocity_rew
 
     reward_components = {
-        "heading_velocity": MdpComponent(
-            compute_func=compute_heading_velocity_rew,
-            dynamic_vars={
-                "root_pos": EnvContext.current.root_pos,
-                "prev_root_pos": EnvContext.steering.prev_root_pos,
-                "root_rot": EnvContext.current.root_rot,
-                "tar_dir": EnvContext.steering.tar_dir,
-                "tar_speed": EnvContext.steering.tar_speed,
-                "tar_face_dir": EnvContext.steering.tar_face_dir,
-                "dt": EnvContext.dt,
-            },
+        "heading_velocity": MdpComponent.from_kernel(
+            compute_heading_velocity_rew, meta=RewardMeta(weight=1.0)
         ),
     }
 
@@ -34,6 +27,7 @@ Provides reward functions for specific tasks:
 import torch
 from torch import Tensor
 
+from protomotions.envs.context_views import EnvContext
 from protomotions.utils.rotations import calc_heading_quat, quat_rotate
 
 
@@ -42,13 +36,13 @@ from protomotions.utils.rotations import calc_heading_quat, quat_rotate
 # =============================================================================
 
 def compute_heading_velocity_rew(
-    root_pos: Tensor,
-    prev_root_pos: Tensor,
-    root_rot: Tensor,
-    tar_dir: Tensor,
-    tar_speed: Tensor,
-    tar_face_dir: Tensor,
-    dt: float,
+    root_pos: Tensor = EnvContext.current.anchor_pos,
+    prev_root_pos: Tensor = EnvContext.steering.prev_root_pos,
+    root_rot: Tensor = EnvContext.current.anchor_rot,
+    tar_dir: Tensor = EnvContext.steering.tar_dir,
+    tar_speed: Tensor = EnvContext.steering.tar_speed,
+    tar_face_dir: Tensor = EnvContext.steering.tar_face_dir,
+    dt: float = EnvContext.dt,
 ) -> Tensor:
     """Reward for moving in target direction at target speed while facing that direction.
 
@@ -56,10 +50,14 @@ def compute_heading_velocity_rew(
     - Direction reward: exponential penalty on velocity error and tangent velocity
     - Facing reward: alignment between robot heading and target direction
 
+    The position and rotation are the robot's declared anchor body, the body
+    the steering control tracks (``steering.prev_root_pos`` is its previous
+    anchor position), so one reward reads one body.
+
     Args:
-        root_pos: Current root position [num_envs, 3].
-        prev_root_pos: Previous root position [num_envs, 3].
-        root_rot: Root orientation quaternions [num_envs, 4] (w-last).
+        root_pos: Current anchor position [num_envs, 3].
+        prev_root_pos: The anchor's position at the previous step [num_envs, 3].
+        root_rot: Anchor orientation quaternions [num_envs, 4] (w-last).
         tar_dir: Target movement direction [num_envs, 2].
         tar_speed: Target speed [num_envs].
         tar_face_dir: Target facing direction [num_envs, 2] (can differ from tar_dir).
@@ -114,9 +112,9 @@ def compute_heading_velocity_rew(
 # =============================================================================
 
 def compute_path_following_rew(
-    head_pos: Tensor,
-    tar_pos: Tensor,
-    height_conditioned: bool,
+    head_pos: Tensor = EnvContext.path.head_pos,
+    tar_pos: Tensor = EnvContext.path.tar_pos,
+    height_conditioned: bool = EnvContext.path.height_conditioned,
     pos_err_scale: float = 2.0,
     height_err_scale: float = 10.0,
 ) -> Tensor:
@@ -158,12 +156,12 @@ def compute_path_following_rew(
 # =============================================================================
 
 def compute_target_rew(
-    root_pos: Tensor,
-    tar_pos: Tensor,
-    tar_proximity_threshold: float,
+    root_pos: Tensor = EnvContext.current.anchor_pos,
+    tar_pos: Tensor = EnvContext.target.tar_pos,
+    tar_proximity_threshold: float = EnvContext.target.tar_proximity_threshold,
     pos_err_scale: float = 0.42,
 ) -> Tensor:
-    """Distance-based target reaching reward."""
+    """Distance-based target reaching reward (one inside the proximity threshold)."""
     pos_diff = tar_pos[..., :2] - root_pos[..., :2]
     dist = torch.linalg.norm(pos_diff, dim=-1)
     reward = torch.exp(-pos_err_scale * dist)

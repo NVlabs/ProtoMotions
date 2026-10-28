@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import json
 import multiprocessing
 import time
 import types
@@ -22,7 +23,6 @@ except ModuleNotFoundError:  # Python < 3.11
     import tomli as tomllib
 
 import pytest
-import torch
 
 import protomotions.simulator.isaaclab.utils.mjcf_to_usd as mjcf_to_usd
 import protomotions.simulator.isaaclab.utils.mjcf_d6_workaround as mjcf_d6_workaround
@@ -43,7 +43,6 @@ from protomotions.simulator.isaaclab.utils.mjcf_to_usd import (
     resolve_robot_mjcf_path,
 )
 from protomotions.simulator.isaaclab.utils.usd_body_paths import (
-    contact_sensor_prim_path,
     resolve_articulation_root_prim_path,
     resolve_articulation_root_prim_path_from_records,
     resolve_body_prim_paths,
@@ -258,31 +257,32 @@ def test_humanoid_robot_configs_use_mjcf_only():
         assert asset.asset_file_name.endswith(".xml")
 
 
-# This check is split in two so the half that needs no Git LFS payload can gate
-# every pull request. The sidecar YAML is plain text in the pack -- deliberately
-# kept out of LFS so it stays greppable and readable in a diff -- so a checkout
-# with lfs: false holds the real file. The .pt beside it is an LFS object, which
-# that same checkout holds only as a pointer stub, so it runs in the job that
-# fetches payloads.
-def test_tracked_resolved_sidecar_yaml_omits_legacy_usd_fields():
+def _all_keys(tree):
+    """Every dict key anywhere in a parsed JSON tree."""
+    if isinstance(tree, dict):
+        for key, value in tree.items():
+            yield key
+            yield from _all_keys(value)
+    elif isinstance(tree, list):
+        for value in tree:
+            yield from _all_keys(value)
+
+
+# A regenerated bundle must not carry the legacy USD asset fields
+# (usd_asset_file_name / usd_bodies_root_prim_path): the USD path is predicted from
+# the MJCF now. The v1 .pt / .yaml sidecars are gone; resolved_configs.json is plain
+# text (not Git LFS), so this reads it directly and gates every pull request.
+def test_tracked_resolved_configs_omit_legacy_usd_fields():
     artifacts_root = Path(__file__).parents[2] / "data" / "pretrained_models"
-    yaml_paths = sorted(artifacts_root.glob("**/resolved_configs*.yaml"))
+    json_paths = sorted(artifacts_root.glob("**/resolved_configs.json"))
     # Without this the test would also pass by matching nothing at all.
-    assert yaml_paths, f"no resolved_configs*.yaml found under {artifacts_root}"
-    for yaml_path in yaml_paths:
-        text = yaml_path.read_text()
-        assert "usd_asset_file_name:" not in text
-        assert "usd_bodies_root_prim_path:" not in text
-
-
-@pytest.mark.needs_lfs
-def test_tracked_resolved_sidecar_checkpoints_omit_legacy_usd_fields():
-    artifacts_root = Path(__file__).parents[2] / "data" / "pretrained_models"
-    for pt_path in artifacts_root.glob("**/resolved_configs*.pt"):
-        configs = torch.load(pt_path, weights_only=False)
-        asset = configs["robot"].asset
-        assert not hasattr(asset, "usd_asset_file_name")
-        assert not hasattr(asset, "usd_bodies_root_prim_path")
+    assert json_paths, f"no resolved_configs.json found under {artifacts_root}"
+    for json_path in json_paths:
+        text = json_path.read_text()
+        keys = set(_all_keys(json.loads(text)))
+        for field in ("usd_asset_file_name", "usd_bodies_root_prim_path"):
+            assert field not in text, f"{json_path}: {field} appears as text"
+            assert field not in keys, f"{json_path}: {field} appears as a key"
 
 
 def test_resolve_robot_mjcf_path_and_predicted_usd(tmp_path):
@@ -622,10 +622,6 @@ def test_resolve_body_prim_paths_nested_and_flat():
     )
     assert paths["pelvis"] == "Geometry/pelvis"
     assert paths["left_ankle_roll_link"] == "Geometry/pelvis/left_ankle_roll_link"
-    assert (
-        contact_sensor_prim_path("pelvis", paths)
-        == "/World/envs/env_.*/Robot/Geometry/pelvis"
-    )
 
     with pytest.raises(ValueError, match="visual_only"):
         resolve_body_prim_paths_from_records(
@@ -732,7 +728,8 @@ def test_scene_module_uses_mjcf_conversion_helpers():
     }
     assert "convert_robot_mjcf_to_usd" in imported
     assert "resolve_robot_prim_paths" in imported
-    assert "contact_sensor_prim_path" in imported
+    # Pairwise reporting is now owned by one native view, not per-link sensors.
+    assert "contact_sensor_prim_path" not in imported
     source = scene_path.read_text()
     assert "usd_asset_file_name" not in source
     assert "usd_bodies_root_prim_path" not in source

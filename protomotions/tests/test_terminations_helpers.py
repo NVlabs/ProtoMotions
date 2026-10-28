@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for the pure-tensor termination predicates in
-protomotions.envs.terminations (base + task helpers).
+"""Tests for the pure-tensor termination kernels in
+protomotions.envs.terminations (base predicates + task scalar kernels).
 """
 
 from __future__ import annotations
@@ -10,133 +10,140 @@ from __future__ import annotations
 
 import torch
 
+from protomotions.envs.mdp_component import MdpComponent
 from protomotions.envs.terminations.base import (
-    check_fall_contact_term,
-    check_height_term,
     check_max_length_term,
-    combine_fall_termination,
-    contact_termination,
-    fall_termination,
-    height_termination,
-    threshold_termination,
+    named_contact_fall_termination,
 )
+from protomotions.envs.terminations.rule import TerminationRule
 from protomotions.envs.terminations.task import (
-    check_path_distance_term,
-    check_path_height_term,
-    check_steering_velocity_error,
+    path_distance,
+    path_height_error,
+    steering_direction_alignment,
+    steering_speed_error,
 )
 
 
-# ---------- check_fall_contact_term -------------------------------------------
+# ---------- named_contact_fall_termination ------------------------------------
+# Bodies: 0, 1 = feet (allowed support), 2 = torso, 3 = head. The contact matrix
+# carries only the forbidden rows (torso, head) against two partners, with
+# terrain deliberately in column 1 so nothing relies on a fixed terrain index.
+
+BODY_INDEX = {"torso": 0, "head": 1}
+PARTNER_INDEX = {"robot/foot_l": 0, "terrain": 1}
+FORBIDDEN = ["torso", "head"]
+FORBIDDEN_IDS = torch.tensor([2, 3], dtype=torch.long)
 
 
-def test_check_fall_contact_term_only_flags_envs_with_disallowed_contacts():
-    # 3 envs × 4 bodies. Bodies 0, 1 are feet (allowed contact); body 2 = torso, body 3 = head.
-    contacts = torch.tensor(
-        [
-            [True, True, False, False],   # only feet — should not terminate
-            [True, False, True, False],   # torso contact — should terminate
-            [False, False, False, True],  # head contact — should terminate
-        ]
+def _positions(torso_z: float, head_z: float, envs: int = 1) -> torch.Tensor:
+    pos = torch.zeros(envs, 4, 3)
+    pos[:, 0, 2], pos[:, 1, 2] = 0.05, 0.05  # feet always low: never a fall
+    pos[:, 2, 2], pos[:, 3, 2] = torso_z, head_z
+    return pos
+
+
+def _terrain_forces(torso: list[float], head: list[float]) -> torch.Tensor:
+    forces = torch.zeros(len(torso), 2, 2, 3)
+    forces[:, 0, 1, 2] = torch.tensor(torso)
+    forces[:, 1, 1, 2] = torch.tensor(head)
+    return forces
+
+
+def test_named_fall_only_flags_envs_whose_forbidden_rows_touch_terrain():
+    # Env 0: nothing on terrain. Env 1: torso. Env 2: head.
+    forces = _terrain_forces(torso=[0.0, 5.0, 0.0], head=[0.0, 0.0, 5.0])
+    pos = _positions(torso_z=0.05, head_z=0.05, envs=3)
+
+    result = named_contact_fall_termination(
+        rigid_body_pos=pos,
+        contact_forces=forces,
+        contact_body_index=BODY_INDEX,
+        contact_partner_index=PARTNER_INDEX,
+        ground_heights=torch.zeros(3),
+        progress_buf=torch.tensor([5, 5, 5]),
+        body_ids=FORBIDDEN_IDS,
+        body_names=FORBIDDEN,
+        partner_names=["terrain"],
+        termination_height=0.1,
     )
-    allowed = torch.tensor([0, 1], dtype=torch.long)
-    progress = torch.tensor([5, 5, 5])
-
-    result = check_fall_contact_term(contacts, allowed, progress)
 
     assert torch.equal(result, torch.tensor([False, True, True]))
 
 
-def test_check_fall_contact_term_skips_first_two_progress_steps():
-    """progress_buf <= 1 should never terminate even with bad contact."""
-    contacts = torch.tensor([[False, False, True]])
-    allowed = torch.tensor([0], dtype=torch.long)
+def test_named_fall_skips_first_two_progress_steps():
+    forces = _terrain_forces(torso=[5.0], head=[0.0])
+    pos = _positions(torso_z=0.05, head_z=1.0)
+    for step, expected in ((0, False), (1, False), (2, True)):
+        result = named_contact_fall_termination(
+            rigid_body_pos=pos,
+            contact_forces=forces,
+            contact_body_index=BODY_INDEX,
+            contact_partner_index=PARTNER_INDEX,
+            ground_heights=torch.zeros(1),
+            progress_buf=torch.tensor([step]),
+            body_ids=FORBIDDEN_IDS,
+            body_names=FORBIDDEN,
+            partner_names=["terrain"],
+            termination_height=0.1,
+        )
+        assert torch.equal(result, torch.tensor([expected])), step
 
+
+def test_named_fall_counts_only_the_named_partner_columns():
+    # Torso presses hard on another robot link (column 0) but not on terrain.
+    forces = torch.zeros(1, 2, 2, 3)
+    forces[0, 0, 0, 0] = 50.0
+    pos = _positions(torso_z=0.05, head_z=1.0)
+    kwargs = dict(
+        ground_heights=torch.zeros(1),
+        progress_buf=torch.tensor([5]),
+        body_ids=FORBIDDEN_IDS,
+        body_names=FORBIDDEN,
+        termination_height=0.1,
+    )
     assert torch.equal(
-        check_fall_contact_term(contacts, allowed, torch.tensor([0])),
+        named_contact_fall_termination(
+            rigid_body_pos=pos,
+            contact_forces=forces,
+            contact_body_index=BODY_INDEX,
+            contact_partner_index=PARTNER_INDEX,
+            partner_names=["terrain"],
+            **kwargs,
+        ),
         torch.tensor([False]),
     )
     assert torch.equal(
-        check_fall_contact_term(contacts, allowed, torch.tensor([1])),
-        torch.tensor([False]),
-    )
-    assert torch.equal(
-        check_fall_contact_term(contacts, allowed, torch.tensor([2])),
+        named_contact_fall_termination(
+            rigid_body_pos=pos,
+            contact_forces=forces,
+            contact_body_index=BODY_INDEX,
+            contact_partner_index=PARTNER_INDEX,
+            partner_names=["robot/foot_l"],
+            **kwargs,
+        ),
         torch.tensor([True]),
     )
 
 
-def test_check_fall_contact_term_does_not_mutate_input_contacts():
-    contacts = torch.tensor([[True, True, False]])
-    contacts_clone = contacts.clone()
-    allowed = torch.tensor([0], dtype=torch.long)
+def test_named_fall_does_not_mutate_inputs():
+    forces = _terrain_forces(torso=[5.0], head=[0.0])
+    pos = _positions(torso_z=0.05, head_z=1.0)
+    forces_clone, pos_clone = forces.clone(), pos.clone()
 
-    _ = check_fall_contact_term(contacts, allowed, torch.tensor([5]))
-
-    # The internal mask must be on a clone — input should be untouched.
-    assert torch.equal(contacts, contacts_clone)
-
-
-def test_check_fall_contact_term_handles_no_allowed_contact_bodies():
-    contacts = torch.tensor(
-        [
-            [False, False, False],
-            [False, True, False],
-        ]
+    named_contact_fall_termination(
+        rigid_body_pos=pos,
+        contact_forces=forces,
+        contact_body_index=BODY_INDEX,
+        contact_partner_index=PARTNER_INDEX,
+        ground_heights=torch.zeros(1),
+        progress_buf=torch.tensor([5]),
+        body_ids=FORBIDDEN_IDS,
+        body_names=FORBIDDEN,
+        partner_names=["terrain"],
+        termination_height=0.1,
     )
-    allowed = torch.tensor([], dtype=torch.long)
-    progress = torch.tensor([5, 5])
 
-    result = check_fall_contact_term(contacts, allowed, progress)
-
-    assert torch.equal(result, torch.tensor([False, True]))
-
-
-# ---------- check_height_term --------------------------------------------------
-
-
-def test_check_height_term_flags_bodies_below_threshold():
-    # 2 envs, 3 bodies (z values).
-    rigid_body_pos = torch.tensor(
-        [
-            [[0.0, 0.0, 0.5], [0.0, 0.0, 1.0], [0.0, 0.0, 1.5]],   # all above
-            [[0.0, 0.0, 0.05], [0.0, 0.0, 1.0], [0.0, 0.0, 1.5]],  # body 0 below
-        ]
-    )
-    termination_heights = torch.tensor([0.1, 0.5, 0.5])
-    allowed = torch.tensor([], dtype=torch.long)
-
-    result = check_height_term(rigid_body_pos, termination_heights, allowed)
-
-    assert torch.equal(result, torch.tensor([False, True]))
-
-
-def test_check_height_term_excludes_allowed_bodies_from_violation():
-    """A body listed in non_termination_body_ids never triggers termination
-    even if below threshold."""
-    rigid_body_pos = torch.tensor([[[0.0, 0.0, 0.0], [0.0, 0.0, 1.0]]])
-    termination_heights = torch.tensor([0.1, 0.5])
-    # Body 0 is below threshold but is allowed — should not terminate.
-    allowed = torch.tensor([0], dtype=torch.long)
-
-    result = check_height_term(rigid_body_pos, termination_heights, allowed)
-
-    assert torch.equal(result, torch.tensor([False]))
-
-
-def test_check_height_term_uses_strict_less_than_threshold():
-    rigid_body_pos = torch.tensor(
-        [
-            [[0.0, 0.0, 0.10], [0.0, 0.0, 0.50]],
-            [[0.0, 0.0, 0.09], [0.0, 0.0, 0.50]],
-        ]
-    )
-    termination_heights = torch.tensor([0.10, 0.50])
-    allowed = torch.tensor([], dtype=torch.long)
-
-    result = check_height_term(rigid_body_pos, termination_heights, allowed)
-
-    assert torch.equal(result, torch.tensor([False, True]))
+    assert torch.equal(forces, forces_clone) and torch.equal(pos, pos_clone)
 
 
 # ---------- check_max_length_term ---------------------------------------------
@@ -157,409 +164,292 @@ def test_check_max_length_term_accepts_fractional_episode_lengths():
     assert torch.equal(result, torch.tensor([False, False, True, True]))
 
 
-# ---------- combine_fall_termination + fall_termination wrapper ---------------
+# ---------- named_contact_fall_termination: contact AND height ----------------
 
 
-def test_combine_fall_termination_requires_both_contact_and_height():
-    """The combined check uses AND: contact alone or height alone shouldn't terminate."""
-    # Single env, 3 bodies.
-    progress = torch.tensor([5])
-    allowed = torch.tensor([0], dtype=torch.long)
-    termination_heights = torch.tensor([0.1, 0.1, 0.1])
-
-    # Contact only on body 1, but body 1 is above threshold.
-    contacts_only = torch.tensor([[False, True, False]])
-    pos_above = torch.tensor([[[0, 0, 1.0], [0, 0, 1.0], [0, 0, 1.0]]], dtype=torch.float)
+def test_named_fall_requires_both_contact_and_low_height():
+    forces_touching = _terrain_forces(torso=[5.0], head=[0.0])
+    forces_free = torch.zeros(1, 2, 2, 3)
+    kwargs = dict(
+        ground_heights=torch.zeros(1),
+        progress_buf=torch.tensor([5]),
+        body_ids=FORBIDDEN_IDS,
+        body_names=FORBIDDEN,
+        partner_names=["terrain"],
+        termination_height=0.1,
+    )
+    # Torso touches terrain but every forbidden body is high: no fall.
     assert torch.equal(
-        combine_fall_termination(contacts_only, pos_above, termination_heights, allowed, progress),
-        torch.tensor([False]),
-    )
-
-    # Height violation on body 1, but no contact on body 1.
-    no_contacts = torch.tensor([[False, False, False]])
-    pos_below = torch.tensor([[[0, 0, 1.0], [0, 0, 0.0], [0, 0, 1.0]]], dtype=torch.float)
-    assert torch.equal(
-        combine_fall_termination(no_contacts, pos_below, termination_heights, allowed, progress),
-        torch.tensor([False]),
-    )
-
-    # Both contact and height violation on body 1 — must terminate.
-    assert torch.equal(
-        combine_fall_termination(contacts_only, pos_below, termination_heights, allowed, progress),
-        torch.tensor([True]),
-    )
-
-
-def test_combine_fall_termination_keeps_contact_and_height_per_env():
-    contacts = torch.tensor(
-        [
-            [False, True, False],   # contact and low torso: terminate
-            [False, True, False],   # contact but no low body: do not terminate
-            [False, False, False],  # low torso but no contact: do not terminate
-        ]
-    )
-    pos = torch.tensor(
-        [
-            [[0.0, 0.0, 1.0], [0.0, 0.0, 0.05], [0.0, 0.0, 1.0]],
-            [[0.0, 0.0, 1.0], [0.0, 0.0, 0.50], [0.0, 0.0, 1.0]],
-            [[0.0, 0.0, 1.0], [0.0, 0.0, 0.05], [0.0, 0.0, 1.0]],
-        ],
-        dtype=torch.float,
-    )
-    termination_heights = torch.tensor([0.1, 0.1, 0.1])
-    allowed = torch.tensor([0], dtype=torch.long)
-    progress = torch.tensor([5, 5, 5])
-
-    result = combine_fall_termination(
-        contacts, pos, termination_heights, allowed, progress
-    )
-
-    assert torch.equal(result, torch.tensor([True, False, False]))
-
-
-def test_fall_termination_wrapper_adjusts_threshold_by_ground_height():
-    """fall_termination(termination_height=0.5) on flat ground (h=0) is the
-    same as combine_fall_termination with all body thresholds = 0.5; on a 1.0
-    elevated platform the bodies must clear 1.5 to avoid termination."""
-    contacts = torch.tensor([[False, True, False]])
-    progress = torch.tensor([5])
-    allowed = torch.tensor([0], dtype=torch.long)
-
-    # On flat ground, body 1 at z=0.4 with termination_height=0.5 → below.
-    pos = torch.tensor([[[0, 0, 1.0], [0, 0, 0.4], [0, 0, 1.0]]], dtype=torch.float)
-    assert torch.equal(
-        fall_termination(pos, contacts, torch.tensor([0.0]), 0.5, allowed, progress),
-        torch.tensor([True]),
-    )
-
-    # On a 1.0-high platform, the SAME body z=0.4 is now above ground locally
-    # (relative threshold = 1.5) but absolute z=0.4 is still below. The wrapper
-    # adds ground_height to threshold, so threshold = 1.5; z=0.4 < 1.5 → still
-    # below threshold → still terminates.
-    assert torch.equal(
-        fall_termination(pos, contacts, torch.tensor([1.0]), 0.5, allowed, progress),
-        torch.tensor([True]),
-    )
-
-    # Lift ALL bodies above the elevated threshold (z=2.0 > 1.5) → no
-    # termination. check_height_term inspects every non-allowed body, so even
-    # body 2 (no contact) must clear the threshold for the height-side AND
-    # to fail.
-    pos_lifted = torch.tensor(
-        [[[0, 0, 2.0], [0, 0, 2.0], [0, 0, 2.0]]], dtype=torch.float
-    )
-    assert torch.equal(
-        fall_termination(
-            pos_lifted, contacts, torch.tensor([1.0]), 0.5, allowed, progress
+        named_contact_fall_termination(
+            rigid_body_pos=_positions(torso_z=1.0, head_z=1.0),
+            contact_forces=forces_touching,
+            contact_body_index=BODY_INDEX,
+            contact_partner_index=PARTNER_INDEX,
+            **kwargs,
         ),
         torch.tensor([False]),
     )
-
-
-def test_fall_termination_uses_each_env_ground_height_independently():
-    contacts = torch.tensor(
-        [
-            [False, True],
-            [False, True],
-        ]
+    # Torso is low but nothing touches terrain: no fall.
+    assert torch.equal(
+        named_contact_fall_termination(
+            rigid_body_pos=_positions(torso_z=0.05, head_z=1.0),
+            contact_forces=forces_free,
+            contact_body_index=BODY_INDEX,
+            contact_partner_index=PARTNER_INDEX,
+            **kwargs,
+        ),
+        torch.tensor([False]),
     )
-    # Body 1 has the same absolute height in both envs.
-    pos = torch.tensor(
-        [
-            [[0.0, 0.0, 2.0], [0.0, 0.0, 0.75]],
-            [[0.0, 0.0, 2.0], [0.0, 0.0, 0.75]],
-        ],
-        dtype=torch.float,
-    )
-    allowed = torch.tensor([0], dtype=torch.long)
-    progress = torch.tensor([5, 5])
-
-    result = fall_termination(
-        pos,
-        contacts,
-        ground_heights=torch.tensor([0.0, 0.5]),
-        termination_height=0.5,
-        non_termination_contact_body_ids=allowed,
-        progress_buf=progress,
+    # Both: fall.
+    assert torch.equal(
+        named_contact_fall_termination(
+            rigid_body_pos=_positions(torso_z=0.05, head_z=1.0),
+            contact_forces=forces_touching,
+            contact_body_index=BODY_INDEX,
+            contact_partner_index=PARTNER_INDEX,
+            **kwargs,
+        ),
+        torch.tensor([True]),
     )
 
-    # Env 0 threshold is 0.5, so z=0.75 is safe. Env 1 threshold is 1.0.
-    assert torch.equal(result, torch.tensor([False, True]))
 
+def test_named_fall_keeps_contact_and_height_per_env():
+    # Env 0: contact + low torso. Env 1: contact, nothing low. Env 2: low, no contact.
+    forces = _terrain_forces(torso=[5.0, 5.0, 0.0], head=[0.0, 0.0, 0.0])
+    pos = _positions(torso_z=1.0, head_z=1.0, envs=3)
+    pos[0, 2, 2], pos[2, 2, 2] = 0.05, 0.05
 
-def test_height_termination_wrapper_creates_per_body_threshold():
-    pos = torch.tensor(
-        [
-            [[0, 0, 0.05], [0, 0, 1.0]],
-            [[0, 0, 0.30], [0, 0, 1.0]],
-        ],
-        dtype=torch.float,
+    result = named_contact_fall_termination(
+        rigid_body_pos=pos,
+        contact_forces=forces,
+        contact_body_index=BODY_INDEX,
+        contact_partner_index=PARTNER_INDEX,
+        ground_heights=torch.zeros(3),
+        progress_buf=torch.tensor([5, 5, 5]),
+        body_ids=FORBIDDEN_IDS,
+        body_names=FORBIDDEN,
+        partner_names=["terrain"],
+        termination_height=0.1,
     )
-    allowed = torch.tensor([], dtype=torch.long)
-    ground = torch.tensor([0.0, 0.0])
-    # Threshold = 0.1 for all bodies. Env 0 body 0 at 0.05 < 0.1 → terminate.
-    result = height_termination(pos, ground, 0.1, allowed)
-    assert torch.equal(result, torch.tensor([True, False]))
 
-
-def test_height_termination_uses_each_env_ground_height_independently():
-    pos = torch.tensor(
-        [
-            [[0.0, 0.0, 0.75], [0.0, 0.0, 2.0]],
-            [[0.0, 0.0, 0.75], [0.0, 0.0, 2.0]],
-        ],
-        dtype=torch.float,
-    )
-    allowed = torch.tensor([], dtype=torch.long)
-    ground = torch.tensor([0.0, 0.5])
-
-    result = height_termination(pos, ground, 0.5, allowed)
-
-    assert torch.equal(result, torch.tensor([False, True]))
-
-
-def test_contact_termination_wrapper_matches_check_fall_contact_term():
-    contacts = torch.tensor([[True, False, False], [False, True, False]])
-    progress = torch.tensor([5, 5])
-    allowed = torch.tensor([0], dtype=torch.long)
-
-    expected = check_fall_contact_term(contacts, allowed, progress)
-    result = contact_termination(contacts, allowed, progress)
-    assert torch.equal(result, expected)
-
-
-# ---------- threshold_termination ---------------------------------------------
-
-
-def test_threshold_termination_greater_than_default_is_strict():
-    values = torch.tensor([0.5, 1.0, 1.5])
-    result = threshold_termination(values, threshold=1.0)
-    # Strict greater-than: 1.0 itself does not trigger.
-    assert torch.equal(result, torch.tensor([False, False, True]))
-
-
-def test_threshold_termination_less_than_mode_flips_comparison():
-    values = torch.tensor([0.5, 1.0, 1.5])
-    result = threshold_termination(values, threshold=1.0, greater_than=False)
     assert torch.equal(result, torch.tensor([True, False, False]))
 
 
-def test_threshold_termination_reduces_high_dim_input_to_per_env_mean():
-    values = torch.tensor(
-        [
-            [1.0, 1.0, 1.0],   # mean 1.0 — not greater than 0.5
-            [0.0, 0.0, 0.0],   # mean 0.0 — not greater than 0.5
-            [2.0, 0.0, 1.0],   # mean 1.0 — greater than 0.5
-        ]
-    )
-    result = threshold_termination(values, threshold=0.5)
-    assert torch.equal(result, torch.tensor([True, False, True]))
+def test_named_fall_uses_each_env_ground_height_independently():
+    """Heights are measured above each environment's own ground level."""
+    forces = _terrain_forces(torso=[5.0, 5.0], head=[0.0, 0.0])
+    pos = _positions(torso_z=0.75, head_z=2.0, envs=2)  # same absolute heights
 
-
-def test_threshold_termination_reduces_all_non_batch_dimensions():
-    values = torch.tensor(
-        [
-            [[[2.0], [2.0]], [[0.0], [0.0]]],  # mean 1.0
-            [[[0.0], [0.0]], [[0.0], [0.0]]],  # mean 0.0
-        ]
+    result = named_contact_fall_termination(
+        rigid_body_pos=pos,
+        contact_forces=forces,
+        contact_body_index=BODY_INDEX,
+        contact_partner_index=PARTNER_INDEX,
+        ground_heights=torch.tensor([0.0, 0.5]),
+        progress_buf=torch.tensor([5, 5]),
+        body_ids=FORBIDDEN_IDS,
+        body_names=FORBIDDEN,
+        partner_names=["terrain"],
+        termination_height=0.5,
     )
 
-    result = threshold_termination(values, threshold=0.75)
-
-    assert torch.equal(result, torch.tensor([True, False]))
-
-
-# ---------- task.py: check_path_distance_term --------------------------------
-
-
-def test_check_path_distance_term_only_after_min_progress():
-    head = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
-    target = torch.tensor([[5.0, 0.0, 0.0], [5.0, 0.0, 0.0]])
-    fail_dist = 2.0  # head is 5m from target → would fail dist check
-
-    early_progress = torch.tensor([5, 5])
-    late_progress = torch.tensor([20, 20])
-
-    # Early progress: NEVER terminate even though distance check would fail.
-    assert torch.equal(
-        check_path_distance_term(head, target, fail_dist, early_progress, min_progress=10),
-        torch.tensor([False, False]),
-    )
-    # Late progress: distance check kicks in.
-    assert torch.equal(
-        check_path_distance_term(head, target, fail_dist, late_progress, min_progress=10),
-        torch.tensor([True, True]),
-    )
-
-
-def test_check_path_distance_term_min_progress_boundary_is_strict():
-    head = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
-    target = torch.tensor([[5.0, 0.0, 0.0], [5.0, 0.0, 0.0]])
-    progress = torch.tensor([10, 11])
-
-    result = check_path_distance_term(
-        head, target, fail_dist=2.0, progress_buf=progress, min_progress=10
-    )
-
+    # Env 0: torso 0.75 above ground, safe. Env 1: 0.25 above ground, fall.
     assert torch.equal(result, torch.tensor([False, True]))
 
 
-def test_check_path_distance_term_uses_squared_distance():
-    head = torch.tensor([[0.0, 0.0, 0.0]])
+def test_named_fall_resolves_rows_and_kinematic_ids_separately():
+    """Rows address the compact matrix; body_ids address full kinematics."""
+    # Matrix holds only the head (row 0); kinematics put the head at index 3.
+    forces = torch.zeros(1, 1, 1, 3)
+    forces[0, 0, 0, 2] = 5.0
+    pos = _positions(torso_z=1.0, head_z=0.05)
+
+    result = named_contact_fall_termination(
+        rigid_body_pos=pos,
+        contact_forces=forces,
+        contact_body_index={"head": 0},
+        contact_partner_index={"terrain": 0},
+        ground_heights=torch.zeros(1),
+        progress_buf=torch.tensor([5]),
+        body_ids=torch.tensor([3]),
+        body_names=["head"],
+        partner_names=["terrain"],
+        termination_height=0.1,
+    )
+
+    assert torch.equal(result, torch.tensor([True]))
+
+
+def test_named_fall_binds_its_state_inputs_by_default():
+    """The recipe supplies only the selection; the state inputs are defaults."""
+    component = MdpComponent.from_kernel(
+        named_contact_fall_termination,
+        required_keys={
+            "contact_body_index": FORBIDDEN,
+            "contact_partner_index": ["terrain"],
+        },
+        body_ids=FORBIDDEN_IDS,
+        body_names=FORBIDDEN,
+        partner_names=["terrain"],
+    )
+    assert component.get_bindings_dict() == {
+        "rigid_body_pos": "current.rigid_body_pos",
+        "contact_forces": "contact_forces",
+        "contact_body_index": "contact_body_index",
+        "contact_partner_index": "contact_partner_index",
+        "ground_heights": "ground_heights",
+        "progress_buf": "progress_buf",
+    }
+    assert component.get_params()["termination_height"] == 0.15
+    assert TerminationRule(component).threshold is None
+
+
+# ---------- task.py: path_distance / path_height_error -----------------------
+# The task kernels are scalar measurements; ``TerminationRule(component,
+# threshold, fail_above=...)`` cuts them, so each old boolean check is a rule
+# over the kernel's value here.
+
+
+def _rule(kernel, threshold, fail_above=True):
+    return TerminationRule(MdpComponent.from_kernel(kernel), threshold, fail_above)
+
+
+def test_path_distance_is_zero_until_min_progress_is_exceeded():
+    head = torch.zeros(2, 3)
+    target = torch.tensor([[5.0, 0.0, 0.0], [5.0, 0.0, 0.0]])
+
+    # Early progress: the kernel reads zero, so no rule can fire on it.
+    early = path_distance(head, target, torch.tensor([5, 5]), min_progress=10)
+    assert torch.equal(early, torch.zeros(2))
+    assert not _rule(path_distance, 2.0).compare(early).any()
+    # Late progress: the 5 m distance is read and the 2 m rule fires.
+    late = path_distance(head, target, torch.tensor([20, 20]), min_progress=10)
+    assert torch.equal(late, torch.tensor([5.0, 5.0]))
+    assert _rule(path_distance, 2.0).compare(late).all()
+
+
+def test_path_distance_min_progress_boundary_is_strict():
+    head = torch.zeros(2, 3)
+    target = torch.tensor([[5.0, 0.0, 0.0], [5.0, 0.0, 0.0]])
+
+    distance = path_distance(head, target, torch.tensor([10, 11]), min_progress=10)
+
+    assert torch.equal(distance, torch.tensor([0.0, 5.0]))
+
+
+def test_path_distance_rule_is_strict_at_the_threshold():
+    head = torch.zeros(1, 3)
     # 3-4-5 right triangle: head→target distance == 5.0.
     target = torch.tensor([[3.0, 4.0, 0.0]])
-    progress = torch.tensor([100])
+    distance = path_distance(head, target, torch.tensor([100]))
 
-    # fail_dist=4.99 → squared 24.9, dist² = 25 > 24.9 → terminate.
-    assert torch.equal(
-        check_path_distance_term(head, target, 4.99, progress),
-        torch.tensor([True]),
-    )
-    # fail_dist=5.01 → squared 25.1, dist² = 25 < 25.1 → no termination.
-    assert torch.equal(
-        check_path_distance_term(head, target, 5.01, progress),
-        torch.tensor([False]),
-    )
+    assert torch.equal(distance, torch.tensor([5.0]))
+    assert _rule(path_distance, 4.99).compare(distance).tolist() == [True]
+    assert _rule(path_distance, 5.0).compare(distance).tolist() == [False]
+    assert _rule(path_distance, 5.01).compare(distance).tolist() == [False]
 
 
-def test_check_path_distance_term_is_strict_at_distance_threshold():
-    head = torch.tensor([[0.0, 0.0, 0.0]])
-    target = torch.tensor([[3.0, 4.0, 0.0]])
-    progress = torch.tensor([100])
-
-    result = check_path_distance_term(head, target, 5.0, progress)
-
-    assert torch.equal(result, torch.tensor([False]))
-
-
-# ---------- task.py: check_path_height_term ----------------------------------
-
-
-def test_check_path_height_term_only_z_axis_matters():
-    """A large XY offset should not trigger height termination."""
+def test_path_height_error_only_z_axis_matters():
+    """A large XY offset does not register as a height error."""
     head = torch.tensor([[100.0, 100.0, 1.0]])
-    target = torch.tensor([[0.0, 0.0, 1.0]])  # same z
     progress = torch.tensor([100])
 
     assert torch.equal(
-        check_path_height_term(head, target, fail_height_dist=0.5, progress_buf=progress),
-        torch.tensor([False]),
+        path_height_error(head, torch.tensor([[0.0, 0.0, 1.0]]), progress),
+        torch.tensor([0.0]),
     )
-
-    # Now z differs by 1.0.
-    target_high = torch.tensor([[0.0, 0.0, 2.0]])
     assert torch.equal(
-        check_path_height_term(head, target_high, fail_height_dist=0.5, progress_buf=progress),
-        torch.tensor([True]),
+        path_height_error(head, torch.tensor([[0.0, 0.0, 2.0]]), progress),
+        torch.tensor([1.0]),
     )
 
 
-def test_check_path_height_term_min_progress_and_threshold_boundaries_are_strict():
-    head = torch.tensor(
-        [
-            [0.0, 0.0, 1.0],
-            [0.0, 0.0, 1.0],
-            [0.0, 0.0, 1.0],
-        ]
-    )
-    target = torch.tensor(
-        [
-            [0.0, 0.0, 1.6],
-            [0.0, 0.0, 1.6],
-            [0.0, 0.0, 1.5],
-        ]
-    )
+def test_path_height_error_min_progress_and_rule_boundaries_are_strict():
+    head = torch.tensor([[0.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0]])
+    target = torch.tensor([[0.0, 0.0, 1.6], [0.0, 0.0, 1.6], [0.0, 0.0, 1.5]])
     progress = torch.tensor([10, 11, 11])
 
-    result = check_path_height_term(
-        head, target, fail_height_dist=0.5, progress_buf=progress, min_progress=10
+    error = path_height_error(head, target, progress, min_progress=10)
+
+    assert torch.allclose(error, torch.tensor([0.0, 0.6, 0.5]))
+    assert _rule(path_height_error, 0.5).compare(error).tolist() == [
+        False,
+        True,
+        False,
+    ]
+
+
+# ---------- task.py: steering_speed_error / steering_direction_alignment -----
+
+
+def _steering(root, prev, tar_dir, tar_speed, dt):
+    return (
+        steering_speed_error(root, prev, tar_speed, dt),
+        steering_direction_alignment(root, prev, tar_dir, dt),
     )
 
-    assert torch.equal(result, torch.tensor([False, True, False]))
 
-
-# ---------- task.py: check_steering_velocity_error ---------------------------
-
-
-def test_check_steering_velocity_error_passes_when_speed_and_direction_match():
-    """Constant-velocity along +x at 1 m/s with target dir=(1,0) and target speed=1 → no fail."""
-    root = torch.tensor([[0.1, 0.0, 0.0]])
-    prev = torch.tensor([[0.0, 0.0, 0.0]])
-    tar_dir = torch.tensor([[1.0, 0.0]])
-    tar_speed = torch.tensor([1.0])
-
-    fail = check_steering_velocity_error(
-        root_pos=root,
-        prev_root_pos=prev,
-        tar_dir=tar_dir,
-        tar_speed=tar_speed,
+def test_steering_kernels_pass_when_speed_and_direction_match():
+    """Constant velocity along +x at 1 m/s, target dir (1, 0) and speed 1."""
+    speed_error, alignment = _steering(
+        torch.tensor([[0.1, 0.0, 0.0]]),
+        torch.zeros(1, 3),
+        torch.tensor([[1.0, 0.0]]),
+        torch.tensor([1.0]),
         dt=0.1,
-        speed_tolerance=0.1,
-        direction_tolerance=0.95,
     )
-    assert torch.equal(fail, torch.tensor([False]))
+
+    assert torch.allclose(speed_error, torch.tensor([0.0]), atol=1e-6)
+    assert torch.allclose(alignment, torch.tensor([1.0]), atol=1e-5)
+    assert not _rule(steering_speed_error, 0.1).compare(speed_error).any()
+    assert not _rule(steering_direction_alignment, 0.95, False).compare(alignment).any()
 
 
-def test_check_steering_velocity_error_fails_on_speed_mismatch():
-    # dt=0.1, delta=0.5 m → speed = 5 m/s, target = 1 m/s, tolerance = 0.5.
-    root = torch.tensor([[0.5, 0.0, 0.0]])
-    prev = torch.tensor([[0.0, 0.0, 0.0]])
-    tar_dir = torch.tensor([[1.0, 0.0]])
-    tar_speed = torch.tensor([1.0])
-
-    fail = check_steering_velocity_error(
-        root_pos=root,
-        prev_root_pos=prev,
-        tar_dir=tar_dir,
-        tar_speed=tar_speed,
+def test_steering_speed_error_measures_the_planar_speed_mismatch():
+    # dt = 0.1, delta = 0.5 m → speed 5 m/s against a 1 m/s target.
+    speed_error, _ = _steering(
+        torch.tensor([[0.5, 0.0, 0.0]]),
+        torch.zeros(1, 3),
+        torch.tensor([[1.0, 0.0]]),
+        torch.tensor([1.0]),
         dt=0.1,
-        speed_tolerance=0.5,
-        direction_tolerance=0.5,
     )
-    assert torch.equal(fail, torch.tensor([True]))
+
+    assert torch.allclose(speed_error, torch.tensor([4.0]))
+    assert _rule(steering_speed_error, 0.5).compare(speed_error).tolist() == [True]
 
 
-def test_check_steering_velocity_error_fails_on_direction_mismatch():
-    # Move along +y but target dir = +x.
-    root = torch.tensor([[0.0, 0.1, 0.0]])
-    prev = torch.tensor([[0.0, 0.0, 0.0]])
-    tar_dir = torch.tensor([[1.0, 0.0]])
-    tar_speed = torch.tensor([1.0])
-
-    fail = check_steering_velocity_error(
-        root_pos=root,
-        prev_root_pos=prev,
-        tar_dir=tar_dir,
-        tar_speed=tar_speed,
+def test_steering_direction_alignment_is_the_heading_dot_product():
+    # Move along +y while the target direction is +x.
+    _, alignment = _steering(
+        torch.tensor([[0.0, 0.1, 0.0]]),
+        torch.zeros(1, 3),
+        torch.tensor([[1.0, 0.0]]),
+        torch.tensor([1.0]),
         dt=0.1,
-        speed_tolerance=10.0,  # very loose so speed isn't the trigger
-        direction_tolerance=0.5,
     )
-    assert torch.equal(fail, torch.tensor([True]))
+
+    assert torch.allclose(alignment, torch.tensor([0.0]), atol=1e-6)
+    off_course = _rule(steering_direction_alignment, 0.5, False).compare(alignment)
+    assert off_course.tolist() == [True]
 
 
-def test_check_steering_velocity_error_skips_direction_check_at_low_speed():
-    """When measured speed < 0.1, direction-mismatch should not trigger fail."""
-    # Tiny motion so measured speed << 0.1.
-    root = torch.tensor([[0.0, 0.001, 0.0]])
-    prev = torch.tensor([[0.0, 0.0, 0.0]])
-    tar_dir = torch.tensor([[1.0, 0.0]])
-    tar_speed = torch.tensor([0.01])
-
-    fail = check_steering_velocity_error(
-        root_pos=root,
-        prev_root_pos=prev,
-        tar_dir=tar_dir,
-        tar_speed=tar_speed,
+def test_steering_direction_alignment_passes_a_stationary_robot():
+    # speed = 0.01 m / 0.1 s = 0.1: at the guard, not strictly > 0.1, so the
+    # heading is not judged and the alignment reads a passing 1.0.
+    _, alignment = _steering(
+        torch.tensor([[0.0, 0.01, 0.0]]),
+        torch.zeros(1, 3),
+        torch.tensor([[1.0, 0.0]]),
+        torch.tensor([1.0]),
         dt=0.1,
-        speed_tolerance=10.0,  # speed check disabled
-        direction_tolerance=0.99,  # would fail if speed > 0.1
     )
-    # speed = 0.01 m / 0.1s = 0.1 — exactly at the threshold; not strictly > 0.1.
-    assert torch.equal(fail, torch.tensor([False]))
+
+    assert torch.equal(alignment, torch.tensor([1.0]))
+    assert not _rule(steering_direction_alignment, 0.99, False).compare(alignment).any()
 
 
-def test_check_steering_velocity_error_evaluates_speed_and_direction_per_env():
+def test_steering_rules_or_together_per_env_like_the_old_boolean_check():
     root = torch.tensor(
         [
             [0.1, 0.0, 0.0],  # matches speed and direction
@@ -567,18 +457,16 @@ def test_check_steering_velocity_error_evaluates_speed_and_direction_per_env():
             [0.0, 0.1, 0.0],  # wrong direction
         ]
     )
-    prev = torch.zeros_like(root)
-    tar_dir = torch.tensor([[1.0, 0.0], [1.0, 0.0], [1.0, 0.0]])
-    tar_speed = torch.tensor([1.0, 1.0, 1.0])
-
-    fail = check_steering_velocity_error(
-        root_pos=root,
-        prev_root_pos=prev,
-        tar_dir=tar_dir,
-        tar_speed=tar_speed,
+    speed_error, alignment = _steering(
+        root,
+        torch.zeros_like(root),
+        torch.tensor([[1.0, 0.0], [1.0, 0.0], [1.0, 0.0]]),
+        torch.ones(3),
         dt=0.1,
-        speed_tolerance=0.2,
-        direction_tolerance=0.5,
     )
+    too_fast = _rule(steering_speed_error, 0.2).compare(speed_error)
+    off_course = _rule(steering_direction_alignment, 0.5, False).compare(alignment)
 
-    assert torch.equal(fail, torch.tensor([False, True, True]))
+    assert torch.equal(too_fast, torch.tensor([False, True, False]))
+    assert torch.equal(off_course, torch.tensor([False, False, True]))
+    assert torch.equal(too_fast | off_course, torch.tensor([False, True, True]))

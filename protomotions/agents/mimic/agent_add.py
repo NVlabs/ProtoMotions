@@ -26,16 +26,9 @@ class MimicADD(AMP):
     def add_agent_info_to_obs(self, obs):
         obs = super().add_agent_info_to_obs(obs)
 
-        motion_times = self.env.motion_manager.motion_times
-        motion_ids = self.env.motion_manager.motion_ids
-        ref_state = self.env.motion_lib.get_motion_state(motion_ids, motion_times)
-
+        reference = self.env.reference
+        ref_state = reference.poses_at(None, reference.times)
         ref_state_gt = ref_state.rigid_body_pos.reshape(self.num_envs, -1, 3)
-        ref_state_gt += (
-            self.env.get_spawn_to_ref_pose_offset_with_terrain_height_correction(
-                ref_state_gt
-            )
-        )
         anchor_body_index = self.env.robot_config.anchor_body_index
         ref_ground_heights = self.env.terrain.get_ground_heights(
             ref_state_gt[:, anchor_body_index]
@@ -89,15 +82,11 @@ class MimicADD(AMP):
         return obs
 
     def get_expert_disc_obs(self, num_samples: int):
-        expert_disc_obs = super().get_expert_disc_obs(num_samples)
-        if "max_coords_obs" in self.env.observation_manager.observation_history_buffers:
-            obs_dim = self.env.observation_manager.observation_history_buffers["max_coords_obs"].data.shape[-1]
-        else:
-            obs_dim = expert_disc_obs.get("max_coords_obs", expert_disc_obs.get("historical_max_coords_obs", torch.empty(0))).shape[-1] // 8
-        tracking_diff_obs = torch.zeros(
-            [num_samples, obs_dim],
-            device=self.device,
-        )
-        expert_disc_obs["mimic_target_poses_diff"] = tracking_diff_obs
-
-        return expert_disc_obs
+        # ADD discriminates tracking errors, not AMP motion features. An expert
+        # has zero error, with exactly the same feature layout as the rollout.
+        template = self.experience_buffer.mimic_target_poses_diff
+        return {
+            "mimic_target_poses_diff": template.new_zeros(
+                (num_samples, template.shape[-1])
+            )
+        }

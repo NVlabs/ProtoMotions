@@ -1,0 +1,9 @@
+{
+  "name": "G1 BONES motion tracker (AMP, discriminator-slimmed)",
+  "robot": "g1",
+  "inference_checkpoint": "inference_last.ckpt",
+  "inference_checkpoint_sha256": "fd285ee0a1b1127bfd86efbd2a9fe53d32d163dbd135207241c0847dd263f68b",
+  "inference_checkpoint_bytes": 50336905,
+  "model_tensor_count": 31,
+  "resumable": false
+}

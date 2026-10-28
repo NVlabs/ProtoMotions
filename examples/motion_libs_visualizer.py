@@ -11,6 +11,10 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+# registered_robot_names() only globs the robot_configs directory; it does not
+# import RobotConfig or torch, so it is safe to use here before the simulator.
+from protomotions.robot_configs.factory import registered_robot_names
+
 FPS = 30
 
 # Parse arguments first (argparse is safe, doesn't import torch)
@@ -34,9 +38,9 @@ parser.add_argument(
 parser.add_argument(
     "--robot",
     type=str,
-    choices=["g1", "h1_2", "smpl", "soma23"],
+    choices=registered_robot_names(),
     default="g1",
-    help="Robot to load (g1, h1_2, smpl, or soma23)",
+    help="Robot to load (any registered robot)",
 )
 parser.add_argument("--headless", action="store_true", help="Run in headless mode")
 parser.add_argument(
@@ -99,6 +103,10 @@ from protomotions.simulator.base_simulator.config import (  # noqa: E402
     MarkerConfig,
     MarkerState,
 )
+from protomotions.simulator.base_simulator.simulator_state import (  # noqa: E402
+    RobotState,
+    StateConversion,
+)
 from protomotions.simulator.factory import simulator_config  # noqa: E402
 from protomotions.robot_configs.factory import robot_config  # noqa: E402
 from protomotions.robot_configs.base import ControlType  # noqa: E402
@@ -124,20 +132,9 @@ class RobotSpec:
 
 
 # Define robot specifications
-ROBOT_SPECS = {
-    "g1": RobotSpec(
-        viz_bodies=[],
-    ),
-    "h1_2": RobotSpec(
-        viz_bodies=[],
-    ),
-    "smpl": RobotSpec(
-        viz_bodies=[],
-    ),
-    "soma23": RobotSpec(
-        viz_bodies=[],
-    ),
-}
+# No robot needs visualization bodies here; build one empty spec per registered
+# robot so a new robot works without editing this file.
+ROBOT_SPECS = {name: RobotSpec(viz_bodies=[]) for name in registered_robot_names()}
 
 
 # ----- Smoothness Metrics Implementation -----
@@ -251,7 +248,7 @@ def create_checkerboard_ground(
         asset_path = os.path.join(checkerboard_dir, "checkerboard_ground.usda")
         asset_type = "USD"
     else:
-        # IsaacGym, Newton, Genesis use URDF
+        # IsaacGym, Newton, MuJoCo use URDF
         asset_path = os.path.join(checkerboard_dir, "checkerboard_ground.urdf")
         asset_type = "URDF"
 
@@ -302,6 +299,36 @@ def create_checkerboard_ground(
     )
 
 
+# ----- Clip lookup across libraries -----
+# A predicted motion library saved by evaluation can stop a failed clip at the
+# failing frame and stores no frames at all for clips that never played, so the
+# same clip can be shorter, or empty, in one library than in the one beside it.
+
+
+def _longest_clip_length(motion_libs, motion_idx: int) -> int:
+    """Number of frames in the longest copy of a clip across all libraries."""
+    return max(
+        int(motion_lib.get_motion_num_frames(None)[motion_idx])
+        for motion_lib in motion_libs
+    )
+
+
+def _exact_frame_state(motion_lib, motion_idx, frame: int):
+    """Look up one frame of a clip, holding the clip's last frame past its end.
+
+    Clips are stored back to back, so reading past the end of a short clip would
+    return the next clip's frames (or run off the end of the stored data for the
+    last clip). Each library is therefore clamped to its own last frame. Returns
+    None when this library has no frames for the clip, so the caller can leave
+    that library out instead of drawing some other clip's pose.
+    """
+    num_frames = int(motion_lib.get_motion_num_frames(motion_idx)[0])
+    if num_frames == 0:
+        return None
+    frame_tensor = torch.tensor([min(frame, num_frames - 1)], device=motion_idx.device)
+    return motion_lib.get_motion_state_exact_frame(motion_idx, frame_tensor)
+
+
 class MotionVisualizerSmoothness:
     def __init__(
         self,
@@ -340,21 +367,23 @@ class MotionVisualizerSmoothness:
         ]
 
         # Move all motions to the specified origin
+        self.library_origins_xy = []
         for i, motion_lib in enumerate(self.motion_libs):
             target_xy = torch.tensor(args.origin_xy, device=self.device)
             target_xy = target_xy + torch.tensor([1.0 * i, 0.0], device=self.device)
             print(f"Translating motion library {i} to origin {target_xy}")
             motion_lib.translate_all_motions_to_origin(target_xy)
+            self.library_origins_xy.append(target_xy)
 
         # Motion playback state
         self.current_motion_idx = 0
         self.current_frame = 0
-        # Use the first motion lib to determine total motions and current motion length
+        # Use the first motion lib to determine total motions. Libraries saved by
+        # evaluation can hold a shorter (or empty) copy of a clip, so play each
+        # clip for as long as its longest copy.
         self.total_motions = self.motion_libs[0].num_motions()
-        self.current_motion_length = (
-            self.motion_libs[0]
-            .get_motion_num_frames(None)[self.current_motion_idx]
-            .item()
+        self.current_motion_length = _longest_clip_length(
+            self.motion_libs, self.current_motion_idx
         )
 
         print(
@@ -524,10 +553,8 @@ class MotionVisualizerSmoothness:
         """Switch to the next motion in the dataset"""
         self.current_motion_idx = (self.current_motion_idx + 1) % self.total_motions
         self.current_frame = 0
-        self.current_motion_length = (
-            self.motion_libs[0]
-            .get_motion_num_frames(None)[self.current_motion_idx]
-            .item()
+        self.current_motion_length = _longest_clip_length(
+            self.motion_libs, self.current_motion_idx
         )
 
         print(
@@ -549,20 +576,23 @@ class MotionVisualizerSmoothness:
         )
         dt = 1.0 / FPS
 
+        if self.current_motion_length == 0:
+            print(f"Motion {self.current_motion_idx} has no frames in any library")
+            self.precomputed_smoothness = None
+            return
+
         # Load all frames for all environments
         all_positions = []
         all_velocities = []
 
         for frame_idx in range(self.current_motion_length):
-            frame_tensor = torch.tensor([frame_idx], device=self.device)
-
             # Get state for all environments
             pos_list = []
             vel_list = []
-            for motion_lib in self.motion_libs:
-                state = motion_lib.get_motion_state_exact_frame(
-                    motion_idx, frame_tensor
-                )
+            for env_id, motion_lib in enumerate(self.motion_libs):
+                state = _exact_frame_state(motion_lib, motion_idx, frame_idx)
+                if state is None:
+                    state = self._parked_state(env_id)
                 pos_list.append(state.rigid_body_pos[0])  # [num_bodies, 3]
                 if state.rigid_body_vel is not None:
                     vel_list.append(state.rigid_body_vel[0])
@@ -628,12 +658,30 @@ class MotionVisualizerSmoothness:
         self.precomputed_smoothness = smoothness_scores
         print(f"Smoothness pre-computed for {T} frames")
 
+    def _parked_state(self, env_id: int) -> RobotState:
+        """Pose for a library with no frames for the current clip.
+
+        The robot is moved far below the ground at its library's origin, the
+        same way hidden markers are, so nothing is drawn for that library.
+        """
+        num_bodies = self.kinematic_info.num_bodies
+        rigid_body_pos = torch.zeros(1, num_bodies, 3, device=self.device)
+        rigid_body_pos[..., :2] = self.library_origins_xy[env_id]
+        rigid_body_pos[..., 2] = -100.0
+        rigid_body_rot = torch.zeros(1, num_bodies, 4, device=self.device)
+        rigid_body_rot[..., 3] = 1.0  # identity, xyzw
+        return RobotState(
+            dof_pos=torch.zeros(1, self.kinematic_info.num_dofs, device=self.device),
+            rigid_body_pos=rigid_body_pos,
+            rigid_body_rot=rigid_body_rot,
+            state_conversion=StateConversion.COMMON,
+        )
+
     def _get_current_pose(self):
         """Get the current pose for the selected motion and frame using MotionLib API for all environments"""
         motion_idx = torch.tensor(
             [self.current_motion_idx], device=self.device, dtype=torch.long
         )
-        clamped_frame = min(self.current_frame, self.current_motion_length - 1)
 
         # Get poses from all motion libraries
         dof_pos_list = []
@@ -641,10 +689,10 @@ class MotionVisualizerSmoothness:
         rigid_body_rot_list = []
         rigid_body_vel_list = []
 
-        for motion_lib in self.motion_libs:
-            state = motion_lib.get_motion_state_exact_frame(
-                motion_idx, torch.tensor([clamped_frame], device=self.device)
-            )
+        for env_id, motion_lib in enumerate(self.motion_libs):
+            state = _exact_frame_state(motion_lib, motion_idx, self.current_frame)
+            if state is None:
+                state = self._parked_state(env_id)
             dof_pos_list.append(state.dof_pos[0])
             rigid_body_pos_list.append(state.rigid_body_pos[0])
             rigid_body_rot_list.append(state.rigid_body_rot[0])
@@ -674,15 +722,12 @@ class MotionVisualizerSmoothness:
         motion_idx = torch.tensor(
             [self.current_motion_idx], device=self.device, dtype=torch.long
         )
-        clamped_frame = min(self.current_frame, self.current_motion_length - 1)
 
         # Get contact state from motion library
         contact_states = []
         for motion_lib in self.motion_libs:
-            state = motion_lib.get_motion_state_exact_frame(
-                motion_idx, torch.tensor([clamped_frame], device=self.device)
-            )
-            if state.rigid_body_contacts is not None:
+            state = _exact_frame_state(motion_lib, motion_idx, self.current_frame)
+            if state is not None and state.rigid_body_contacts is not None:
                 contact_states.append(state.rigid_body_contacts[0])  # [num_bodies]
             else:
                 # Fallback if no contact data

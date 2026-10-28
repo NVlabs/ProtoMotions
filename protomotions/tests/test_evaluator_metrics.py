@@ -9,6 +9,36 @@ import torch
 from protomotions.agents.evaluators.metrics import MotionMetrics
 
 
+@pytest.mark.parametrize(
+    "input_dtype", [torch.bool, torch.int64, torch.float16, torch.float64]
+)
+@pytest.mark.parametrize("storage_dtype", [torch.float32, torch.float64])
+def test_motion_metrics_update_casts_values_to_storage_dtype(
+    input_dtype, storage_dtype
+):
+    metrics = MotionMetrics(
+        num_motions=2,
+        motion_lens=torch.tensor([2, 1]),
+        max_motion_len=2,
+        num_sub_features=2,
+        dtype=storage_dtype,
+    )
+    values = torch.tensor([[True, False], [False, True]], dtype=input_dtype)
+    motion_ids = torch.tensor([0, 1])
+
+    metrics.update(motion_ids, values)
+    metrics.update(motion_ids, values.flip(1))
+
+    assert metrics.data.dtype == storage_dtype
+    assert values.dtype == input_dtype
+    torch.testing.assert_close(metrics.frame_counts, torch.tensor([2, 1]))
+    torch.testing.assert_close(
+        metrics.mean_reduce_each_motion(),
+        torch.tensor([[0.5, 0.5], [0.0, 1.0]], dtype=storage_dtype),
+    )
+    torch.testing.assert_close(metrics.data[1, 1], torch.zeros(2, dtype=storage_dtype))
+
+
 def test_motion_metrics_update_masks_invalid_frames_and_reduces_scalar_features():
     metrics = MotionMetrics(
         num_motions=3,

@@ -1,0 +1,46 @@
+# Example DGX Cloud Lepton workspace settings for train_lepton.py.
+#
+# This is the shipped template. Copy it to `lepton_site.yaml` (gitignored) beside
+# the repository root and fill in your workspace's real values, or point
+# --site-config / $PROTOMOTIONS_LEPTON_SITE at your own copy. Fill in every "YOUR_"
+# placeholder; train_lepton.py refuses to submit while any remains. (The
+# python_executables below are usable defaults, not placeholders.)
+#
+# The launcher looks for a site file in this order (first match wins):
+#   1. --site-config PATH
+#   2. $PROTOMOTIONS_LEPTON_SITE
+#   3. lepton_site.yaml beside the repository (your gitignored copy)
+
+# Workspace identity. workspace_id builds the Teleport host
+# root@<workspace_id>-<pod_name>.<teleport_cluster>; workspace_name is the AMLFS
+# mount source /<workspace_name>.
+workspace_id: YOUR_WORKSPACE_ID
+workspace_name: YOUR_WORKSPACE_NAME
+
+# GPU node group (from `lep node resource-shape`) and the node-nfs storage
+# backing AMLFS (from `lep node storage`).
+node_group: YOUR_NODE_GROUP
+storage_name: YOUR_STORAGE_NAME
+
+# Per-user snapshot base on AMLFS ("{user}" <- --user). Snapshots become
+# <base_dir>/exp-<timestamp>.
+base_dir: /YOUR_MOUNT/users/{user}/exp
+
+# Managed Teleport cluster the dev pod is reachable through (see `tsh status`).
+teleport_cluster: YOUR_TELEPORT_CLUSTER
+
+# Per-user: your Teleport-enabled dev pod (rsync gateway) and your registry-auth
+# object name. Override with --pod-name / --registry-secret for another user.
+pod_name: YOUR_POD_NAME
+registry_secret: YOUR_REGISTRY_SECRET
+
+# Container images by simulator (registry refs the platform pulls directly --
+# no enroot/.sqsh).
+container_images:
+  isaaclab: YOUR_ISAACLAB_IMAGE
+
+# Python invocation inside each container.
+python_executables:
+  isaacgym: python
+  isaaclab: /workspace/isaaclab/isaaclab.sh -p
+  newton: python

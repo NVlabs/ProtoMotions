@@ -3,27 +3,38 @@
 
 """Path follower control component for navigation tasks.
 
-Manages path generation and provides target positions for path following tasks.
+Owns the path of a path-following task (a :class:`PathGenerator` polyline per
+env, sampled at reset from the head's ground-relative position) and latches
+the ground-relative head position every step; publishes the ``path.*`` names
+(the target on the path now, the head position, the future waypoint samples)
+and owns the path-deviation checks (``terminations``): ``path_distance``
+(the head too far from the path's target) and, when height conditioned,
+``path_height`` (the head too far above or below it), both only with
+``enable_path_termination``. A failed check resets the env as every other
+rule does.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Dict, Tuple, TYPE_CHECKING
+from typing import Any, Dict, Optional
 
 import torch
 from torch import Tensor
 
-from protomotions.envs.context_views import EnvContext, PathContext
 from protomotions.envs.control.base import ControlComponent, ControlComponentConfig
+from protomotions.envs.terminations.task import path_distance, path_height_error
 from protomotions.envs.utils.path_generator import PathGenerator, PathGeneratorConfig
 from protomotions.components.pose_lib import build_body_ids_tensor
+from protomotions.envs.control.task_inputs import TaskInputs
+from protomotions.envs.mdp_component import MdpComponent
+from protomotions.envs.terminations.rule import TerminationRule
 from protomotions.simulator.base_simulator.config import (
     MarkerConfig,
-    VisualizationMarkerConfig,
     MarkerState,
+    VisualizationMarkerConfig,
 )
-
-if TYPE_CHECKING:
-    from protomotions.envs.base_env.env import BaseEnv
+from protomotions.simulator.base_simulator.simulator_state import RobotState
 
 
 @dataclass
@@ -51,159 +62,117 @@ class PathFollowerControlConfig(ControlComponentConfig):
     fail_height_dist: float = 0.5
 
 
+# The path checks ignore the first steps of an episode.
+MIN_PROGRESS = 10
+
+
 class PathFollowerControl(ControlComponent):
-    """Path follower control component that manages path generation.
+    """The path and the head position of a path-following task."""
 
-    Generates paths and provides target positions and trajectory samples
-    for observations and rewards.
+    config: PathFollowerControlConfig
+    namespaces = ("path",)
 
-    Args:
-        config: Path follower control configuration.
-        env: Parent environment instance.
-    """
+    @classmethod
+    def terminations(
+        cls, config: PathFollowerControlConfig, robot_config
+    ) -> Dict[str, TerminationRule]:
+        """``path_distance`` (and ``path_height`` when height conditioned),
+        cuts over the scalar path kernels, only with ``enable_path_termination``."""
+        if not config.enable_path_termination:
+            return {}
+        entries = {
+            "path_distance": TerminationRule(
+                MdpComponent.from_kernel(path_distance, min_progress=MIN_PROGRESS),
+                threshold=config.fail_dist,
+            )
+        }
+        if config.path_generator.height_conditioned:
+            entries["path_height"] = TerminationRule(
+                MdpComponent.from_kernel(path_height_error, min_progress=MIN_PROGRESS),
+                threshold=config.fail_height_dist,
+            )
+        return entries
 
-    def __init__(self, config: PathFollowerControlConfig, env: "BaseEnv"):
-        super().__init__(config, env)
-        self.config: PathFollowerControlConfig = config
-
-        # Get head body ID for tracking
-        self._head_body_id = build_body_ids_tensor(
-            self.env.robot_config.kinematic_info.body_names,
-            self.env.robot_config.common_naming_to_robot_body_names["head_body_name"],
-            self.env.device,
+    def __init__(self, config: PathFollowerControlConfig, inputs: TaskInputs):
+        super().__init__(config, inputs)
+        robot = inputs.robot
+        # The head body: the path is followed by the head.
+        self.head_body_id = build_body_ids_tensor(
+            robot.kinematic_info.body_names,
+            robot.common_naming_to_robot_body_names["head_body_name"],
+            inputs.device,
         ).item()
 
-        # Build path generator
-        episode_dur = self.env.config.max_episode_length * self.env.dt
+        # The path, in a child registry (its vertices are per-env state).
+        episode_dur = inputs.clock.max_episode_length * inputs.dt
         self.path_generator = PathGenerator(
-            self.config.path_generator,
-            self.env.device,
-            self.env.num_envs,
+            config.path_generator,
+            self.state.child("path"),
+            inputs.generator,
+            inputs.num_envs,
             episode_dur,
-            self.config.path_generator.height_conditioned,
+            config.path_generator.height_conditioned,
         )
+        # The head's ground-relative position, latched from the state the env
+        # read (the lowest body is the ground estimate).
+        self.head_pos = self.state.add("head_pos", (3,), torch.float, 0.0)
 
     @property
     def height_conditioned(self) -> bool:
         """Whether paths include height conditioning."""
         return self.config.path_generator.height_conditioned
 
-    @property
-    def head_body_id(self) -> int:
-        """Index of the head body for tracking."""
-        return self._head_body_id
+    @staticmethod
+    def _ground_relative_head(rigid_body_pos: Tensor, head_body_id: int) -> Tensor:
+        ground_below = torch.min(rigid_body_pos, dim=1).values[..., 2]
+        head_position = rigid_body_pos[:, head_body_id, :].clone()
+        head_position[..., 2] -= ground_below
+        return head_position
 
-    def reset(self, env_ids: Tensor):
-        """Reset path generator for given environments."""
+    def reset_rows(self, env_ids: Tensor, state: RobotState) -> None:
+        """A new path from the anchor's ground-relative position; the head latched."""
         if len(env_ids) == 0:
             return
+        super().reset_rows(env_ids, state)
+        anchor_pos = state.rigid_body_pos[:, self.inputs.robot.anchor_body_index]
 
-        # Get current anchor position
-        robot_state = self.env.simulator.get_robot_state(env_ids)
-        anchor_body_index = self.env.robot_config.anchor_body_index
-        root_pos = robot_state.rigid_body_pos[:, anchor_body_index]
-
-        # Build head position from root x,y and approximate head height
-        head_position = root_pos.clone()
-        height_below_head = self.env.terrain.get_ground_heights(head_position).squeeze(
-            1
-        )
-        head_position[..., 2] -= height_below_head
-
-        # Reset path starting from ground-relative head position
+        # Build the path's start from the root x,y and an approximate head height
+        head_position = anchor_pos.clone()
+        head_position[..., 2] -= self.inputs.ground_height(head_position)
         self.path_generator.reset(env_ids, head_position)
 
-    def step(self):
-        """No per-step updates needed for path following."""
-        pass
-
-    def check_resets_and_terminations(self) -> Tuple[Tensor, Tensor]:
-        """Check for path deviation terminations."""
-        reset_buf = torch.zeros(
-            self.env.num_envs, dtype=torch.bool, device=self.env.device
-        )
-        terminate_buf = torch.zeros(
-            self.env.num_envs, dtype=torch.bool, device=self.env.device
+        self.head_pos[env_ids] = self._ground_relative_head(
+            state.rigid_body_pos, self.head_body_id
         )
 
-        if not self.config.enable_path_termination:
-            return reset_buf, terminate_buf
-
-        # Get current head position
-        bodies_positions = self.env.simulator.get_bodies_state().rigid_body_pos.clone()
-        ground_min = torch.min(bodies_positions, dim=1).values[:, 2].view(-1, 1)
-        bodies_positions[..., 2] -= ground_min
-
-        head_pos = bodies_positions[:, self._head_body_id, :]
-
-        # Get target position
-        env_ids = torch.arange(
-            self.env.num_envs, device=self.env.device, dtype=torch.long
+    def advance(self, state: RobotState) -> Dict[str, Tensor]:
+        """Latch the head position; the path itself is fixed for the episode."""
+        self.head_pos[:] = self._ground_relative_head(
+            state.rigid_body_pos, self.head_body_id
         )
-        tar_pos = self.calc_target_pos(env_ids)
+        return {}
 
-        # Check horizontal distance from path
-        from protomotions.envs.terminations import (
-            check_path_distance_term,
-            check_path_height_term,
+    def _all_env_ids(self) -> Tensor:
+        return torch.arange(
+            self.inputs.num_envs, device=self.inputs.device, dtype=torch.long
         )
 
-        tar_fail = check_path_distance_term(
-            head_pos,
-            tar_pos,
-            self.config.fail_dist,
-            self.env.progress_buf,
-            min_progress=10,
-        )
-        terminate_buf = terminate_buf | tar_fail
-
-        # Check height deviation (if height-conditioned)
-        if self.config.path_generator.height_conditioned:
-            tar_height_fail = check_path_height_term(
-                head_pos,
-                tar_pos,
-                self.config.fail_height_dist,
-                self.env.progress_buf,
-                min_progress=10,
-            )
-            terminate_buf = terminate_buf | tar_height_fail
-
-        return reset_buf, terminate_buf
-
-    def calc_target_pos(self, env_ids: Tensor = None) -> Tensor:
-        """Calculate target position at current time.
-
-        Args:
-            env_ids: Environment indices. If None, calculates for all envs.
-
-        Returns:
-            Target positions [len(env_ids), 3].
-        """
+    def calc_target_pos(self, env_ids: Optional[Tensor] = None) -> Tensor:
+        """The target position on the path at the current time, [len(env_ids), 3]."""
         if env_ids is None:
-            env_ids = torch.arange(
-                self.env.num_envs, device=self.env.device, dtype=torch.long
-            )
-
-        time = self.env.progress_buf[env_ids] * self.env.dt
+            env_ids = self._all_env_ids()
+        time = self.inputs.clock.progress_buf[env_ids] * self.inputs.dt
         return self.path_generator.calc_pos(env_ids, time)
 
-    def fetch_path_samples(self, env_ids: Tensor = None) -> Tensor:
-        """Fetch future waypoint samples along the path.
-
-        Args:
-            env_ids: Environment indices to sample for. If None, samples for all envs.
-
-        Returns:
-            Trajectory samples [len(env_ids), num_traj_samples, 3].
-        """
+    def fetch_path_samples(self, env_ids: Optional[Tensor] = None) -> Tensor:
+        """Future waypoint samples along the path,
+        [len(env_ids), num_traj_samples, 3]."""
         if env_ids is None:
-            env_ids = torch.arange(
-                self.env.num_envs, device=self.env.device, dtype=torch.long
-            )
+            env_ids = self._all_env_ids()
 
-        timestep_beg = self.env.progress_buf[env_ids] * self.env.dt
+        timestep_beg = self.inputs.clock.progress_buf[env_ids] * self.inputs.dt
         timesteps = torch.arange(
-            self.config.num_traj_samples, device=self.env.device, dtype=torch.float
+            self.config.num_traj_samples, device=self.inputs.device, dtype=torch.float
         )
         timesteps = timesteps * self.config.traj_sample_timestep
         traj_timesteps = timestep_beg.unsqueeze(-1) + timesteps
@@ -213,7 +182,7 @@ class PathFollowerControl(ControlComponent):
         traj_samples_flat = self.path_generator.calc_pos(
             env_ids_tiled.flatten(), traj_timesteps.flatten()
         )
-        traj_samples = torch.reshape(
+        return torch.reshape(
             traj_samples_flat,
             shape=(
                 env_ids.shape[0],
@@ -222,85 +191,54 @@ class PathFollowerControl(ControlComponent):
             ),
         )
 
-        return traj_samples
-
-    def get_head_position(self, env_ids: Tensor = None) -> Tensor:
-        """Get ground-relative head position.
-
-        Args:
-            env_ids: Environment indices. If None, gets for all envs.
-
-        Returns:
-            Head positions [len(env_ids), 3].
-        """
+    def publish(self, env_ids: Optional[Tensor]) -> Dict[str, Any]:
+        """Publish the ``path.*`` names (see ``PathContext``)."""
+        rows = slice(None) if env_ids is None else env_ids
         if env_ids is None:
-            env_ids = torch.arange(
-                self.env.num_envs, device=self.env.device, dtype=torch.long
-            )
-
-        current_state = self.env.simulator.get_robot_state(env_ids)
-        bodies_positions = current_state.rigid_body_pos
-        ground_below_head = torch.min(bodies_positions, dim=1).values[..., 2]
-        head_position = bodies_positions[:, self._head_body_id, :].clone()
-        head_position[..., 2] -= ground_below_head
-
-        return head_position
-
-    def populate_context(self, ctx: EnvContext) -> None:
-        """Populate path-specific view in the EnvContext."""
-        env_ids = getattr(ctx, "env_ids", None)
-        if env_ids is None:
-            env_ids = torch.arange(
-                self.env.num_envs, device=self.env.device, dtype=torch.long
-            )
-            progress_buf = self.env.progress_buf
-        else:
-            progress_buf = self.env.progress_buf[env_ids]
-
-        ctx.path = PathContext(
-            tar_pos=self.calc_target_pos(env_ids),
-            head_pos=self.get_head_position(env_ids),
-            traj_samples=self.fetch_path_samples(env_ids),
-            height_conditioned=self.height_conditioned,
-            head_body_id=self._head_body_id,
-            progress_buf=progress_buf,
-        )
+            env_ids = self._all_env_ids()
+        return {
+            "path.tar_pos": self.calc_target_pos(env_ids),
+            "path.head_pos": self.head_pos[rows],
+            "path.traj_samples": self.fetch_path_samples(env_ids),
+            "path.height_conditioned": self.height_conditioned,
+            "path.head_body_id": self.head_body_id,
+        }
 
     def create_visualization_markers(
         self, headless: bool
     ) -> Dict[str, VisualizationMarkerConfig]:
-        """Create path waypoint markers."""
+        """Red spheres on the future waypoint samples."""
         if headless:
             return {}
-
         path_markers = [
             MarkerConfig(size="regular") for _ in range(self.config.num_traj_samples)
         ]
-        path_markers_cfg = VisualizationMarkerConfig(
-            type="sphere", color=(1.0, 0.0, 0.0), markers=path_markers
-        )
-        return {"path_markers": path_markers_cfg}
+        return {
+            "path_markers": VisualizationMarkerConfig(
+                type="sphere", color=(1.0, 0.0, 0.0), markers=path_markers
+            )
+        }
 
-    def get_markers_state(self) -> Dict[str, MarkerState]:
-        """Get marker states for visualization."""
-        if self.env.simulator.headless:
+    def get_markers_state(self, state: RobotState) -> Dict[str, MarkerState]:
+        """The waypoint samples, lifted onto the terrain."""
+        if self.inputs.headless:
             return {}
-
+        num_envs, device = self.inputs.num_envs, self.inputs.device
         traj_samples = self.fetch_path_samples().clone()
         if not self.height_conditioned:
-            traj_samples[..., 2] = 0.8  # Set height to 0.8m when not height conditioned
+            traj_samples[..., 2] = 0.8  # 0.8 m when not height conditioned
 
-        ground_below_marker = self.env.terrain.get_ground_heights(
+        ground_below_marker = self.inputs.ground_height(
             traj_samples[..., :2].view(-1, 2)
         ).view(traj_samples.shape[:-1])
         traj_samples[..., 2] += ground_below_marker
 
-        traj_samples = traj_samples.view(self.env.num_envs, -1, 3)
+        traj_samples = traj_samples.view(num_envs, -1, 3)
         return {
             "path_markers": MarkerState(
                 translation=traj_samples,
                 orientation=torch.zeros(
-                    self.env.num_envs, traj_samples.shape[1], 4, device=self.env.device
+                    num_envs, traj_samples.shape[1], 4, device=device
                 ),
             )
         }

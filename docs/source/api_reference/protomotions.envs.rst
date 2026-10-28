@@ -1,112 +1,68 @@
 protomotions.envs package
-=========================
+============================
 
-Environments for reinforcement learning tasks. All environments extend BaseEnv
-and implement task-specific reward functions and observations.
+Tasks share ``BaseEnv`` and differ through configuration. Motion tracking,
+steering and path following use control components, not separate environment
+subclasses. Their experiment files wire controls to observation, reward,
+termination and action functions.
 
 BaseEnv
 -------
 
-.. py:class:: BaseEnv(config, robot_config, simulator_config, device, terrain=None, scene_lib=None, motion_lib=None)
+``protomotions.envs.base_env.env.BaseEnv`` receives an ``EnvConfig``, a robot
+config, device, terrain, simulator, scene library and motion library. The
+training entry point constructs these dependencies; the environment initializes
+the simulator. Scene and motion libraries can be empty.
 
-   Base class for all reinforcement learning environments.
-   
-   Provides core functionality including simulator integration, terrain management,
-   scene and object handling, motion library integration, observation computation,
-   and episode management.
-   
-   :param config: Environment configuration
-   :param robot_config: Robot morphology configuration  
-   :param simulator_config: Simulator backend configuration
-   :param device: PyTorch device for computations
-   :param terrain: Optional terrain instance
-   :param scene_lib: Optional scene library
-   :param motion_lib: Optional motion library
-   
-   **Key Methods**:
-   
-   - ``reset()`` - Reset environments
-   - ``step(actions)`` - Step simulation with actions
-   - ``compute_observations()`` - Compute observations
-   - ``compute_reward()`` - Compute rewards
-   
-   **Example**::
-   
-       config = SteeringEnvConfig()
-       env = Steering(config, robot_config, simulator_config, device)
-       obs, _ = env.reset()
-       next_obs, rewards, dones, info = env.step(actions)
+The runtime interface is:
 
-Mimic
------
+.. code-block:: python
 
-.. py:class:: Mimic(config, robot_config, simulator_config, device)
+   obs, info = env.reset()
+   obs, rewards, dones, terminated, extras = env.step(actions)
 
-   Motion imitation environment for full-body tracking.
-   
-   Trains agents to imitate reference motions from a motion library with detailed
-   tracking rewards for joint positions, velocities, and end-effector locations.
-   
-   **Key Features**:
-   
-   - Full-body pose tracking with per-body-part weights
-   - Contact-aware foot placement rewards
-   - Sync/async motion playback modes
-   - Early termination on tracking errors
-   - Terrain-aware tracking
-   
-   :param config: MimicEnvConfig with reward weights
-   :param robot_config: Robot configuration
-   :param simulator_config: Simulator configuration
-   :param device: PyTorch device
-   
-   **Example**::
-   
-       config = MimicEnvConfig()
-       env = Mimic(config, robot_config, simulator_config, device)
-       obs, _ = env.reset()
+``obs`` is a dictionary of named tensors. The agent converts it to a TensorDict
+for the model. Actions have shape ``[num_envs, num_actions]``. ``dones`` includes
+episode timeouts; ``terminated`` identifies terminal states for value
+bootstrapping. Call ``reset(env_ids)`` for environments whose episodes ended;
+the agent owns this rollout/reset sequence. ``get_obs()`` returns the current
+observations without stepping the simulation.
 
-Steering
+Component ownership
+-------------------
+
+* ``control_components`` own mutable task state: reference poses, commands,
+  goals and timers.
+* ``observation_components`` map context tensors to named model inputs.
+* ``reward_components`` map context tensors to reward terms.
+* ``termination_components`` define training episode failure conditions.
+* ``action_config`` maps policy outputs to simulator commands.
+
+Observations, rewards and terminations use ``MdpComponent`` to bind pure tensor
+functions to ``EnvContext`` paths. Sensor estimates and clean simulator state
+are separate sources; each binding selects which it needs. Do not add noise
+inside a reward or observation function to duplicate sensor behavior.
+
+Examples
 --------
 
-.. py:class:: Steering(config, robot_config, simulator_config, device)
+.. list-table:: Task wiring
+   :header-rows: 1
 
-   Steering task environment for humanoid locomotion.
-   
-   Trains agents to walk in a target direction at a target speed. Target direction
-   and speed change periodically to encourage versatile locomotion.
-   
-   **Key Features**:
-   
-   - Variable target speeds (including stopping)
-   - Periodic heading changes with random variations
-   - Visual markers for target direction
-   - Rewards for velocity and heading matching
-   
-   :param config: SteeringEnvConfig
-   :param robot_config: Robot configuration
-   :param simulator_config: Simulator configuration
-   :param device: PyTorch device
+   * - Task
+     - Stateful control
+     - Experiment
+   * - Motion tracking
+     - ``MimicControl``
+     - ``examples/experiments/mimic/mlp.py``
+   * - Steering
+     - ``SteeringControl``
+     - ``examples/experiments/steering/mlp.py``
+   * - Path following
+     - ``PathFollowerControl``
+     - ``examples/experiments/path_follower/mlp.py``
 
-PathFollowing
--------------
-
-.. py:class:: PathFollowing(config, robot_config, simulator_config, device)
-
-   Path following task environment for navigation.
-   
-   Trains agents to follow predefined paths with observations of future waypoints.
-   Rewards staying close to the path and making forward progress.
-   
-   **Key Features**:
-   
-   - Multiple future waypoint observations
-   - Path generation (lines, curves, complex trajectories)
-   - Visual path markers
-   - Distance and progress rewards
-   
-   :param config: PathFollowerEnvConfig
-   :param robot_config: Robot configuration
-   :param simulator_config: Simulator configuration
-   :param device: PyTorch device
-
+See :doc:`../user_guide/configuration` for component bindings and config
+lifecycle, and :doc:`../user_guide/evaluation` for benchmark scoring and
+temporary environment snapshots. Evaluation failure criteria are configured
+separately from training terminations.

@@ -84,35 +84,34 @@ def _site(**over):
     return base
 
 
-# --- build_train_agent_argv: correct tokens, order, splitting -----------------
+# --- parse_launcher_args: own flags parsed, training tail forwarded -----------
 
 
-def test_argv_splits_overrides_and_keeps_passthrough_together():
-    from protomotions._train_launch_common import build_train_agent_argv
-
-    argv = build_train_agent_argv(
-        _args(overrides=["a=b", "c=d"]),
-        passthrough=["--tracker-checkpoint", "/mnt/ckpt", "--note", "hello world"],
-    )
-    # Each override is its own token, introduced by a lone --overrides.
-    assert "--overrides" in argv
-    assert argv[argv.index("--overrides") + 1 :] == ["a=b", "c=d"]
-    # A passthrough value with a space stays ONE token...
-    assert "hello world" in argv
-    # ...and passthrough comes BEFORE --overrides (nargs="*" would eat it otherwise).
-    assert argv.index("--note") < argv.index("--overrides")
-    assert argv.index("hello world") < argv.index("--overrides")
-
-
-def test_argv_training_limit_is_mutually_exclusive():
-    from protomotions._train_launch_common import build_train_agent_argv
-
-    steps = build_train_agent_argv(_args(training_max_iterations=None, training_max_steps=500))
-    iters = build_train_agent_argv(_args(training_max_iterations=7, training_max_steps=500))
-    assert "--training-max-steps=500" in steps
-    assert not any(a.startswith("--training-max-iterations") for a in steps)
-    assert "--training-max-iterations=7" in iters
-    assert not any(a.startswith("--training-max-steps") for a in iters)
+def test_parse_launcher_args_forwards_the_training_tail_and_reads_facts():
+    # The launcher declares only its own flags, so the whole training command --
+    # minus --user, which is its own -- forwards verbatim, and the few values the
+    # submission needs are read off that tail.
+    tail = [
+        "--robot-name=g1",
+        "--simulator=isaaclab",
+        "--num-envs=64",
+        "--batch-size=256",
+        "--motion-file=data/m.pt",
+        "--experiment-path=examples/x.py",
+        "--experiment-name=run7",
+        "--ngpu=4",
+        "--nodes=2",
+        "--use-wandb",
+        "--seed",
+        "3",
+    ]
+    args, passthrough = tl.parse_launcher_args(["--user=me", *tail])
+    assert "--user=me" not in passthrough
+    assert passthrough == tail
+    assert args.simulator == "isaaclab"
+    assert args.experiment_name == "run7"
+    assert args.ngpu == 4 and args.nodes == 2
+    assert args.use_wandb is True
 
 
 # --- build_container_command: lossless round-trip, wraps the loop -------------
@@ -120,32 +119,40 @@ def test_argv_training_limit_is_mutually_exclusive():
 
 def test_container_command_round_trips_a_spaced_argument():
     # The container shell splits the command string back into argv. shlex.split
-    # models that split; a value with a space must survive as one token, and the
-    # interpreter "cmd -flag" must stay a single positional.
+    # models that split; a value with a space must survive as one token, the
+    # interpreter "cmd -flag" must stay a single positional, and the forwarded
+    # training tail must come through verbatim after the five loop positionals.
+    forwarded = ["--robot-name=g1", "--note", "hello world", "--overrides", "a=b"]
     cmd = tl.build_container_command(
         "/workspace/isaaclab/isaaclab.sh -p",
-        _args(overrides=["a=b"]),
+        _args(),
         "/mnt/exp-1",
-        passthrough=["--note", "hello world"],
+        passthrough=forwarded,
     )
-    tail = cmd.split("lepton_train_loop.sh ", 1)[1]
-    toks = shlex.split(tail)
+    body = cmd.split("lepton_train_loop.sh ", 1)[1]
+    toks = shlex.split(body)
     assert toks[0] == "/workspace/isaaclab/isaaclab.sh -p"  # one positional
     assert toks[1:5] == ["isaaclab", "my_run", "/mnt/exp-1", "75"]
-    assert "hello world" in toks[5:]  # preserved, not word-split
-    # --overrides is last, and its value survived as its own trailing token.
-    assert toks[-2:] == ["--overrides", "a=b"]
+    # The forwarded tail follows, verbatim and lossless (the spaced value intact).
+    assert toks[5:] == forwarded
+    assert "hello world" in toks
 
 
 def test_container_command_wraps_the_resume_loop_and_train_agent():
-    cmd = tl.build_container_command("python", _args(), "/mnt/exp-2")
+    forwarded = [
+        "--experiment-path=examples/experiments/mimic/mlp.py",
+        "--num-envs=4096",
+    ]
+    cmd = tl.build_container_command(
+        "python", _args(), "/mnt/exp-2", passthrough=forwarded
+    )
     assert "bash scripts/cluster/lepton_train_loop.sh" in cmd
     assert cmd.startswith("set -euo pipefail; cd ")
-    tail = cmd.split("lepton_train_loop.sh ", 1)[1]
-    toks = shlex.split(tail)
-    # positionals 1..5 then the train_agent.py tail, which train_agent.py runs.
+    body = cmd.split("lepton_train_loop.sh ", 1)[1]
+    toks = shlex.split(body)
+    # positionals 1..5 then the forwarded train_agent.py tail, which the loop runs.
     assert toks[:5] == ["python", "isaaclab", "my_run", "/mnt/exp-2", "75"]
-    assert "--experiment-path=examples/experiments/mimic/mlp.py" in toks
+    assert toks[5:] == forwarded
 
 
 # --- build_lep_job_create: the stall timeout is actually passed ---------------
@@ -165,6 +172,13 @@ def test_lep_job_create_forwards_disabled_stall_timeout():
         _args(stall_timeout_min=0), _site(), "/mnt/exp", "true"
     )
     assert "STALL_TIMEOUT_MIN=0" in cmd
+
+
+def test_lep_job_create_sets_expandable_segments_alloc_env():
+    # A launcher default: expandable_segments cuts CUDA allocator fragmentation.
+    # It changes no result but rescued the fragmentation-OOM arm on these runs.
+    cmd = tl.build_lep_job_create(_args(), _site(), "/mnt/exp", "true")
+    assert "PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True" in cmd
 
 
 def test_lep_job_create_passes_no_progress_limit_env():

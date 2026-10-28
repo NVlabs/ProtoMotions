@@ -27,8 +27,10 @@ Configuring for Your Cluster
 ----------------------------
 
 Describe your cluster in a **site YAML** rather than editing ``train_slurm.py``.
-The launcher looks for one at ``--site-config PATH``, then
-``$PROTOMOTIONS_SLURM_SITE``, then ``slurm_site.yaml`` in the repository root:
+Copy the shipped ``slurm_site.example.yaml`` to ``slurm_site.yaml`` (gitignored,
+so your cluster's real names stay local) and fill it in. The launcher looks for
+one at ``--site-config PATH``, then ``$PROTOMOTIONS_SLURM_SITE``, then
+``slurm_site.yaml`` in the repository root:
 
 .. code-block:: yaml
 

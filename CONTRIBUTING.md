@@ -45,6 +45,8 @@ in the card and the reviewed exception manifest. Run
 All submissions, including submissions by project members, require review. We use GitHub pull requests for this purpose. Consult
 [GitHub Help](https://help.github.com/articles/about-pull-requests/) for more information on using pull requests.
 
+Reviews of configuration, override, inference and deploy-facing changes check the fallback convention (see the [Configuration guide](docs/source/user_guide/configuration.rst)): a value is filled from a fallback only when it is explicitly blank, while a missing file or an unknown name must be refused by name, never silently defaulted.
+
 #### Signing Your Work
 
 * We require that all contributors "sign-off" on their commits. This certifies that the contribution is your original work, or you have rights to submit it under the same license, or a compatible license.

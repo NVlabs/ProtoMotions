@@ -1,0 +1,16 @@
+<mujoco model="gym_spherical_reset">
+  <compiler angle="radian"/>
+  <option gravity="0 0 0"/>
+  <worldbody>
+    <body name="pelvis" pos="0 0 2">
+      <freejoint/>
+      <geom type="sphere" size="0.05" mass="1"/>
+      <body name="limb" pos="0.2 0 0" quat="0.9659258 0 0 0.258819">
+        <joint name="x" type="hinge" axis="1 0 0" limited="false"/>
+        <joint name="y" type="hinge" axis="0 1 0" limited="false"/>
+        <joint name="z" type="hinge" axis="0 0 1" limited="false"/>
+        <geom type="capsule" fromto="0 0 0 0.3 0 0" size="0.03" mass="1"/>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>

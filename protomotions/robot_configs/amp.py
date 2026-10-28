@@ -10,9 +10,8 @@ from protomotions.robot_configs.base import (
 )
 from protomotions.simulator.isaacgym.config import IsaacGymSimParams
 from protomotions.simulator.isaaclab.config import IsaacLabSimParams
-from protomotions.simulator.genesis.config import GenesisSimParams
-from protomotions.simulator.newton.config import NewtonSimParams
 from protomotions.simulator.mujoco.config import MujocoSimParams
+from protomotions.components.pose_lib import ControlInfo
 from typing import List, Dict, Tuple
 from dataclasses import dataclass, field
 
@@ -52,36 +51,30 @@ class AMPRobotConfig(RobotConfig):
     )
 
     control: ControlConfig = field(
-        default_factory=lambda: ControlConfig(control_type=ControlType.BUILT_IN_PD)
+        default_factory=lambda: ControlConfig(
+            control_type=ControlType.BUILT_IN_PD,
+            # The AMP MJCF declares no actuator force/velocity ranges, so every
+            # DOF gets an explicit torque/speed limit here (the backends have no
+            # silent fallback). The gains (stiffness/damping/armature) stay the
+            # MJCF values. ".*" claims every joint.
+            override_control_info={
+                ".*": ControlInfo(effort_limit=1000, velocity_limit=100)
+            },
+        )
     )
 
+    control_hz: int = 30
+    # Each passed block replaces (not merges with) the humanoid template for its
+    # backend, so fields it omits are class defaults, not the humanoid tuning
+    # (isaacgym and isaaclab here omit physx, so both get class-default PhysX);
+    # newton falls back to the humanoid default (120 fps). implicitfast treats
+    # the PD damping implicitly (Euler only does that for joint damping), which
+    # keeps stiff gains on light links stable.
     simulation_params: SimulatorParams = field(
-        default_factory=lambda: SimulatorParams(
-            isaacgym=IsaacGymSimParams(
-                fps=60,
-                decimation=2,
-                substeps=2,
-            ),
-            isaaclab=IsaacLabSimParams(
-                fps=120,
-                decimation=4,
-            ),
-            genesis=GenesisSimParams(
-                fps=60,
-                decimation=2,
-                substeps=2,
-            ),
-            newton=NewtonSimParams(
-                fps=120,
-                decimation=4,
-            ),
-            # Same 30 Hz control rate as the other simulators. implicitfast
-            # also treats the PD damping implicitly (Euler only does that for
-            # joint damping), which keeps stiff gains on light links stable.
-            mujoco=MujocoSimParams(
-                fps=960,
-                decimation=32,
-                integrator="implicitfast",
-            ),
+        default_factory=lambda: SimulatorParams.humanoid(
+            30,
+            isaacgym=IsaacGymSimParams(fps=60),
+            isaaclab=IsaacLabSimParams(fps=120),
+            mujoco=MujocoSimParams(fps=960, integrator="implicitfast"),
         )
     )

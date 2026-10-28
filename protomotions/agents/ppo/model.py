@@ -13,10 +13,9 @@ Key Classes:
 
 import torch
 from torch import distributions, nn
-from protomotions.utils.hydra_replacement import get_class
 from tensordict import TensorDict
 from protomotions.agents.common.common import ModuleContainer
-from protomotions.agents.ppo.config import PPOActorConfig, PPOModelConfig
+from protomotions.agents.ppo.config import PPOActorConfig, PPOModelConfig, StdMode
 from protomotions.agents.base_agent.model import (
     BaseModel,
     ProtoMotionsTensorDictModule,
@@ -42,12 +41,22 @@ class PPOActor(ProtoMotionsTensorDictModule):
     def __init__(self, config: PPOActorConfig):
         super().__init__()
         self.config = config
+        shape = (config.num_out,)
+        if config.std_mode == StdMode.PER_MOTION:
+            assert config.num_motions is not None, (
+                "Training setup must fill num_motions before actor construction"
+            )
+            if config.num_motions <= 0:
+                raise ValueError(
+                    "Per-motion std requires num_motions from training setup"
+                )
+            shape = (config.num_motions, config.num_out)
         self.logstd = nn.Parameter(
-            torch.ones(self.config.num_out) * self.config.actor_logstd,
-            requires_grad=self.config.learnable_std,
+            torch.full(shape, config.actor_logstd, dtype=torch.float32),
+            requires_grad=self.config.std_mode != StdMode.FIXED,
         )
-        MuClass = get_class(self.config.mu_model._target_)
-        self.mu: nn.Module = MuClass(config=self.config.mu_model)
+        self.project_logstd()
+        self.mu = self._build_submodule(self.config.mu_model)
 
         self.in_keys = self.config.in_keys
         self.out_keys = self.config.out_keys
@@ -56,26 +65,48 @@ class PPOActor(ProtoMotionsTensorDictModule):
                 key in self.out_keys
             ), f"PPOActor output key {key} not in out_keys {self.out_keys}"
 
+    @torch.no_grad()
+    def project_logstd(self):
+        """Project learned exploration after each update; fixed std remains unchanged."""
+        if self.logstd.requires_grad:
+            self.logstd.clamp_(self.config.min_logstd, self.config.max_logstd)
+
+    def experience_buffer_keys(self):
+        keys = super().experience_buffer_keys() + ["action_std"]
+        if self.config.std_mode == StdMode.PER_MOTION:
+            keys.append("global_motion_id")
+        return list(dict.fromkeys(keys))
+
+    def forward_deployable(
+        self,
+        tensordict: TensorDict,
+        log_internals: bool = False,
+    ) -> TensorDict:
+        """Compute the deterministic policy without sampling exploration noise."""
+        if isinstance(self.mu, ProtoMotionsTensorDictModule):
+            tensordict = self.mu(tensordict, log_internals=log_internals)
+        else:
+            tensordict = self.mu(tensordict)
+        tensordict["mean_action"] = tensordict[self.config.mu_key]
+        return tensordict
+
+    @property
+    def deployable_in_keys(self) -> list:
+        """The mean path reads the mu model's inputs, not the actor's full set."""
+        return list(self.mu.in_keys)
+
     def forward(
         self,
         tensordict: TensorDict,
         log_internals: bool = False,
     ) -> TensorDict:
-        """Forward pass: compute mu/std, sample action, compute neglogp.
-
-        Args:
-            tensordict: TensorDict containing observations.
-
-        Returns:
-            TensorDict with action, mean_action, and neglogp added.
-        """
-        # Compute distribution parameters
-        if isinstance(self.mu, ProtoMotionsTensorDictModule):
-            tensordict = self.mu(tensordict, log_internals=log_internals)
-        else:
-            tensordict = self.mu(tensordict)
-        mu = tensordict[self.config.mu_key]
-        std = torch.exp(self.logstd)
+        """Compute the mean, sample an action and return its negative log probability."""
+        tensordict = self.forward_deployable(tensordict, log_internals)
+        mu = tensordict["mean_action"]
+        logstd = self.logstd
+        if self.config.std_mode == StdMode.PER_MOTION:
+            logstd = logstd[tensordict["global_motion_id"]]
+        std = logstd.exp().expand_as(mu)
 
         # Sample action from distribution
         # mu * 0 + std broadcasts std to match mu's batch shape while preserving
@@ -90,8 +121,10 @@ class PPOActor(ProtoMotionsTensorDictModule):
         tensordict["action"] = action
         tensordict["mean_action"] = mu
         tensordict["neglogp"] = neglogp
+        tensordict["action_std"] = std
 
         return tensordict
+
 
 class PPOModel(BaseModel):
     """Complete PPO model with actor and critic networks.
@@ -109,15 +142,19 @@ class PPOModel(BaseModel):
 
     config: PPOModelConfig
 
+    def experience_buffer_keys(self):
+        return list(
+            dict.fromkeys(
+                super().experience_buffer_keys() + self._actor.experience_buffer_keys()
+            )
+        )
+
     def __init__(self, config: PPOModelConfig):
         super().__init__(config)
 
         # create networks
-        ActorClass = get_class(self.config.actor._target_)
-        self._actor: PPOActor = ActorClass(config=self.config.actor)
-
-        CriticClass = get_class(self.config.critic._target_)
-        self._critic: ModuleContainer = CriticClass(config=self.config.critic)
+        self._actor: PPOActor = self._build_submodule(self.config.actor)
+        self._critic: ModuleContainer = self._build_submodule(self.config.critic)
 
         # Set in_keys from actor (actor inherits from mu model)
         actor_critic_in_keys = list(set(self._actor.in_keys + self._critic.in_keys))
@@ -160,3 +197,15 @@ class PPOModel(BaseModel):
         tensordict = self._critic(tensordict)
 
         return tensordict
+
+    def forward_deployable(self, tensordict: TensorDict) -> TensorDict:
+        """The deployable graph is the actor's mean path; the critic is not exported."""
+        return self._actor.forward_deployable(tensordict)
+
+    @property
+    def deployable_in_keys(self) -> list:
+        return list(self._actor.deployable_in_keys)
+
+    @property
+    def deployable_action_key(self) -> str:
+        return self._actor.deployable_action_key

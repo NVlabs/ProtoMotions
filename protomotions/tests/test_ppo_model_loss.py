@@ -3,13 +3,22 @@
 
 """Tests for model-owned losses in PPO optimization."""
 
+from __future__ import annotations
+
 from types import SimpleNamespace
 
+import pytest
 import torch
 from torch import nn
 from tensordict import TensorDict
 
-from protomotions.agents.base_agent.model import BaseModel, ProtoMotionsTensorDictModule
+from protomotions.agents.ppo.config import StdMode
+
+from protomotions.agents.base_agent.model import (
+    BaseModel,
+    ProtoMotionsTensorDictModule,
+    RolloutStateSpec,
+)
 from protomotions.agents.common.config import MLPWithConcatConfig
 from protomotions.agents.common.common import MODULE_INTERNALS_KEY
 from protomotions.agents.common.mlp import MLPWithConcat
@@ -26,6 +35,7 @@ class _ActorWithModelLoss(nn.Module):
 
     def forward(self, tensordict, log_internals=False):
         tensordict["mean_action"] = torch.zeros_like(tensordict["action"])
+        tensordict["action_std"] = self.logstd.exp().expand_as(tensordict["action"])
         if log_internals:
             tensordict[MODULE_INTERNALS_KEY] = TensorDict(
                 {
@@ -82,8 +92,8 @@ class _StatefulMuModel(BaseModel):
         self.out_keys = ["mu"]
         self.reset_args = None
 
-    def rollout_context_keys(self) -> list:
-        return ["vae_noise"]
+    def rollout_state_specs(self) -> dict[str, RolloutStateSpec]:
+        return {"vae_noise": RolloutStateSpec(shape=(2,))}
 
     def reset_rollout_context(self, env_ids=None, num_envs: int = None, device=None):
         self.reset_args = (env_ids, num_envs, device)
@@ -138,8 +148,8 @@ class _ChildWithHooks(ProtoMotionsTensorDictModule):
         self.reset_args = None
         self.reset_count = 0
 
-    def rollout_context_keys(self) -> list:
-        return ["child_state"]
+    def rollout_state_specs(self) -> dict[str, RolloutStateSpec]:
+        return {"child_state": RolloutStateSpec(shape=(1,))}
 
     def reset_rollout_context(self, env_ids=None, num_envs: int = None, device=None):
         self.reset_args = (env_ids, num_envs, device)
@@ -233,7 +243,7 @@ def _make_ppo_agent():
         entropy_coef=0.0,
         clip_critic_loss=False,
         model=SimpleNamespace(
-            actor=SimpleNamespace(learnable_std=False),
+            actor=SimpleNamespace(std_mode=StdMode.FIXED),
         ),
         adaptive_lr=SimpleNamespace(enabled=False),
     )
@@ -244,7 +254,7 @@ def _make_ppo_agent():
     return agent
 
 
-def _actor_config(mu_target, learnable_std=False):
+def _actor_config(mu_target, std_mode=StdMode.FIXED):
     return SimpleNamespace(
         mu_model=SimpleNamespace(_target_=mu_target),
         in_keys=["obs"],
@@ -252,7 +262,9 @@ def _actor_config(mu_target, learnable_std=False):
         mu_key="mu",
         num_out=1,
         actor_logstd=-1.0,
-        learnable_std=learnable_std,
+        std_mode=std_mode,
+        min_logstd=-7.0,
+        max_logstd=0.0,
     )
 
 
@@ -261,7 +273,7 @@ def test_ppo_actor_samples_actions_and_recomputes_neglogp_from_configured_mu_key
     actor = PPOActor(
         _actor_config(
             "protomotions.tests.test_ppo_model_loss._StatefulMuModel",
-            learnable_std=False,
+            std_mode=StdMode.FIXED,
         )
     )
     td = TensorDict({"obs": torch.ones(3, 2)}, batch_size=3)
@@ -284,7 +296,7 @@ def test_ppo_actor_forwards_mu_internals_and_model_owned_loss():
     actor = PPOActor(
         _actor_config(
             "protomotions.tests.test_ppo_model_loss._MuWithInternalsAndLoss",
-            learnable_std=True,
+            std_mode=StdMode.GLOBAL,
         )
     )
     td = TensorDict(
@@ -354,7 +366,7 @@ def test_ppo_actor_non_base_mu_has_no_stateful_keys_or_model_loss():
     actor = PPOActor(
         _actor_config(
             "protomotions.tests.test_ppo_model_loss._PlainMuModule",
-            learnable_std=False,
+            std_mode=StdMode.FIXED,
         )
     )
 
@@ -365,7 +377,12 @@ def test_ppo_actor_non_base_mu_has_no_stateful_keys_or_model_loss():
     )
 
     assert actor.rollout_context_keys() == []
-    assert actor.experience_buffer_keys() == ["action", "mean_action", "neglogp"]
+    assert actor.experience_buffer_keys() == [
+        "action",
+        "mean_action",
+        "neglogp",
+        "action_std",
+    ]
     assert torch.equal(loss, torch.zeros(()))
     assert logs == {}
 
@@ -382,7 +399,7 @@ def test_ppo_model_exposes_nested_actor_rollout_context_keys_for_buffer_storage(
             mu_key="mu",
             num_out=1,
             actor_logstd=0.0,
-            learnable_std=False,
+            std_mode=StdMode.FIXED,
         ),
         critic=SimpleNamespace(
             _target_="protomotions.tests.test_ppo_model_loss._ValueCritic",
@@ -409,7 +426,7 @@ def test_ppo_model_resets_nested_rollout_context():
             mu_key="mu",
             num_out=1,
             actor_logstd=0.0,
-            learnable_std=False,
+            std_mode=StdMode.FIXED,
         ),
         critic=SimpleNamespace(
             _target_="protomotions.tests.test_ppo_model_loss._ResettableCritic",
@@ -534,3 +551,79 @@ def test_ppo_critic_loss_allows_mlp_with_concat_critic_without_model_owned_loss(
     assert torch.isfinite(loss)
     assert torch.equal(log_dict["critic/model_loss"], torch.zeros(()))
     assert not any(key.startswith("critic_model/") for key in log_dict)
+
+
+class _DifferentiableLossModel(ProtoMotionsTensorDictModule):
+    """Small actor/critic with a parameter-dependent auxiliary loss."""
+
+    def __init__(self):
+        super().__init__()
+        self.weight = nn.Parameter(torch.tensor(0.4))
+        self.logstd = nn.Parameter(torch.tensor(-0.5))
+
+    def forward(self, td, log_internals=False):
+        prediction = td["obs"] * self.weight
+        td["value"] = prediction
+        td["mean_action"] = prediction
+        td["action_std"] = self.logstd.exp().expand_as(prediction)
+        return td
+
+    def compute_model_loss(self, td, current_epoch, zero_loss, log_prefix):
+        return 0.1 * self.weight.square(), {}
+
+
+def _gradient_case(kind, clipped):
+    agent = _make_ppo_agent()
+    model = _DifferentiableLossModel()
+    agent.actor = agent.critic = model
+    agent.config.e_clip = agent.e_clip
+    agent.config.clip_critic_loss = clipped
+    agent.config.model.actor.std_mode = StdMode.GLOBAL
+    agent.config.entropy_coef = 0.03
+    batch = {
+        "obs": torch.tensor([[1.0], [2.0]]),
+        "action": torch.tensor([[0.2], [-0.1]]),
+        "neglogp": torch.tensor([0.8, 1.3]),
+        "advantages": torch.tensor([1.0, -0.7]),
+        "returns": torch.tensor([0.2, 1.5]),
+        "value": torch.tensor([[0.1], [0.3]]),
+    }
+    step = agent.actor_step if kind == "actor" else agent.critic_step
+    return agent, model, batch, step
+
+
+@pytest.mark.parametrize(
+    "kind,clipped", [("actor", False), ("critic", False), ("critic", True)]
+)
+def test_ppo_loss_keeps_policy_and_auxiliary_gradients(kind, clipped):
+    agent, model, batch, step = _gradient_case(kind, clipped)
+    loss, _ = step(batch)
+    prediction = batch["obs"] * model.weight
+    if kind == "actor":
+        dist = torch.distributions.Normal(prediction, model.logstd.exp())
+        ratio = (batch["neglogp"] + dist.log_prob(batch["action"]).sum(-1)).exp()
+        surrogate = torch.minimum(
+            batch["advantages"] * ratio,
+            batch["advantages"] * ratio.clamp(1 - agent.e_clip, 1 + agent.e_clip),
+        )
+        expected = (
+            -surrogate.mean()
+            - agent.config.entropy_coef * dist.entropy().sum(-1).mean()
+        )
+    else:
+        errors = (prediction - batch["returns"][:, None]).square()
+        if clipped:
+            clipped_values = batch["value"] + (prediction - batch["value"]).clamp(
+                -agent.e_clip, agent.e_clip
+            )
+            errors = torch.maximum(
+                errors, (clipped_values - batch["returns"][:, None]).square()
+            )
+        expected = errors.mean()
+    expected = expected + 0.1 * model.weight.square()
+    parameters = [model.weight, model.logstd] if kind == "actor" else [model.weight]
+    torch.testing.assert_close(loss, expected)
+    for actual, reference in zip(
+        torch.autograd.grad(loss, parameters), torch.autograd.grad(expected, parameters)
+    ):
+        torch.testing.assert_close(actual, reference)

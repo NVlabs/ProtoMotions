@@ -1,7 +1,7 @@
 Installation
 ============
 
-ProtoMotions supports five simulation backends: IsaacGym, IsaacLab, Genesis, Newton, and MuJoCo. 
+ProtoMotions supports four simulation backends: IsaacGym, IsaacLab, Newton, and MuJoCo. 
 You can install the simulation of your choice, and the simulation backend is selected via the configuration file.
 
 **Tested Versions:**
@@ -12,14 +12,13 @@ You can install the simulation of your choice, and the simulation backend is sel
      <a href="https://pypi.org/project/newton/1.0.0/"><img src="https://img.shields.io/badge/Newton-1.0.0-brightgreen.svg" alt="Newton"></a>
      <a href="https://github.com/isaac-sim/IsaacLab/commit/4ecd0b036da19ff6ad2bb4d621f886b63e9f6db8"><img src="https://img.shields.io/badge/IsaacLab-3.0-blue.svg" alt="IsaacLab"></a>
      <a href="https://developer.nvidia.com/isaac-gym"><img src="https://img.shields.io/badge/IsaacGym-Preview_4-blue.svg" alt="IsaacGym"></a>
-     <a href="https://github.com/Genesis-Embodied-AI/Genesis"><img src="https://img.shields.io/badge/Genesis-untested-lightgrey.svg" alt="Genesis"></a>
      <a href="https://github.com/google-deepmind/mujoco"><img src="https://img.shields.io/badge/MuJoCo-3.0+-orange.svg" alt="MuJoCo"></a>
    </p>
 
 .. note::
 
    We recommend creating a **separate virtual environment** for each simulator to avoid dependency conflicts.
-   We recommend using **conda** or **venv** for IsaacGym, Genesis, and MuJoCo, and **uv** for IsaacLab and Newton.
+   We recommend using **conda** or **venv** for IsaacGym and MuJoCo, and **uv** for IsaacLab and Newton.
 
 Which installation path?
 ------------------------
@@ -31,9 +30,9 @@ Which installation path?
    * - Simulator
      - Supported install
      - Notes
-   * - MuJoCo, Newton, Genesis
+   * - MuJoCo, Newton
      - Source checkout **or** uv dependency
-     - Genesis is experimental.
+     - MuJoCo is CPU-only and single-environment.
    * - IsaacLab
      - **Pinned source checkout**
      - IsaacLab 12.0.0 with Isaac Sim 6.0 requires Python 3.12 and Linux x86_64.
@@ -79,7 +78,7 @@ Equivalently, configure the dependency in the downstream ``pyproject.toml``:
 .. code-block:: toml
 
    [project]
-   dependencies = ["protomotions[newton]"] # or [mujoco] / [isaaclab] / [genesis]
+   dependencies = ["protomotions[newton]"] # or [mujoco] / [isaaclab]
 
    [tool.uv]
    required-version = ">=0.11.32"
@@ -186,27 +185,6 @@ ProtoMotions so its workspace packages and simulator dependencies are present.
    IsaacLab/IsaacSim may prompt for NVIDIA EULA acceptance on first use. Accept
    it interactively before running unattended headless jobs.
 
-Genesis (Experimental)
-~~~~~~~~~~~~~~~~~~~~~~
-
-Genesis requires **Python 3.10**.
-
-1. Create a conda environment:
-
-   .. code-block:: bash
-
-      conda create -n genesis python=3.10
-      conda activate genesis
-
-2. Install `Genesis <https://genesis-world.readthedocs.io/en/latest/index.html>`_
-
-3. Install ProtoMotions and dependencies:
-
-   .. code-block:: bash
-
-      pip install -e /path/to/protomotions
-      pip install -r /path/to/protomotions/requirements_genesis.txt
-
 Newton
 ~~~~~~~~~~~~~
 
@@ -276,18 +254,19 @@ MuJoCo is a CPU-only backend for quick testing and debugging without GPU. It sup
    .. code-block:: bash
 
       python protomotions/inference_agent.py \
-        --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/last.ckpt \
+        --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/inference_last.ckpt \
         --motion-file data/motion_for_trackers/g1_bones_seed_mini.pt \
         --simulator mujoco \
         --num-envs 1
 
    This example uses the shipped G1 motion tracker and matching motion data. The
-   checkpoint directory includes the required ``resolved_configs_inference.pt``
-   file.
+   checkpoint directory carries both the ``resolved_configs.json`` config bundle
+   and the ``experiment_config.py`` recipe copy; inference derives its view from
+   the bundle at load and runs the recipe's inference hook from the copy.
 
 .. note::
 
-   MuJoCo backend is intended for quick policy validation and debugging. For training or large-scale evaluation, use GPU-accelerated backends (IsaacGym, IsaacLab, Newton, Genesis).
+   MuJoCo backend is intended for quick policy validation and debugging. For training or large-scale evaluation, use GPU-accelerated backends (IsaacGym, IsaacLab, Newton).
 
 Troubleshooting
 ---------------

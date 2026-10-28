@@ -87,6 +87,18 @@ def test_calc_frame_blend_blend_is_zero_at_exact_frame_boundaries():
 # ---------- MotionLib.empty() and counting helpers -----------------------------
 
 
+def test_positions_only_query_matches_full_state():
+    lib = _populated_motion_lib()
+    ids = torch.tensor([1, 0, 1, 0, 1, 0])
+    times = torch.tensor([0.0, 0.05, 0.1, 0.2, -0.5, 5.0])
+    torch.testing.assert_close(
+        lib.get_motion_positions(ids, times),
+        lib.get_motion_state(ids, times).rigid_body_pos,
+    )
+    torch.testing.assert_close(lib.get_motion_positions(ids, times)[-2], lib.gts[3])
+    torch.testing.assert_close(lib.get_motion_positions(ids, times)[-1], lib.gts[2])
+
+
 def test_empty_motion_lib_reports_zero_motions_and_zero_total_length():
     motion_lib = MotionLib.empty(device="cpu")
     assert motion_lib.num_motions() == 0
@@ -174,7 +186,7 @@ def test_motion_lib_inference_preparation_fixes_mode_and_retains_shard_subset():
         motion_file_shard_indices=[4, 1],
     )
 
-    config.prepare_inference_config_for_save()
+    config.apply_inference_defaults()
 
     assert config.motion_file_switch_mode is MotionFileSwitchMode.FIXED
     assert config.motion_file_shard_indices == [4, 1]
@@ -223,9 +235,10 @@ def _smooth_contacts_reference(
 ) -> torch.Tensor:
     """Reference implementation matching the original per-motion loop."""
     padding = window_size // 2
-    kernel = torch.ones(
-        1, 1, window_size, device=contacts.device, dtype=torch.float32
-    ) / window_size
+    kernel = (
+        torch.ones(1, 1, window_size, device=contacts.device, dtype=torch.float32)
+        / window_size
+    )
     smoothed = torch.zeros_like(contacts, dtype=torch.float32)
     for start, num_frames in zip(length_starts.tolist(), motion_num_frames.tolist()):
         end = start + num_frames
@@ -489,6 +502,23 @@ def test_motion_state_exact_frame_uses_motion_offsets_and_optional_fields():
     assert motion_lib.lrs[sample_indices[0], 0, 0] != -3.0
 
 
+def test_motion_state_exact_frame_refuses_a_frame_past_the_clip():
+    motion_lib = _populated_motion_lib()
+    # Clip 0 has 3 frames; frame 3 would otherwise index clip 1's first frame
+    # through length_starts. Refuse it, naming the first offender.
+    with pytest.raises(
+        IndexError, match=r"frame 3 is out of range for clip 0 \(3 frames\)"
+    ):
+        motion_lib.get_motion_state_exact_frame(torch.tensor([0]), torch.tensor([3]))
+    with pytest.raises(IndexError, match="out of range for clip 1"):
+        motion_lib.get_motion_state_exact_frame(torch.tensor([1]), torch.tensor([-1]))
+    # The last valid frame of each clip is accepted (today's callers stay in range).
+    state = motion_lib.get_motion_state_exact_frame(
+        torch.tensor([0, 1]), torch.tensor([2, 1])
+    )
+    assert state.rigid_body_pos.shape[0] == 2
+
+
 def test_motion_state_exact_frame_scalar_lookup_does_not_alias_storage():
     motion_lib = _populated_motion_lib(include_lrs=True)
     storage = {
@@ -584,9 +614,7 @@ def _create_motion_shards(tmp_path, count: int, prefix: str = "chunk"):
 
 def _selected_shard_indices(pattern, *, world_size: int, cycle: int):
     return [
-        select_motion_shard(
-            pattern, rank=rank, world_size=world_size, cycle=cycle
-        )[1]
+        select_motion_shard(pattern, rank=rank, world_size=world_size, cycle=cycle)[1]
         for rank in range(world_size)
     ]
 
@@ -600,9 +628,9 @@ def test_select_motion_shard_rotates_full_assignments_when_shards_exceed_ranks(
 ):
     pattern = _create_motion_shards(tmp_path, 16)
 
-    assert _selected_shard_indices(
-        pattern, world_size=8, cycle=cycle
-    ) == expected_indices
+    assert (
+        _selected_shard_indices(pattern, world_size=8, cycle=cycle) == expected_indices
+    )
 
 
 def test_select_motion_shard_keeps_full_assignment_when_shards_equal_ranks(tmp_path):
@@ -623,9 +651,9 @@ def test_select_motion_shard_pins_initial_ranks_and_rotates_extra_ranks(
 ):
     pattern = _create_motion_shards(tmp_path, 8)
 
-    assert _selected_shard_indices(
-        pattern, world_size=16, cycle=cycle
-    ) == expected_indices
+    assert (
+        _selected_shard_indices(pattern, world_size=16, cycle=cycle) == expected_indices
+    )
 
 
 def test_select_motion_shard_preserves_explicit_shard_index_order(tmp_path):
@@ -680,7 +708,9 @@ def test_select_motion_shard_rejects_duplicate_numeric_indices(tmp_path):
         select_motion_shard(pattern, rank=0, world_size=1, cycle=0)
 
 
-def test_selection_for_cycle_uses_distributed_rank_and_world_size(tmp_path, monkeypatch):
+def test_selection_for_cycle_uses_distributed_rank_and_world_size(
+    tmp_path, monkeypatch
+):
     pattern = _create_motion_shards(tmp_path, 16)
     motion_lib = MotionLib.empty(device="cpu")
     motion_lib.config.motion_file = pattern
@@ -693,7 +723,9 @@ def test_selection_for_cycle_uses_distributed_rank_and_world_size(tmp_path, monk
     assert (selected_path, selected_index) == (str(tmp_path / "chunk_11.pt"), 11)
 
 
-def test_selection_for_cycle_rejects_uninitialized_distributed_runtime(tmp_path, monkeypatch):
+def test_selection_for_cycle_rejects_uninitialized_distributed_runtime(
+    tmp_path, monkeypatch
+):
     motion_lib = MotionLib.empty(device="cpu")
     motion_lib.config.motion_file = _create_motion_shards(tmp_path, 1)
     monkeypatch.setattr(torch.distributed, "is_initialized", lambda: False)
@@ -713,10 +745,12 @@ def test_process_packaged_motion_file_uses_passed_pattern_and_passes_through_pla
     monkeypatch.setattr(torch.distributed, "get_rank", lambda: 3)
     monkeypatch.setattr(torch.distributed, "get_world_size", lambda: 8)
 
-    assert motion_lib.process_packaged_motion_file_name_multi_gpu("plain.pt") == "plain.pt"
-    assert motion_lib.process_packaged_motion_file_name_multi_gpu(passed_pattern) == str(
-        tmp_path / "passed" / "chunk_3.pt"
+    assert (
+        motion_lib.process_packaged_motion_file_name_multi_gpu("plain.pt") == "plain.pt"
     )
+    assert motion_lib.process_packaged_motion_file_name_multi_gpu(
+        passed_pattern
+    ) == str(tmp_path / "passed" / "chunk_3.pt")
     assert motion_lib.motion_file_shard_index == 3
 
 
@@ -728,6 +762,7 @@ def test_motion_lib_initializes_shard_index_for_empty_and_unsharded(tmp_path):
 
     assert empty.motion_file_shard_index is None
     assert unsharded.motion_file_shard_index is None
+
 
 def test_fetch_motion_files_handles_yaml_single_files_directories_and_invalid(
     tmp_path,

@@ -12,6 +12,7 @@ from torch import Tensor
 import numpy as np
 from rich.progress import Progress
 import os
+import xml.etree.ElementTree as ET
 from protomotions.assets import get_asset_root
 from protomotions.components.terrains.terrain import Terrain
 from protomotions.components.terrains.config import CombineMode
@@ -48,6 +49,25 @@ from protomotions.simulator.base_simulator.config import (
 import tempfile
 
 
+def _relativize_mjcf_asset_paths(path: str) -> None:
+    """Rewrite absolute asset paths in an MJCF file relative to its folder.
+
+    The prepared robot MJCF (see ``prepare_robot_mjcf``) names meshes by
+    absolute path. Gym's loader joins every asset path onto the asset folder,
+    absolute or not, so it cannot find them and crashes on import.
+    """
+    tree = ET.parse(path)
+    folder = os.path.dirname(os.path.abspath(path))
+    changed = False
+    for element in tree.getroot().iter():
+        for attribute, value in list(element.attrib.items()):
+            if attribute.startswith("file") and os.path.isabs(value):
+                element.set(attribute, os.path.relpath(value, folder))
+                changed = True
+    if changed:
+        tree.write(path)
+
+
 class IsaacGymSimulator(Simulator):
     # ===== Group 1: Initialization & Configuration =====
     def __init__(
@@ -59,6 +79,17 @@ class IsaacGymSimulator(Simulator):
         scene_lib: SceneLib,
         custom_key_handlers: Optional[Dict[str, callable]] = None,
     ) -> None:
+        assert not robot_config.contact_bodies, (
+            "IsaacGym contact reporting is not supported. robot.contact_bodies "
+            f"is {robot_config.contact_bodies!r}, which turns contact reporting "
+            "on, but IsaacGym's GPU pipeline only reports one combined force per "
+            "body, not what each body is touching (terrain, another body or an "
+            "object). If this recipe has contact observations, rewards or "
+            "terminations, run it with --simulator isaaclab instead. If nothing "
+            "in it reads contacts (for example, the SMPLX robot config lists its "
+            "finger bodies by default), add --overrides robot.contact_bodies=None "
+            "to run it on IsaacGym."
+        )
         super().__init__(
             config=config,
             robot_config=robot_config,
@@ -107,6 +138,11 @@ class IsaacGymSimulator(Simulator):
         # Projectile storage (populated during env creation)
         self._projectile_handles: list = [[] for _ in range(self.num_envs)]
         self._projectile_sim_indices: list = []
+        # Gym keeps only the last indexed setter of each kind before simulate.
+        # Stage every producer (reset/restore, pushes, projectiles, markers) and
+        # flush their union once. This backend owns that API constraint.
+        self._pending_root_ids = []
+        self._pending_dof_ids = []
 
     def _create_simulation(self) -> None:
         """Create the IsaacGym simulation environment.
@@ -151,14 +187,12 @@ class IsaacGymSimulator(Simulator):
         self._gym.refresh_dof_state_tensor(self._sim)
         self._gym.refresh_actor_root_state_tensor(self._sim)
         self._gym.refresh_rigid_body_state_tensor(self._sim)
-        self._gym.refresh_net_contact_force_tensor(self._sim)
         self._gym.refresh_force_sensor_tensor(self._sim)
 
         # get gym GPU state tensors
         actor_root_state = self._gym.acquire_actor_root_state_tensor(self._sim)
         dof_state_tensor = self._gym.acquire_dof_state_tensor(self._sim)
         rigid_body_state = self._gym.acquire_rigid_body_state_tensor(self._sim)
-        contact_force_tensor = self._gym.acquire_net_contact_force_tensor(self._sim)
 
         dof_force_tensor = self._gym.acquire_dof_force_tensor(self._sim)
         self._dof_force_tensor: Tensor = gymtorch.wrap_tensor(dof_force_tensor).view(
@@ -168,7 +202,6 @@ class IsaacGymSimulator(Simulator):
         self._gym.refresh_dof_state_tensor(self._sim)
         self._gym.refresh_actor_root_state_tensor(self._sim)
         self._gym.refresh_rigid_body_state_tensor(self._sim)
-        self._gym.refresh_net_contact_force_tensor(self._sim)
         self._gym.refresh_force_sensor_tensor(self._sim)
 
         self._root_states: Tensor = gymtorch.wrap_tensor(actor_root_state)
@@ -222,6 +255,19 @@ class IsaacGymSimulator(Simulator):
         self._rigid_body_ang_vel = rigid_body_state_reshaped[
             ..., : self._num_bodies, 10:13
         ]
+        # Read after per-actor COM randomization. Gym stores COM velocities even
+        # though body positions refer to link origins.
+        self._body_com_offsets = torch.tensor(
+            [
+                [
+                    [p.com.x, p.com.y, p.com.z]
+                    for p in self._gym.get_actor_rigid_body_properties(env, actor)
+                ]
+                for env, actor in zip(self._envs, self._humanoid_handles)
+            ],
+            device=self.device,
+            dtype=self._rigid_body_pos.dtype,
+        )
 
         # self._reset_states = RobotState(
         #     dof_pos=torch.zeros(
@@ -248,25 +294,15 @@ class IsaacGymSimulator(Simulator):
         self._rigid_body_vel[:, 0, :] = 0
         self._rigid_body_ang_vel[:, 0, :] = 0
 
-        contact_force_tensor = gymtorch.wrap_tensor(contact_force_tensor)
-        self._contact_forces = contact_force_tensor.view(
-            self.num_envs, bodies_per_env, 3
-        )[..., : self._num_bodies, :]
-
-        if self.scene_lib.num_objects_per_scene == 0:
-            self._object_contact_forces = None
-        else:
-            self._object_contact_forces = contact_force_tensor.view(
-                self.num_envs, bodies_per_env, 3
-            )[..., self._num_bodies :, :]
-
         if not self.headless:
             self._init_camera()
 
         if self._visualization_markers:
             self._build_marker_state_tensors()
 
-    def _register_custom_user_interface_keys(self, handlers: Dict[str, callable]) -> None:
+    def _register_custom_user_interface_keys(
+        self, handlers: Dict[str, callable]
+    ) -> None:
         for key_name, handler in handlers.items():
             self.user_interface.register_key(
                 key_name,
@@ -347,6 +383,14 @@ class IsaacGymSimulator(Simulator):
             Loaded asset handle (opaque gymapi handle)
         """
         asset_path = self._get_robot_asset_path()
+        # Only the prepared temporary copy is rewritten; source assets never are.
+        # Resolve symlinks first, so the relative mesh paths and the asset folder
+        # handed to Gym describe the same physical location.
+        if os.path.normpath(os.path.dirname(asset_path)) == os.path.normpath(
+            self._robot_asset_directory.name
+        ):
+            asset_path = os.path.realpath(asset_path)
+            _relativize_mjcf_asset_paths(asset_path)
         asset_root = os.path.dirname(asset_path)
         asset_file = os.path.basename(asset_path)
 
@@ -525,12 +569,15 @@ class IsaacGymSimulator(Simulator):
             num_asset_buckets = self._num_object_asset_randomization_buckets()
 
             # Count assets
-            asset_count = sum(
-                1
-                for scene in self.scene_lib.scenes
-                for obj in scene.objects
-                if obj.is_first_instance
-            ) * num_asset_buckets
+            asset_count = (
+                sum(
+                    1
+                    for scene in self.scene_lib.scenes
+                    for obj in scene.objects
+                    if obj.is_first_instance
+                )
+                * num_asset_buckets
+            )
 
             with Progress() as progress:
                 task = progress.add_task(
@@ -814,20 +861,19 @@ class IsaacGymSimulator(Simulator):
         # Set PD gains for built-in PD controller
         for i in range(self._num_dof):
             dof_name = self.robot_config.kinematic_info.dof_names[i]
-            stiffness = self.robot_config.control.control_info[dof_name].stiffness
-            damping = self.robot_config.control.control_info[dof_name].damping
-            armature = self.robot_config.control.control_info[dof_name].armature
-            friction = self.robot_config.control.control_info[dof_name].friction
-            if not self.control_type == ControlType.BUILT_IN_PD:
-                # Manual PD controller handles stiffness-damping.
-                # This disables additional stiffness-damping that is added by the built-in PD controller.
-                stiffness = 0.0
-                damping = 0.0
-
-            dof_props["stiffness"][i] = stiffness
-            dof_props["damping"][i] = damping
-            dof_props["armature"][i] = armature
-            dof_props["friction"][i] = friction
+            info = self.robot_config.control.control_info[dof_name]
+            if self.control_type == ControlType.BUILT_IN_PD:
+                dof_props["stiffness"][i] = info.require("stiffness")
+                dof_props["damping"][i] = info.require("damping")
+            else:
+                # Manual PD controller handles stiffness-damping; disable the
+                # stiffness-damping the built-in PD controller would add.
+                dof_props["stiffness"][i] = 0.0
+                dof_props["damping"][i] = 0.0
+            dof_props["armature"][i] = info.require("armature")
+            # Friction is asset-owned: None leaves IsaacGym's default.
+            if info.friction is not None:
+                dof_props["friction"][i] = info.friction
 
         self._gym.set_actor_dof_properties(env_ptr, humanoid_handle, dof_props)
 
@@ -1152,7 +1198,6 @@ class IsaacGymSimulator(Simulator):
         self._gym.refresh_rigid_body_state_tensor(self._sim)
         self._gym.refresh_force_sensor_tensor(self._sim)
         self._gym.refresh_dof_force_tensor(self._sim)
-        self._gym.refresh_net_contact_force_tensor(self._sim)
 
     def _set_simulator_env_state(
         self,
@@ -1166,7 +1211,14 @@ class IsaacGymSimulator(Simulator):
         # Set new states
         self._humanoid_root_states[env_ids, 0:3] = new_states.root_pos
         self._humanoid_root_states[env_ids, 3:7] = new_states.root_rot
-        self._humanoid_root_states[env_ids, 7:10] = new_states.root_vel
+        from protomotions.utils.rotations import quat_rotate
+
+        root_com_w = quat_rotate(
+            new_states.root_rot, self._body_com_offsets[env_ids, 0], True
+        )
+        self._humanoid_root_states[env_ids, 7:10] = new_states.root_vel + torch.cross(
+            new_states.root_ang_vel, root_com_w, dim=-1
+        )
         self._humanoid_root_states[env_ids, 10:13] = new_states.root_ang_vel
 
         self._dof_pos[env_ids] = new_states.dof_pos
@@ -1184,31 +1236,63 @@ class IsaacGymSimulator(Simulator):
             object_ids = self._object_indices[env_ids].flatten()
             set_root_state_ids = torch.cat((set_root_state_ids, object_ids), dim=0)
 
-        self._gym.set_actor_root_state_tensor_indexed(
-            self._sim,
-            gymtorch.unwrap_tensor(self._root_states),
-            gymtorch.unwrap_tensor(set_root_state_ids),
-            len(set_root_state_ids),
-        )
-        self._gym.set_dof_state_tensor_indexed(
-            self._sim,
-            gymtorch.unwrap_tensor(self._dof_state),
-            gymtorch.unwrap_tensor(actor_ids),
-            len(actor_ids),
-        )
+        self._pending_root_ids.append(set_root_state_ids.clone())
+        self._pending_dof_ids.append(actor_ids.clone())
+        # Do not refresh here: physics has not consumed the pending writes yet.
+        # Fresh link state is reconstructed below rather than read from Gym's
+        # stale body cache. PD targets come from _apply_control before simulate.
+        self._refresh_reset_body_state(new_states, env_ids)
 
-        if self.control_type == ControlType.BUILT_IN_PD:
-            self._gym.set_dof_position_target_tensor_indexed(
-                self._sim,
-                gymtorch.unwrap_tensor(self._dof_pos.contiguous()),
-                gymtorch.unwrap_tensor(actor_ids),
-                len(actor_ids),
-            )
+    def _refresh_reset_body_state(self, new_states, env_ids) -> None:
+        from protomotions.simulator.isaacgym.reset_kinematics import reset_body_state
+        from protomotions.utils.rotations import quat_rotate
 
-        self._refresh_sim_tensors()
+        common = new_states.clone().convert_to_common(self.data_conversion)
+        pos, quat, vel, angular = reset_body_state(
+            self.robot_config.kinematic_info, common
+        )
+        order = self.data_conversion.body_convert_to_sim
+        pos, quat, vel, angular = (
+            value[:, order] for value in (pos, quat, vel, angular)
+        )
+        offsets = quat_rotate(
+            quat.reshape(-1, 4), self._body_com_offsets[env_ids].reshape(-1, 3), True
+        ).reshape_as(pos)
+        self._rigid_body_pos[env_ids] = pos
+        self._rigid_body_rot[env_ids] = quat  # Gym and common both use xyzw.
+        self._rigid_body_vel[env_ids] = vel + torch.cross(angular, offsets, dim=-1)
+        self._rigid_body_ang_vel[env_ids] = angular
+
+    def _flush_pending_state(self) -> list:
+        submitted = []
+        for pending, setter, state in (
+            (
+                self._pending_root_ids,
+                self._gym.set_actor_root_state_tensor_indexed,
+                self._root_states,
+            ),
+            (
+                self._pending_dof_ids,
+                self._gym.set_dof_state_tensor_indexed,
+                self._dof_state,
+            ),
+        ):
+            if pending:
+                ids = torch.cat(pending).unique().to(dtype=torch.int32)
+                setter(
+                    self._sim,
+                    gymtorch.unwrap_tensor(state),
+                    gymtorch.unwrap_tensor(ids),
+                    ids.numel(),
+                )
+                submitted.append(ids)
+                pending.clear()
+        return submitted
 
     def _simulate(self) -> None:
+        submitted_ids = self._flush_pending_state()
         self._gym.simulate(self._sim)
+        del submitted_ids  # Keep the index buffers alive until Gym consumes them.
         if self.device == "cpu":
             self._gym.fetch_results(self._sim, True)
         self._gym.refresh_dof_state_tensor(self._sim)
@@ -1231,6 +1315,10 @@ class IsaacGymSimulator(Simulator):
         root_rot = self._humanoid_root_states[..., 3:7].clone()
         root_vel = self._humanoid_root_states[..., 7:10].clone()
         root_ang_vel = self._humanoid_root_states[..., 10:13].clone()
+        from protomotions.utils.rotations import quat_rotate
+
+        offset = quat_rotate(root_rot, self._body_com_offsets[:, 0], True)
+        root_vel -= torch.cross(root_ang_vel, offset, dim=-1)
         if env_ids is not None:
             root_pos = root_pos[env_ids]
             root_rot = root_rot[env_ids]
@@ -1264,30 +1352,19 @@ class IsaacGymSimulator(Simulator):
             state_conversion=StateConversion.SIMULATOR,
         )
 
-    def _get_simulator_bodies_contact_buf(self, env_ids=None) -> RobotState:
-        contact_forces = self._contact_forces.clone()
-        if env_ids is not None:
-            contact_forces = contact_forces[env_ids]
-        return RobotState(
-            rigid_body_contact_forces=contact_forces,
-            state_conversion=StateConversion.SIMULATOR,
-        )
-
-    def _get_simulator_object_contact_buf(self, env_ids=None) -> ObjectState:
-        object_contact_forces = self._object_contact_forces.clone()
-        if env_ids is not None:
-            object_contact_forces = object_contact_forces[env_ids]
-        return ObjectState(
-            contact_forces=object_contact_forces,
-            state_conversion=StateConversion.SIMULATOR,
-        )
-
     def _get_simulator_bodies_state(
         self, env_ids: Optional[torch.Tensor] = None
     ) -> RobotState:
         body_pos = self._rigid_body_pos.clone()
         body_rot = self._rigid_body_rot.clone()
-        body_vel = self._rigid_body_vel.clone()
+        from protomotions.utils.rotations import quat_rotate
+
+        offsets = quat_rotate(
+            body_rot.reshape(-1, 4), self._body_com_offsets.reshape(-1, 3), True
+        ).reshape_as(body_pos)
+        body_vel = self._rigid_body_vel - torch.cross(
+            self._rigid_body_ang_vel, offsets, dim=-1
+        )
         body_ang_vel = self._rigid_body_ang_vel.clone()
         if env_ids is not None:
             body_pos = body_pos[env_ids]
@@ -1371,17 +1448,11 @@ class IsaacGymSimulator(Simulator):
         env_ids: torch.Tensor,
     ) -> None:
         """Apply velocity impulse to robot root by adding to current velocities."""
-        self._gym.refresh_actor_root_state_tensor(self._sim)
         self._humanoid_root_states[env_ids, 7:10] += linear_velocity
         self._humanoid_root_states[env_ids, 10:13] += angular_velocity
 
         actor_ids = self._humanoid_actor_ids[env_ids]
-        self._gym.set_actor_root_state_tensor_indexed(
-            self._sim,
-            gymtorch.unwrap_tensor(self._root_states),
-            gymtorch.unwrap_tensor(actor_ids),
-            len(actor_ids),
-        )
+        self._pending_root_ids.append(actor_ids.clone())
 
     # ===== Projectile Implementation =====
     def _get_projectile_positions_rotations(self) -> tuple:
@@ -1421,12 +1492,7 @@ class IsaacGymSimulator(Simulator):
         self._projectile_root_states[env_ids, proj_indices, 10:13] = ang_velocities
 
         sim_ids = self._projectile_sim_indices_tensor[env_ids, proj_indices]
-        self._gym.set_actor_root_state_tensor_indexed(
-            self._sim,
-            gymtorch.unwrap_tensor(self._root_states),
-            gymtorch.unwrap_tensor(sim_ids),
-            len(sim_ids),
-        )
+        self._pending_root_ids.append(sim_ids.clone())
 
     # ===== Group 6: Domain Randomization =====
     # - IsaacGym: Must set friction on asset before actor creation
@@ -1640,7 +1706,10 @@ class IsaacGymSimulator(Simulator):
     ) -> None:
         """Apply sampled robot body masses immediately after actor creation."""
 
-        if self._domain_randomization is None or "body_mass" not in self._domain_randomization:
+        if (
+            self._domain_randomization is None
+            or "body_mass" not in self._domain_randomization
+        ):
             return
 
         body_mass = self._domain_randomization["body_mass"]
@@ -1691,9 +1760,7 @@ class IsaacGymSimulator(Simulator):
 
             # check for keyboard events
             for evt in self._gym.query_viewer_action_events(self._viewer):
-                self.user_interface.handle_key_event(
-                    evt.action, pressed=evt.value > 0
-                )
+                self.user_interface.handle_key_event(evt.action, pressed=evt.value > 0)
 
             if self.device.type != "cpu":
                 self._gym.fetch_results(self._sim, True)
@@ -1727,12 +1794,7 @@ class IsaacGymSimulator(Simulator):
             dim=1,
         )
         self._marker_rot[:] = markers_orientations
-        self._gym.set_actor_root_state_tensor_indexed(
-            self._sim,
-            gymtorch.unwrap_tensor(self._root_states),
-            gymtorch.unwrap_tensor(self._marker_actor_ids),
-            len(self._marker_actor_ids),
-        )
+        self._pending_root_ids.append(self._marker_actor_ids.clone())
 
     def _write_viewport_to_file(self, file_name: str) -> None:
         self._gym.write_viewer_image_to_file(
@@ -1752,7 +1814,8 @@ class IsaacGymSimulator(Simulator):
         self._temp_dir.cleanup()
 
     def _update_camera(self) -> None:
-        self._gym.refresh_actor_root_state_tensor(self._sim)
+        # Root buffers already contain the last step plus pending commands.
+        # Refreshing here could overwrite a reset queued before rendering.
 
         if self._camera_target["element"] == 0:
             current_char_pos = (

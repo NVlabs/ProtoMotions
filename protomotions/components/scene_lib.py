@@ -1018,7 +1018,7 @@ class SceneLibConfig:
     """
 
     _target_: str = "protomotions.components.scene_lib.SceneLib"
-    scene_file: str = field(
+    scene_file: Optional[str] = field(
         default=None,
         metadata={
             "help": "Path to scene file (.pt) to load. None for programmatic scenes."
@@ -1048,7 +1048,7 @@ class SceneLibConfig:
             "help": "Number of pointcloud samples per object for observations. None to disable."
         },
     )
-    num_objects_per_env: int = field(
+    num_objects_per_env: Optional[int] = field(
         default=None,
         metadata={"help": "Number of objects per environment. Must match scene data."},
     )
@@ -1102,6 +1102,55 @@ class SceneLibConfig:
             "file (i.e. parent of the scenes/ directory)."
         },
     )
+
+
+@dataclass(frozen=True)
+class ScenePairing:
+    """A snapshot, taken once at build, of which clip each scene is paired with.
+
+    ``original_motion_ids`` holds one ``humanoid_motion_id`` per original scene
+    (-1 means no fixed motion); ``per_env_motion_ids`` holds one per replicated
+    per-env scene, mapped through the replica-to-original index; ``is_paired`` is
+    True when any scene names a clip. It is read everywhere instead of
+    recomputing from the scene list.
+    """
+
+    original_motion_ids: Tuple[int, ...]
+    per_env_motion_ids: Tuple[int, ...]
+    is_paired: bool
+
+    def __post_init__(self) -> None:
+        for name in ("original_motion_ids", "per_env_motion_ids"):
+            if not all(isinstance(i, int) and i >= -1 for i in getattr(self, name)):
+                raise ValueError(f"{name}: motion ids must be integers >= -1")
+        if self.is_paired != any(i >= 0 for i in self.per_env_motion_ids):
+            raise ValueError("is_paired must be True iff a per-env scene names a clip")
+
+
+def scene_weights_by_clip_id(
+    scenes: List["Scene"], motion_weights: List[float]
+) -> List[float]:
+    """One curriculum weight per scene, read from ``motion_weights`` by clip id.
+
+    A scene's weight follows its ``humanoid_motion_id``, so the curriculum
+    over-samples a scene by the weight of the clip it is paired with, regardless
+    of scene order. Every scene must be paired (id >= 0) and in range.
+    """
+    weights = []
+    for scene in scenes:
+        clip = scene.humanoid_motion_id
+        if clip < 0:
+            raise ValueError(
+                "curriculum motion_weights need every scene paired to a clip; an "
+                "unpaired scene (humanoid_motion_id -1) has no clip weight"
+            )
+        if clip >= len(motion_weights):
+            raise ValueError(
+                f"scene humanoid_motion_id {clip} is beyond the "
+                f"{len(motion_weights)} motion weights"
+            )
+        weights.append(motion_weights[clip])
+    return weights
 
 
 class SceneLib:
@@ -1187,6 +1236,7 @@ class SceneLib:
         device: str = "cpu",
         terrain: Optional[Terrain] = None,
         scene_weights: Optional[List[float]] = None,
+        motion_weights: Optional[List[float]] = None,
     ):
         """Initialize SceneLib from config.
 
@@ -1277,6 +1327,13 @@ class SceneLib:
                     f"[{config.scene_indices[0]}..{config.scene_indices[-1]}]"
                 )
 
+        # Curriculum weights reach a scene through its clip id, so a scene's
+        # weight follows humanoid_motion_id rather than its position in the list.
+        if motion_weights is not None:
+            if scene_weights is not None:
+                raise ValueError("pass motion_weights or scene_weights, not both")
+            scene_weights = scene_weights_by_clip_id(scenes, motion_weights)
+
         # Validate scene weights match number of scenes
         if scene_weights is not None:
             if len(scene_weights) != len(scenes):
@@ -1303,6 +1360,7 @@ class SceneLib:
         """Create an empty scene library with no scenes (num_objects_per_scene=0)."""
         self._original_scenes = []
         self.scenes = []
+        self.pairing = ScenePairing((), (), False)
         self._scene_offsets = []
 
         self.num_objects_per_scene = 0
@@ -1378,48 +1436,19 @@ class SceneLib:
         )
 
     def get_humanoid_motion_ids(self):
-        """Return per-env humanoid motion IDs from replicated scenes.
+        """Per-env humanoid motion ids from the pairing snapshot, or None if unpaired.
 
-        Returns:
-            List[int] if any scene has a valid (>= 0) motion id, else None.
-            Entries of -1 mean "no fixed motion" (random sampling).
+        Returns a list (entries of -1 mean "no fixed motion") when any scene
+        names a clip, else None.
         """
-        humanoid_motion_ids = [scene.humanoid_motion_id for scene in self.scenes]
-
-        if all(mid == -1 for mid in humanoid_motion_ids):
+        if not self.pairing.is_paired:
             return None
-        return humanoid_motion_ids
+        return list(self.pairing.per_env_motion_ids)
 
-    def get_per_env_humanoid_motion_ids_tensor(self) -> torch.Tensor:
-        """Return (num_envs,) int tensor of humanoid_motion_id per replicated scene.
-
-        -1 means "universal" (scene works with any motion).
-        Cached on first call since scene-to-motion mappings are static.
-        """
-        if not hasattr(self, "_per_env_motion_ids_cached"):
-            self._per_env_motion_ids_cached = torch.tensor(
-                [scene.humanoid_motion_id for scene in self.scenes],
-                dtype=torch.long,
-                device=self.device,
-            )
-        return self._per_env_motion_ids_cached
-
-    def build_motion_to_original_scene_map(self, num_motions: int) -> torch.Tensor:
-        """Build reverse mapping from motion_id to original_scene_index.
-
-        Args:
-            num_motions: Total number of motions in the motion library.
-
-        Returns:
-            (num_motions,) tensor where map[motion_id] = original_scene_index,
-            or -1 if no scene is associated with that motion.
-        """
-        mapping = torch.full((num_motions,), -1, dtype=torch.long, device=self.device)
-        for scene_idx, scene in enumerate(self._original_scenes):
-            mid = scene.humanoid_motion_id
-            if mid >= 0 and mid < num_motions:
-                mapping[mid] = scene_idx
-        return mapping
+    @property
+    def replica_to_original(self) -> torch.Tensor:
+        """Per-env scene index -> original scene index, a (num_envs,) long tensor."""
+        return self._scene_to_original_scene_id
 
     def _create_scenes(
         self, scenes: List[Scene], scene_weights: Optional[List[float]] = None
@@ -1471,6 +1500,19 @@ class SceneLib:
         self._build_static_object_mask()
 
         self.scenes = assigned_scenes
+
+        # One pairing snapshot, read everywhere instead of recomputed per call.
+        # is_paired follows the per-env scenes (what get_humanoid_motion_ids and
+        # the sharding rule read), so a paired original dropped by subsetting does
+        # not make an all-sentinel per-env library look paired.
+        per_env_motion_ids = tuple(int(s.humanoid_motion_id) for s in self.scenes)
+        self.pairing = ScenePairing(
+            original_motion_ids=tuple(
+                int(s.humanoid_motion_id) for s in self._original_scenes
+            ),
+            per_env_motion_ids=per_env_motion_ids,
+            is_paired=any(i >= 0 for i in per_env_motion_ids),
+        )
 
         # Combine from original scenes only (like MotionLib)
         if self.pointcloud_samples_per_object is not None:
@@ -2314,6 +2356,15 @@ class SceneLib:
             )
         original_scene_indices = self._scene_to_original_scene_id[scene_indices]
         return self._object_bbox_extents[original_scene_indices]
+
+    @property
+    def has_pointclouds(self) -> bool:
+        """Whether the library holds object pointclouds: the combined tensor
+        exists and has at least one point (an object-less library holds an
+        empty tensor, a library built before ``combine_object_pointclouds``
+        none)."""
+        pointclouds = self._object_pointclouds
+        return pointclouds is not None and pointclouds.numel() > 0
 
     def num_scenes(self) -> int:
         """

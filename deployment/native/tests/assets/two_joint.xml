@@ -1,0 +1,21 @@
+<mujoco model="protomotions_deployment_smoke">
+  <option timestep="0.002" gravity="0 0 -9.81"/>
+  <worldbody>
+    <body name="base" pos="0 0 1">
+      <freejoint/>
+      <geom type="sphere" size="0.08" mass="1"/>
+      <body name="left" pos="0.1 0 0">
+        <joint name="left_hinge" type="hinge" axis="0 1 0"/>
+        <geom type="capsule" fromto="0 0 0 0.25 0 0" size="0.04" mass="0.2"/>
+      </body>
+      <body name="right" pos="-0.1 0 0">
+        <joint name="right_hinge" type="hinge" axis="0 1 0"/>
+        <geom type="capsule" fromto="0 0 0 -0.25 0 0" size="0.04" mass="0.2"/>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <position name="left_position" joint="left_hinge" kp="20" ctrlrange="-1 1"/>
+    <position name="right_position" joint="right_hinge" kp="20" ctrlrange="-1 1"/>
+  </actuator>
+</mujoco>

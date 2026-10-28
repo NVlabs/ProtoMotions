@@ -34,6 +34,11 @@ release. Preserve applicable upstream terms when distributing fine-tuned models,
 adapters or derivatives; do not infer dataset redistribution rights from the
 model license.
 
+A model hosted on Hugging Face carries the same `MODEL_CARD.md`, `LICENSE.pdf`
+and `NOTICE.txt` inside its package directory; CI fetches those pinned sidecars
+with `python scripts/download_metatron.py --configs-only` before running the
+checker.
+
 Run `python scripts/check_model_licenses.py` before publishing. CI runs this
 without loading checkpoints or downloading LFS payloads, and the release
 projection checks the actual outgoing tree.

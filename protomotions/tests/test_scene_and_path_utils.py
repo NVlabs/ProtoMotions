@@ -3,12 +3,11 @@
 
 """Tests for scene observation and path generation utilities."""
 
-from types import SimpleNamespace
 
 import torch
 
-from protomotions.envs.obs.scene_obs import SceneObs, SceneObsConfig
 from protomotions.envs.utils import scene as scene_utils
+from protomotions.envs.base_env.episode_tensors import EpisodeTensors
 from protomotions.envs.utils.path_generator import PathGenerator, PathGeneratorConfig
 
 
@@ -63,78 +62,6 @@ def test_scene_geometry_helpers_compute_local_pointclouds_and_nearest_vectors():
     assert coordinates.shape == (1, 9)
 
 
-def test_scene_obs_handles_disabled_and_enabled_fake_environments():
-    disabled_env = SimpleNamespace(
-        scene_lib=SimpleNamespace(num_scenes=lambda: 0),
-        num_envs=2,
-        device=torch.device("cpu"),
-    )
-    disabled = SceneObs(SceneObsConfig(enabled=True), disabled_env)
-    disabled.compute_observations(torch.tensor([0]))
-    assert disabled.scene_pointclouds is None
-    assert disabled.contact_bodies_to_pointcloud is None
-
-    class _SceneLib:
-        num_objects_per_scene = 2
-        pointcloud_samples_per_object = 2
-
-        def num_scenes(self):
-            return 1
-
-        def get_scene_neutral_pointcloud(self, env_ids):
-            return torch.tensor(
-                [
-                    [
-                        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
-                        [[0.0, 1.0, 0.0], [0.0, 2.0, 0.0]],
-                    ]
-                ]
-            ).expand(len(env_ids), -1, -1, -1)
-
-    class _Simulator:
-        def get_object_root_state(self, env_ids):
-            n = len(env_ids)
-            return SimpleNamespace(
-                root_pos=torch.tensor([[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]]).expand(
-                    n, -1, -1
-                ),
-                root_rot=_identity_quat(n, 2),
-            )
-
-        def get_bodies_state(self, env_ids):
-            n = len(env_ids)
-            return SimpleNamespace(
-                rigid_body_pos=torch.tensor([[[0.0, 0.0, 0.0], [1.0, 1.0, 0.0]]]).expand(
-                    n, -1, -1
-                ),
-                rigid_body_rot=_identity_quat(n, 2),
-            )
-
-    enabled_env = SimpleNamespace(
-        scene_lib=_SceneLib(),
-        robot_config=SimpleNamespace(contact_bodies=["foot"]),
-        contact_body_ids=torch.tensor([1]),
-        num_envs=2,
-        device=torch.device("cpu"),
-        simulator=_Simulator(),
-    )
-    enabled = SceneObs(SceneObsConfig(enabled=True, obs_object_index=[1]), enabled_env)
-    enabled.compute_observations(torch.tensor([1]))
-    obs = enabled.get_obs()
-    obs["scene_pointclouds"][1, 0] = -99.0
-
-    assert enabled.obs_object_index == [1]
-    assert enabled.scene_pointclouds.shape == (2, 6)
-    assert enabled.contact_bodies_to_pointcloud.shape == (2, 3)
-    assert enabled.scene_object_coordinates.shape == (2, 9)
-    assert enabled.scene_pointclouds[1, 0] != -99.0
-
-    default_objects = SceneObs(SceneObsConfig(enabled=True), enabled_env)
-    assert default_objects.obs_object_index == [0, 1]
-    assert default_objects.scene_pointclouds.shape == (2, 12)
-    assert default_objects.contact_bodies_to_pointcloud.shape == (2, 6)
-
-
 def test_path_generator_resets_clips_heights_and_interpolates_positions():
     config = PathGeneratorConfig(
         num_verts=5,
@@ -149,7 +76,8 @@ def test_path_generator_resets_clips_heights_and_interpolates_positions():
     )
     generator = PathGenerator(
         config=config,
-        device=torch.device("cpu"),
+        state=EpisodeTensors(2, torch.device("cpu")),
+        generator=None,
         num_envs=2,
         episode_dur=4.0,
         height_conditioned=True,
@@ -200,7 +128,8 @@ def test_path_generator_forward_only_and_naive_modes_are_deterministic_with_seed
     )
     generator = PathGenerator(
         config=config,
-        device=torch.device("cpu"),
+        state=EpisodeTensors(1, torch.device("cpu")),
+        generator=None,
         num_envs=1,
         episode_dur=3.0,
         height_conditioned=False,

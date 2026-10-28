@@ -1,0 +1,18 @@
+# Python dependencies for offline qualification and policy tooling.
+mujoco>=3.1
+numpy>=1.24
+scipy>=1.10
+msgpack>=1.0
+msgpack-numpy>=0.4
+onnxruntime>=1.18
+PyYAML>=6
+
+# Optional when using the corresponding provider/input path:
+# onnxruntime-gpu>=1.18
+# tensorrt
+# leapp 0.7.2 from github.com/nvidia-isaac/leapp (NOT PyPI's unrelated Red Hat
+# tool); optional LEAPP export/replay; see docs/leapp.md
+# onnx         # LEAPP graph contract validation
+
+# Pico/XRoboToolkit is an external CMake/pybind11 SDK rather than a PyPI
+# dependency. Optional native input builds take XROBOTOOLKIT_ROOT (see README).

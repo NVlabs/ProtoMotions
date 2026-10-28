@@ -34,13 +34,13 @@ if your local GPU memory is not enough to load the entire motion lib of AMASS.
 
    # Run G1 on BONES-SEED motions
    python protomotions/inference_agent.py \
-       --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/last.ckpt \
+       --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/inference_last.ckpt \
        --motion-file data/motion_for_trackers/g1_bones_seed_mini.pt \
        --simulator isaaclab
 
    # Headless validation on a server or VM
    python protomotions/inference_agent.py \
-       --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/last.ckpt \
+       --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/inference_last.ckpt \
        --motion-file data/motion_for_trackers/g1_bones_seed_mini.pt \
        --simulator isaaclab \
        --num-envs 100 \
@@ -49,7 +49,7 @@ if your local GPU memory is not enough to load the entire motion lib of AMASS.
 
    # Run SOMA 23-body humanoid on BONES-SEED motions
    python protomotions/inference_agent.py \
-       --checkpoint data/pretrained_models/motion_tracker/soma-bones/last_lab.ckpt \
+       --checkpoint data/pretrained_models/motion_tracker/soma-bones/inference_last_lab.ckpt \
        --motion-file data/motion_for_trackers/soma23_bones_seed_mini.pt \
        --simulator isaaclab
 
@@ -66,21 +66,9 @@ if your local GPU memory is not enough to load the entire motion lib of AMASS.
        --simulator isaaclab \
        --num-envs 1
 
-   # Run SMPL on flat terrain (requires AMASS MotionLib, see amass_preparation)
-   python protomotions/inference_agent.py \
-       --checkpoint data/pretrained_models/motion_tracker/smpl/last.ckpt \
-       --motion-file path/to/your/amass_motionlib.pt \
-       --simulator isaaclab
-
-   # Run SMPL on complex terrain
-   python protomotions/inference_agent.py \
-       --checkpoint data/pretrained_models/motion_tracker/smpl-terrains/last.ckpt \
-       --motion-file path/to/your/amass_motionlib.pt \
-       --simulator isaaclab
-
    # Test the domain-randomized G1 tracker in MuJoCo
    python protomotions/inference_agent.py \
-       --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/last.ckpt \
+       --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/inference_last.ckpt \
        --motion-file data/motion_for_trackers/g1_bones_seed_mini.pt \
        --simulator mujoco \
        --num-envs 1
@@ -129,7 +117,6 @@ Use the ``--simulator`` argument:
 * ``isaacgym`` - NVIDIA IsaacGym legacy GPU backend
 * ``isaaclab`` - NVIDIA IsaacLab/IsaacSim (recommended for training)
 * ``newton`` - NVIDIA Newton 1.0.0 (built on MuJoCo Warp)
-* ``genesis`` - Genesis simulator
 * ``mujoco`` - MuJoCo CPU-only (single env, for quick testing/debugging)
 
 Robot Selection
@@ -170,10 +157,7 @@ Results are saved to:
 
    results/<experiment_name>/
    ├── config.yaml                      # CLI arguments and wandb ID
-   ├── resolved_configs.pt              # Full config objects (for exact reproducibility)
-   ├── resolved_configs.yaml            # Human-readable configs
-   ├── resolved_configs_inference.pt    # Inference-time configs (largely same as training configs)
-   ├── resolved_configs_inference.yaml  # Human-readable inference configs
+   ├── resolved_configs.json            # The config bundle (tagged JSON) - source of truth
    ├── experiment_config.py             # Copy of experiment file
    ├── last.ckpt                        # Latest model checkpoint
    ├── score_based.ckpt                 # Best-performing checkpoint (by eval score)
@@ -188,10 +172,13 @@ Results are saved to:
 
 .. warning::
 
-   **Do NOT modify resolved_configs.yaml files.** They are for human readability 
-   only—the source of truth is the ``.pt`` file. For config changes, use 
-   ``--overrides`` (small changes) or ``--create-config-only`` and copy the new 
-   ``.pt`` to your checkpoint directory (large changes). See :doc:`/user_guide/configuration`.
+   **Do NOT hand-edit resolved_configs.json.** It is the source of truth: a
+   plain-text tagged JSON tree rebuilt through the real constructors on load, so
+   a hand-edited bundle fails naming the field, the class and the file. For
+   config changes, use ``--overrides`` (small changes) or ``--create-config-only``,
+   which writes both ``resolved_configs.json`` and ``experiment_config.py``; copy
+   both to your checkpoint directory (large changes), or inference runs the old
+   recipe's hook against the new configs. See :doc:`/user_guide/configuration`.
 
 Training Configuration
 ----------------------
@@ -252,11 +239,14 @@ The default W&B project is ``physical_animation``.
 
 Key metrics to monitor:
 
-* ``Eval/gt_err`` - Position tracking error (unbiased, evaluates all motions equally)
-* ``Eval/success_rate`` - Motion completion rate (unbiased)
-* ``Train/episode_reward`` - Training reward (may fluctuate due to prioritized sampling)
-* ``Train/clip_frac`` - Keep under ~0.3 for stable training (lower lr if consistently higher)
-* ``Train/actor_grad_norm`` / ``Train/critic_grad_norm`` - Watch for gradient explosions
+* ``eval/gt_error/mean`` - Mean position tracking error in the mimic MLP recipe.
+  Metric names come from the experiment's evaluator config.
+* ``eval/success_rate`` - Fraction of evaluated trials passing the configured
+  failure rules, not necessarily the fraction of motions completed without falling.
+* ``info/episode_reward`` - Training reward (affected by prioritized sampling).
+* ``actor/clip_frac`` - Fraction of samples whose PPO probability ratio is clipped.
+* ``actor/grad_norm_before_clip`` / ``critic/grad_norm_before_clip`` - Gradient
+  magnitudes before clipping.
 
 .. tip::
 
@@ -273,26 +263,14 @@ Evaluate a trained agent:
 
    # Evaluate G1 pretrained model
    python protomotions/inference_agent.py \
-       --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/last.ckpt \
+       --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/inference_last.ckpt \
        --motion-file data/motion_for_trackers/g1_bones_seed_mini.pt \
        --simulator isaaclab
 
    # Evaluate SOMA pretrained model
    python protomotions/inference_agent.py \
-       --checkpoint data/pretrained_models/motion_tracker/soma-bones/last_lab.ckpt \
+       --checkpoint data/pretrained_models/motion_tracker/soma-bones/inference_last_lab.ckpt \
        --motion-file data/motion_for_trackers/soma23_bones_seed_mini.pt \
-       --simulator isaaclab
-
-   # Evaluate SMPL pretrained model (flat terrain)
-   python protomotions/inference_agent.py \
-       --checkpoint data/pretrained_models/motion_tracker/smpl/last.ckpt \
-       --motion-file path/to/your/amass_motionlib.pt \
-       --simulator isaaclab
-
-   # Evaluate SMPL pretrained model (complex terrain)
-   python protomotions/inference_agent.py \
-       --checkpoint data/pretrained_models/motion_tracker/smpl-terrains/last.ckpt \
-       --motion-file path/to/your/amass_motionlib.pt \
        --simulator isaaclab
 
    # Or evaluate your own trained model

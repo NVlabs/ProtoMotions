@@ -113,6 +113,9 @@ class ASEModelConfig(AMPModelConfig):
         metadata={"help": "Optimizer settings for MI critic."}
     )
 
+    def _key_source_configs(self) -> list:
+        return super()._key_source_configs() + [self.mi_critic]
+
 
 @dataclass
 class ASEAgentConfig(AMPAgentConfig):

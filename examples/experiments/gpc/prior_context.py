@@ -11,17 +11,29 @@ NEAREST_SURFACE_TERRAIN_HORIZONTAL_SCALE = 0.1
 
 
 def nearest_surface_body_ids(robot_cfg: RobotConfig) -> list[int]:
-    return [
-        robot_cfg.kinematic_info.body_names.index(name)
-        for name in robot_cfg.trackable_bodies_subset
-    ]
+    return list(robot_cfg.body_indices(*robot_cfg.trackable_bodies_subset))
 
 
-def nearest_surface_obs_params(robot_cfg: RobotConfig) -> dict:
-    return {
+def nearest_surface_obs_params(robot_cfg: RobotConfig, *, with_objects: bool) -> dict:
+    """Keyword arguments binding ``compute_nearest_surface_vectors`` for a recipe.
+
+    The kernel binds the scene-object surfaces (``scene.*``) by default; a run
+    without a scene file passes ``with_objects=False`` and the four object
+    inputs are unbound (``None``), so only the terrain is a surface and no
+    scene name is bound.
+    """
+    params = {
         "terrain_horizontal_scale": NEAREST_SURFACE_TERRAIN_HORIZONTAL_SCALE,
         "body_ids": nearest_surface_body_ids(robot_cfg),
     }
+    if not with_objects:
+        params.update(
+            object_pos=None,
+            object_rot=None,
+            neutral_pointclouds=None,
+            object_valid_mask=None,
+        )
+    return params
 
 
 PEFT_SAMPLING_MODE_PRIOR = "prior_constraint"
@@ -38,9 +50,14 @@ def add_peft_sampling_mode_argument(parser):
         choices=PEFT_SAMPLING_MODE_CHOICES,
         default=PEFT_SAMPLING_MODE_PRIOR,
         help=(
-            "How PEFT rollouts sample tokens: 'prior_constraint' uses the "
-            "frozen-prior nucleus as the constraint, while 'nucleus' samples "
-            "from the student nucleus and regularizes toward the prior with KL."
+            "How PEFT rollouts sample tokens: 'prior_constraint' limits them to "
+            "the reference policy's top-p set, while 'nucleus' samples from the "
+            "student nucleus and regularizes toward the reference with KL. The "
+            "reference is the policy a new run starts from, whatever checkpoint "
+            "that is, such as the loaded SFT policy on a warm start; a resume "
+            "keeps it. --overrides "
+            "agent.model.actor.peft.reference_checkpoint=<file> pins the "
+            "trained policy in another checkpoint instead."
         ),
     )
 

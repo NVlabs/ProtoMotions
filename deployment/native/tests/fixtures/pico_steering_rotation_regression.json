@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "name": "default_pico_steering_hand_rotation_dropped",
+  "description": "Before the fix, default Pico A steering latched no wrist-rotation reference and silently dropped valid controller rotations before target generation.",
+  "mode": "pico_steering",
+  "initial_packet": {
+    "headset_heading": 0.0,
+    "hand_positions_world": [
+      [
+        0.35,
+        0.25,
+        1.1
+      ],
+      [
+        0.35,
+        -0.25,
+        1.1
+      ]
+    ],
+    "hand_rotations_local": [
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ]
+  },
+  "frames": [
+    {
+      "headset_heading": 0.0,
+      "hand_positions_world": [
+        [
+          0.35,
+          0.25,
+          1.1
+        ],
+        [
+          0.35,
+          -0.25,
+          1.1
+        ]
+      ],
+      "hand_rotations_local": [
+        [
+          0.0,
+          0.0,
+          0.7071067812,
+          0.7071067812
+        ],
+        [
+          0.0,
+          0.0,
+          -0.7071067812,
+          0.7071067812
+        ]
+      ]
+    }
+  ],
+  "expected_after_fix": {
+    "hand_rotations_valid": true,
+    "left_rotation_delta": [
+      0.0,
+      0.0,
+      0.7071067812,
+      0.7071067812
+    ],
+    "right_rotation_delta": [
+      0.0,
+      0.0,
+      -0.7071067812,
+      0.7071067812
+    ]
+  }
+}

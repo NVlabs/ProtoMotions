@@ -48,7 +48,7 @@ def create_parser():
         "--simulator",
         type=str,
         required=True,
-        help="Simulator to use (e.g., 'isaacgym', 'isaaclab', 'newton', 'genesis')",
+        help="Simulator to use (e.g., 'isaacgym', 'isaaclab', 'newton', 'mujoco')",
     )
     parser.add_argument(
         "--num-envs",
@@ -200,42 +200,34 @@ def main():
         if torch.cuda.is_available():
             torch.cuda.manual_seed(args.seed)
 
-    # Get config functions from experiment module
-    from protomotions.utils.config_builder import build_standard_configs
+    # Build configs from experiment (without agent for kinematic playback)
+    from types import SimpleNamespace
+
     from protomotions.simulator.base_simulator.config import SimulatorConfig
     from protomotions.envs.base_env.config import EnvConfig
     from protomotions.robot_configs.base import RobotConfig
+    from protomotions.utils.config_builder import build_configs
 
-    # Build configs from experiment (without agent for kinematic playback)
     print("\n=== Building Configuration from Experiment ===")
 
-    # Get required config functions
-    terrain_config_fn = getattr(experiment_module, "terrain_config")
-    scene_lib_config_fn = getattr(experiment_module, "scene_lib_config")
-    motion_lib_config_fn = getattr(experiment_module, "motion_lib_config")
-    env_config_fn = getattr(experiment_module, "env_config")
-
-    # Get optional config functions
-    configure_robot_and_simulator_fn = getattr(
-        experiment_module, "configure_robot_and_simulator", None
+    # Kinematic playback needs no agent (and takes no --batch-size), so expose
+    # only the non-agent build functions to the shared build sequence.
+    playback_experiment = SimpleNamespace(
+        terrain_config=getattr(experiment_module, "terrain_config", None),
+        scene_lib_config=getattr(experiment_module, "scene_lib_config", None),
+        motion_lib_config=getattr(experiment_module, "motion_lib_config", None),
+        env_config=getattr(experiment_module, "env_config", None),
+        configure_robot_and_simulator=getattr(
+            experiment_module, "configure_robot_and_simulator", None
+        ),
+        __file__=getattr(experiment_module, "__file__", "<experiment>"),
     )
+    configs = build_configs(playback_experiment, args)
 
-    configs = build_standard_configs(
-        args=args,
-        terrain_config_fn=terrain_config_fn,
-        scene_lib_config_fn=scene_lib_config_fn,
-        motion_lib_config_fn=motion_lib_config_fn,
-        env_config_fn=env_config_fn,
-        configure_robot_and_simulator_fn=configure_robot_and_simulator_fn,
-        agent_config_fn=None,  # No agent needed for kinematic playback
-    )
-
-    robot_config: RobotConfig = configs["robot"]
-    simulator_config: SimulatorConfig = configs["simulator"]
-    terrain_config = configs["terrain"]
-    scene_lib_config = configs["scene_lib"]
-    motion_lib_config = configs["motion_lib"]
-    env_config: EnvConfig = configs["env"]
+    robot_config: RobotConfig = configs.robot
+    simulator_config: SimulatorConfig = configs.simulator
+    scene_lib_config = configs.scene_lib
+    env_config: EnvConfig = configs.env
 
     print(f"Robot config class: {type(robot_config).__name__}")
     print(f"Simulator config class: {type(simulator_config).__name__}")
@@ -272,7 +264,7 @@ def main():
     # Apply motion selection.
     # For scenes: each scene carries humanoid_motion_id, so controlling which
     # scenes load (scene_indices / subset_method) is sufficient —
-    # BaseEnv.create_motion_manager() reads those IDs and pins each env
+    # ReferenceMotion.create_manager() reads those IDs and pins each env
     # to its paired motion automatically.
     # For no-scenes: motion_manager.subset_method drives selection directly.
     from protomotions.components.scene_lib import SubsetMethod
@@ -296,71 +288,35 @@ def main():
 
     print("\n=== Creating Environment ===")
 
-    # Convert friction settings for simulator compatibility
-    from protomotions.simulator.base_simulator.utils import convert_friction_for_simulator
-
-    terrain_config, simulator_config = convert_friction_for_simulator(
-        terrain_config, simulator_config
-    )
-
-    # Create components using configs from build_standard_configs
-    from protomotions.utils.component_builder import build_all_components
-
-    save_dir_for_weights = (
-        getattr(env_config, "save_dir", None)
-        if hasattr(env_config, "save_dir")
-        else None
-    )
-    components = build_all_components(
-        terrain_config=terrain_config,
-        scene_lib_config=scene_lib_config,
-        motion_lib_config=motion_lib_config,
-        simulator_config=simulator_config,
-        robot_config=robot_config,
-        device=device,
-        save_dir=save_dir_for_weights,
-        **extra_simulator_params,
-    )
-
-    terrain = components["terrain"]
-    scene_lib = components["scene_lib"]
-    motion_lib = components["motion_lib"]
-    simulator = components["simulator"]
-
-    # Create environment - use BaseEnv directly for kinematic playback
+    # Create the components and the environment from the configs built above,
+    # as train_agent.py does (friction conversion, components, the env class).
     from protomotions.envs.base_env.env import BaseEnv
+    from protomotions.utils.component_builder import build_env_from_configs
 
-    env: BaseEnv = BaseEnv(
-        config=env_config,
-        robot_config=robot_config,
-        device=device,
-        terrain=terrain,
-        scene_lib=scene_lib,
-        motion_lib=motion_lib,
-        simulator=simulator,
-    )
+    env: BaseEnv = build_env_from_configs(configs, device, **extra_simulator_params)
 
     print("Environment created successfully")
     print(f"Environment class: {type(env).__name__}")
-    print(f"Motion library loaded: {env.motion_lib is not None}")
-    print(f"  - Number of motions: {env.motion_lib.num_motions()}")
-    print(f"  - Motion file: {env.motion_lib.motion_file}")
+    reference = env.reference_motion  # the motion library and its manager
+    print(f"Motion library loaded: {reference.motion_lib is not None}")
+    print(f"  - Number of motions: {reference.motion_lib.num_motions()}")
+    print(f"  - Motion file: {reference.motion_lib.motion_file}")
     print(f"Scene library loaded: {env.scene_lib is not None}")
     print(f"  - Number of scenes: {env.scene_lib.num_scenes()}")
     if hasattr(env.scene_lib, "scenes_file"):
         print(f"  - Scenes file: {env.scene_lib.scenes_file}")
-    print(f"Motion manager created: {env.motion_manager is not None}")
-    if env.motion_manager is not None:
-        print(f"  - Motion manager type: {type(env.motion_manager).__name__}")
+    print(f"Motion manager created: {reference.motion_manager is not None}")
+    if reference.motion_manager is not None:
+        print(f"  - Motion manager type: {type(reference.motion_manager).__name__}")
 
     # Reset the environment
     print("\n=== Resetting Environment ===")
     env.reset()
     print("Environment reset complete")
 
-    if env.motion_manager is not None:
-        print(f"Motion IDs assigned: {env.motion_manager.motion_ids}")
-        print(f"Motion times initialized: {env.motion_manager.motion_times}")
+    if reference.motion_manager is not None:
+        print(f"Motion IDs assigned: {reference.motion_manager.motion_ids}")
+        print(f"Motion times initialized: {reference.motion_manager.motion_times}")
 
     # # Print per-env mapping: which motion and scene each env got
     # import os as _dbg_os
@@ -368,11 +324,12 @@ def main():
     # _sl = env.scene_lib
     # _has_scenes = _sl is not None and len(_sl.scenes) > 0
     # for env_idx in range(env.num_envs):
-    #     motion_id = env.motion_manager.motion_ids[env_idx].item() if env.motion_manager is not None else -1
-    #     motion_name = env.motion_lib.motion_files[motion_id] if motion_id >= 0 else "?"
+    #     lib, manager = reference.motion_lib, reference.motion_manager
+    #     motion_id = manager.motion_ids[env_idx].item() if manager is not None else -1
+    #     motion_name = lib.motion_files[motion_id] if motion_id >= 0 else "?"
     #     motion_name_short = _dbg_os.path.basename(motion_name) if isinstance(motion_name, str) else str(motion_name)
-    #     nframes = env.motion_lib.motion_num_frames[motion_id].item() if motion_id >= 0 else 0
-    #     length_s = env.motion_lib.motion_lengths[motion_id].item() if motion_id >= 0 else 0
+    #     nframes = lib.motion_num_frames[motion_id].item() if motion_id >= 0 else 0
+    #     length_s = lib.motion_lengths[motion_id].item() if motion_id >= 0 else 0
 
     #     if _has_scenes and env_idx < len(_sl.scenes):
     #         scene = _sl.scenes[env_idx]
@@ -411,9 +368,9 @@ def main():
             step_count += 1
 
             # Print information every 100 steps
-            if step_count % 100 == 0 and env.motion_manager is not None:
-                motion_times = env.motion_manager.motion_times
-                motion_ids = env.motion_manager.motion_ids
+            if step_count % 100 == 0 and reference.motion_manager is not None:
+                motion_times = reference.motion_manager.motion_times
+                motion_ids = reference.motion_manager.motion_ids
 
                 print(f"\nStep {step_count}:")
                 print(
