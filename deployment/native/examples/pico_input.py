@@ -124,7 +124,9 @@ def _default_client_lock_path() -> Path:
 def _acquire_client_lock(path: Path) -> int:
     """Hold one cross-process lease for the vendor SDK's global client."""
 
-    descriptor = os.open(path, os.O_CREAT | os.O_RDWR | os.O_CLOEXEC, 0o600)
+    descriptor = os.open(
+        path, os.O_CREAT | os.O_RDWR | os.O_CLOEXEC | os.O_NOFOLLOW, 0o600
+    )
     try:
         fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError as exc:

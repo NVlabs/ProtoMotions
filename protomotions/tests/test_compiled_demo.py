@@ -220,3 +220,114 @@ def test_reject_non_dict_model_download(tmp_path, files, download):
     write_bundle(tmp_path, files)
     with pytest.raises(ValueError, match="pinned policy"):
         INSTALL["verify_bundle"](tmp_path)
+
+
+GRAPH = b"graph-bytes"
+
+
+@pytest.fixture
+def external_files(files):
+    """A bundle whose policy ships its graph and pins hosted external weights."""
+    values = dict(files)
+    values["assets/policy/model.onnx"] = GRAPH
+    values["assets/policy/manifest.json"] = json.dumps(
+        {
+            "release_status": "public-release",
+            "artifact_sha256": hashlib.sha256(GRAPH).hexdigest(),
+            "artifact_bytes": len(GRAPH),
+            "external_data": {
+                "path": "weights.bin",
+                "sha256": "2" * 64,
+                "bytes": 402946352,
+                "download": {
+                    "url": "https://huggingface.co/nvidia/Metatron-v1/resolve/"
+                    + "a" * 40
+                    + "/demo/weights.bin",
+                    "sha256": "2" * 64,
+                },
+            },
+        }
+    ).encode()
+    return values
+
+
+def test_external_weights_bundle_installs(tmp_path, external_files):
+    write_bundle(tmp_path, external_files)
+    target = tmp_path / "site"
+    INSTALL["install_bundle"](tmp_path, target)
+    assert (target / "assets/policy/model.onnx").read_bytes() == GRAPH
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"path": "model.onnx"},
+        {"sha256": "invalid"},
+        {"bytes": 0},
+        {"bytes": "402946352"},
+        {"storage": {"encoding": "byte-shuffle-gzip-v1", "decoded_bytes": 1}},
+        {"download": None},
+        {"download": {"url": "https://example.org/weights.bin", "sha256": "2" * 64}},
+        {
+            "download": {
+                "url": "https://huggingface.co/nvidia/Metatron-v1/resolve/main/demo/weights.bin",
+                "sha256": "2" * 64,
+            }
+        },
+        {
+            "download": {
+                "url": "https://huggingface.co/nvidia/Metatron-v1/resolve/"
+                + "a" * 40
+                + "/demo/model.onnx",
+                "sha256": "2" * 64,
+            }
+        },
+        {
+            "download": {
+                "url": "https://huggingface.co/nvidia/Metatron-v1/resolve/"
+                + "a" * 40
+                + "/demo/weights.bin",
+                "sha256": "3" * 64,
+            }
+        },
+    ],
+)
+def test_reject_unpinned_or_mismatched_external_weights(tmp_path, external_files, change):
+    policy = json.loads(external_files["assets/policy/manifest.json"])
+    policy["external_data"].update(change)
+    external_files["assets/policy/manifest.json"] = json.dumps(policy).encode()
+    write_bundle(tmp_path, external_files)
+    with pytest.raises(ValueError, match="pinned policy"):
+        INSTALL["verify_bundle"](tmp_path)
+
+
+def test_external_weights_reject_bundled_weights(tmp_path, external_files):
+    # The path allowlist refuses the weights file before the contract check
+    # does; either way the bundle must not carry hosted weights.
+    external_files["assets/policy/weights.bin"] = b"weights"
+    write_bundle(tmp_path, external_files)
+    with pytest.raises(ValueError, match="must not also be bundled|Not a runtime asset"):
+        INSTALL["verify_bundle"](tmp_path)
+
+
+@pytest.mark.parametrize("graph", [None, b"other-bytes"])
+def test_external_weights_require_matching_graph(tmp_path, external_files, graph):
+    if graph is None:
+        del external_files["assets/policy/model.onnx"]
+    else:
+        external_files["assets/policy/model.onnx"] = graph
+    write_bundle(tmp_path, external_files)
+    with pytest.raises(ValueError, match="graph"):
+        INSTALL["verify_bundle"](tmp_path)
+
+
+def test_external_weights_reject_both_contracts(tmp_path, external_files):
+    policy = json.loads(external_files["assets/policy/manifest.json"])
+    policy["model_download"] = {
+        "url": "https://huggingface.co/nvidia/Metatron-v1/resolve/" + "a" * 40 + "/demo/model.onnx",
+        "sha256": "1" * 64,
+    }
+    external_files["assets/policy/manifest.json"] = json.dumps(policy).encode()
+    write_bundle(tmp_path, external_files)
+    with pytest.raises(ValueError, match="pinned policy"):
+        INSTALL["verify_bundle"](tmp_path)

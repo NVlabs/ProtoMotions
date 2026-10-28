@@ -75,7 +75,11 @@ def validate_path(name: str) -> None:
     notice = (name.startswith("licenses/") or name in REQUIRED_FILES) and (
         path.suffix in {".txt", ".md", ".pdf"} or path.name == "LICENSE"
     )
-    if path.suffix not in ASSET_SUFFIXES and not notice:
+    # The policy graph is the one .onnx the bundle may carry: a few hundred KB
+    # of structure whose weights are hosted separately. verify_bundle checks it
+    # against the manifest and refuses the weights file itself.
+    graph = name == "assets/policy/model.onnx"
+    if path.suffix not in ASSET_SUFFIXES and not notice and not graph:
         raise ValueError(f"Not a runtime asset or notice: {name}")
     if path.suffix in {".map", ".ts", ".tsx"} or path.name in {
         "package.json",
@@ -121,22 +125,60 @@ def verify_bundle(directory: Path, *, allow_fixture: bool = False) -> dict:
         policy = json.loads(archive.read("assets/policy/manifest.json"))
         if policy["release_status"] != metadata["release_status"]:
             raise ValueError("Bundle and policy release statuses disagree")
-        download = policy.get("model_download", {})
-        if not isinstance(download, dict):
-            raise ValueError("Invalid pinned policy download contract")
-        if (
-            not re.fullmatch(
-                r"https://huggingface\.co/nvidia/Metatron-v1/resolve/"
-                r"[a-f0-9]{40}/demo/model\.onnx",
-                str(download.get("url", "")),
-            )
-            or not re.fullmatch(r"[a-f0-9]{64}", str(download.get("sha256", "")))
-            or download.get("sha256") != policy.get("artifact_sha256")
-            or policy.get("model_storage") is not None
-        ):
-            raise ValueError("Invalid pinned policy download contract")
-        if any(name.startswith("assets/policy/model.onnx") for name in names):
-            raise ValueError("Hosted weights must not also be bundled on Pages")
+        external = policy.get("external_data")
+        if external is None:
+            # Single hosted file: the whole model comes from the pinned HF URL.
+            download = policy.get("model_download", {})
+            if not isinstance(download, dict):
+                raise ValueError("Invalid pinned policy download contract")
+            if (
+                not re.fullmatch(
+                    r"https://huggingface\.co/nvidia/Metatron-v1/resolve/"
+                    r"[a-f0-9]{40}/demo/model\.onnx",
+                    str(download.get("url", "")),
+                )
+                or not re.fullmatch(r"[a-f0-9]{64}", str(download.get("sha256", "")))
+                or download.get("sha256") != policy.get("artifact_sha256")
+                or policy.get("model_storage") is not None
+            ):
+                raise ValueError("Invalid pinned policy download contract")
+            if any(name.startswith("assets/policy/model.onnx") for name in names):
+                raise ValueError("Hosted weights must not also be bundled on Pages")
+        else:
+            # Graph plus external weights: the small graph ships in the bundle
+            # and only the weights file comes from the pinned HF URL. Loading
+            # the two files keeps the browser runtime from holding the model
+            # twice, which is what phones cannot afford.
+            if not isinstance(external, dict) or policy.get("model_download") is not None:
+                raise ValueError("Invalid pinned policy download contract")
+            weights = external.get("download", {})
+            if (
+                not isinstance(weights, dict)
+                or external.get("path") != "weights.bin"
+                or not re.fullmatch(r"[a-f0-9]{64}", str(external.get("sha256", "")))
+                or type(external.get("bytes")) is not int
+                or not 0 < external["bytes"] <= 1024**3
+                or external.get("storage") is not None
+                or not re.fullmatch(
+                    r"https://huggingface\.co/nvidia/Metatron-v1/resolve/"
+                    r"[a-f0-9]{40}/demo/weights\.bin",
+                    str(weights.get("url", "")),
+                )
+                or weights.get("sha256") != external.get("sha256")
+                or policy.get("model_storage") is not None
+            ):
+                raise ValueError("Invalid pinned policy download contract")
+            if any(name.startswith("assets/policy/weights.bin") for name in names):
+                raise ValueError("Hosted weights must not also be bundled on Pages")
+            if "assets/policy/model.onnx" not in names:
+                raise ValueError("External-weights policy must bundle its graph")
+            graph = archive.read("assets/policy/model.onnx")
+            if (
+                hashlib.sha256(graph).hexdigest() != policy.get("artifact_sha256")
+                or len(graph) != policy.get("artifact_bytes")
+                or len(graph) > 16 * 1024 * 1024
+            ):
+                raise ValueError("Bundled policy graph does not match its manifest")
         licenses = json.loads(archive.read("licenses/third-party/manifest.json"))
         for name, expected in licenses["files"].items():
             member = f"licenses/third-party/{name}"

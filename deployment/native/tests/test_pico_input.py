@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import errno
 import tempfile
 import unittest
 from pathlib import Path
@@ -225,6 +226,18 @@ class PicoInputContractTest(unittest.TestCase):
                 first.close()
             replacement = PicoInput(xrt_module=FakeXrt(), client_lock_path=lock_path)
             replacement.close()
+
+    def test_client_lock_refuses_symlink_without_modifying_target(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "unrelated.txt"
+            target.write_text("preserve this file")
+            lock_path = Path(directory) / "pico.lock"
+            lock_path.symlink_to(target)
+            with self.assertRaises(OSError) as raised:
+                pico = PicoInput(xrt_module=FakeXrt(), client_lock_path=lock_path)
+                pico.close()
+            self.assertEqual(raised.exception.errno, errno.ELOOP)
+            self.assertEqual(target.read_text(), "preserve this file")
 
 
 if __name__ == "__main__":
