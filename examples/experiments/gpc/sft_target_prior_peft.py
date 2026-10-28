@@ -12,8 +12,12 @@ clip plus jitter. After SFT, RLFT can swap the control source to
 """
 
 import argparse
+from typing import Tuple
 
 from examples.experiments.gpc.prior_context import nearest_surface_obs_params
+from protomotions.envs.presets import tracking_playback
+from protomotions.envs.steps import normalize_steps
+from protomotions.utils.experiment_configs import ExperimentConfigs
 from protomotions.envs.base_env.config import EnvConfig
 from protomotions.robot_configs.base import RobotConfig
 from protomotions.simulator.base_simulator.config import SimulatorConfig
@@ -39,7 +43,7 @@ def configure_robot_and_simulator(
     args: argparse.Namespace,
 ):
     robot_cfg.update_fields(
-        contact_bodies=["all_left_foot_bodies", "all_right_foot_bodies"],
+        contact_bodies=None,
     )
 
 
@@ -52,7 +56,7 @@ def terrain_config(args: argparse.Namespace):
 def scene_lib_config(args: argparse.Namespace):
     from protomotions.components.scene_lib import SceneLibConfig
 
-    scene_file = args.scenes_file if hasattr(args, "scenes_file") else None
+    scene_file = args.scenes_file
     return SceneLibConfig(scene_file=scene_file)
 
 
@@ -62,30 +66,46 @@ def motion_lib_config(args: argparse.Namespace):
     return MotionLibConfig(motion_file=args.motion_file)
 
 
-def _tracker_future_steps(args: argparse.Namespace):
-    from protomotions.utils.config_utils import load_resolved_configs_from_checkpoint
+def _tracker(tracker_checkpoint: str) -> ExperimentConfigs:
+    """The frozen tracker's resolved configs, loaded afresh on each call; the
+    student's env and its agent config both read this one bundle."""
+    from protomotions.utils.experiment_configs import (
+        load_experiment_configs_from_checkpoint,
+    )
 
-    tracker_checkpoint = getattr(args, "tracker_checkpoint", TRACKER_CHECKPOINT)
-    resolved = load_resolved_configs_from_checkpoint(tracker_checkpoint)
-    mimic_config = resolved["env"].control_components.get("mimic")
+    return load_experiment_configs_from_checkpoint(tracker_checkpoint)
+
+
+def _tracker_future_steps(args: argparse.Namespace) -> Tuple[int, ...]:
+    """The tracker's published future steps, as the tuple the student repeats
+    (the saved value may still be the int an override wrote)."""
+    tracker_checkpoint = args.tracker_checkpoint
+    mimic_config = _tracker(tracker_checkpoint).env.control_components.get("mimic")
     if mimic_config is None:
         raise ValueError(
             f"Tracker checkpoint '{tracker_checkpoint}' does not define a "
             "'mimic' control component; cannot infer future_steps."
         )
-    return mimic_config.future_steps
+    return normalize_steps(mimic_config.future_steps)
 
 
 def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
     from protomotions.envs.action import make_pd_action_config
-    from protomotions.envs.component_factories import (
-        max_coords_obs_factory,
-        mimic_target_poses_max_coords_factory,
-        nearest_surface_obs_factory,
-        target_obs_factory,
-        target_reward_factory,
-        tracking_error_term_factory,
+    from protomotions.envs.obs.target import compute_target_obs
+    from protomotions.envs.obs.nearest_surface_obs import (
+        compute_nearest_surface_vectors,
     )
+    from protomotions.envs.mdp_component import MdpComponent
+    from protomotions.envs.obs.humanoid import (
+        compute_humanoid_max_coords_observations,
+    )
+    from protomotions.envs.obs.target_poses import (
+        build_max_coords_target_poses,
+    )
+    from protomotions.envs.rewards.meta import RewardMeta
+    from protomotions.envs.rewards.task import compute_target_rew
+    from protomotions.envs.terminations.tracking import max_body_pos_error
+    from protomotions.envs.terminations.rule import TerminationRule
     from protomotions.envs.control.mimic_control import MimicControlConfig
     from protomotions.envs.control.gpc_sft_reference_target_control import (
         GPCSFTReferenceTargetControlConfig,
@@ -93,13 +113,18 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
     from protomotions.envs.motion_manager.config import MimicMotionManagerConfig
 
     observation_components = {
-        "max_coords_obs": max_coords_obs_factory(),
-        "task_obs": target_obs_factory(),
-        "mimic_target_poses": mimic_target_poses_max_coords_factory(
-            with_velocities=True
+        "max_coords_obs": MdpComponent.from_kernel(
+            compute_humanoid_max_coords_observations
         ),
-        "nearest_surface": nearest_surface_obs_factory(
-            **nearest_surface_obs_params(robot_cfg),
+        "task_obs": MdpComponent.from_kernel(compute_target_obs),
+        "mimic_target_poses": MdpComponent.from_kernel(
+            build_max_coords_target_poses, with_velocities=True
+        ),
+        "nearest_surface": MdpComponent.from_kernel(
+            compute_nearest_surface_vectors,
+            **nearest_surface_obs_params(
+                robot_cfg, with_objects=args.scenes_file is not None
+            ),
         ),
     }
 
@@ -122,10 +147,15 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
         },
         observation_components=observation_components,
         reward_components={
-            "target": target_reward_factory(weight=1.0),
+            "target": MdpComponent.from_kernel(
+                compute_target_rew,
+                meta=RewardMeta(weight=1.0),
+            ),
         },
         termination_components={
-            "tracking_error": tracking_error_term_factory(threshold=0.5),
+            "tracking_error": TerminationRule(
+                MdpComponent.from_kernel(max_body_pos_error), 0.5
+            ),
         },
         action_config=make_pd_action_config(robot_cfg),
         motion_manager=MimicMotionManagerConfig(
@@ -150,7 +180,7 @@ def agent_config(
         DiscretePriorPEFTSFTModelConfig,
     )
 
-    prior_checkpoint = getattr(args, "prior_checkpoint", PRIOR_CHECKPOINT)
+    prior_checkpoint = args.prior_checkpoint
 
     return DiscretePriorPEFTSFTAgentConfig(
         pretrained_modules={
@@ -191,25 +221,18 @@ def agent_config(
 
 
 def apply_inference_overrides(
-    robot_cfg,
-    simulator_cfg,
-    env_cfg,
-    agent_cfg,
-    terrain_cfg,
-    motion_lib_cfg,
-    scene_lib_cfg,
-    args,
-):
-    from protomotions.envs.control.target_control import (
+    configs: ExperimentConfigs, args: argparse.Namespace
+) -> None:
+    """Play each clip to its end and drive the target from the keyboard."""
+    from protomotions.envs.control.command_source import (
         KeyboardTargetCommandSourceConfig,
+    )
+    from protomotions.envs.control.target_control import (
         TargetControlConfig,
     )
 
-    env_cfg.termination_components = {}
-    env_cfg.max_episode_length = 1000000
-    env_cfg.motion_manager.resample_on_reset = True
-    env_cfg.motion_manager.init_start_prob = 1.0
-    env_cfg.control_components["target"] = TargetControlConfig(
+    tracking_playback(configs.env)
+    configs.env.control_components["target"] = TargetControlConfig(
         tar_proximity_threshold=TAR_PROXIMITY_THRESHOLD,
         command_source=KeyboardTargetCommandSourceConfig(),
         enable_fall_termination=False,

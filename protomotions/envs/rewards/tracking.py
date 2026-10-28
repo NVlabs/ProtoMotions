@@ -3,21 +3,18 @@
 
 """Tracking reward compute kernels for motion imitation.
 
-Pure tensor functions (kernels) for computing tracking rewards.
-Use MdpComponent in experiment configs to bind kernels to context paths:
+Pure tensor functions (kernels) for computing tracking rewards. Each kernel's
+state inputs default to the context names it reads (the current state and the
+mimic control's reference), so a recipe binds it with ``MdpComponent.from_kernel``
+and overrides only what differs::
 
-    from protomotions.envs.context_views import EnvContext
     from protomotions.envs.mdp_component import MdpComponent
+    from protomotions.envs.rewards.meta import RewardMeta
     from protomotions.envs.rewards.tracking import compute_gt_rew
-    
+
     reward_components = {
-        "gt_rew": MdpComponent(
-            compute_func=compute_gt_rew,
-            dynamic_vars={
-                "current_rigid_body_pos": EnvContext.current.rigid_body_pos,
-                "ref_rigid_body_pos": EnvContext.mimic.ref_state.rigid_body_pos,
-            },
-            static_params={"coefficient": -100.0},
+        "gt_rew": MdpComponent.from_kernel(
+            compute_gt_rew, meta=RewardMeta(weight=0.5), coefficient=-100.0
         ),
     }
 
@@ -36,6 +33,7 @@ from protomotions.utils.rotations import (
     quat_rotate,
     quat_mul,
 )
+from protomotions.envs.context_views import EnvContext
 from protomotions.envs.rewards.base import mean_squared_error_exp, rotation_error_exp
 
 
@@ -44,8 +42,8 @@ from protomotions.envs.rewards.base import mean_squared_error_exp, rotation_erro
 # =============================================================================
 
 def compute_gt_rew(
-    current_rigid_body_pos: Tensor,
-    ref_rigid_body_pos: Tensor,
+    current_rigid_body_pos: Tensor = EnvContext.current.rigid_body_pos,
+    ref_rigid_body_pos: Tensor = EnvContext.mimic.ref_state.rigid_body_pos,
     coefficient: float = -100.0,
 ) -> Tensor:
     """Position tracking reward (exponential MSE).
@@ -66,8 +64,8 @@ def compute_gt_rew(
 
 
 def compute_gr_rew(
-    current_rigid_body_rot: Tensor,
-    ref_rigid_body_rot: Tensor,
+    current_rigid_body_rot: Tensor = EnvContext.current.rigid_body_rot,
+    ref_rigid_body_rot: Tensor = EnvContext.mimic.ref_state.rigid_body_rot,
     coefficient: float = -5.0,
 ) -> Tensor:
     """Rotation tracking reward (exponential quaternion error).
@@ -88,8 +86,8 @@ def compute_gr_rew(
 
 
 def compute_gv_rew(
-    current_rigid_body_vel: Tensor,
-    ref_rigid_body_vel: Tensor,
+    current_rigid_body_vel: Tensor = EnvContext.current.rigid_body_vel,
+    ref_rigid_body_vel: Tensor = EnvContext.mimic.ref_state.rigid_body_vel,
     coefficient: float = -0.5,
 ) -> Tensor:
     """Velocity tracking reward (exponential MSE).
@@ -110,8 +108,8 @@ def compute_gv_rew(
 
 
 def compute_gav_rew(
-    current_rigid_body_ang_vel: Tensor,
-    ref_rigid_body_ang_vel: Tensor,
+    current_rigid_body_ang_vel: Tensor = EnvContext.current.rigid_body_ang_vel,
+    ref_rigid_body_ang_vel: Tensor = EnvContext.mimic.ref_state.rigid_body_ang_vel,
     coefficient: float = -0.1,
 ) -> Tensor:
     """Angular velocity tracking reward (exponential MSE).
@@ -132,26 +130,27 @@ def compute_gav_rew(
 
 
 def compute_rh_rew(
-    current_root_height: Tensor,
-    ref_rigid_body_pos: Tensor,
+    anchor_pos: Tensor = EnvContext.current.anchor_pos,
+    ref_anchor_pos: Tensor = EnvContext.mimic.ref_anchor_pos,
     coefficient: float = -100.0,
 ) -> Tensor:
-    """Root height tracking reward (exponential MSE).
-    
+    """Anchor height tracking reward (exponential MSE).
+
+    Reads the robot's declared anchor body (``robot.anchor_body_name``) on
+    both sides, not body 0 of the simulator's ordering; for a robot whose
+    anchor is body 0 the numbers are the old root-height reward's.
+
     Args:
-        current_root_height: Current root height [num_envs] or [num_envs, 1].
-        ref_rigid_body_pos: Reference body positions [num_envs, num_bodies, 3].
+        anchor_pos: Current anchor position [num_envs, 3].
+        ref_anchor_pos: Reference anchor position [num_envs, 3].
         coefficient: Exponential coefficient for error.
-    
+
     Returns:
         Reward tensor [num_envs].
     """
-    # Extract reference root height (z-coordinate of root body)
-    ref_root_height = ref_rigid_body_pos[:, 0, 2]
-    
     return mean_squared_error_exp(
-        current_root_height,
-        ref_root_height,
+        anchor_pos[:, 2],
+        ref_anchor_pos[:, 2],
         coefficient,
     )
 
@@ -188,23 +187,20 @@ def compute_global_position_error_exp(
 
 
 def compute_global_anchor_pos_rew(
-    current_anchor_pos: Tensor,
-    ref_rigid_body_pos: Tensor,
-    anchor_idx: int,
+    current_anchor_pos: Tensor = EnvContext.current.anchor_pos,
+    ref_anchor_pos: Tensor = EnvContext.mimic.ref_anchor_pos,
     sigma: float = 0.3,
 ) -> Tensor:
     """Global anchor position reward (BeyondMimic style).
-    
+
     Args:
         current_anchor_pos: Current anchor position [num_envs, 3].
-        ref_rigid_body_pos: Reference body positions [num_envs, num_bodies, 3].
-        anchor_idx: Index of anchor body.
+        ref_anchor_pos: Reference anchor position [num_envs, 3].
         sigma: Gaussian kernel width.
-    
+
     Returns:
         Reward: exp(-||anchor_pos - ref_anchor_pos||^2 / sigma^2).
     """
-    ref_anchor_pos = ref_rigid_body_pos[:, anchor_idx, :]
     return compute_global_position_error_exp(current_anchor_pos, ref_anchor_pos, sigma)
 
 
@@ -236,57 +232,50 @@ def compute_global_orientation_error_exp(
 
 
 def compute_global_anchor_ori_rew(
-    current_anchor_rot: Tensor,
-    ref_rigid_body_rot: Tensor,
-    anchor_idx: int,
+    current_anchor_rot: Tensor = EnvContext.current.anchor_rot,
+    ref_anchor_rot: Tensor = EnvContext.mimic.ref_anchor_rot,
     sigma: float = 0.4,
 ) -> Tensor:
     """Global anchor orientation reward (BeyondMimic style).
-    
+
     Args:
         current_anchor_rot: Current anchor rotation [num_envs, 4] (w-last).
-        ref_rigid_body_rot: Reference body rotations [num_envs, num_bodies, 4] (w-last).
-        anchor_idx: Index of anchor body.
+        ref_anchor_rot: Reference anchor rotation [num_envs, 4] (w-last).
         sigma: Gaussian kernel width.
-    
+
     Returns:
         Reward: exp(-angle_diff^2 / sigma^2).
     """
-    ref_anchor_rot = ref_rigid_body_rot[:, anchor_idx, :]
     return compute_global_orientation_error_exp(current_anchor_rot, ref_anchor_rot, sigma)
 
 
 def compute_relative_body_pos_rew(
-    current_rigid_body_pos: Tensor,
-    ref_rigid_body_pos: Tensor,
-    current_anchor_rot: Tensor,
-    ref_rigid_body_rot: Tensor,
-    current_anchor_pos: Tensor,
-    anchor_idx: int,
+    current_rigid_body_pos: Tensor = EnvContext.current.rigid_body_pos,
+    ref_rigid_body_pos: Tensor = EnvContext.mimic.ref_state.rigid_body_pos,
+    current_anchor_rot: Tensor = EnvContext.current.anchor_rot,
+    ref_anchor_rot: Tensor = EnvContext.mimic.ref_anchor_rot,
+    current_anchor_pos: Tensor = EnvContext.current.anchor_pos,
+    ref_anchor_pos: Tensor = EnvContext.mimic.ref_anchor_pos,
     sigma: float = 0.3,
     body_indices: Optional[Tensor] = None,
 ) -> Tensor:
     """Relative body position reward (BeyondMimic style).
-    
+
     Computes reward based on body positions relative to anchor in anchor's local frame.
-    
+
     Args:
         current_rigid_body_pos: Current body positions [num_envs, num_bodies, 3].
         ref_rigid_body_pos: Reference body positions [num_envs, num_bodies, 3].
         current_anchor_rot: Current anchor rotation [num_envs, 4] (w-last).
-        ref_rigid_body_rot: Reference body rotations [num_envs, num_bodies, 4] (w-last).
+        ref_anchor_rot: Reference anchor rotation [num_envs, 4] (w-last).
         current_anchor_pos: Current anchor position [num_envs, 3].
-        anchor_idx: Index of anchor body.
+        ref_anchor_pos: Reference anchor position [num_envs, 3].
         sigma: Gaussian kernel width.
         body_indices: Optional body indices to select [num_bodies_subset].
-    
+
     Returns:
         Reward: exp(-||rel_pos - ref_rel_pos||^2 / sigma^2).
     """
-    # Extract reference anchor pos and rot
-    ref_anchor_pos = ref_rigid_body_pos[:, anchor_idx, :]
-    ref_anchor_rot = ref_rigid_body_rot[:, anchor_idx, :]
-    
     # Compute heading rotations (yaw-only)
     current_heading_rot_inv = calc_heading_quat_inv(current_anchor_rot, w_last=True)
     ref_heading_rot_inv = calc_heading_quat_inv(ref_anchor_rot, w_last=True)
@@ -318,31 +307,28 @@ def compute_relative_body_pos_rew(
 
 
 def compute_relative_body_ori_rew(
-    current_rigid_body_rot: Tensor,
-    ref_rigid_body_rot: Tensor,
-    current_anchor_rot: Tensor,
-    anchor_idx: int,
+    current_rigid_body_rot: Tensor = EnvContext.current.rigid_body_rot,
+    ref_rigid_body_rot: Tensor = EnvContext.mimic.ref_state.rigid_body_rot,
+    current_anchor_rot: Tensor = EnvContext.current.anchor_rot,
+    ref_anchor_rot: Tensor = EnvContext.mimic.ref_anchor_rot,
     sigma: float = 0.4,
     body_indices: Optional[Tensor] = None,
 ) -> Tensor:
     """Relative body orientation reward (BeyondMimic style).
-    
+
     Computes reward based on body orientations relative to anchor.
-    
+
     Args:
         current_rigid_body_rot: Current body rotations [num_envs, num_bodies, 4] (w-last).
         ref_rigid_body_rot: Reference body rotations [num_envs, num_bodies, 4] (w-last).
         current_anchor_rot: Current anchor rotation [num_envs, 4] (w-last).
-        anchor_idx: Index of anchor body.
+        ref_anchor_rot: Reference anchor rotation [num_envs, 4] (w-last).
         sigma: Gaussian kernel width.
         body_indices: Optional body indices to select [num_bodies_subset].
-    
+
     Returns:
         Reward: exp(-angle_diff^2 / sigma^2).
     """
-    # Extract reference anchor rotation
-    ref_anchor_rot = ref_rigid_body_rot[:, anchor_idx, :]
-    
     # Compute heading rotations (yaw-only)
     current_heading_rot_inv = calc_heading_quat_inv(current_anchor_rot, w_last=True)
     ref_heading_rot_inv = calc_heading_quat_inv(ref_anchor_rot, w_last=True)
@@ -364,8 +350,8 @@ def compute_relative_body_ori_rew(
 
 
 def compute_global_body_lin_vel_rew(
-    current_rigid_body_vel: Tensor,
-    ref_rigid_body_vel: Tensor,
+    current_rigid_body_vel: Tensor = EnvContext.current.rigid_body_vel,
+    ref_rigid_body_vel: Tensor = EnvContext.mimic.ref_state.rigid_body_vel,
     sigma: float = 1.0,
     body_indices: Optional[Tensor] = None,
 ) -> Tensor:
@@ -385,8 +371,8 @@ def compute_global_body_lin_vel_rew(
 
 
 def compute_global_body_ang_vel_rew(
-    current_rigid_body_ang_vel: Tensor,
-    ref_rigid_body_ang_vel: Tensor,
+    current_rigid_body_ang_vel: Tensor = EnvContext.current.rigid_body_ang_vel,
+    ref_rigid_body_ang_vel: Tensor = EnvContext.mimic.ref_state.rigid_body_ang_vel,
     sigma: float = 3.14,
     body_indices: Optional[Tensor] = None,
 ) -> Tensor:
@@ -406,11 +392,12 @@ def compute_global_body_ang_vel_rew(
 
 
 def compute_gt_rel_rew(
-    current_rigid_body_pos: Tensor,
-    ref_rigid_body_pos: Tensor,
-    current_anchor_rot: Tensor,
-    ref_rigid_body_rot: Tensor,
-    anchor_idx: int,
+    current_rigid_body_pos: Tensor = EnvContext.current.rigid_body_pos,
+    ref_rigid_body_pos: Tensor = EnvContext.mimic.ref_state.rigid_body_pos,
+    current_anchor_rot: Tensor = EnvContext.current.anchor_rot,
+    ref_anchor_rot: Tensor = EnvContext.mimic.ref_anchor_rot,
+    current_anchor_pos: Tensor = EnvContext.current.anchor_pos,
+    ref_anchor_pos: Tensor = EnvContext.mimic.ref_anchor_pos,
     coefficient: float = -100.0,
     body_indices=None,
 ) -> Tensor:
@@ -425,18 +412,15 @@ def compute_gt_rel_rew(
         current_rigid_body_pos: Current body positions [num_envs, num_bodies, 3].
         ref_rigid_body_pos: Reference body positions [num_envs, num_bodies, 3].
         current_anchor_rot: Current anchor rotation [num_envs, 4] (w-last).
-        ref_rigid_body_rot: Reference body rotations [num_envs, num_bodies, 4] (w-last).
-        anchor_idx: Index of the anchor body.
+        ref_anchor_rot: Reference anchor rotation [num_envs, 4] (w-last).
+        current_anchor_pos: Current anchor position [num_envs, 3].
+        ref_anchor_pos: Reference anchor position [num_envs, 3].
         coefficient: Exponential coefficient for error.
         body_indices: Optional list of body indices to restrict to a subset.
 
     Returns:
         Reward tensor [num_envs].
     """
-    ref_anchor_pos = ref_rigid_body_pos[:, anchor_idx, :]
-    ref_anchor_rot = ref_rigid_body_rot[:, anchor_idx, :]
-    current_anchor_pos = current_rigid_body_pos[:, anchor_idx, :]
-
     current_heading_inv = calc_heading_quat_inv(current_anchor_rot, w_last=True)
     ref_heading_inv = calc_heading_quat_inv(ref_anchor_rot, w_last=True)
 
@@ -457,9 +441,8 @@ def compute_gt_rel_rew(
 
 
 def compute_anchor_xy_rew(
-    current_anchor_pos: Tensor,
-    ref_rigid_body_pos: Tensor,
-    anchor_idx: int,
+    current_anchor_pos: Tensor = EnvContext.current.anchor_pos,
+    ref_anchor_pos: Tensor = EnvContext.mimic.ref_anchor_pos,
     coefficient: float = -20.0,
 ) -> Tensor:
     """Anchor XY position tracking reward (exponential MSE).
@@ -471,14 +454,13 @@ def compute_anchor_xy_rew(
 
     Args:
         current_anchor_pos: Current anchor position [num_envs, 3].
-        ref_rigid_body_pos: Reference body positions [num_envs, num_bodies, 3].
-        anchor_idx: Index of the anchor body in ref_rigid_body_pos.
+        ref_anchor_pos: Reference anchor position [num_envs, 3].
         coefficient: Exponential coefficient for error.
 
     Returns:
         Reward tensor [num_envs].
     """
-    ref_anchor_xy = ref_rigid_body_pos[:, anchor_idx, :2]
+    ref_anchor_xy = ref_anchor_pos[:, :2]
     current_xy = current_anchor_pos[:, :2]
     return mean_squared_error_exp(current_xy, ref_anchor_xy, coefficient)
 

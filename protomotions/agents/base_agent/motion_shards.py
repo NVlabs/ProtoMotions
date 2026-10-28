@@ -66,8 +66,7 @@ def advance_motion_shard_after_evaluation(
             motion_lib_config = agent.motion_lib.config
             agent.motion_lib = None
             agent.motion_manager = None
-            agent.env.motion_lib = None
-            agent.env.motion_manager = None
+            agent.env.reference_motion.clear()
 
             replacement = _build_motion_lib_from_config(
                 motion_lib_config,
@@ -75,8 +74,8 @@ def advance_motion_shard_after_evaluation(
                 shard_cycle=next_cycle,
             )
             agent.env.install_motion_lib(replacement)
-            agent.motion_lib = agent.env.motion_lib
-            agent.motion_manager = agent.env.motion_manager
+            agent.motion_lib = agent.env.reference_motion.motion_lib
+            agent.motion_manager = agent.env.reference_motion.motion_manager
             agent._load_environment_checkpoint()
             agent.model.reset_rollout_context(
                 torch.arange(agent.num_envs, device=agent.device, dtype=torch.long)

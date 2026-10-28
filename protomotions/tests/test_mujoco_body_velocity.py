@@ -36,21 +36,48 @@ XML = """
 """
 
 
-@pytest.mark.parametrize("motion", ["still", "translation", "rotation", "left", "right", "combined"])
+def test_physics_step_returns_body_state_at_integrated_joint_state():
+    from types import SimpleNamespace
+    from protomotions.robot_configs.base import ControlType
+
+    sim = object.__new__(MujocoSimulator)
+    sim.model = mujoco.MjModel.from_xml_string(XML)
+    sim.data = mujoco.MjData(sim.model)
+    sim.data.qvel[:8] = [0.3, -0.2, 0.1, 1.0, 0.5, -0.7, 2.0, -1.0]
+    sim._poll_keyboard_events = lambda: None
+    sim._apply_control = lambda: None
+    sim._max_action_latency_ms = 0.0
+    sim.config = SimpleNamespace(use_implicit_pd=True)
+    sim.control_type = ControlType.TORQUE
+    sim.decimation = 4
+    sim._step_count = 1
+    sim._physics_step()
+    expected = mujoco.MjData(sim.model)
+    expected.qpos[:] = sim.data.qpos
+    expected.qvel[:] = sim.data.qvel
+    mujoco.mj_forward(sim.model, expected)
+    np.testing.assert_allclose(sim.data.xpos, expected.xpos, atol=1e-12)
+    np.testing.assert_allclose(sim.data.xquat, expected.xquat, atol=1e-12)
+    np.testing.assert_allclose(sim.data.cvel, expected.cvel, atol=1e-12)
+
+
+@pytest.mark.parametrize(
+    "motion", ["still", "translation", "rotation", "left", "right", "combined"]
+)
 def test_body_velocities_match_pose_derivatives(motion):
     model = mujoco.MjModel.from_xml_string(XML)
     data = mujoco.MjData(model)
     # A rotated base distinguishes world-frame from local-frame velocities.
-    data.qpos[3:7] = [np.cos(.4), 0, 0, np.sin(.4)]
-    data.qpos[7:9] = [.3, -.2]
+    data.qpos[3:7] = [np.cos(0.4), 0, 0, np.sin(0.4)]
+    data.qpos[7:9] = [0.3, -0.2]
     if motion in {"translation", "combined"}:
-        data.qvel[:3] = [.7, -.2, .1]
+        data.qvel[:3] = [0.7, -0.2, 0.1]
     if motion in {"rotation", "combined"}:
-        data.qvel[3:6] = [.4, -.3, .8]
+        data.qvel[3:6] = [0.4, -0.3, 0.8]
     if motion in {"left", "combined"}:
         data.qvel[6] = 1.2
     if motion in {"right", "combined"}:
-        data.qvel[7] = -.9
+        data.qvel[7] = -0.9
     mujoco.mj_forward(model, data)
 
     simulator = object.__new__(MujocoSimulator)
@@ -69,9 +96,12 @@ def test_body_velocities_match_pose_derivatives(motion):
     next_rotation = future.xmat[1:4].reshape(-1, 3, 3)
     delta = next_rotation @ rotation.transpose(0, 2, 1)
     expected_angular = np.stack(
-        [delta[:, 2, 1] - delta[:, 1, 2],
-         delta[:, 0, 2] - delta[:, 2, 0],
-         delta[:, 1, 0] - delta[:, 0, 1]], axis=-1
+        [
+            delta[:, 2, 1] - delta[:, 1, 2],
+            delta[:, 0, 2] - delta[:, 2, 0],
+            delta[:, 1, 0] - delta[:, 0, 1],
+        ],
+        axis=-1,
     ) / (2 * epsilon)
 
     assert state.rigid_body_vel.shape == (1, 3, 3)  # No world/scene bodies.
@@ -82,8 +112,8 @@ def test_body_velocities_match_pose_derivatives(motion):
     np.testing.assert_allclose(state.rigid_body_vel[0], expected_linear, atol=2e-6)
     np.testing.assert_allclose(state.rigid_body_ang_vel[0], expected_angular, atol=2e-6)
     if motion == "left":
-        assert np.linalg.norm(state.rigid_body_vel[0, 1]) > .1
+        assert np.linalg.norm(state.rigid_body_vel[0, 1]) > 0.1
         np.testing.assert_array_equal(state.rigid_body_vel[0, 2], 0)
     if motion == "right":
-        assert np.linalg.norm(state.rigid_body_vel[0, 2]) > .1
+        assert np.linalg.norm(state.rigid_body_vel[0, 2]) > 0.1
         np.testing.assert_array_equal(state.rigid_body_vel[0, 1], 0)

@@ -6,6 +6,10 @@ on:
       - main
     paths:
       - 'docs/**'
+      - 'demos/metatron/**'
+      - 'scripts/install_metatron_demo.py'
+      - 'demos/g1-racer/**'
+      - 'scripts/install_g1_racer.py'
       - '.github/workflows/deploy-docs.yml'
   workflow_dispatch:  # Allow manual triggering
 
@@ -51,10 +55,44 @@ jobs:
         run: |
           pip install -r docs/requirements.txt
 
+      - name: Check compiled demo release readiness
+        id: demo
+        run: |
+          # Assign first so a failing status script fails the step; inside the
+          # echo its non-zero exit would be masked and ready would read empty.
+          ready=$(python scripts/install_metatron_demo.py --status)
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+
+      - name: Check G1 Racer release readiness
+        id: racer
+        run: |
+          # Assign first so a failing status script fails the step.
+          ready=$(python scripts/install_g1_racer.py --status)
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch approved compiled demo only
+        if: steps.demo.outputs.ready == 'true'
+        run: git lfs pull --include="demos/metatron/demo.zip"
+
+      - name: Fetch approved G1 Racer game only
+        if: steps.racer.outputs.ready == 'true'
+        run: git lfs pull --include="demos/g1-racer/game.zip"
+
       - name: Build Sphinx documentation
         run: |
           cd docs
           make html
+
+      - name: Install approved demo beside the docs
+        if: steps.demo.outputs.ready == 'true'
+        run: python scripts/install_metatron_demo.py --out docs/build/html/demos/metatron
+
+      - name: Install approved G1 Racer beside the docs
+        if: steps.racer.outputs.ready == 'true'
+        run: python scripts/install_g1_racer.py --out docs/build/html/demos/g1-racer
+
+      - name: Check Pages size budget
+        run: test "$(du -sb docs/build/html | cut -f1)" -lt 900000000
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

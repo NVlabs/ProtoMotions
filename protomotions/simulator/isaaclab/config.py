@@ -44,6 +44,19 @@ class IsaacLabPhysXParams(IsaacGymPhysXParams):
         default=5 * 2**15,
         metadata={"help": "Maximum GPU rigid patch count."}
     )
+    gpu_collision_stack_size: int = field(
+        default=2**26,
+        metadata={
+            "help": (
+                "PhysX collision stack in bytes (IsaacLab's default, 2**26 = 64 MiB). "
+                "When it is too small PhysX logs 'collisionStackSize buffer overflow "
+                "... Contacts have been dropped' with the size it needs. Large "
+                "triangle-mesh scenes need more (SAMP at 15,000 envs used 2**30). "
+                "Keep it at or below 2**30: the value is written to USD as a 32-bit int. "
+                "On the command line write the number out (1073741824, not 2**30)."
+            )
+        },
+    )
 
 
 @dataclass

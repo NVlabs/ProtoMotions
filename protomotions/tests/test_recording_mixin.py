@@ -7,6 +7,7 @@ import sys
 import types
 from types import SimpleNamespace
 
+import pytest
 import torch
 
 from protomotions.simulator.base_simulator.config import (
@@ -26,8 +27,11 @@ def _identity_quat(*shape: int):
 class _Recorder(RecordingMixin):
     def __init__(self):
         self.config = SimpleNamespace(experiment_name="unit", w_last=True)
+        self.dt = 1.0 / 30  # the simulator provides dt; stamps become round(1/dt)=30
         self.headless = False
         self.num_envs = 2
+        self.contacts_enabled = True
+        self.has_complete_contact_labels = True
         self.scene_lib = SimpleNamespace(num_objects_per_scene=0)
         self._num_dof = 2
         self._proj_config = None
@@ -49,8 +53,13 @@ class _Recorder(RecordingMixin):
             rigid_body_ang_vel=torch.ones(2, 2, 3) * 2.0,
             dof_pos=torch.ones(2, 2) * 3.0,
             dof_vel=torch.ones(2, 2) * 4.0,
-            rigid_body_contacts=torch.tensor([[True, False], [False, True]]),
         )
+
+    def get_contact_forces(self):
+        forces = torch.zeros(2, 2, 4, 3)
+        forces[0, 0, 0, 2] = 10.0
+        forces[1, 1, 3, 2] = 10.0  # Object contact is also a recorded annotation.
+        return forces
 
     def get_object_root_state(self):
         return SimpleNamespace(
@@ -172,7 +181,7 @@ def test_recording_builds_marker_terrain_and_object_save_payloads(monkeypatch):
         )
     ]
     recorder.scene_lib = SimpleNamespace(
-        _scene_to_original_scene_id=torch.tensor([0]),
+        replica_to_original=torch.tensor([0]),
         _original_scenes=[
             SimpleNamespace(
                 objects=[
@@ -207,9 +216,13 @@ def test_recording_builds_marker_terrain_and_object_save_payloads(monkeypatch):
     assert payload["objects"][6]["name"] == "projectile_1"
 
 
-def test_render_start_capture_finalize_and_cleanup_paths(tmp_path, monkeypatch):
+@pytest.mark.parametrize("complete_contacts", [False, True])
+def test_render_start_capture_finalize_and_cleanup_paths(
+    tmp_path, monkeypatch, complete_contacts
+):
     monkeypatch.chdir(tmp_path)
     recorder = _Recorder()
+    recorder.has_complete_contact_labels = complete_contacts
     recorder._init_recording_state()
     recorder._camera_target = {"env": 1, "element": 0}
     recorder._last_markers_state = {
@@ -232,6 +245,7 @@ def test_render_start_capture_finalize_and_cleanup_paths(tmp_path, monkeypatch):
     assert recorder._recording_env_id == 1
     assert recorder.written_files[-1].endswith("0000.png")
     assert len(recorder._recorded_motion["gts"]) == 1
+    assert len(recorder._recorded_motion["contacts"]) == int(complete_contacts)
     assert "target" in recorder._recorded_markers
     assert "terrain_markers" not in recorder._recorded_markers
     assert len(recorder._recorded_objects) == 1
@@ -338,7 +352,7 @@ def test_render_finalize_saves_marker_object_and_terrain_sidecars(
     ]
     recorder._recorded_projectiles = []
     recorder.scene_lib = SimpleNamespace(
-        _scene_to_original_scene_id=torch.tensor([0]),
+        replica_to_original=torch.tensor([0]),
         _original_scenes=[SimpleNamespace(objects=[_BoxSceneObject()])],
     )
     recorder.terrain = SimpleNamespace(

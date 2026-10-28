@@ -11,6 +11,8 @@ Key Classes:
     - AMPModel: PPO model extended with discriminator
 """
 
+from __future__ import annotations
+
 import torch
 from torch import nn
 from typing import List
@@ -160,6 +162,9 @@ class Discriminator(ProtoMotionsTensorDictModule):
 
 class AMPModelComponentsMixin:
     """Adds AMP discriminator modules to a host model."""
+
+    def optional_checkpoint_modules(self) -> tuple[str, ...]:
+        return super().optional_checkpoint_modules() + ("_discriminator", "_disc_critic")
 
     def _build_amp_model_components(self, config):
         DiscriminatorClass = get_class(config.discriminator._target_)

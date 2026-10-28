@@ -3,37 +3,30 @@
 
 """Observation compute kernel for steering tasks.
 
-Pure tensor function (kernel) for computing steering observations.
-Use MdpComponent in experiment configs to bind kernel to context paths:
+A pure tensor function whose parameter defaults are its context bindings: the
+heading comes from the anchor body, the targets from the steering control's
+namespace. A recipe binds it in one line::
 
-    from protomotions.envs.context_views import EnvContext
     from protomotions.envs.mdp_component import MdpComponent
     from protomotions.envs.obs.steering import compute_steering_obs
-    
+
     observation_components = {
-        "steering": MdpComponent(
-            compute_func=compute_steering_obs,
-            dynamic_vars={
-                "root_rot": EnvContext.current.root_rot,
-                "tar_dir": EnvContext.steering.tar_dir,
-                "tar_speed": EnvContext.steering.tar_speed,
-                "tar_face_dir": EnvContext.steering.tar_face_dir,
-            },
-        ),
+        "steering": MdpComponent.from_kernel(compute_steering_obs),
     }
 """
 
 import torch
 from torch import Tensor
 
+from protomotions.envs.context_views import EnvContext
 from protomotions.utils import rotations
 
 
 def compute_steering_obs(
-    root_rot: Tensor,
-    tar_dir: Tensor,
-    tar_speed: Tensor,
-    tar_face_dir: Tensor,
+    root_rot: Tensor = EnvContext.current.anchor_rot,
+    tar_dir: Tensor = EnvContext.steering.tar_dir,
+    tar_speed: Tensor = EnvContext.steering.tar_speed,
+    tar_face_dir: Tensor = EnvContext.steering.tar_face_dir,
 ) -> Tensor:
     """Compute steering observations in the robot's local frame.
 
@@ -41,7 +34,8 @@ def compute_steering_obs(
     robot's local frame and concatenates with the target speed.
 
     Args:
-        root_rot: Root orientation quaternions [num_envs, 4] (w-last format).
+        root_rot: Heading-giving orientation quaternions [num_envs, 4] (w-last
+            format); the anchor body's rotation by default.
         tar_dir: Target movement direction vectors [num_envs, 2] in world frame.
         tar_speed: Target speeds [num_envs].
         tar_face_dir: Target facing direction vectors [num_envs, 2] in world frame.

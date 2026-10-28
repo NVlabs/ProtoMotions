@@ -20,18 +20,33 @@ from protomotions.simulator.isaaclab.utils.actuator_groups import (
 def test_resolver_uses_per_joint_specs_for_partially_specified_parameter(
     control_type,
 ):
+    # Every joint carries the required fields; only friction (asset-owned) is
+    # partial, which is what forces per-joint specs instead of one collapsed one.
     control_info = {
-        "joint.1": ControlInfo(stiffness=10.0, damping=1.0, armature=0.1),
-        "joint+2": ControlInfo(stiffness=5.0, damping=0.5),
+        "joint.1": ControlInfo(
+            stiffness=10.0,
+            damping=1.0,
+            armature=0.1,
+            effort_limit=100.0,
+            velocity_limit=20.0,
+            friction=0.3,
+        ),
+        "joint+2": ControlInfo(
+            stiffness=5.0,
+            damping=0.5,
+            armature=0.2,
+            effort_limit=50.0,
+            velocity_limit=12.0,
+        ),
     }
 
     specs = resolve_actuator_specs_for_control_type(control_info, control_type)
 
     assert len(specs) == 2
     assert specs[0].joint_names_expr == (r"joint\.1",)
-    assert specs[0].params["armature"] == 0.1
+    assert specs[0].params["friction"] == 0.3
     assert specs[1].joint_names_expr == (r"joint\+2",)
-    assert "armature" not in specs[1].params
+    assert "friction" not in specs[1].params
     expected_stiffness = 10.0 if control_type == ControlType.BUILT_IN_PD else 0.0
     expected_damping = 1.0 if control_type == ControlType.BUILT_IN_PD else 0.0
     assert specs[0].params["stiffness"] == expected_stiffness
@@ -52,6 +67,7 @@ def test_single_actuator_params_are_per_joint_exact_regex_dicts():
             damping=0.5,
             effort_limit=50.0,
             velocity_limit=12.0,
+            armature=0.3,
             friction=0.2,
         ),
     }
@@ -60,16 +76,24 @@ def test_single_actuator_params_are_per_joint_exact_regex_dicts():
 
     assert spec.name == "actuator_group_0"
     assert spec.joint_names_expr == (r"joint\.1", r"joint\+2")
+    # Required fields are per-joint dicts covering every joint.
     assert spec.params["stiffness"] == {r"joint\.1": 10.0, r"joint\+2": 5.0}
     assert spec.params["damping"] == {r"joint\.1": 1.0, r"joint\+2": 0.5}
-    assert spec.params["armature"] == {r"joint\.1": 0.1}
+    assert spec.params["armature"] == {r"joint\.1": 0.1, r"joint\+2": 0.3}
+    assert spec.params["effort_limit_sim"] == {r"joint\.1": 100.0, r"joint\+2": 50.0}
+    assert spec.params["velocity_limit_sim"] == {r"joint\.1": 20.0, r"joint\+2": 12.0}
+    # Friction is asset-owned, so a joint that omits it is simply left out.
     assert spec.params["friction"] == {r"joint\+2": 0.2}
 
 
 def test_resolver_preserves_builtin_pd_and_zeroes_ideal_pd_gains():
     control_info = {
-        "joint.1": ControlInfo(stiffness=10.0, damping=1.0),
-        "joint+2": ControlInfo(stiffness=5.0, damping=0.5),
+        "joint.1": ControlInfo(
+            stiffness=10.0, damping=1.0, armature=0.1, effort_limit=100.0, velocity_limit=20.0
+        ),
+        "joint+2": ControlInfo(
+            stiffness=5.0, damping=0.5, armature=0.2, effort_limit=50.0, velocity_limit=12.0
+        ),
     }
 
     (builtin_spec,) = resolve_actuator_specs_for_control_type(

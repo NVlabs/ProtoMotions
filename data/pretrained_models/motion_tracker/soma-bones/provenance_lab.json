@@ -1,0 +1,10 @@
+{
+  "name": "SOMA motion tracker",
+  "robot": "soma23",
+  "inference_checkpoint": "inference_last_lab.ckpt",
+  "inference_checkpoint_sha256": "699f0d3d7f586528620b12ba11cc47b2b8afa26e1caff252e62167af914e5bc1",
+  "inference_checkpoint_bytes": 41783965,
+  "model_tensor_count": 31,
+  "resumable": false,
+  "trained_on": "IsaacLab"
+}

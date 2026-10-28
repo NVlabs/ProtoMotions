@@ -31,9 +31,11 @@ def test_get_expert_actor_in_keys_falls_back_to_model_keys():
     assert get_expert_actor_in_keys(config) == ["model_obs", "other_obs"]
 
 
-def test_get_expert_actor_in_keys_warns_when_unavailable(caplog):
-    assert get_expert_actor_in_keys(SimpleNamespace()) == []
-    assert "Could not determine expert actor in_keys" in caplog.text
+def test_get_expert_actor_in_keys_rejects_unavailable_keys():
+    with pytest.raises(ValueError, match="model.actor.in_keys"):
+        get_expert_actor_in_keys(SimpleNamespace())
+    with pytest.raises(ValueError, match="model.actor.in_keys"):
+        get_expert_actor_in_keys(SimpleNamespace(model=SimpleNamespace(in_keys=[])))
 
 
 def test_get_expert_observation_keys_filters_to_actor_inputs_with_prefix():
@@ -56,15 +58,19 @@ def test_get_expert_observation_keys_filters_to_actor_inputs_with_prefix():
 
 def test_get_expert_observation_keys_returns_empty_without_observations():
     agent_config = SimpleNamespace(model=SimpleNamespace(in_keys=["obs"]))
+    env_config = SimpleNamespace(observation_components={})
+    assert get_expert_observation_keys(env_config, agent_config) == []
 
-    assert get_expert_observation_keys(SimpleNamespace(), agent_config) == []
-    assert (
-        get_expert_observation_keys(
-            SimpleNamespace(observation_components=None),
-            agent_config,
-        )
-        == []
-    )
+
+@pytest.mark.parametrize(
+    "env_config", [SimpleNamespace(), SimpleNamespace(observation_components=None)]
+)
+def test_expert_observation_helpers_reject_malformed_configs(env_config):
+    agent_config = SimpleNamespace(model=SimpleNamespace(in_keys=["obs"]))
+    with pytest.raises(AttributeError):
+        get_expert_observation_keys(env_config, agent_config)
+    with pytest.raises(AttributeError):
+        get_expert_observation_components(env_config, agent_config)
 
 
 def test_get_expert_observation_keys_requires_actor_inputs():
@@ -130,12 +136,5 @@ def test_get_expert_observation_components_rejects_prefixed_key_conflicts():
 
 def test_get_expert_observation_components_returns_empty_without_observations():
     agent_config = SimpleNamespace(model=SimpleNamespace(in_keys=["obs"]))
-
-    assert get_expert_observation_components(SimpleNamespace(), agent_config) == {}
-    assert (
-        get_expert_observation_components(
-            SimpleNamespace(observation_components=None),
-            agent_config,
-        )
-        == {}
-    )
+    env_config = SimpleNamespace(observation_components={})
+    assert get_expert_observation_components(env_config, agent_config) == {}

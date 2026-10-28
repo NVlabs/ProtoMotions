@@ -3,28 +3,32 @@
 
 """Steering control component for locomotion tasks.
 
-Manages target direction and speed state for steering tasks.
-The target direction and speed change periodically to encourage versatile locomotion.
+Owns the heading schedule of a steering task: a target direction, a target
+facing direction and a target speed per env, resampled when the env's
+``heading_change_steps`` is reached (a random walk from the previous heading
+and speed, or a fresh draw), and the double buffer of the anchor position
+the velocity reward reads. Publishes the ``steering.*`` names
+(``SteeringContext``) and owns no episode-ending check.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Dict, Tuple, TYPE_CHECKING
+from typing import Any, Dict, Optional
 
 import numpy as np
 import torch
 from torch import Tensor
 
-from protomotions.envs.context_views import EnvContext, SteeringContext
 from protomotions.envs.control.base import ControlComponent, ControlComponentConfig
-from protomotions.utils import rotations
+from protomotions.envs.control.task_inputs import TaskInputs
 from protomotions.simulator.base_simulator.config import (
     MarkerConfig,
-    VisualizationMarkerConfig,
     MarkerState,
+    VisualizationMarkerConfig,
 )
-
-if TYPE_CHECKING:
-    from protomotions.envs.base_env.env import BaseEnv
+from protomotions.simulator.base_simulator.simulator_state import RobotState
+from protomotions.utils import rotations
 
 
 @dataclass
@@ -57,96 +61,95 @@ class SteeringControlConfig(ControlComponentConfig):
 
 
 class SteeringControl(ControlComponent):
-    """Steering control component that manages target direction and speed.
+    """The heading schedule and the anchor double buffer of a steering task."""
 
-    Provides target direction and speed that change periodically during training
-    to encourage versatile locomotion. Exposes state via get_context() for
-    observation and reward functions.
+    config: SteeringControlConfig
+    namespaces = ("steering",)
 
-    Args:
-        config: Steering control configuration.
-        env: Parent environment instance.
-    """
-
-    def __init__(self, config: SteeringControlConfig, env: "BaseEnv"):
-        super().__init__(config, env)
-        self.config: SteeringControlConfig = config
-
-        # Task state buffers
-        self._heading_change_steps = torch.zeros(
-            self.env.num_envs, device=self.env.device, dtype=torch.int64
+    def __init__(self, config: SteeringControlConfig, inputs: TaskInputs):
+        super().__init__(config, inputs)
+        add = self.state.add
+        self.heading_change_steps = add("heading_change_steps", (), torch.int64, 0)
+        self.tar_dir_theta = add("tar_dir_theta", (), torch.float, 0.0)
+        # Default: forward.
+        self.tar_dir = add("tar_dir", (2,), torch.float, torch.tensor([1.0, 0.0]))
+        # The facing direction can differ from the movement direction (strafing).
+        self.tar_face_dir = add(
+            "tar_face_dir", (2,), torch.float, torch.tensor([1.0, 0.0])
         )
-        self._tar_dir_theta = torch.zeros(
-            self.env.num_envs, device=self.env.device, dtype=torch.float
-        )
-        self._tar_dir = torch.zeros(
-            self.env.num_envs, 2, device=self.env.device, dtype=torch.float
-        )
-        self._tar_dir[..., 0] = 1.0  # Default: forward direction
+        self.tar_speed = add("tar_speed", (), torch.float, 1.0)
+        # Double buffer of the anchor position (prev = t-1, curr = t), so the
+        # velocity reward can difference two consecutive positions.
+        self.prev_root_pos = add("prev_root_pos", (3,), torch.float, 0.0)
+        self.curr_root_pos = add("curr_root_pos", (3,), torch.float, 0.0)
 
-        # Target facing direction (2D) - can be different from tar_dir for strafing
-        self._tar_face_dir = torch.zeros(
-            self.env.num_envs, 2, device=self.env.device, dtype=torch.float
-        )
-        self._tar_face_dir[..., 0] = 1.0  # Default: forward direction
+    def reset_rows(self, env_ids: Tensor, state: RobotState) -> None:
+        """Seed the anchor double buffer from the post-reset pose and sample a
+        new episode's first commands.
 
-        self._tar_speed = torch.ones(
-            self.env.num_envs, device=self.env.device, dtype=torch.float
-        )
-
-        # Double buffer for root position (prev = t-1, curr = t)
-        # Allows correct velocity computation in rewards
-        self._prev_root_pos = torch.zeros(
-            self.env.num_envs, 3, device=self.env.device, dtype=torch.float
-        )
-        self._curr_root_pos = torch.zeros(
-            self.env.num_envs, 3, device=self.env.device, dtype=torch.float
-        )
-
-    def reset(self, env_ids: Tensor):
-        """Reset steering task for given environments."""
+        Deliberately NOT the registry's clear: the schedule is a random walk,
+        and ``tar_dir_theta`` and ``tar_speed`` carry the previous episode's
+        values into the incremental branch of ``_sample_commands`` (the
+        reference behaviour); every other slot is rewritten here.
+        """
         if len(env_ids) == 0:
             return
+        anchor_pos = state.rigid_body_pos[:, self.inputs.robot.anchor_body_index]
+        self.prev_root_pos[env_ids] = anchor_pos
+        self.curr_root_pos[env_ids] = anchor_pos
+        self._sample_commands(env_ids)
 
-        robot_state = self.env.simulator.get_robot_state()
-        anchor_body_index = self.env.robot_config.anchor_body_index
-        anchor_pos = robot_state.rigid_body_pos[env_ids, anchor_body_index]
-        self._prev_root_pos[env_ids] = anchor_pos
-        self._curr_root_pos[env_ids] = anchor_pos
+    def resample(self, env_ids: Tensor, state: RobotState) -> None:
+        """New commands inside the episode (``advance`` found the change due).
+        The anchor double buffer is episode-start state and is not touched, so
+        the velocity reward sees a true displacement on the change step."""
+        self._sample_commands(env_ids)
 
+    def _sample_commands(self, env_ids: Tensor) -> None:
+        """The command draw for ``env_ids``: a per-env choice between a fresh
+        heading and speed and an incremental change from the current ones, the
+        next change step, a stop and the facing direction. Every draw is on the
+        control stage's generator."""
+        config = self.config
+        device, generator = self.inputs.device, self.inputs.generator
         n = len(env_ids)
-        device = self.env.device
 
-        # Per-environment sampling: which envs get random heading vs incremental
-        rand_probs = torch.ones(n, device=device) * self.config.random_heading_probability
-        use_random = torch.bernoulli(rand_probs).bool()
+        # Per-environment sampling: which envs get a random heading vs incremental
+        rand_probs = torch.ones(n, device=device) * config.random_heading_probability
+        use_random = torch.bernoulli(rand_probs, generator=generator).bool()
 
         # Fully random heading and speed (for envs with use_random=True)
-        rand_dir_theta = 2 * np.pi * torch.rand(n, device=device) - np.pi
-        rand_tar_speed = (
-            self.config.tar_speed_max - self.config.tar_speed_min
-        ) * torch.rand(n, device=device) + self.config.tar_speed_min
-
-        # Incremental change from current heading/speed (for envs with use_random=False)
-        dir_delta_theta = (
-            2 * self.config.standard_heading_change * torch.rand(n, device=device)
-            - self.config.standard_heading_change
+        rand_dir_theta = (
+            2 * np.pi * torch.rand(n, device=device, generator=generator) - np.pi
         )
-        inc_dir_theta = (dir_delta_theta + self._tar_dir_theta[env_ids] + np.pi) % (
+        rand_tar_speed = (config.tar_speed_max - config.tar_speed_min) * torch.rand(
+            n, device=device, generator=generator
+        ) + config.tar_speed_min
+
+        # Incremental change from the current heading/speed (use_random=False)
+        dir_delta_theta = (
+            2
+            * config.standard_heading_change
+            * torch.rand(n, device=device, generator=generator)
+            - config.standard_heading_change
+        )
+        inc_dir_theta = (dir_delta_theta + self.tar_dir_theta[env_ids] + np.pi) % (
             2 * np.pi
         ) - np.pi
 
         speed_delta = (
-            2 * self.config.standard_speed_change * torch.rand(n, device=device)
-            - self.config.standard_speed_change
+            2
+            * config.standard_speed_change
+            * torch.rand(n, device=device, generator=generator)
+            - config.standard_speed_change
         )
         inc_tar_speed = torch.clamp(
-            speed_delta + self._tar_speed[env_ids],
-            min=self.config.tar_speed_min,
-            max=self.config.tar_speed_max,
+            speed_delta + self.tar_speed[env_ids],
+            min=config.tar_speed_min,
+            max=config.tar_speed_max,
         )
 
-        # Select per-environment based on use_random mask
+        # Select per-environment based on the use_random mask
         dir_theta = torch.where(use_random, rand_dir_theta, inc_dir_theta)
         tar_speed = torch.where(use_random, rand_tar_speed, inc_tar_speed)
 
@@ -154,141 +157,107 @@ class SteeringControl(ControlComponent):
 
         # Sample when to change heading next
         change_steps = torch.randint(
-            low=self.config.heading_change_steps_min,
-            high=self.config.heading_change_steps_max,
+            low=config.heading_change_steps_min,
+            high=config.heading_change_steps_max,
             size=(n,),
             device=device,
             dtype=torch.int64,
+            generator=generator,
         )
 
         # Randomly set some targets to stop (speed=0)
-        stop_probs = torch.ones(n, device=device) * self.config.stop_probability
-        should_stop = torch.bernoulli(stop_probs)
+        stop_probs = torch.ones(n, device=device) * config.stop_probability
+        should_stop = torch.bernoulli(stop_probs, generator=generator)
 
-        # Sample facing direction - independent from movement direction if enabled
-        if self.config.enable_rand_facing:
-            face_theta = 2 * np.pi * torch.rand(n, device=device) - np.pi
+        # Facing direction: independent from the movement direction if enabled
+        if config.enable_rand_facing:
+            face_theta = (
+                2 * np.pi * torch.rand(n, device=device, generator=generator) - np.pi
+            )
         else:
-            face_theta = dir_theta  # Face same direction as movement
-        tar_face_dir = torch.stack([torch.cos(face_theta), torch.sin(face_theta)], dim=-1)
-
-        self._tar_speed[env_ids] = tar_speed * (1.0 - should_stop)
-        self._tar_dir_theta[env_ids] = dir_theta
-        self._tar_dir[env_ids] = tar_dir
-        self._tar_face_dir[env_ids] = tar_face_dir
-        progress = self.env.progress_buf[env_ids]
-        is_env_reset = self.env.reset_buf[env_ids] | self.env.terminate_buf[env_ids]
-        progress = torch.where(is_env_reset, torch.zeros_like(progress), progress)
-        self._heading_change_steps[env_ids] = progress + change_steps
-
-    def step(self):
-        """Check if any environments need their heading task updated."""
-        # Rotate double buffer: prev <- curr, curr <- new position
-        self._prev_root_pos[:] = self._curr_root_pos
-        robot_state = self.env.simulator.get_robot_state()
-        anchor_body_index = self.env.robot_config.anchor_body_index
-        self._curr_root_pos[:] = robot_state.rigid_body_pos[:, anchor_body_index]
-
-        # Check for heading changes
-        reset_task_mask = self.env.progress_buf >= self._heading_change_steps
-        env_ids = reset_task_mask.nonzero(as_tuple=False).flatten()
-        if len(env_ids) > 0:
-            self.reset(env_ids)
-
-    def check_resets_and_terminations(self) -> Tuple[Tensor, Tensor]:
-        """No terminations from steering control."""
-        reset_buf = torch.zeros(self.env.num_envs, dtype=torch.bool, device=self.env.device)
-        terminate_buf = torch.zeros(self.env.num_envs, dtype=torch.bool, device=self.env.device)
-        return reset_buf, terminate_buf
-
-    def populate_context(self, ctx: EnvContext) -> None:
-        """Populate steering-specific view in the EnvContext."""
-        env_ids = getattr(ctx, "env_ids", None)
-        if env_ids is None:
-            tar_dir = self._tar_dir
-            tar_dir_theta = self._tar_dir_theta
-            tar_speed = self._tar_speed
-            tar_face_dir = self._tar_face_dir
-            prev_root_pos = self._prev_root_pos
-        else:
-            tar_dir = self._tar_dir[env_ids]
-            tar_dir_theta = self._tar_dir_theta[env_ids]
-            tar_speed = self._tar_speed[env_ids]
-            tar_face_dir = self._tar_face_dir[env_ids]
-            prev_root_pos = self._prev_root_pos[env_ids]
-        ctx.steering = SteeringContext(
-            tar_dir=tar_dir,
-            tar_dir_theta=tar_dir_theta,
-            tar_speed=tar_speed,
-            tar_face_dir=tar_face_dir,
-            prev_root_pos=prev_root_pos,
+            face_theta = dir_theta  # face the movement direction
+        tar_face_dir = torch.stack(
+            [torch.cos(face_theta), torch.sin(face_theta)], dim=-1
         )
+
+        self.tar_speed[env_ids] = tar_speed * (1.0 - should_stop)
+        self.tar_dir_theta[env_ids] = dir_theta
+        self.tar_dir[env_ids] = tar_dir
+        self.tar_face_dir[env_ids] = tar_face_dir
+        progress = self.inputs.clock.progress_buf[env_ids]
+        self.heading_change_steps[env_ids] = progress + change_steps
+
+    def advance(self, state: RobotState) -> Dict[str, Tensor]:
+        """Rotate the anchor double buffer, then resample the envs whose
+        heading change is due."""
+        anchor = self.inputs.robot.anchor_body_index
+        self.prev_root_pos[:] = self.curr_root_pos
+        self.curr_root_pos[:] = state.rigid_body_pos[:, anchor]
+
+        due = self.inputs.clock.progress_buf >= self.heading_change_steps
+        env_ids = due.nonzero(as_tuple=False).flatten()
+        if len(env_ids) > 0:
+            self.resample(env_ids, state)
+        return {}
+
+    def publish(self, env_ids: Optional[Tensor]) -> Dict[str, Any]:
+        """Publish the ``steering.*`` names (see ``SteeringContext``)."""
+        rows = slice(None) if env_ids is None else env_ids
+        return {
+            "steering.tar_dir": self.tar_dir[rows],
+            "steering.tar_dir_theta": self.tar_dir_theta[rows],
+            "steering.tar_speed": self.tar_speed[rows],
+            "steering.tar_face_dir": self.tar_face_dir[rows],
+            "steering.prev_root_pos": self.prev_root_pos[rows],
+        }
 
     def create_visualization_markers(
         self, headless: bool
     ) -> Dict[str, VisualizationMarkerConfig]:
-        """Create steering direction markers.
-
-        Creates two arrow markers:
-        - Red arrow: movement direction (tar_dir)
-        - Blue arrow: facing direction (tar_face_dir)
-        """
+        """Two arrows: red for the movement direction, blue for the facing."""
         if headless:
             return {}
-
-        # Movement direction marker (red, like ASE)
-        movement_markers = [MarkerConfig(size="regular")]
-        movement_markers_cfg = VisualizationMarkerConfig(
-            type="arrow", color=(0.8, 0.0, 0.0), markers=movement_markers
-        )
-
-        # Facing direction marker (blue, like ASE)
-        facing_markers = [MarkerConfig(size="regular")]
-        facing_markers_cfg = VisualizationMarkerConfig(
-            type="arrow", color=(0.0, 0.0, 0.8), markers=facing_markers
-        )
-
         return {
-            "movement_markers": movement_markers_cfg,
-            "facing_markers": facing_markers_cfg,
+            "movement_markers": VisualizationMarkerConfig(
+                type="arrow",
+                color=(0.8, 0.0, 0.0),
+                markers=[MarkerConfig(size="regular")],
+            ),
+            "facing_markers": VisualizationMarkerConfig(
+                type="arrow",
+                color=(0.0, 0.0, 0.8),
+                markers=[MarkerConfig(size="regular")],
+            ),
         }
 
-    def get_markers_state(self) -> Dict[str, MarkerState]:
-        """Get marker states for visualization."""
-        if self.env.simulator.headless:
+    def get_markers_state(self, state: RobotState) -> Dict[str, MarkerState]:
+        """The two arrows at the anchor, pointing along the two directions."""
+        if self.inputs.headless:
             return {}
-
-        robot_state = self.env.simulator.get_robot_state()
-        anchor_body_index = self.env.robot_config.anchor_body_index
-        root_pos = robot_state.rigid_body_pos[:, anchor_body_index]
+        num_envs = self.inputs.num_envs
+        root_pos = state.rigid_body_pos[:, self.inputs.robot.anchor_body_index]
         heading_axis = torch.zeros_like(root_pos)
         heading_axis[..., -1] = 1.0
 
-        # Movement direction marker position and rotation
         movement_marker_pos = root_pos.clone()
-        movement_marker_pos[..., 0:2] += self._tar_dir
-
-        movement_theta = torch.atan2(self._tar_dir[..., 1], self._tar_dir[..., 0])
+        movement_marker_pos[..., 0:2] += self.tar_dir
+        movement_theta = torch.atan2(self.tar_dir[..., 1], self.tar_dir[..., 0])
         movement_rot = rotations.quat_from_angle_axis(
             movement_theta, heading_axis, True
         )
 
-        # Facing direction marker position and rotation
         facing_marker_pos = root_pos.clone()
-        facing_marker_pos[..., 0:2] += self._tar_face_dir
-
-        facing_theta = torch.atan2(self._tar_face_dir[..., 1], self._tar_face_dir[..., 0])
-        facing_rot = rotations.quat_from_angle_axis(
-            facing_theta, heading_axis, True
-        )
+        facing_marker_pos[..., 0:2] += self.tar_face_dir
+        facing_theta = torch.atan2(self.tar_face_dir[..., 1], self.tar_face_dir[..., 0])
+        facing_rot = rotations.quat_from_angle_axis(facing_theta, heading_axis, True)
 
         return {
             "movement_markers": MarkerState(
-                translation=movement_marker_pos.view(self.env.num_envs, -1, 3),
-                orientation=movement_rot.view(self.env.num_envs, -1, 4),
+                translation=movement_marker_pos.view(num_envs, -1, 3),
+                orientation=movement_rot.view(num_envs, -1, 4),
             ),
             "facing_markers": MarkerState(
-                translation=facing_marker_pos.view(self.env.num_envs, -1, 3),
-                orientation=facing_rot.view(self.env.num_envs, -1, 4),
+                translation=facing_marker_pos.view(num_envs, -1, 3),
+                orientation=facing_rot.view(num_envs, -1, 4),
             ),
         }

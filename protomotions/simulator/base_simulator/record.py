@@ -16,6 +16,7 @@ import os
 from typing import Dict, Optional
 
 import torch
+from protomotions.envs.contact_features import contact_flags
 
 from protomotions.utils import rotations
 from protomotions.simulator.base_simulator.config import MarkerState
@@ -131,7 +132,7 @@ class RecordingMixin:
 
     def _build_markers_save_data(self) -> dict:
         """Build markers data dictionary for saving to .markers.pt file."""
-        markers_data = {"fps": 30, "markers": {}}
+        markers_data = {"fps": round(1 / self.dt), "markers": {}}
         for name, frame_list in self._recorded_markers.items():
             translations = torch.stack([f[0] for f in frame_list], dim=0)
             orientations = torch.stack([f[1] for f in frame_list], dim=0)
@@ -195,7 +196,7 @@ class RecordingMixin:
             rotations = torch.stack([f[1] for f in self._recorded_objects], dim=0)
 
             eid = self._recording_env_id
-            scene_idx = self.scene_lib._scene_to_original_scene_id[eid].item()
+            scene_idx = self.scene_lib.replica_to_original[eid].item()
             scene = self.scene_lib._original_scenes[scene_idx]
 
             for obj_idx, obj in enumerate(scene.objects):
@@ -259,7 +260,7 @@ class RecordingMixin:
                         }
                     )
 
-        return {"fps": 30, "objects": objects_list}
+        return {"fps": round(1 / self.dt), "objects": objects_list}
 
     # -------------------------
     # Main render loop
@@ -321,7 +322,7 @@ class RecordingMixin:
                         ]
                     )
 
-                    clip = ImageSequenceClip(images, fps=30)
+                    clip = ImageSequenceClip(images, fps=round(1 / self.dt))
                     clip.write_videofile(
                         f"{self._curr_user_recording_name}.mp4",
                         codec="libx264",
@@ -349,7 +350,7 @@ class RecordingMixin:
                     # Save the recorded motion as a .motion file
                     motion_data = build_motion_data(
                         self._recorded_motion,
-                        fps=30,  # Video recording FPS
+                        fps=round(1 / self.dt),  # the robot's control rate
                         num_dof=self._num_dof,
                     )
                     motion_file_path = f"{self._curr_user_recording_name}.motion"
@@ -425,9 +426,10 @@ class RecordingMixin:
                     self._recorded_motion["dvs"].append(
                         robot_state.dof_vel[eid].cpu().clone()
                     )
-                if robot_state.rigid_body_contacts is not None:
+                if self.has_complete_contact_labels:
+                    # Never serialize partial measurements as complete motion labels.
                     self._recorded_motion["contacts"].append(
-                        robot_state.rigid_body_contacts[eid].cpu().clone()
+                        contact_flags(self.get_contact_forces())[eid].cpu().clone()
                     )
 
                 # Record markers (single env only, skip terrain markers)

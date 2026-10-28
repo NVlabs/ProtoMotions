@@ -59,40 +59,44 @@ Run inference in full-eval mode to save the predicted motion library:
 Understanding Prioritized Sampling
 ----------------------------------
 
-Motion imitation uses prioritized sampling to focus on harder motions:
+Motion imitation can sample difficult motions more often. The evaluator drives
+the weights; nothing in the training loop guesses difficulty from rewards.
 
 **How it works:**
 
-1. Evaluator periodically runs full evaluation on all motions
-2. Computes success rate for each motion
-3. Assigns higher sampling weight to failed/difficult motions
-4. Training samples more from difficult cases
+1. Every ``eval_metrics_every`` epochs the training loop calls
+   ``evaluator.evaluate()``. ``MimicEvaluator`` sweeps the motion library and
+   returns an ``EvaluationResult`` with logs, an optional score, the evaluated
+   count and per-motion ``failed`` / ``evaluated`` masks, after the environment
+   and model state have been restored.
+2. The training loop then calls ``evaluator.update_training_state(result)``.
+3. ``MimicEvaluator`` updates only evaluated motions. It multiplies successful
+   motions' weights by ``success_discount ** eval_metrics_every`` and divides
+   failed motions' weights by ``failure_discount ** eval_metrics_every``.
+   A zero failure discount instead resets failed weights to 1. Updated weights
+   are clamped to ``min_motion_weight``. These settings live in
+   ``motion_weights_rules``; the discount fields are named
+   ``motion_weights_update_success_discount`` and
+   ``motion_weights_update_failure_discount``. Weight updates need at least one
+   ``failure_components`` entry.
+4. ``inference_agent.py --full-eval`` calls ``evaluate()`` only, so offline
+   evaluation never changes sampling weights.
 
-**Where this is done in code:**
-
-.. code-block:: python
-
-   def update_motion_sampling_weights(self, metrics: Dict[str, MotionMetrics]):
-       """
-       Update motion sampling weights based on success/failure rates.
-       """
-       pass
-
-**Symptoms:**
-
-* ``Train/episode_reward`` drops a bit 
-
-**What's actually happening:**
-
-Training is now focusing on harder motions. The policy hasn't gotten worse - 
-it's practicing more difficult cases.
+See :doc:`evaluation` for configuring metrics and failure rules.
 
 **What to monitor:**
 
-* ``Eval/gt_err`` - Unbiased position error (evaluates all motions equally)
-* ``Eval/success_rate`` - Unbiased success rate
+Evaluation metrics are unweighted: each evaluated motion counts once.
 
-These eval metrics don't use prioritized sampling and give true performance.
+* ``eval/{name}/mean``, ``eval/{name}/min`` and ``eval/{name}/max`` for every
+  configured ``metric_components`` entry (``eval/gt_error/mean`` in the
+  evaluation guide's example).
+* ``eval/{name}/failure_rate`` for every ``failure_components`` entry and
+  ``eval/success_rate`` overall.
+
+Training rewards are collected under the current sampling weights, so a change
+in a training reward curve after an evaluation can reflect the new motion mix
+rather than a change in policy quality. Compare evaluation metrics instead.
 
 Train Agent Modes
 -----------------

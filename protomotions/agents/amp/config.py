@@ -7,11 +7,9 @@ This module defines configurations for the AMP algorithm which uses a discrimina
 to learn motion priors from reference motions.
 """
 
-from typing import List, Dict, TYPE_CHECKING
+from typing import List, Dict
 
-if TYPE_CHECKING:
-    from protomotions.envs.mdp_component import MdpComponent
-
+from protomotions.envs.mdp_component import MdpComponent
 from protomotions.agents.common.config import ModuleContainerConfig
 from protomotions.agents.ppo.config import (
     PPOModelConfig,
@@ -108,6 +106,9 @@ class AMPModelConfig(PPOModelConfig):
         metadata={"help": "Optimizer settings for discriminator critic."}
     )
 
+    def _key_source_configs(self) -> list:
+        return super()._key_source_configs() + [self.discriminator, self.disc_critic]
+
 
 @dataclass
 class AMPAgentConfig(PPOAgentConfig):
@@ -129,3 +130,8 @@ class AMPAgentConfig(PPOAgentConfig):
         default_factory=dict,
         metadata={"help": "MdpComponent instances for computing reference motion features. Agent injects motion_lib params at runtime."}
     )
+
+    def apply_inference_defaults(self, env) -> None:
+        """Count every step as in-distribution: the discriminator does not gate
+        the style reward at inference, so a visibly off clip still plays."""
+        self.amp_parameters.discriminator_reward_threshold = 0.0

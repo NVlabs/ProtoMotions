@@ -39,10 +39,6 @@ class SmoothnessCalculator:
         self.window_sec = window_sec
         self.high_jerk_threshold = high_jerk_threshold
 
-    def _diff(self, x: torch.Tensor, dt: float) -> torch.Tensor:
-        """Compute finite difference with given time step"""
-        return (x[1:] - x[:-1]) / dt
-
     def compute_normalized_jerk_from_pos(
         self,
         rigid_body_pos_metric: MotionMetrics,
@@ -257,7 +253,7 @@ class SmoothnessCalculator:
 
         try:
             # Compute normalized jerk from rigid body positions using sliding windows
-            per_motion_nj, per_body_per_motion_nj, windowed_nj_per_motion = (
+            per_motion_nj, _, windowed_nj_per_motion = (
                 self.compute_normalized_jerk_from_pos(
                     metrics["rigid_body_pos"], num_bodies, window_sec=window_size
                 )
@@ -269,24 +265,7 @@ class SmoothnessCalculator:
             if valid_motions_mask.any():
                 valid_nj = per_motion_nj[valid_motions_mask]
 
-                smoothness_metrics.update(
-                    {
-                        "normalized_jerk_mean": valid_nj.mean().item(),
-                        # "normalized_jerk_max": valid_nj.max().item(),
-                        # "normalized_jerk_min": valid_nj.min().item(),
-                        # "normalized_jerk_std": valid_nj.std().item(),
-                    }
-                )
-
-                # # Compute body-specific statistics
-                # valid_body_nj = per_body_per_motion_nj[valid_motions_mask]  # [valid_motions, num_bodies]
-                # body_mean_nj = valid_body_nj.mean(dim=0)  # [num_bodies] - mean NJ per body across motions
-
-                # smoothness_metrics.update({
-                #     "normalized_jerk_body_mean": body_mean_nj.mean().item(),  # Overall mean across bodies
-                #     "normalized_jerk_body_max": body_mean_nj.max().item(),    # Max body mean NJ
-                #     "normalized_jerk_body_min": body_mean_nj.min().item(),    # Min body mean NJ
-                # })
+                smoothness_metrics["normalized_jerk_mean"] = valid_nj.mean().item()
 
                 # Compute high jerk frame percentage across all motions
                 high_jerk_percentages = []
@@ -297,40 +276,17 @@ class SmoothnessCalculator:
                         )
                         high_jerk_percentages.append(high_jerk_pct)
 
-                if high_jerk_percentages:
-                    smoothness_metrics.update(
-                        {
-                            "high_jerk_frame_percentage_mean": sum(
-                                high_jerk_percentages
-                            )
-                            / len(high_jerk_percentages),
-                            # "high_jerk_frame_percentage_max": max(high_jerk_percentages),
-                            # "high_jerk_frame_percentage_min": min(high_jerk_percentages),
-                        }
-                    )
-                else:
-                    smoothness_metrics.update(
-                        {
-                            "high_jerk_frame_percentage_mean": 0.0,
-                            # "high_jerk_frame_percentage_max": 0.0,
-                            # "high_jerk_frame_percentage_min": 0.0,
-                        }
-                    )
-
+                smoothness_metrics["high_jerk_frame_percentage_mean"] = (
+                    sum(high_jerk_percentages) / len(high_jerk_percentages)
+                    if high_jerk_percentages
+                    else 0.0
+                )
             else:
                 # No valid motions for jitter computation
                 smoothness_metrics.update(
                     {
                         "normalized_jerk_mean": 0.0,
-                        # "normalized_jerk_max": 0.0,
-                        # "normalized_jerk_min": 0.0,
-                        # "normalized_jerk_std": 0.0,
-                        # "normalized_jerk_body_mean": 0.0,
-                        # "normalized_jerk_body_max": 0.0,
-                        # "normalized_jerk_body_min": 0.0,
                         "high_jerk_frame_percentage_mean": 0.0,
-                        # "high_jerk_frame_percentage_max": 0.0,
-                        # "high_jerk_frame_percentage_min": 0.0,
                     }
                 )
 
@@ -338,93 +294,3 @@ class SmoothnessCalculator:
             log.warning("Failed to compute normalized jerk: %s", e)
 
         return smoothness_metrics
-
-
-if __name__ == "__main__":
-    import torch
-    import math
-    from protomotions.agents.evaluators.smoothness_calculator import SmoothnessCalculator
-    from protomotions.agents.evaluators.metrics import MotionMetrics
-
-    device = torch.device("cpu")
-    # Use realistic values for testing
-    evaluator = SmoothnessCalculator(
-        device=device,
-        dt=1.0 / 30.0,  # 30 FPS
-        window_sec=0.4,  # 0.4s window
-        high_jerk_threshold=6500.0,  # FPS-invariant threshold (was 50000 with T^3)
-    )
-
-    # Create diverse test data
-    num_motions, max_frames, num_bodies = 3, 40, 4
-    motion_lens = torch.tensor([40, 35, 30])
-
-    pos_data = torch.zeros(num_motions, max_frames, num_bodies * 3)
-
-    # Motion 0: Very smooth motion
-    for t in range(40):
-        pos_data[0, t, :] = t * 0.02  # Linear motion
-
-    # Motion 1: Mixed smooth and jerky
-    for t in range(35):
-        if t < 20:
-            pos_data[1, t, :] = t * 0.02  # Smooth start
-        else:
-            pos_data[1, t, :] = 0.4 + math.sin((t - 20) * 4.0) * 0.3  # Jerky end
-
-    # Motion 2: Very jerky throughout
-    for t in range(30):
-        pos_data[2, t, :] = math.sin(t * 2.0) * 0.5 + math.cos(t * 3.0) * 0.3
-
-    # Create MotionMetrics object
-    metrics = MotionMetrics(
-        num_motions, motion_lens, max_frames, num_bodies * 3, device
-    )
-    metrics.data = pos_data
-    metrics.frame_counts = motion_lens
-
-    # Compute all smoothness metrics
-    smoothness_metrics = evaluator.compute_smoothness_metrics(
-        {"rigid_body_pos": metrics}, num_bodies
-    )
-
-    print("Evaluator Configuration:")
-    print(f"  Window size: {evaluator.window_sec}s")
-    print(f"  High jerk threshold: {evaluator.high_jerk_threshold}")
-    print(f"  Time step: {evaluator.dt:.4f}s ({1/evaluator.dt:.1f} FPS)")
-    print()
-
-    print("📊 Complete Smoothness Metrics:")
-    print()
-
-    print("Mean-Based Metrics:")
-    for key in [
-        "normalized_jerk_mean",
-        "normalized_jerk_max",
-        "normalized_jerk_min",
-        "normalized_jerk_std",
-    ]:
-        if key in smoothness_metrics:
-            print(f"  {key:<25}: {smoothness_metrics[key]:>12.2f}")
-
-    print()
-    print("Body-Specific Metrics:")
-    for key in [
-        "normalized_jerk_body_mean",
-        "normalized_jerk_body_max",
-        "normalized_jerk_body_min",
-    ]:
-        if key in smoothness_metrics:
-            print(f"  {key:<25}: {smoothness_metrics[key]:>12.2f}")
-
-    print()
-    print("High Jerk Frame Metrics (NEW):")
-    for key in [
-        "high_jerk_frame_percentage_mean",
-        "high_jerk_frame_percentage_max",
-        "high_jerk_frame_percentage_min",
-    ]:
-        if key in smoothness_metrics:
-            print(f"  {key:<25}: {smoothness_metrics[key]:>12.2f}%")
-
-    print()

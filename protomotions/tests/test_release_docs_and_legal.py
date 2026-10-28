@@ -14,10 +14,6 @@ API_REFERENCE_DIR = REPO_ROOT / "docs/source/api_reference"
 LEGAL_NOTICE = (
     REPO_ROOT / "legal/THIRD-PARTY SOFTWARE NOTICES AND ASSET LICENSES - ProtoMotions.txt"
 )
-CANONICAL_SPDX = [
-    "# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.",
-    "# SPDX-License-Identifier: Apache-2.0",
-]
 
 
 EXPECTED_API_REFERENCE_FILES = [
@@ -104,6 +100,13 @@ def test_release_docs_do_not_reference_removed_public_surfaces():
         "GPC Prior and PEFT",
         "arch.png",
         "TODO: Add videos",
+        "MimicEnvConfig",
+        "SteeringEnvConfig",
+        "MaskedMimicAgent",
+        "ObservationComponentConfig",
+        "RewardComponentConfig",
+        "TerminationComponentConfig",
+        "env.reward_config",
     ]
     missing = [fragment for fragment in stale_fragments if fragment in public_text]
     assert missing == []
@@ -228,17 +231,6 @@ def test_core_dependency_bounds_preserve_preconfigured_environments():
     torch_pin = next(dep for dep in dependencies if dep.startswith("torch"))
     assert "<" not in numpy_pin
     assert torch_pin == "torch>=2.2"
-
-
-def test_component_factories_public_exports_exist():
-    import protomotions.envs.component_factories as component_factories
-
-    missing = [
-        name
-        for name in component_factories.__all__
-        if not hasattr(component_factories, name)
-    ]
-    assert missing == []
 
 
 def test_public_release_surfaces_do_not_reference_nonportable_infrastructure():

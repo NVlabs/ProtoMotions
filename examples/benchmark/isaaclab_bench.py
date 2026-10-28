@@ -93,6 +93,7 @@ override_control_info = {
 
 robot_config = RobotConfig(
     semantic_forward_axis_xy=(1.0, 0.0),
+    control_hz=50,
     kinematic_info=kinematic_info,
     number_of_actions=kinematic_info.num_dofs,
     common_naming_to_robot_body_names={
@@ -123,8 +124,7 @@ robot_config = RobotConfig(
 # Create simulator configuration
 simulator_config = IsaacLabSimulatorConfig(
     sim=IsaacLabSimParams(
-        fps=200,
-        decimation=4,
+        fps=200,  # control_hz=50 -> derived decimation 4
     ),
     headless=headless,  # Set to True for headless mode
     robot=robot_config,

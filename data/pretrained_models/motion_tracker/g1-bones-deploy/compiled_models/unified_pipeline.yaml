@@ -1,14 +1,15 @@
+schema: unified_pipeline/1
 type: unified_pipeline
 dt: 0.02
-joint_names: &id001 [left_hip_pitch_joint, left_hip_roll_joint, left_hip_yaw_joint,
-  left_knee_joint, left_ankle_pitch_joint, left_ankle_roll_joint, right_hip_pitch_joint,
-  right_hip_roll_joint, right_hip_yaw_joint, right_knee_joint, right_ankle_pitch_joint,
-  right_ankle_roll_joint, waist_yaw_joint, waist_roll_joint, waist_pitch_joint, left_shoulder_pitch_joint,
+joint_names: [left_hip_pitch_joint, left_hip_roll_joint, left_hip_yaw_joint, left_knee_joint,
+  left_ankle_pitch_joint, left_ankle_roll_joint, right_hip_pitch_joint, right_hip_roll_joint,
+  right_hip_yaw_joint, right_knee_joint, right_ankle_pitch_joint, right_ankle_roll_joint,
+  waist_yaw_joint, waist_roll_joint, waist_pitch_joint, left_shoulder_pitch_joint,
   left_shoulder_roll_joint, left_shoulder_yaw_joint, left_elbow_joint, left_wrist_roll_joint,
   left_wrist_pitch_joint, left_wrist_yaw_joint, right_shoulder_pitch_joint, right_shoulder_roll_joint,
   right_shoulder_yaw_joint, right_elbow_joint, right_wrist_roll_joint, right_wrist_pitch_joint,
   right_wrist_yaw_joint]
-body_names: &id002 [pelvis, head, left_hip_pitch_link, left_hip_roll_link, left_hip_yaw_link,
+body_names: [pelvis, head, left_hip_pitch_link, left_hip_roll_link, left_hip_yaw_link,
   left_knee_link, left_ankle_pitch_link, left_ankle_roll_link, right_hip_pitch_link,
   right_hip_roll_link, right_hip_yaw_link, right_knee_link, right_ankle_pitch_link,
   right_ankle_roll_link, waist_yaw_link, waist_roll_link, torso_link, left_shoulder_pitch_link,
@@ -16,14 +17,14 @@ body_names: &id002 [pelvis, head, left_hip_pitch_link, left_hip_roll_link, left_
   left_wrist_pitch_link, left_wrist_yaw_link, left_rubber_hand, right_shoulder_pitch_link,
   right_shoulder_roll_link, right_shoulder_yaw_link, right_elbow_link, right_wrist_roll_link,
   right_wrist_pitch_link, right_wrist_yaw_link, right_rubber_hand]
-default_joint_stiffness: &id003 [40.17923847137318, 99.09842777666113, 40.17923847137318,
+default_joint_stiffness: [40.17923847137318, 99.09842777666113, 40.17923847137318,
   99.09842777666113, 28.50124619574858, 28.50124619574858, 40.17923847137318, 99.09842777666113,
   40.17923847137318, 99.09842777666113, 28.50124619574858, 28.50124619574858, 40.17923847137318,
   28.50124619574858, 28.50124619574858, 14.25062309787429, 14.25062309787429, 14.25062309787429,
   14.25062309787429, 14.25062309787429, 16.77832748089279, 16.77832748089279, 14.25062309787429,
   14.25062309787429, 14.25062309787429, 14.25062309787429, 14.25062309787429, 16.77832748089279,
   16.77832748089279]
-default_joint_damping: &id004 [2.5578897650279457, 6.3088018534966395, 2.5578897650279457,
+default_joint_damping: [2.5578897650279457, 6.3088018534966395, 2.5578897650279457,
   6.3088018534966395, 1.814445686584846, 1.814445686584846, 2.5578897650279457, 6.3088018534966395,
   2.5578897650279457, 6.3088018534966395, 1.814445686584846, 1.814445686584846, 2.5578897650279457,
   1.814445686584846, 1.814445686584846, 0.907222843292423, 0.907222843292423, 0.907222843292423,
@@ -31,55 +32,115 @@ default_joint_damping: &id004 [2.5578897650279457, 6.3088018534966395, 2.5578897
   0.907222843292423, 0.907222843292423, 0.907222843292423, 0.907222843292423, 1.06814150219,
   1.06814150219]
 policy_inputs:
+- name: mimic_future_anchor_rot
+  key: mimic.future_anchor_rot
+  shape: [1, 4, 4]
+  kind: reference_motion_anchor_rot
+  provider: reference_motion
+  source_namespace: mimic
+  dtype: float32
+  element_names:
+  - [torso_link]
+  - [x, y, z, w]
+  future_steps: 4
+- name: mimic_future_dof_pos
+  key: mimic.future_dof_pos
+  shape: [1, 4, 29]
+  kind: reference_motion_joint_pos
+  provider: reference_motion
+  source_namespace: mimic
+  dtype: float32
+  element_names:
+  - [left_hip_pitch_joint, left_hip_roll_joint, left_hip_yaw_joint, left_knee_joint,
+    left_ankle_pitch_joint, left_ankle_roll_joint, right_hip_pitch_joint, right_hip_roll_joint,
+    right_hip_yaw_joint, right_knee_joint, right_ankle_pitch_joint, right_ankle_roll_joint,
+    waist_yaw_joint, waist_roll_joint, waist_pitch_joint, left_shoulder_pitch_joint,
+    left_shoulder_roll_joint, left_shoulder_yaw_joint, left_elbow_joint, left_wrist_roll_joint,
+    left_wrist_pitch_joint, left_wrist_yaw_joint, right_shoulder_pitch_joint, right_shoulder_roll_joint,
+    right_shoulder_yaw_joint, right_elbow_joint, right_wrist_roll_joint, right_wrist_pitch_joint,
+    right_wrist_yaw_joint]
+  future_steps: 4
+- name: mimic_future_dof_vel
+  key: mimic.future_dof_vel
+  shape: [1, 4, 29]
+  kind: reference_motion_joint_vel
+  provider: reference_motion
+  source_namespace: mimic
+  dtype: float32
+  element_names:
+  - [left_hip_pitch_joint, left_hip_roll_joint, left_hip_yaw_joint, left_knee_joint,
+    left_ankle_pitch_joint, left_ankle_roll_joint, right_hip_pitch_joint, right_hip_roll_joint,
+    right_hip_yaw_joint, right_knee_joint, right_ankle_pitch_joint, right_ankle_roll_joint,
+    waist_yaw_joint, waist_roll_joint, waist_pitch_joint, left_shoulder_pitch_joint,
+    left_shoulder_roll_joint, left_shoulder_yaw_joint, left_elbow_joint, left_wrist_roll_joint,
+    left_wrist_pitch_joint, left_wrist_yaw_joint, right_shoulder_pitch_joint, right_shoulder_roll_joint,
+    right_shoulder_yaw_joint, right_elbow_joint, right_wrist_roll_joint, right_wrist_pitch_joint,
+    right_wrist_yaw_joint]
+  future_steps: 4
 - name: current_anchor_rot
   key: current.anchor_rot
   shape: [1, 4]
   kind: anchor_rot
+  provider: imu
+  source_namespace: noisy
+  dtype: float32
   element_names:
   - [x, y, z, w]
 - name: current_dof_pos
   key: current.dof_pos
   shape: [1, 29]
   kind: joint_pos
+  provider: joint_encoders
+  source_namespace: noisy
+  dtype: float32
   element_names:
-  - *id001
+  - [left_hip_pitch_joint, left_hip_roll_joint, left_hip_yaw_joint, left_knee_joint,
+    left_ankle_pitch_joint, left_ankle_roll_joint, right_hip_pitch_joint, right_hip_roll_joint,
+    right_hip_yaw_joint, right_knee_joint, right_ankle_pitch_joint, right_ankle_roll_joint,
+    waist_yaw_joint, waist_roll_joint, waist_pitch_joint, left_shoulder_pitch_joint,
+    left_shoulder_roll_joint, left_shoulder_yaw_joint, left_elbow_joint, left_wrist_roll_joint,
+    left_wrist_pitch_joint, left_wrist_yaw_joint, right_shoulder_pitch_joint, right_shoulder_roll_joint,
+    right_shoulder_yaw_joint, right_elbow_joint, right_wrist_roll_joint, right_wrist_pitch_joint,
+    right_wrist_yaw_joint]
 - name: current_dof_vel
   key: current.dof_vel
   shape: [1, 29]
   kind: joint_vel
+  provider: joint_encoders
+  source_namespace: noisy
+  dtype: float32
   element_names:
-  - *id001
+  - [left_hip_pitch_joint, left_hip_roll_joint, left_hip_yaw_joint, left_knee_joint,
+    left_ankle_pitch_joint, left_ankle_roll_joint, right_hip_pitch_joint, right_hip_roll_joint,
+    right_hip_yaw_joint, right_knee_joint, right_ankle_pitch_joint, right_ankle_roll_joint,
+    waist_yaw_joint, waist_roll_joint, waist_pitch_joint, left_shoulder_pitch_joint,
+    left_shoulder_roll_joint, left_shoulder_yaw_joint, left_elbow_joint, left_wrist_roll_joint,
+    left_wrist_pitch_joint, left_wrist_yaw_joint, right_shoulder_pitch_joint, right_shoulder_roll_joint,
+    right_shoulder_yaw_joint, right_elbow_joint, right_wrist_roll_joint, right_wrist_pitch_joint,
+    right_wrist_yaw_joint]
 - name: current_root_local_ang_vel
   key: current.root_local_ang_vel
   shape: [1, 3]
   kind: local_root_ang_vel
-- name: historical_processed_actions
-  key: historical.processed_actions
+  provider: imu
+  source_namespace: noisy
+  dtype: float32
+- name: processed_action_history
+  key: processed_action_history
   shape: [1, 1, 29]
   kind: last_actions
-  output_key: robot_action
-- name: mimic_future_anchor_rot
-  key: mimic.future_anchor_rot
-  shape: [1, 4, 4]
-  kind: reference_motion_body_rot
-  future_steps: 4
-  element_names:
-  - [torso_link]
-  - [x, y, z, w]
-- name: mimic_future_dof_pos
-  key: mimic.future_dof_pos
-  shape: [1, 4, 29]
-  kind: reference_motion_joint_pos
-  future_steps: 4
-  element_names:
-  - *id001
-- name: mimic_future_dof_vel
-  key: mimic.future_dof_vel
-  shape: [1, 4, 29]
-  kind: reference_motion_joint_vel
-  future_steps: 4
-  element_names:
-  - *id001
+  provider: policy_history
+  source_namespace: processed_action_history
+  dtype: float32
+  output_key: joint_pos_targets
+  history: 1
+  first_action_lag: 1
+  steps_back: [1]
+  fill_before_available: zeros
+  source: The graph's joint_pos_targets output as returned, before any deploy-side
+    clamp or smoothing. Slot i holds the values from steps_back[i] policy calls ago;
+    until that many calls have run since a reset, it holds fill_before_available.
+  reset_value: 0.0
 policy_outputs:
 - name: actions
   kind: actions
@@ -89,32 +150,71 @@ policy_outputs:
   kind: joint_pos_targets
   key: joint_pos_targets
   shape: [1, 29]
-  joint_names: *id001
+  joint_names: [left_hip_pitch_joint, left_hip_roll_joint, left_hip_yaw_joint, left_knee_joint,
+    left_ankle_pitch_joint, left_ankle_roll_joint, right_hip_pitch_joint, right_hip_roll_joint,
+    right_hip_yaw_joint, right_knee_joint, right_ankle_pitch_joint, right_ankle_roll_joint,
+    waist_yaw_joint, waist_roll_joint, waist_pitch_joint, left_shoulder_pitch_joint,
+    left_shoulder_roll_joint, left_shoulder_yaw_joint, left_elbow_joint, left_wrist_roll_joint,
+    left_wrist_pitch_joint, left_wrist_yaw_joint, right_shoulder_pitch_joint, right_shoulder_roll_joint,
+    right_shoulder_yaw_joint, right_elbow_joint, right_wrist_roll_joint, right_wrist_pitch_joint,
+    right_wrist_yaw_joint]
 - name: stiffness_targets
   kind: stiffness_targets
   key: stiffness_targets
   shape: [1, 29]
-  joint_names: *id001
+  joint_names: [left_hip_pitch_joint, left_hip_roll_joint, left_hip_yaw_joint, left_knee_joint,
+    left_ankle_pitch_joint, left_ankle_roll_joint, right_hip_pitch_joint, right_hip_roll_joint,
+    right_hip_yaw_joint, right_knee_joint, right_ankle_pitch_joint, right_ankle_roll_joint,
+    waist_yaw_joint, waist_roll_joint, waist_pitch_joint, left_shoulder_pitch_joint,
+    left_shoulder_roll_joint, left_shoulder_yaw_joint, left_elbow_joint, left_wrist_roll_joint,
+    left_wrist_pitch_joint, left_wrist_yaw_joint, right_shoulder_pitch_joint, right_shoulder_roll_joint,
+    right_shoulder_yaw_joint, right_elbow_joint, right_wrist_roll_joint, right_wrist_pitch_joint,
+    right_wrist_yaw_joint]
 - name: damping_targets
   kind: damping_targets
   key: damping_targets
   shape: [1, 29]
-  joint_names: *id001
+  joint_names: [left_hip_pitch_joint, left_hip_roll_joint, left_hip_yaw_joint, left_knee_joint,
+    left_ankle_pitch_joint, left_ankle_roll_joint, right_hip_pitch_joint, right_hip_roll_joint,
+    right_hip_yaw_joint, right_knee_joint, right_ankle_pitch_joint, right_ankle_roll_joint,
+    waist_yaw_joint, waist_roll_joint, waist_pitch_joint, left_shoulder_pitch_joint,
+    left_shoulder_roll_joint, left_shoulder_yaw_joint, left_elbow_joint, left_wrist_roll_joint,
+    left_wrist_pitch_joint, left_wrist_yaw_joint, right_shoulder_pitch_joint, right_shoulder_roll_joint,
+    right_shoulder_yaw_joint, right_elbow_joint, right_wrist_roll_joint, right_wrist_pitch_joint,
+    right_wrist_yaw_joint]
 _runtime:
-  onnx_in_names: [current_anchor_rot, current_dof_pos, current_dof_vel, current_root_local_ang_vel,
-    historical_processed_actions, mimic_future_anchor_rot, mimic_future_dof_pos, mimic_future_dof_vel]
+  onnx_in_names: [mimic_future_anchor_rot, mimic_future_dof_pos, mimic_future_dof_vel,
+    current_anchor_rot, current_dof_pos, current_dof_vel, current_root_local_ang_vel,
+    processed_action_history]
   onnx_out_names: [actions, joint_pos_targets, stiffness_targets, damping_targets]
-  onnx_name_to_in_key: {current_anchor_rot: current.anchor_rot, current_dof_pos: current.dof_pos,
-    current_dof_vel: current.dof_vel, current_root_local_ang_vel: current.root_local_ang_vel,
-    historical_processed_actions: historical.processed_actions, mimic_future_anchor_rot: mimic.future_anchor_rot,
-    mimic_future_dof_pos: mimic.future_dof_pos, mimic_future_dof_vel: mimic.future_dof_vel}
-  passthrough_keys: [current.anchor_pos, mimic.future_anchor_ang_vel, mimic.future_anchor_pos,
-    mimic.future_anchor_vel, mimic.ref_anchor_pos]
-  obs_context_keys: [current.anchor_pos, current.anchor_rot, current.dof_pos, current.dof_vel,
-    current.root_local_ang_vel, historical.processed_actions, mimic.future_anchor_ang_vel,
-    mimic.future_anchor_pos, mimic.future_anchor_rot, mimic.future_anchor_vel, mimic.future_dof_pos,
-    mimic.future_dof_vel, mimic.ref_anchor_pos]
-metadata: {checkpoint: data/pretrained_models/motion_tracker/g1-bones-deploy/last.ckpt, control_type: BUILT_IN_PD}
+  onnx_name_to_in_key: {mimic_future_anchor_rot: mimic.future_anchor_rot, mimic_future_dof_pos: mimic.future_dof_pos,
+    mimic_future_dof_vel: mimic.future_dof_vel, current_anchor_rot: current.anchor_rot,
+    current_dof_pos: current.dof_pos, current_dof_vel: current.dof_vel, current_root_local_ang_vel: current.root_local_ang_vel,
+    processed_action_history: processed_action_history}
+  passthrough_keys: [mimic.future_anchor_ang_vel, mimic.future_anchor_pos, mimic.future_anchor_vel,
+    mimic.ref_anchor_pos]
+  obs_context_keys: [mimic.future_anchor_ang_vel, mimic.future_anchor_pos, mimic.future_anchor_rot,
+    mimic.future_anchor_vel, mimic.future_dof_pos, mimic.future_dof_vel, mimic.ref_anchor_pos,
+    current.anchor_rot, current.dof_pos, current.dof_vel, current.root_local_ang_vel,
+    processed_action_history]
+metadata: {checkpoint: data/pretrained_models/motion_tracker/g1-bones-deploy/inference_last.ckpt,
+  control_type: BUILT_IN_PD, onnx_sha256: fbbcf33a3fbcc939a5765161947f390b7911800011ca535ab896acf9f40e12a3}
+sensors:
+  imu:
+    body_name: pelvis
+    body_index: 0
+    mount_sensor_to_body_xyzw: [0.0, 0.0, 0.0, 1.0]
+    orientation_frame: world
+    gyro_frame: sensor
+  anchor_body_name: torso_link
+  localization: null
+  base_velocity: null
+  height: null
+  schema: physical-sensors/v1
+  joint_coordinates: scalar_hinge
+  w_last: true
+  derived_state_provider: host_fk
+  history_initialization: repeat_first_reading
 robot:
   mjcf_path: mjcf/g1_holo_compat.xml
   num_bodies: 33
@@ -123,13 +223,54 @@ robot:
   anchor_body_index: 16
   root_body_name: pelvis
   root_body_index: 0
-  body_names: *id002
-  joint_names: *id001
+  body_names: [pelvis, head, left_hip_pitch_link, left_hip_roll_link, left_hip_yaw_link,
+    left_knee_link, left_ankle_pitch_link, left_ankle_roll_link, right_hip_pitch_link,
+    right_hip_roll_link, right_hip_yaw_link, right_knee_link, right_ankle_pitch_link,
+    right_ankle_roll_link, waist_yaw_link, waist_roll_link, torso_link, left_shoulder_pitch_link,
+    left_shoulder_roll_link, left_shoulder_yaw_link, left_elbow_link, left_wrist_roll_link,
+    left_wrist_pitch_link, left_wrist_yaw_link, left_rubber_hand, right_shoulder_pitch_link,
+    right_shoulder_roll_link, right_shoulder_yaw_link, right_elbow_link, right_wrist_roll_link,
+    right_wrist_pitch_link, right_wrist_yaw_link, right_rubber_hand]
+  joint_names: [left_hip_pitch_joint, left_hip_roll_joint, left_hip_yaw_joint, left_knee_joint,
+    left_ankle_pitch_joint, left_ankle_roll_joint, right_hip_pitch_joint, right_hip_roll_joint,
+    right_hip_yaw_joint, right_knee_joint, right_ankle_pitch_joint, right_ankle_roll_joint,
+    waist_yaw_joint, waist_roll_joint, waist_pitch_joint, left_shoulder_pitch_joint,
+    left_shoulder_roll_joint, left_shoulder_yaw_joint, left_elbow_joint, left_wrist_roll_joint,
+    left_wrist_pitch_joint, left_wrist_yaw_joint, right_shoulder_pitch_joint, right_shoulder_roll_joint,
+    right_shoulder_yaw_joint, right_elbow_joint, right_wrist_roll_joint, right_wrist_pitch_joint,
+    right_wrist_yaw_joint]
 control:
-  stiffness: *id003
-  damping: *id004
-  effort_limits: null
+  stiffness: [40.17923847137318, 99.09842777666113, 40.17923847137318, 99.09842777666113,
+    28.50124619574858, 28.50124619574858, 40.17923847137318, 99.09842777666113, 40.17923847137318,
+    99.09842777666113, 28.50124619574858, 28.50124619574858, 40.17923847137318, 28.50124619574858,
+    28.50124619574858, 14.25062309787429, 14.25062309787429, 14.25062309787429, 14.25062309787429,
+    14.25062309787429, 16.77832748089279, 16.77832748089279, 14.25062309787429, 14.25062309787429,
+    14.25062309787429, 14.25062309787429, 14.25062309787429, 16.77832748089279, 16.77832748089279]
+  damping: [2.5578897650279457, 6.3088018534966395, 2.5578897650279457, 6.3088018534966395,
+    1.814445686584846, 1.814445686584846, 2.5578897650279457, 6.3088018534966395,
+    2.5578897650279457, 6.3088018534966395, 1.814445686584846, 1.814445686584846,
+    2.5578897650279457, 1.814445686584846, 1.814445686584846, 0.907222843292423, 0.907222843292423,
+    0.907222843292423, 0.907222843292423, 0.907222843292423, 1.06814150219, 1.06814150219,
+    0.907222843292423, 0.907222843292423, 0.907222843292423, 0.907222843292423, 0.907222843292423,
+    1.06814150219, 1.06814150219]
+  effort_limits: [88.0, 139.0, 88.0, 139.0, 50.0, 50.0, 88.0, 139.0, 88.0, 139.0,
+    50.0, 50.0, 88.0, 50.0, 50.0, 25.0, 25.0, 25.0, 25.0, 25.0, 5.0, 5.0, 25.0, 25.0,
+    25.0, 25.0, 25.0, 5.0, 5.0]
+  action_scale: [2.190186023712158, 1.4026458263397217, 2.190186023712158, 1.4026458263397217,
+    1.7543092966079712, 1.7543092966079712, 2.190186023712158, 1.4026458263397217,
+    2.190186023712158, 1.4026458263397217, 1.7543092966079712, 1.7543092966079712,
+    2.190186023712158, 1.7543092966079712, 1.7543092966079712, 1.7543092966079712,
+    1.7543092966079712, 1.7543092966079712, 1.7543092966079712, 1.7543092966079712,
+    0.2980034649372101, 0.2980034649372101, 1.7543092966079712, 1.7543092966079712,
+    1.7543092966079712, 1.7543092966079712, 1.7543092966079712, 0.2980034649372101,
+    0.2980034649372101]
+  pd_action_offset: [-0.31200000643730164, 0.0, 0.0, 0.6690000295639038, -0.3630000054836273,
+    0.0, -0.31200000643730164, 0.0, 0.0, 0.6690000295639038, -0.3630000054836273,
+    0.0, 0.0, 0.0, 0.0, 0.20000000298023224, 0.20000000298023224, 0.0, 0.6000000238418579,
+    0.0, 0.0, 0.0, 0.20000000298023224, -0.20000000298023224, 0.0, 0.6000000238418579,
+    0.0, 0.0, 0.0]
   pd_target_max_accel: null
+  action_fn: bm_pd_action
   action_ema_alpha: 1.0
 timing: {control_dt: 0.02, physics_dt: 0.001, decimation: 20}
 motion:

@@ -1,7 +1,12 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for historical humanoid observation builders."""
+"""Tests for historical humanoid observation builders.
+
+The kernels take their step selection as a tuple of 1-based slots (what
+``MdpComponent`` hands them after normalising the recipe's value) and their
+anchor as an explicit index here, since no context supplies the published one.
+"""
 
 from types import SimpleNamespace
 
@@ -15,8 +20,20 @@ from protomotions.envs.obs.humanoid_historical import (
     compute_historical_poses_with_time,
     compute_historical_poses_with_time_reduced_coords,
     compute_historical_reduced_coords_from_state,
-    compute_historical_time_offsets,
 )
+from protomotions.envs.steps import select_steps, step_ages
+
+
+def test_step_selection_preserves_identity_for_all_and_order_for_subsets():
+    values = torch.arange(24).reshape(2, 3, 4)
+    original = values.clone()
+    assert select_steps(values, None) is values
+    torch.testing.assert_close(select_steps(values, (1, 2)), values[:, :2])
+    torch.testing.assert_close(select_steps(values, (3, 1)), values[:, [2, 0]])
+    torch.testing.assert_close(
+        select_steps(values, (4, 2), dim=2), values[:, :, [3, 1]]
+    )
+    torch.testing.assert_close(values, original)
 
 
 def _identity_quat(*shape: int) -> torch.Tensor:
@@ -114,19 +131,20 @@ class _RecordingMotionLib:
         )
 
 
-def test_historical_time_offsets_support_all_selection_forms():
-    assert torch.equal(
-        compute_historical_time_offsets(3, dt=0.1, num_envs=2, device="cpu"),
-        torch.tensor([[0.0, 0.1, 0.2], [0.0, 0.1, 0.2]]),
+def test_step_ages_name_the_two_time_origins():
+    # "first_slot": slot k is (k - 1) * dt old, the pose-token convention.
+    torch.testing.assert_close(
+        step_ages((1, 2, 3), 0.1, "first_slot", "cpu"), torch.tensor([0.0, 0.1, 0.2])
     )
-    assert torch.equal(
-        compute_historical_time_offsets(5, dt=0.2, num_envs=1, device="cpu", history_steps=2),
-        torch.tensor([[0.0, 0.2]]),
+    torch.testing.assert_close(
+        step_ages((1, 4), 0.2, "first_slot", "cpu"), torch.tensor([0.0, 0.6])
     )
-    assert torch.equal(
-        compute_historical_time_offsets(5, dt=0.2, num_envs=1, device="cpu", history_steps=[1, 4]),
-        torch.tensor([[0.0, 0.6]]),
+    # "current": slot k is k * dt old, the proprioception-token convention.
+    torch.testing.assert_close(
+        step_ages((1, 4), 0.2, "current", "cpu"), torch.tensor([0.2, 0.8])
     )
+    with pytest.raises(ValueError, match="time_origin"):
+        step_ages((1,), 0.1, "yesterday", "cpu")
 
 
 def test_historical_reduced_and_max_coords_select_steps_and_validate_enabled_history():
@@ -138,7 +156,7 @@ def test_historical_reduced_and_max_coords_select_steps_and_validate_enabled_his
         hist["root_rot"],
         hist["root_ang"],
         hist["anchor_rot"],
-        history_steps=None,
+        history_steps=(1, 2, 3),
         w_last=True,
     )
     reduced_subset = compute_historical_reduced_coords_from_state(
@@ -147,7 +165,7 @@ def test_historical_reduced_and_max_coords_select_steps_and_validate_enabled_his
         hist["root_rot"],
         hist["root_ang"],
         hist["anchor_rot"],
-        history_steps=[1, 3],
+        history_steps=(1, 3),
         w_last=True,
     )
     max_subset = compute_historical_max_coords_from_state(
@@ -155,13 +173,14 @@ def test_historical_reduced_and_max_coords_select_steps_and_validate_enabled_his
         hist["body_rot"],
         hist["body_vel"],
         hist["body_ang_vel"],
-        hist["ground"],
-        hist["contacts"],
+        history_steps=(1, 3),
+        historical_ground_heights=hist["ground"],
+        historical_body_contacts=hist["contacts"],
         local_obs=False,
         root_height_obs=True,
         observe_contacts=True,
-        history_steps=[1, 3],
         w_last=True,
+        anchor_body_index=0,
     )
 
     assert reduced_all.shape == (1, 30)
@@ -172,20 +191,25 @@ def test_historical_reduced_and_max_coords_select_steps_and_validate_enabled_his
         hist["body_rot"],
         hist["body_vel"],
         hist["body_ang_vel"],
-        hist["ground"],
-        hist["contacts"],
+        history_steps=(1, 2, 3),
+        historical_ground_heights=hist["ground"],
+        historical_body_contacts=hist["contacts"],
         local_obs=True,
         root_height_obs=True,
         observe_contacts=False,
-        history_steps=None,
         w_last=True,
+        anchor_body_index=0,
     )
     assert max_all.shape == (1, 84)
 
     with pytest.raises(ValueError, match="Historical state tensors are None"):
-        compute_historical_reduced_coords_from_state(None, None, None, None, None)
+        compute_historical_reduced_coords_from_state(
+            None, None, None, None, None, history_steps=(1,)
+        )
     with pytest.raises(ValueError, match="Historical state tensors are None"):
-        compute_historical_max_coords_from_state(None, None, None, None, None, None)
+        compute_historical_max_coords_from_state(
+            None, None, None, None, history_steps=(1,), anchor_body_index=0
+        )
 
 
 def test_historical_actions_and_time_augmented_pose_builders():
@@ -193,15 +217,15 @@ def test_historical_actions_and_time_augmented_pose_builders():
     actions = torch.arange(1 * 3 * 2, dtype=torch.float).reshape(1, 3, 2)
 
     assert torch.equal(
-        compute_historical_actions_from_state(actions, history_steps=[1, 3]),
+        compute_historical_actions_from_state(actions, history_steps=(1, 3)),
         torch.tensor([[0.0, 1.0, 4.0, 5.0]]),
     )
     assert torch.equal(
-        compute_historical_actions_from_state(actions, history_steps=None),
+        compute_historical_actions_from_state(actions, history_steps=(1, 2, 3)),
         actions.reshape(1, -1),
     )
-    with pytest.raises(ValueError, match="Historical actions tensor is None"):
-        compute_historical_actions_from_state(None)
+    with pytest.raises(ValueError, match="Historical state tensors are None"):
+        compute_historical_actions_from_state(None, history_steps=(1,))
 
     max_with_time = compute_historical_poses_with_time(
         hist["body_pos"],
@@ -209,12 +233,12 @@ def test_historical_actions_and_time_augmented_pose_builders():
         hist["body_vel"],
         hist["body_ang_vel"],
         hist["ground"],
-        hist["contacts"],
-        history_steps=[1, 3],
+        history_steps=(1, 3),
         local_obs=False,
         root_height_obs=True,
         w_last=True,
         dt=0.1,
+        anchor_body_index=0,
     )
     reduced_with_time = compute_historical_poses_with_time_reduced_coords(
         hist["dof_pos"],
@@ -222,7 +246,7 @@ def test_historical_actions_and_time_augmented_pose_builders():
         hist["root_ang"],
         hist["root_rot"],
         hist["anchor_rot"],
-        history_steps=2,
+        history_steps=(1, 2),
         w_last=True,
         dt=0.1,
     )
@@ -231,6 +255,66 @@ def test_historical_actions_and_time_augmented_pose_builders():
     assert torch.equal(max_with_time[:, -1:], torch.tensor([[0.2]]))
     assert reduced_with_time.shape == (1, 22)
     assert torch.equal(reduced_with_time[:, -1:], torch.tensor([[0.1]]))
+
+
+@pytest.mark.parametrize("steps", [(1, 2, 3), (1, 2), (3, 1)])
+@pytest.mark.parametrize("reduced", [False, True])
+def test_time_augmented_history_preserves_pose_order_values_and_input_ownership(steps, reduced):
+    hist = _history()
+    original = {key: value.clone() for key, value in hist.items()}
+    if reduced:
+        args = dict(
+            historical_dof_pos=hist["dof_pos"],
+            historical_dof_vel=hist["dof_vel"],
+            historical_root_local_ang_vel=hist["root_ang"],
+            historical_root_rot=hist["root_rot"],
+            historical_anchor_rot=hist["anchor_rot"],
+            history_steps=steps, w_last=True,
+        )
+        expected_poses = compute_historical_reduced_coords_from_state(**args)
+        combined = compute_historical_poses_with_time_reduced_coords(**args, dt=0.1)
+    else:
+        args = dict(
+            historical_rigid_body_pos=hist["body_pos"],
+            historical_rigid_body_rot=hist["body_rot"],
+            historical_rigid_body_vel=hist["body_vel"],
+            historical_rigid_body_ang_vel=hist["body_ang_vel"],
+            historical_ground_heights=hist["ground"],
+            history_steps=steps, w_last=True, local_obs=False, root_height_obs=True,
+            anchor_body_index=0,
+        )
+        expected_poses = compute_historical_max_coords_from_state(**args)
+        combined = compute_historical_poses_with_time(**args, dt=0.1)
+    times = step_ages(steps, 0.1, "first_slot", "cpu").view(1, -1)
+    tokens = combined.reshape(1, times.shape[1], -1)
+    torch.testing.assert_close(tokens[..., :-1].reshape(1, -1), expected_poses)
+    torch.testing.assert_close(tokens[..., -1], times)
+    combined.zero_()
+    for key in hist:
+        torch.testing.assert_close(hist[key], original[key])
+
+
+def test_time_augmented_history_can_age_from_the_current_step():
+    hist = _history()
+    args = dict(
+        historical_dof_pos=hist["dof_pos"],
+        historical_dof_vel=hist["dof_vel"],
+        historical_root_local_ang_vel=hist["root_ang"],
+        historical_root_rot=hist["root_rot"],
+        historical_anchor_rot=hist["anchor_rot"],
+        history_steps=(1, 3), w_last=True, dt=0.1,
+    )
+    first_slot = compute_historical_poses_with_time_reduced_coords(**args)
+    current = compute_historical_poses_with_time_reduced_coords(
+        **args, time_origin="current"
+    )
+    first_slot_times = first_slot.reshape(1, 2, -1)[..., -1]
+    current_times = current.reshape(1, 2, -1)[..., -1]
+    torch.testing.assert_close(first_slot_times, torch.tensor([[0.0, 0.2]]))
+    torch.testing.assert_close(current_times, torch.tensor([[0.1, 0.3]]))
+    torch.testing.assert_close(
+        first_slot.reshape(1, 2, -1)[..., :-1], current.reshape(1, 2, -1)[..., :-1]
+    )
 
 
 def test_historical_max_coords_from_motion_lib_samples_clamped_past_times():
@@ -250,11 +334,11 @@ def test_historical_max_coords_from_motion_lib_samples_clamped_past_times():
         _MotionLib(),
         motion_ids=torch.tensor([0, 1]),
         motion_times=torch.tensor([0.05, 0.4]),
-        num_state_history_steps=3,
         dt=0.1,
         local_obs=False,
         root_height_obs=True,
-        history_steps=[1, 3],
+        history_steps=(1, 3),
+        anchor_body_index=0,
     )
 
     assert obs.shape == (2, 56)
@@ -265,21 +349,21 @@ def test_historical_max_coords_from_motion_lib_samples_clamped_past_times():
         _MotionLib(),
         motion_ids=torch.tensor([0]),
         motion_times=torch.tensor([0.4]),
-        num_state_history_steps=2,
         dt=0.1,
         local_obs=False,
         root_height_obs=True,
-        history_steps=None,
+        history_steps=(1, 2),
+        anchor_body_index=0,
     )
     first_two = compute_historical_max_coords_from_motion_lib(
         _MotionLib(),
         motion_ids=torch.tensor([0]),
         motion_times=torch.tensor([0.4]),
-        num_state_history_steps=5,
         dt=0.1,
         local_obs=False,
         root_height_obs=True,
-        history_steps=2,
+        history_steps=(1, 2),
+        anchor_body_index=0,
     )
     assert all_steps.shape == (1, 56)
     assert torch.equal(all_steps, first_two)
@@ -294,12 +378,12 @@ def test_motion_lib_reference_history_supports_missing_motion_lengths_and_step_s
         motion_lib,
         motion_ids=motion_ids,
         motion_times=motion_times,
-        num_state_history_steps=6,
         dt=0.1,
         local_obs=False,
         root_height_obs=True,
         observe_contacts=False,
-        history_steps=[1, 3, 6],
+        history_steps=(1, 3, 6),
+        anchor_body_index=0,
     )
 
     assert [call_times for _, call_times in motion_lib.calls] == [
@@ -320,13 +404,13 @@ def test_motion_lib_reference_history_clamps_to_motion_lengths_and_slices_contac
         motion_lib,
         motion_ids=motion_ids,
         motion_times=motion_times,
-        num_state_history_steps=4,
         dt=0.1,
         local_obs=False,
         root_height_obs=True,
         observe_contacts=True,
         contact_body_ids=contact_body_ids,
-        history_steps=[1, 4],
+        history_steps=(1, 4),
+        anchor_body_index=0,
     )
 
     assert [call_times for _, call_times in motion_lib.calls] == [
@@ -361,6 +445,7 @@ def test_motion_lib_reference_history_clamps_to_motion_lengths_and_slices_contac
             [step1_state.rigid_body_ang_vel, step4_state.rigid_body_ang_vel],
             dim=1,
         ),
+        history_steps=(1, 2),
         historical_ground_heights=torch.zeros(2, 2),
         historical_body_contacts=torch.stack(
             [
@@ -372,8 +457,8 @@ def test_motion_lib_reference_history_clamps_to_motion_lengths_and_slices_contac
         local_obs=False,
         root_height_obs=True,
         observe_contacts=True,
-        history_steps=None,
         w_last=True,
+        anchor_body_index=0,
     )
 
     assert torch.allclose(obs, expected, atol=1e-6)
@@ -386,13 +471,13 @@ def test_motion_lib_reference_history_zero_fills_missing_contacts_when_requested
         motion_lib,
         motion_ids=torch.tensor([0]),
         motion_times=torch.tensor([0.2]),
-        num_state_history_steps=1,
         dt=0.1,
         local_obs=False,
         root_height_obs=True,
         observe_contacts=True,
         contact_body_ids=torch.tensor([0, 2]),
-        history_steps=1,
+        history_steps=(1,),
+        anchor_body_index=0,
     )
 
     assert torch.equal(obs[:, -2:], torch.zeros(1, 2))

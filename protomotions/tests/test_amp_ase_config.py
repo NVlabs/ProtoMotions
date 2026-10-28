@@ -25,6 +25,25 @@ def _actor_config():
     return PPOActorConfig(mu_key="mu")
 
 
+def test_model_config_derives_the_key_unions_and_refuses_a_passed_list():
+    from protomotions.agents.common.config import MLPWithConcatConfig
+    from protomotions.agents.ppo.config import PPOModelConfig
+
+    actor = PPOActorConfig(mu_key="mu", in_keys=["a", "b"])
+    critic = MLPWithConcatConfig(in_keys=["b", "c"], out_keys=["value"], num_out=1)
+    model = PPOModelConfig(actor=actor, critic=critic)
+
+    # Derived as the ordered, de-duplicated union over the component configs.
+    assert model.in_keys == ["a", "b", "c"]
+    assert model.out_keys == ["action", "mean_action", "neglogp", "value"]
+    # A plain mean network inherits the actor's keys.
+    assert actor.mu_model.in_keys == ["a", "b"]
+
+    for bad in ({"in_keys": ["x"]}, {"out_keys": ["x"]}):
+        with pytest.raises(TypeError):
+            PPOModelConfig(actor=_actor_config(), **bad)
+
+
 def test_amp_parameters_and_model_defaults_are_independent():
     params = AMPParametersConfig()
     first_model = AMPModelConfig(actor=_actor_config())

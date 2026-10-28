@@ -10,7 +10,7 @@ train_agent.py
 **Main training script for ProtoMotions agents.**
 
 Handles configuration loading, distributed training setup, agent initialization, 
-and checkpoint management. Supports Hydra-based configuration composition.
+and checkpoint management. Builds configs from Python experiment files.
 
 **Usage:**
 
@@ -28,15 +28,14 @@ and checkpoint management. Supports Hydra-based configuration composition.
 * Distributed training with Lightning Fabric
 * Checkpoint auto-resume
 * Weights & Biases integration
-* Multi-simulator support (IsaacGym, IsaacLab, Genesis)
+* Multi-simulator support (IsaacGym, IsaacLab, Newton, MuJoCo)
 
 **Configuration System:**
 
 All configurations are saved to ``results/<experiment_name>/``:
 
 * ``config.yaml`` - CLI arguments
-* ``resolved_configs.pt`` - Full config objects (pickled, **source of truth**)
-* ``resolved_configs.yaml`` - Human-readable configs (**do not modify**)
+* ``resolved_configs.json`` - The config bundle, a tagged JSON tree (**source of truth**)
 * ``experiment_config.py`` - Copy of experiment file
 * ``last.ckpt`` - Model checkpoint
 

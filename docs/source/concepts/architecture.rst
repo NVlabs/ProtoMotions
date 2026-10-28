@@ -17,10 +17,10 @@ High-Level Data Flow
                    ▼
    ┌─────────────────────────────┐
    │        Simulator            │
-   │(IsaacGym/Lab/Newton/Gen/MJ)│◄─── Robot Config
+   │(IsaacGym/Lab/Newton/Gen/MJ)   │◄─── Robot Config
    └──────────────┬──────────────┘
                   │
-                  ▼ SimulatorState
+                  ▼ RobotState
    ┌─────────────────────────────┐
    │      RL Environment         │◄─── Motion Library
    │  (observations, rewards)    │
@@ -44,17 +44,27 @@ interactive objects in the scene.
 settings. The MJCF file is the ground truth; config adds simulator-specific details.
 
 **Simulator**: Physics engine abstraction. All backends (IsaacGym, IsaacLab, 
-Newton, Genesis, MuJoCo) implement the same interface. This is "how to simulate"
+Newton, MuJoCo) implement the same interface. This is "how to simulate"
 
 **Motion Library**: Stores reference motions in packed tensors for efficient 
 parallel access.
 
-**RL Environment**: Orchestrates the training loop via modular components:
+**RL Environment**: Advances physics and task state through modular components:
 
 * **Control Components**: Stateful task managers (mimic, steering, path following)
 * **Observation Components**: Stateless functions that compute observations
 * **Reward Components**: Stateless functions that compute rewards
 * **Termination Components**: Stateless functions that check termination conditions
+
+The stateless components bind the context names they read
+(``EnvContext.current.dof_pos`` ...), and the names are checked twice: from
+the configs alone, before a simulator exists (``train_agent.py`` and
+``inference_agent.py`` call ``context_check.run_config_binding_check`` right
+after building the configs; it raises on a binding this configuration can
+never satisfy and logs the names that depend on the motion file, which are
+checked when the environment is built), and again against the first context
+the built environment publishes. A binding this configuration can never
+satisfy fails in seconds with the reason; see :doc:`environment_context`.
 
 **Agent**: RL algorithm (PPO, AMP, etc.). Collects experience, updates policy.
 
@@ -69,10 +79,11 @@ Without abstractions, this would require N×M×K separate implementations.
 
 **Solution**: Clear interfaces between components:
 
-* Simulators share ``SimulatorState`` representation
-* Environments produce ``TensorDict`` observations
-* Agents consume observations, produce actions
-* Robot configs are simulator-agnostic
+* Simulators exchange ``RobotState``, ``ResetState`` and ``ObjectState`` records
+  in a common body and joint ordering
+* Environments produce dictionaries of observation tensors
+* Agents convert observations to TensorDicts, collect rollouts and optimize models
+* Robot configs describe shared morphology and per-simulator physics settings
 
 
 Next Steps
@@ -80,4 +91,3 @@ Next Steps
 
 * :doc:`abstractions` - Deep dive into each component
 * :doc:`../user_guide/configuration` - Config system details
-

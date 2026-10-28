@@ -7,23 +7,24 @@ Provides functions for building target pose observations from reference motions,
 used for motion tracking and imitation learning.
 """
 
-from typing import List, Union
+from typing import List, Optional
 
 import torch
 from torch import Tensor
 
+from protomotions.envs.context_views import EnvContext
+from protomotions.envs.steps import StepSelection, select_steps
 from protomotions.utils import rotations
-from protomotions.envs.obs.utils import select_step_indices
 
 
 def build_max_coords_target_poses_future_rel(
-    current_state_body_pos: Tensor,
-    current_state_body_rot: Tensor,
-    mimic_ref_pos: Tensor,
-    mimic_ref_rot: Tensor,
-    w_last: bool,
-    future_steps: Union[int, List[int]] = None,
-    anchor_body_index: int = 0,
+    current_state_body_pos: Tensor = EnvContext.current.rigid_body_pos,
+    current_state_body_rot: Tensor = EnvContext.current.rigid_body_rot,
+    mimic_ref_pos: Tensor = EnvContext.mimic.future_pos,
+    mimic_ref_rot: Tensor = EnvContext.mimic.future_rot,
+    w_last: bool = True,
+    future_steps: Optional[StepSelection] = None,
+    anchor_body_index: int = EnvContext.mimic.anchor_idx,
 ):
     """Build target pose observations with relative deltas between consecutive future frames.
 
@@ -36,8 +37,8 @@ def build_max_coords_target_poses_future_rel(
         mimic_ref_pos: Reference body positions [envs, future_steps, bodies, 3]
         mimic_ref_rot: Reference body rotations [envs, future_steps, bodies, 4]
         w_last: If True, quaternions are in XYZW format, else WXYZ
-        future_steps: Steps to select. Int N for first N consecutive steps,
-            list for specific step indices (e.g., [1, 3, 5]). None = use all.
+        future_steps: The 1-based steps to read, in output order (a recipe may
+            write an int N for 1..N). None = every published step.
         anchor_body_index: Body index used as the current/reference anchor frame.
 
     Returns:
@@ -53,8 +54,8 @@ def build_max_coords_target_poses_future_rel(
 
     # Slice to requested number of future steps if specified
     if future_steps is not None:
-        mimic_ref_pos = select_step_indices(mimic_ref_pos, future_steps)
-        mimic_ref_rot = select_step_indices(mimic_ref_rot, future_steps)
+        mimic_ref_pos = select_steps(mimic_ref_pos, future_steps)
+        mimic_ref_rot = select_steps(mimic_ref_rot, future_steps)
 
     future_steps = mimic_ref_pos.shape[1]
 
@@ -150,19 +151,20 @@ def build_max_coords_target_poses_future_rel(
 
 
 def build_max_coords_target_poses(
-    current_state_body_pos: Tensor,
-    current_state_body_rot: Tensor,
-    current_state_body_vel: Tensor,
-    current_state_body_ang_vel: Tensor,
-    mimic_ref_pos: Tensor,
-    mimic_ref_rot: Tensor,
-    mimic_ref_vel: Tensor,
-    mimic_ref_ang_vel: Tensor,
-    with_velocities: bool,
-    w_last: bool,
-    future_steps: Union[int, List[int]] = None,
+    current_state_body_pos: Tensor = EnvContext.current.rigid_body_pos,
+    current_state_body_rot: Tensor = EnvContext.current.rigid_body_rot,
+    current_state_body_vel: Tensor = EnvContext.current.rigid_body_vel,
+    current_state_body_ang_vel: Tensor = EnvContext.current.rigid_body_ang_vel,
+    mimic_ref_pos: Tensor = EnvContext.mimic.future_pos,
+    mimic_ref_rot: Tensor = EnvContext.mimic.future_rot,
+    mimic_ref_vel: Tensor = EnvContext.mimic.future_vel,
+    mimic_ref_ang_vel: Tensor = EnvContext.mimic.future_ang_vel,
+    with_velocities: bool = True,
+    w_last: bool = True,
+    future_steps: Optional[StepSelection] = None,
     with_relative: bool = True,
-    anchor_body_index: int = 0,
+    anchor_body_index: int = EnvContext.mimic.anchor_idx,
+    body_indices: Optional[List[int]] = None,
 ):
     """Build target pose observations in anchor-relative coordinates.
 
@@ -180,10 +182,12 @@ def build_max_coords_target_poses(
         mimic_ref_ang_vel: Reference body angular velocities [envs, future_steps, bodies, 3]
         with_velocities: If True, include velocity information
         w_last: If True, quaternions are in XYZW format, else WXYZ
-        future_steps: Steps to select. Int N for first N consecutive steps,
-            list for specific step indices (e.g., [1, 3, 5]). None = use all.
+        future_steps: The 1-based steps to read, in output order (a recipe may
+            write an int N for 1..N). None = every published step.
         with_relative: If True, include relative pose observations (pos_rel, rot_rel)
         anchor_body_index: Body index used as the current/reference anchor frame.
+        body_indices: Observed bodies in output order. Anchor indexing always
+            refers to the original body array, even if the anchor is not selected.
 
     Returns:
         Target pose observations [envs, features] with absolute and optionally relative pose info
@@ -197,12 +201,31 @@ def build_max_coords_target_poses(
 
     # Slice to requested number of future steps if specified
     if future_steps is not None:
-        mimic_ref_pos = select_step_indices(mimic_ref_pos, future_steps)
-        mimic_ref_rot = select_step_indices(mimic_ref_rot, future_steps)
-        mimic_ref_vel = select_step_indices(mimic_ref_vel, future_steps)
-        mimic_ref_ang_vel = select_step_indices(mimic_ref_ang_vel, future_steps)
+        mimic_ref_pos = select_steps(mimic_ref_pos, future_steps)
+        mimic_ref_rot = select_steps(mimic_ref_rot, future_steps)
+        mimic_ref_vel = select_steps(mimic_ref_vel, future_steps)
+        mimic_ref_ang_vel = select_steps(mimic_ref_ang_vel, future_steps)
 
     future_steps = mimic_ref_pos.shape[1]
+
+    anchor_pos = current_state_body_pos[:, anchor_body_index].unsqueeze(1).expand(
+        -1, future_steps, -1
+    ).reshape(-1, 3)
+    anchor_rot = current_state_body_rot[:, anchor_body_index].unsqueeze(1).expand(
+        -1, future_steps, -1
+    ).reshape(-1, 4)
+    if body_indices is not None:
+        if not body_indices or any(i < 0 or i >= num_bodies for i in body_indices):
+            raise ValueError("body_indices must select at least one valid body")
+        current_state_body_pos = current_state_body_pos[:, body_indices]
+        current_state_body_rot = current_state_body_rot[:, body_indices]
+        current_state_body_vel = current_state_body_vel[:, body_indices]
+        current_state_body_ang_vel = current_state_body_ang_vel[:, body_indices]
+        mimic_ref_pos = mimic_ref_pos[:, :, body_indices]
+        mimic_ref_rot = mimic_ref_rot[:, :, body_indices]
+        mimic_ref_vel = mimic_ref_vel[:, :, body_indices]
+        mimic_ref_ang_vel = mimic_ref_ang_vel[:, :, body_indices]
+        num_bodies = len(body_indices)
 
     # Flatten reference tensors: [envs, future_steps, bodies, dim] -> [envs*future_steps, bodies, dim]
     ref_state_body_pos = mimic_ref_pos.reshape(-1, num_bodies, 3)
@@ -220,10 +243,7 @@ def build_max_coords_target_poses(
     flat_current_state_body_pos = expanded_body_pos.reshape(ref_state_body_pos.shape)
     flat_current_state_body_rot = expanded_body_rot.reshape(ref_state_body_rot.shape)
 
-    root_pos = flat_current_state_body_pos[:, anchor_body_index, :]
-    root_rot = flat_current_state_body_rot[:, anchor_body_index, :]
-
-    heading_inv_rot = rotations.calc_heading_quat_inv(root_rot, w_last)
+    heading_inv_rot = rotations.calc_heading_quat_inv(anchor_rot, w_last)
 
     heading_inv_rot_expand = heading_inv_rot.unsqueeze(-2)
     translation_heading_inv_rot_expand = heading_inv_rot_expand.repeat(
@@ -238,7 +258,7 @@ def build_max_coords_target_poses(
         translation_heading_inv_rot_expand.shape[2],
     )
 
-    root_pos_expand = root_pos.unsqueeze(-2)
+    root_pos_expand = anchor_pos.unsqueeze(-2)
 
     """target"""
     # target body pos   [N, 3xB]
@@ -351,23 +371,33 @@ def build_max_coords_target_poses(
 # Context mapping for ONNX export
 
 
-def build_reduced_coords_target_poses(
-    current_state_anchor_rot: Tensor,
-    mimic_ref_anchor_rot: Tensor,
-    mimic_ref_dof_vel: Tensor,
+def build_target_dof_pos(
     mimic_ref_dof_pos: Tensor,
+    future_steps: Optional[StepSelection] = None,
+) -> Tensor:
+    """Flatten target joint angles in time-major, then DOF order."""
+    if future_steps is not None:
+        mimic_ref_dof_pos = select_steps(mimic_ref_dof_pos, future_steps)
+    return mimic_ref_dof_pos.flatten(start_dim=1)
+
+
+def build_reduced_coords_target_poses(
+    current_state_anchor_rot: Tensor = EnvContext.current.anchor_rot,
+    mimic_ref_anchor_rot: Tensor = EnvContext.mimic.future_anchor_rot,
+    mimic_ref_dof_vel: Tensor = EnvContext.mimic.future_dof_vel,
+    mimic_ref_dof_pos: Tensor = EnvContext.mimic.future_dof_pos,
     w_last: bool = True,
     current_state_anchor_pos: Tensor = None,
-    mimic_ref_anchor_pos: Tensor = None,
-    mimic_ref_anchor_vel: Tensor = None,
-    mimic_ref_anchor_ang_vel: Tensor = None,
+    mimic_ref_anchor_pos: Tensor = EnvContext.mimic.future_anchor_pos,
+    mimic_ref_anchor_vel: Tensor = EnvContext.mimic.future_anchor_vel,
+    mimic_ref_anchor_ang_vel: Tensor = EnvContext.mimic.future_anchor_ang_vel,
     include_xy_offset: bool = False,
     include_height: bool = False,
     include_dof_vel: bool = True,
     include_anchor_vel: bool = False,
     include_anchor_ang_vel: bool = False,
-    future_steps: Union[int, List[int]] = None,
-    current_ref_anchor_pos: Tensor = None,
+    future_steps: Optional[StepSelection] = None,
+    current_ref_anchor_pos: Tensor = EnvContext.mimic.ref_anchor_pos,
     zero_xy_offset: bool = False,
 ):
     """Build target pose observations in reduced coordinates.
@@ -387,8 +417,8 @@ def build_reduced_coords_target_poses(
         include_dof_vel: If True, includes DOF velocities [num_dofs]
         include_anchor_vel: If True, includes anchor linear velocity in local frame [3]
         include_anchor_ang_vel: If True, includes anchor angular velocity in local frame [3]
-        future_steps: Steps to select. Int N for first N consecutive steps,
-            list for specific step indices (e.g., [1, 3, 5]). None = use all.
+        future_steps: The 1-based steps to read, in output order (a recipe may
+            write an int N for 1..N). None = every published step.
         current_ref_anchor_pos: Current-frame reference anchor position [envs, 3].
             Used with include_xy_offset to compute drift from current reference.
         zero_xy_offset: If True, emit zeros for the XY offset (for inference).
@@ -400,19 +430,19 @@ def build_reduced_coords_target_poses(
 
     # Slice to requested number of future steps if specified
     if future_steps is not None:
-        mimic_ref_anchor_rot = select_step_indices(mimic_ref_anchor_rot, future_steps)
-        mimic_ref_dof_vel = select_step_indices(mimic_ref_dof_vel, future_steps)
-        mimic_ref_dof_pos = select_step_indices(mimic_ref_dof_pos, future_steps)
+        mimic_ref_anchor_rot = select_steps(mimic_ref_anchor_rot, future_steps)
+        mimic_ref_dof_vel = select_steps(mimic_ref_dof_vel, future_steps)
+        mimic_ref_dof_pos = select_steps(mimic_ref_dof_pos, future_steps)
         if mimic_ref_anchor_pos is not None:
-            mimic_ref_anchor_pos = select_step_indices(
+            mimic_ref_anchor_pos = select_steps(
                 mimic_ref_anchor_pos, future_steps
             )
         if mimic_ref_anchor_vel is not None:
-            mimic_ref_anchor_vel = select_step_indices(
+            mimic_ref_anchor_vel = select_steps(
                 mimic_ref_anchor_vel, future_steps
             )
         if mimic_ref_anchor_ang_vel is not None:
-            mimic_ref_anchor_ang_vel = select_step_indices(
+            mimic_ref_anchor_ang_vel = select_steps(
                 mimic_ref_anchor_ang_vel, future_steps
             )
 
@@ -470,7 +500,15 @@ def build_reduced_coords_target_poses(
                     dtype=current_state_anchor_rot.dtype,
                 )
             else:
-                # Training: drift from current reference frame (state_t - hat_state_t)
+                # Training: drift from current reference frame (state_t - hat_state_t).
+                # The measured drift needs the robot's own anchor position; the
+                # kernel default for it is None (localization is not universal),
+                # so a recipe with include_xy_offset must bind it explicitly.
+                if current_state_anchor_pos is None:
+                    raise ValueError(
+                        "current_state_anchor_pos is required when "
+                        "include_xy_offset=True and zero_xy_offset=False"
+                    )
                 drift_origin = (
                     current_ref_anchor_pos
                     if current_ref_anchor_pos is not None
@@ -548,8 +586,9 @@ def build_sparse_target_poses(
     masked_mimic_ref_rot: Tensor,
     conditionable_body_ids: Tensor,
     w_last: bool,
-    future_steps: Union[int, List[int]] = None,
+    future_steps: Optional[StepSelection] = None,
     include_root_relative: bool = True,
+    anchor_body_index: int = EnvContext.mimic.anchor_idx,
 ):
     """Build target pose observations for sparse body tracking (MaskedMimic).
 
@@ -563,11 +602,13 @@ def build_sparse_target_poses(
         masked_mimic_ref_rot: Target rotations [envs, future_steps, bodies, 4]
         conditionable_body_ids: Indices of trackable bodies
         w_last: If True, quaternions are in XYZW format, else WXYZ
-        future_steps: Steps to select. Int N for first N consecutive steps,
-            list for specific step indices (e.g., [1, 3, 5]). None = use all.
+        future_steps: The 1-based steps to read, in output order (a recipe may
+            write an int N for 1..N). None = every published step.
         include_root_relative: If True (default), include both body-relative and root-relative
             poses (24 features per body). If False, only include body-relative poses
             (12 features per body: pos delta + rot delta from current to target).
+            The root-relative stream uses anchor_body_index (root by default).
+        anchor_body_index: Body used as the heading and position reference.
 
     Returns:
         Sparse target pose observations [envs, features] for conditionable bodies only
@@ -577,8 +618,8 @@ def build_sparse_target_poses(
 
     # Slice to requested number of future steps if specified
     if future_steps is not None:
-        masked_mimic_ref_pos = select_step_indices(masked_mimic_ref_pos, future_steps)
-        masked_mimic_ref_rot = select_step_indices(masked_mimic_ref_rot, future_steps)
+        masked_mimic_ref_pos = select_steps(masked_mimic_ref_pos, future_steps)
+        masked_mimic_ref_rot = select_steps(masked_mimic_ref_rot, future_steps)
 
     future_steps = masked_mimic_ref_pos.shape[1]
 
@@ -596,8 +637,8 @@ def build_sparse_target_poses(
     flat_cur_pos = expanded_body_pos.reshape(flat_target_body_pos.shape)
     flat_cur_rot = expanded_body_rot.reshape(flat_target_body_rot.shape)
 
-    current_state_root_pos = flat_cur_pos[:, 0, :]
-    current_state_root_rot = flat_cur_rot[:, 0, :]
+    current_state_root_pos = flat_cur_pos[:, anchor_body_index, :]
+    current_state_root_rot = flat_cur_rot[:, anchor_body_index, :]
 
     heading_rot = rotations.calc_heading_quat_inv(current_state_root_rot, w_last)
 
@@ -695,218 +736,14 @@ def build_sparse_target_poses(
     return obs
 
 
-# =============================================================================
-# Individual Component Build Functions (for modular factories)
-# =============================================================================
-# All functions support future_steps for multi-frame targets.
-# Output is flattened: [envs, future_steps * feature_dim]
-
-
-def build_target_root_rot(
-    current_state_root_rot: Tensor,
-    mimic_ref_anchor_rot: Tensor,
-    future_steps: Union[int, List[int]] = 1,
-    w_last: bool = True,
-) -> Tensor:
-    """Build target root rotation observation (6D tan-norm).
-
-    Args:
-        current_state_root_rot: Current root rotation [envs, 4]
-        mimic_ref_anchor_rot: Reference anchor rotation [envs, future_steps, 4]
-        future_steps: Steps to select. Int N for first N consecutive steps,
-            list for specific step indices (e.g., [1, 3, 5]).
-        w_last: If True, quaternions are in XYZW format
-
-    Returns:
-        Relative root rotation [envs, future_steps * 6]
-    """
-    num_envs = current_state_root_rot.shape[0]
-
-    # Slice to requested steps
-    ref_anchor_rot = select_step_indices(mimic_ref_anchor_rot, future_steps)
-    actual_steps = ref_anchor_rot.shape[1]
-
-    # Expand current rotation to match
-    current_expanded = current_state_root_rot.unsqueeze(1).expand(-1, actual_steps, -1)
-    current_flat = current_expanded.reshape(-1, 4)  # [envs*steps, 4]
-    ref_flat = ref_anchor_rot.reshape(-1, 4)  # [envs*steps, 4]
-
-    # Relative rotation from current to target
-    rel_target_root_rot = rotations.quat_mul(
-        rotations.quat_conjugate(current_flat, w_last), ref_flat, w_last
-    )
-    rot_6d = rotations.quat_to_tan_norm(rel_target_root_rot, w_last)  # [envs*steps, 6]
-    return rot_6d.reshape(num_envs, -1)
-
-
-def build_target_xy_offset(
-    current_state_anchor_pos: Tensor,
-    current_state_anchor_rot: Tensor,
-    mimic_ref_anchor_pos: Tensor,
-    future_steps: Union[int, List[int]] = 1,
-    w_last: bool = True,
-    current_ref_anchor_pos: Tensor = None,
-    zero_xy_offset: bool = False,
-) -> Tensor:
-    """Build target XY offset in heading frame.
-
-    Computes drift from current reference frame (state_t - hat_state_t).
-
-    Args:
-        current_state_anchor_pos: Current anchor position [envs, 3]
-        current_state_anchor_rot: Current anchor rotation [envs, 4]
-        mimic_ref_anchor_pos: Reference anchor position [envs, future_steps, 3]
-        future_steps: Steps to select. Int N for first N consecutive steps,
-            list for specific step indices (e.g., [1, 3, 5]).
-        w_last: If True, quaternions are in XYZW format
-        current_ref_anchor_pos: Current-frame reference anchor position [envs, 3].
-            Used to compute drift from current reference.
-        zero_xy_offset: If True, emit zeros (for inference).
-
-    Returns:
-        XY offset in heading frame [envs, future_steps * 2]
-    """
-    num_envs = current_state_anchor_pos.shape[0]
-
-    # Slice to requested steps
-    ref_anchor_pos = select_step_indices(mimic_ref_anchor_pos, future_steps)
-    actual_steps = ref_anchor_pos.shape[1]
-
-    if zero_xy_offset:
-        return torch.zeros(
-            num_envs,
-            actual_steps * 2,
-            device=current_state_anchor_pos.device,
-            dtype=current_state_anchor_pos.dtype,
-        )
-
-    heading_inv_rot = rotations.calc_heading_quat_inv(current_state_anchor_rot, w_last)
-    heading_inv_expanded = heading_inv_rot.unsqueeze(1).expand(-1, actual_steps, -1)
-    heading_inv_flat = heading_inv_expanded.reshape(-1, 4)  # [envs*steps, 4]
-
-    # Drift from current reference frame
-    drift_origin = (
-        current_ref_anchor_pos
-        if current_ref_anchor_pos is not None
-        else current_state_anchor_pos
-    )
-    drift_origin_expanded = drift_origin.unsqueeze(1).expand(-1, actual_steps, -1)
-
-    # XY drift in world frame: agent pos - reference pos
-    xy_drift_world = (
-        current_state_anchor_pos.unsqueeze(1).expand(-1, actual_steps, -1)[:, :, :2]
-        - drift_origin_expanded[:, :, :2]
-    )
-
-    # Rotate to heading-aligned frame
-    xy_drift_flat = xy_drift_world.reshape(-1, 2)  # [envs*steps, 2]
-    xy_drift_3d = torch.cat(
-        [xy_drift_flat, torch.zeros_like(xy_drift_flat[:, :1])], dim=-1
-    )
-    xy_drift_local_3d = rotations.quat_rotate(heading_inv_flat, xy_drift_3d, w_last)
-    xy_drift_local = xy_drift_local_3d[:, :2]  # [envs*steps, 2]
-
-    return xy_drift_local.reshape(num_envs, -1)
-
-
-def build_target_height(
-    mimic_ref_anchor_pos: Tensor,
-    future_steps: Union[int, List[int]] = 1,
-) -> Tensor:
-    """Build target absolute height observation.
-
-    Args:
-        mimic_ref_anchor_pos: Reference anchor position [envs, future_steps, 3]
-        future_steps: Steps to select. Int N for first N consecutive steps,
-            list for specific step indices (e.g., [1, 3, 5]).
-
-    Returns:
-        Absolute height [envs, future_steps * 1]
-    """
-    num_envs = mimic_ref_anchor_pos.shape[0]
-    ref_pos = select_step_indices(mimic_ref_anchor_pos, future_steps)
-    heights = ref_pos[:, :, 2:3]  # [envs, steps, 1]
-    return heights.reshape(num_envs, -1)
-
-
-def build_target_root_vel(
-    current_state_anchor_rot: Tensor,
-    mimic_ref_root_vel: Tensor,
-    future_steps: Union[int, List[int]] = 1,
-    w_last: bool = True,
-) -> Tensor:
-    """Build target root linear velocity in local frame.
-
-    Args:
-        current_state_anchor_rot: Current anchor rotation [envs, 4]
-        mimic_ref_root_vel: Reference root velocity [envs, future_steps, 3]
-        future_steps: Steps to select. Int N for first N consecutive steps,
-            list for specific step indices (e.g., [1, 3, 5]).
-        w_last: If True, quaternions are in XYZW format
-
-    Returns:
-        Root velocity in heading frame [envs, future_steps * 3]
-    """
-    num_envs = current_state_anchor_rot.shape[0]
-
-    ref_root_vel = select_step_indices(mimic_ref_root_vel, future_steps)
-    actual_steps = ref_root_vel.shape[1]
-
-    heading_inv_rot = rotations.calc_heading_quat_inv(current_state_anchor_rot, w_last)
-    heading_inv_expanded = heading_inv_rot.unsqueeze(1).expand(-1, actual_steps, -1)
-    heading_inv_flat = heading_inv_expanded.reshape(-1, 4)  # [envs*steps, 4]
-
-    ref_vel_flat = ref_root_vel.reshape(-1, 3)  # [envs*steps, 3]
-    local_vel = rotations.quat_rotate(
-        heading_inv_flat, ref_vel_flat, w_last
-    )  # [envs*steps, 3]
-
-    return local_vel.reshape(num_envs, -1)
-
-
-def build_target_root_ang_vel(
-    current_state_anchor_rot: Tensor,
-    mimic_ref_root_ang_vel: Tensor,
-    future_steps: Union[int, List[int]] = 1,
-    w_last: bool = True,
-) -> Tensor:
-    """Build target root angular velocity in local frame.
-
-    Args:
-        current_state_anchor_rot: Current anchor rotation [envs, 4]
-        mimic_ref_root_ang_vel: Reference root angular velocity [envs, future_steps, 3]
-        future_steps: Steps to select. Int N for first N consecutive steps,
-            list for specific step indices (e.g., [1, 3, 5]).
-        w_last: If True, quaternions are in XYZW format
-
-    Returns:
-        Root angular velocity in local frame [envs, future_steps * 3]
-    """
-    num_envs = current_state_anchor_rot.shape[0]
-
-    ref_root_ang_vel = select_step_indices(mimic_ref_root_ang_vel, future_steps)
-    actual_steps = ref_root_ang_vel.shape[1]
-
-    heading_inv_rot = rotations.calc_heading_quat_inv(current_state_anchor_rot, w_last)
-    heading_inv_expanded = heading_inv_rot.unsqueeze(1).expand(-1, actual_steps, -1)
-    heading_inv_flat = heading_inv_expanded.reshape(-1, 4)  # [envs*steps, 4]
-
-    ref_ang_vel_flat = ref_root_ang_vel.reshape(-1, 3)  # [envs*steps, 3]
-    local_ang_vel = rotations.quat_rotate(
-        heading_inv_flat, ref_ang_vel_flat, w_last
-    )  # [envs*steps, 3]
-
-    return local_ang_vel.reshape(num_envs, -1)
-
-
 def build_deploy_target_poses(
-    current_anchor_rot: Tensor,
-    mimic_ref_rot: Tensor,
-    mimic_ref_dof_pos: Tensor,
-    mimic_ref_dof_vel: Tensor,
+    current_anchor_rot: Tensor = EnvContext.current.anchor_rot,
+    mimic_ref_rot: Tensor = EnvContext.mimic.future_rot,
+    mimic_ref_dof_pos: Tensor = EnvContext.mimic.future_dof_pos,
+    mimic_ref_dof_vel: Tensor = EnvContext.mimic.future_dof_vel,
     w_last: bool = True,
     include_dof_vel: bool = True,
-    future_steps: Union[int, List[int]] = None,
+    future_steps: Optional[StepSelection] = None,
 ):
     """Build deployment-ready target pose observations.
 
@@ -933,8 +770,8 @@ def build_deploy_target_poses(
         mimic_ref_dof_vel: Reference DOF velocities [envs, future_steps, num_dofs]
         w_last: If True, quaternions are in XYZW format
         include_dof_vel: If True, include DOF velocities in observation
-        future_steps: Steps to select.  Int N for first N consecutive steps,
-            list for specific step indices.  None = use all.
+        future_steps: The 1-based steps to read, in output order (a recipe may
+            write an int N for 1..N). None = every published step.
 
     Returns:
         Target pose observations [envs, features] containing:
@@ -943,9 +780,9 @@ def build_deploy_target_poses(
     num_envs = current_anchor_rot.shape[0]
 
     if future_steps is not None:
-        mimic_ref_rot = select_step_indices(mimic_ref_rot, future_steps)
-        mimic_ref_dof_pos = select_step_indices(mimic_ref_dof_pos, future_steps)
-        mimic_ref_dof_vel = select_step_indices(mimic_ref_dof_vel, future_steps)
+        mimic_ref_rot = select_steps(mimic_ref_rot, future_steps)
+        mimic_ref_dof_pos = select_steps(mimic_ref_dof_pos, future_steps)
+        mimic_ref_dof_vel = select_steps(mimic_ref_dof_vel, future_steps)
 
     n_future = mimic_ref_rot.shape[1]
     num_bodies = mimic_ref_rot.shape[2]
@@ -982,12 +819,13 @@ def build_deploy_target_poses(
 
 
 def compute_odom_offset_local(
-    ref_anchor_pos: Tensor,  # [B, 3] reference ANCHOR position (current step)
-    current_state_anchor_rot: Tensor,  # [B, 4] robot current anchor rotation (IMU heading source)
-    odom_disp_start: Tensor,  # [B, 2] believed displacement from start, start-heading frame
+    ref_anchor_pos: Tensor = EnvContext.mimic.ref_anchor_pos,
+    current_state_anchor_rot: Tensor = EnvContext.current.anchor_rot,
+    w_last: bool = True,
+    *,
+    odom_disp_start: Tensor,  # [B, 2] believed displacement, start-heading frame
     odom_start_xy: Tensor,  # [B, 2] anchor XY at episode start
     odom_start_heading_inv: Tensor,  # [B, 4] inverse start-heading quat
-    w_last: bool = True,
 ) -> Tensor:  # [B, 2] heading-local offset to reference anchor
     """Derive the heading-local odometer offset from raw sensor ingredients.
 
@@ -995,7 +833,7 @@ def compute_odom_offset_local(
     reading (the stochastic corruption boundary), then expresses the vector from
     that believed position to the current reference anchor XY in the live anchor's
     heading-aligned (yaw-only, z-dropped) frame.  Reproduces exactly the
-    corrupted heading-local offset that ``BaseEnv._build_context`` used to store
+    corrupted heading-local offset that the env's context used to store
     (feed ``odom_disp_start_corrupt``); feeding ``odom_disp_start_clean`` yields the
     clean twin, since the clean displacement reconstructs the true position.
 
@@ -1007,7 +845,7 @@ def compute_odom_offset_local(
 
     Args:
         ref_anchor_pos: Reference anchor position [B, 3] at the current step
-            (``ctx.mimic.ref_anchor_pos``).
+            (``mimic.ref_anchor_pos``).
         current_state_anchor_rot: Robot current anchor rotation [B, 4] (IMU heading).
         odom_disp_start: Believed displacement from start [B, 2], start-heading frame.
         odom_start_xy: Anchor XY at episode start [B, 2].

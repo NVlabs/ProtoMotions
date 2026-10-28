@@ -1,444 +1,299 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Typed context views for observations, rewards, and terminations.
+"""The context vocabulary: every name the environment may publish, and nothing else.
 
-This module provides lightweight view classes that wrap existing data structures
-(RobotState, StateHistoryBuffer) without copying. Context paths use FieldPath
-and NestedField descriptors for dual access:
+``env.context`` is a read-only dictionary, built once per step, from path
+string to value (``protomotions.envs.context.FrozenContext``). This module
+declares the names in that dictionary, grouped by namespace, so that bindings
+can spell them with IDE support (``EnvContext.current.rigid_body_pos`` is a
+``FieldPath`` whose ``.path`` is ``"current.rigid_body_pos"``) and so that the
+environment can check, when it is built, that every bound path is declared
+and that what each publisher publishes matches its namespace's declaration.
 
-- Class access: Returns FieldPath for configuration (e.g., EnvContext.current.rigid_body_pos)
-- Instance access: Returns actual tensor values (e.g., ctx.current.rigid_body_pos)
+Nothing here computes a value. The classes are never instantiated: a
+publisher's ``publish(env_ids)`` returns the dict of names its namespace
+declares (see ``base_env/publishers.py`` and the control components), and the
+environment merges those dicts into the one context.
 
-Example usage in experiment configs:
-    from protomotions.envs.context_views import EnvContext
-    from protomotions.envs.mdp_component import MdpComponent
+A name that not every configuration publishes says what it needs with
+``requires=``. The tag is a statement about the robot, its sensors or the
+experiment: ``FieldPath(requires="localization")`` is a name only a sensor
+suite with a localization body produces; a name with no tag is published by
+every configuration.
 
-    observation_components = {
-        "max_coords_obs": MdpComponent(
-            compute_func=compute_humanoid_max_coords_observations,
-            dynamic_vars={
-                "body_pos": EnvContext.current.rigid_body_pos,  # FieldPath object
-                "body_rot": EnvContext.current.rigid_body_rot,
-            },
-            static_params={"local_obs": True},
-        ),
-    }
+To make a name deployable -- so the exporter can feed it to a host -- give its
+``FieldPath`` a host-kind string: ``FieldPath(deploy="joint_pos")``. The kind is
+the host's name for the quantity and must have a row in ``ELEMENT_LABELS``
+(``deployment/contract.py``); everything else (shape, dtype, the future and
+history axes, the column labels, the sensor channel) is derived at export. Only
+the names a shipped recipe or an in-repo test binds carry a string today; a bare
+name a deployable observation binds is refused at export, naming the line to add.
+
+The requirement names used below, and what each means:
+
+- ``history``: a bound observation, reward or termination component reads a
+  past state, so the history ring keeps at least one slot.
+- ``contacts``: the robot declares contact bodies (``robot.contact_bodies``),
+  so the simulator reports contacts.
+- ``sensors``: the experiment declares a sensor suite (``config.sensors``).
+- ``localization``: the sensor suite has a localization body, so it can place
+  the robot in the world.
+- ``base_velocity``: the sensor suite has the base-velocity sensor.
+- ``height_sensor``: the sensor suite has the height sensor.
+- ``terrain_heightfield``: the terrain has height points (every real terrain
+  does; only flat test doubles do not).
+- ``objects``: the scene library has scene objects (``scene_lib.num_scenes()``
+  is greater than 0). Only the built scene library can tell, so the
+  environment checks these names when it is built.
+- ``pointclouds``: the scene library computed object pointclouds
+  (``SceneLib.has_pointclouds``); checked when the environment is built, as
+  above.
+- ``motion_file``: the motion file carries the quantity. Only the loaded
+  motion library can tell, so the environment checks these names when it is
+  built, not from the configs.
+- Any other tag is a switch in the config of the control component that
+  publishes the namespace, read as ``config.<tag>`` being truthy (``style``,
+  ``velocity_command``, ``reference_height_smoothing_seconds`` ...).
+
+``context_requirements.py`` holds the table that turns a configuration into
+these facts and the one rule that decides whether a path is published.
+
+A ``NestedField`` tagged ``owner="control"`` is a control component's
+namespace (declared with :func:`control_namespace`); it exists exactly when a
+configured control component lists it in its ``namespaces``, and
+``CONTROL_NAMESPACES`` is derived from that tag, not listed by hand.
 """
 
 from __future__ import annotations
 
-from typing import Optional, TYPE_CHECKING
+from typing import Dict, Optional, Tuple
 
 from torch import Tensor
 
-from protomotions.envs.context_paths import FieldPath, NestedField
-from protomotions.envs.obs.humanoid import compute_local_ang_vel
-
-if TYPE_CHECKING:
-    from protomotions.simulator.base_simulator.simulator_state import RobotState
-    from protomotions.envs.obs.state_history_buffer import StateHistoryBuffer
+from protomotions.envs.context_paths import FieldPath, NestedField, declared_fields
 
 
-# =============================================================================
-# Robot State View (for nested FieldPath access to RobotState fields)
-# =============================================================================
+def control_namespace(view_class: type) -> NestedField:
+    """Declare a control component's namespace: ``NestedField(view_class,
+    owner="control")``. It carries no ``requires``: the namespace exists when a
+    configured control component declares it in its ``namespaces``."""
+    return NestedField(view_class, owner="control")
 
 
-class RobotStateView:
-    """Lightweight path-proxy for RobotState fields.
+class BodyStateView:
+    """What every state source carries at every step: the body orientations
+    and angular velocities, the joint state, and the root and anchor slices
+    derived from them. Positions and linear velocities are not here because a
+    sensor suite may not measure them."""
 
-    Used as the nested_class in NestedField so that class-level access like
-    ``EnvContext.mimic.ref_state.rigid_body_pos`` produces the correct FieldPath.
-
-    At instance level the actual RobotState object is stored directly, so
-    attribute access falls through to the real dataclass fields.
-    """
-
-    rigid_body_pos: Tensor = FieldPath()
-    rigid_body_rot: Tensor = FieldPath()
-    rigid_body_vel: Tensor = FieldPath()
+    rigid_body_rot: Tensor = FieldPath(deploy="body_rot")
     rigid_body_ang_vel: Tensor = FieldPath()
-    rigid_body_contacts: Tensor = FieldPath()
-    rigid_body_contact_forces: Tensor = FieldPath()
-    dof_pos: Tensor = FieldPath()
-    dof_vel: Tensor = FieldPath()
-    dof_forces: Tensor = FieldPath()
-    local_rigid_body_rot: Tensor = FieldPath()
-
-
-# =============================================================================
-# Current State Views
-# =============================================================================
-
-
-class CurrentStateView:
-    """View into current robot state with anchor and local angular velocity properties.
-
-    Wraps a RobotState and adds:
-    - Anchor body properties (anchor_pos, anchor_rot, anchor_vel, etc.)
-    - Local angular velocities (root_local_ang_vel, anchor_local_ang_vel)
-
-    This view does not copy data - it provides typed access to the underlying
-    RobotState with additional precomputed properties.
-
-    All fields are FieldPath descriptors for dual class/instance access.
-    """
-
-    # Direct state attributes (stored)
-    rigid_body_pos: Tensor = FieldPath()
-    rigid_body_rot: Tensor = FieldPath()
-    rigid_body_vel: Tensor = FieldPath()
-    rigid_body_ang_vel: Tensor = FieldPath()
-    rigid_body_contacts: Tensor = FieldPath()
-    dof_pos: Tensor = FieldPath()
-    dof_vel: Tensor = FieldPath()
-    dof_forces: Tensor = FieldPath()
+    dof_pos: Tensor = FieldPath(deploy="joint_pos")
+    dof_vel: Tensor = FieldPath(deploy="joint_vel")
     anchor_idx: int = FieldPath()
-
-    # Root properties (precomputed from state)
-    root_pos: Tensor = FieldPath()
     root_rot: Tensor = FieldPath()
-    root_vel: Tensor = FieldPath()
     root_ang_vel: Tensor = FieldPath()
-    root_height: Tensor = FieldPath()
-    root_local_ang_vel: Tensor = FieldPath()
-
-    # Anchor properties (precomputed)
-    anchor_pos: Tensor = FieldPath()
-    anchor_rot: Tensor = FieldPath()
-    anchor_vel: Tensor = FieldPath()
+    root_local_ang_vel: Tensor = FieldPath(deploy="local_root_ang_vel")
+    anchor_rot: Tensor = FieldPath(deploy="anchor_rot")
     anchor_ang_vel: Tensor = FieldPath()
     anchor_local_ang_vel: Tensor = FieldPath()
 
-    def __init__(self, state: "RobotState", anchor_idx: int):
-        """Initialize CurrentStateView with precomputed derived values.
 
-        Args:
-            state: The underlying RobotState containing all body poses and velocities.
-            anchor_idx: Index of anchor body (typically pelvis) for anchor properties.
-        """
-        # Store direct values from state
-        # Note: state may be RobotState (full) or NoisyObservations (subset),
-        # so optional fields use getattr with None default.
-        self.rigid_body_pos = state.rigid_body_pos
-        self.rigid_body_rot = state.rigid_body_rot
-        self.rigid_body_vel = state.rigid_body_vel
-        self.rigid_body_ang_vel = state.rigid_body_ang_vel
-        self.rigid_body_contacts = getattr(state, "rigid_body_contacts", None)
-        self.dof_pos = state.dof_pos
-        self.dof_vel = state.dof_vel
-        self.dof_forces = getattr(state, "dof_forces", None)
-        self.anchor_idx = anchor_idx
+class SensorStateView(BodyStateView):
+    """A sensor source at the current step (``clean``, ``noisy``): what the
+    suite measures. Body positions need localization, body velocities the
+    base-velocity sensor, the ground height under the root both localization
+    and the height sensor. Sensors never report contacts or joint forces."""
 
-        # Precompute root properties
-        self.root_pos = state.root_pos
-        self.root_rot = state.root_rot
-        self.root_vel = state.root_vel
-        self.root_ang_vel = state.root_ang_vel
-        self.root_height = state.rigid_body_pos[:, 0, 2]
-
-        # Precompute anchor properties
-        self.anchor_pos = state.rigid_body_pos[:, anchor_idx, :]
-        self.anchor_rot = state.rigid_body_rot[:, anchor_idx, :]
-        self.anchor_vel = state.rigid_body_vel[:, anchor_idx, :]
-        self.anchor_ang_vel = state.rigid_body_ang_vel[:, anchor_idx, :]
-
-        # NoisyObservations also carries root/anchor channels that were noised
-        # on their own (anchor_rot_noise, root_ang_vel_noise,
-        # anchor_ang_vel_noise). Re-deriving them from the whole-body tensors
-        # would silently drop that noise, so use them when present. RobotState
-        # has none of these fields, so clean views are unchanged.
-        for name in ("anchor_rot", "root_local_ang_vel", "anchor_local_ang_vel"):
-            value = getattr(state, name, None)
-            if value is not None:
-                setattr(self, name, value)
-
-    def _compute_root_local_ang_vel(self) -> Tensor:
-        return compute_local_ang_vel(self.root_rot, self.root_ang_vel)
-
-    def _compute_anchor_local_ang_vel(self) -> Tensor:
-        return compute_local_ang_vel(self.anchor_rot, self.anchor_ang_vel)
+    rigid_body_pos: Tensor = FieldPath(requires="localization", deploy="body_pos")
+    root_pos: Tensor = FieldPath(requires="localization")
+    anchor_pos: Tensor = FieldPath(requires="localization", deploy="anchor_pos")
+    root_height: Tensor = FieldPath(requires="localization")
+    # The episode's odometer: anchor XY at the episode start, the inverse of
+    # the start heading, and the displacement since, in that heading frame.
+    odom_start_xy: Tensor = FieldPath(requires="localization", deploy="odom_start_xy")
+    odom_start_heading_inv: Tensor = FieldPath(
+        requires="localization", deploy="odom_start_heading_inv"
+    )
+    odom_disp_start: Tensor = FieldPath(
+        requires="localization", deploy="odom_disp_start"
+    )
+    rigid_body_vel: Tensor = FieldPath(requires="base_velocity")
+    root_vel: Tensor = FieldPath(requires="base_velocity")
+    anchor_vel: Tensor = FieldPath(requires="base_velocity")
+    ground_heights: Tensor = FieldPath(requires=("localization", "height_sensor"))
 
 
-# =============================================================================
-# Historical State Views
-# =============================================================================
+class PrivilegedStateView(BodyStateView):
+    """Simulator truth at the current step (``current``): every body quantity,
+    the ground height under the anchor and the joint forces, always; the
+    contact flags when the robot declares contact bodies."""
 
-
-class HistoricalView:
-    """View into historical state from StateHistoryBuffer.
-
-    Provides access to historical state tensors with shape [num_envs, history_steps, ...].
-    Wraps the buffer without copying data. Can be used for either clean (ground-truth)
-    or noisy observations based on the use_noisy parameter.
-
-    All fields are FieldPath descriptors for dual class/instance access.
-    """
-
-    # Historical state attributes (stored from buffer)
     rigid_body_pos: Tensor = FieldPath()
+    rigid_body_vel: Tensor = FieldPath()
+    ground_heights: Tensor = FieldPath()
+    dof_forces: Tensor = FieldPath()
+    root_pos: Tensor = FieldPath()
+    root_vel: Tensor = FieldPath()
+    root_height: Tensor = FieldPath()
+    anchor_pos: Tensor = FieldPath(deploy="anchor_pos")
+    anchor_vel: Tensor = FieldPath()
+    rigid_body_contacts: Tensor = FieldPath(requires="contacts")
+
+
+class CommandHistoryView:
+    """The commands that led to each past state (slots 1 onward)."""
+
+    raw_actions: Tensor = FieldPath(deploy="last_actions")
+    processed_actions: Tensor = FieldPath(deploy="last_actions")
+
+
+class PrivilegedHistoricalView(PrivilegedStateView, CommandHistoryView):
+    """Past simulator truth (``historical``) with the command history.
+    ``body_contacts`` is the past contact flags under the name the historical
+    observation kernels bind."""
+
+    body_contacts: Tensor = FieldPath(requires="contacts")
+
+
+class SensorHistoricalView(SensorStateView, CommandHistoryView):
+    """Past sensor estimates (``clean_historical``, ``noisy_historical``) with
+    the command history; nothing more, since sensors carry no contacts."""
+
+
+class RobotStateView:
+    """The reference ``RobotState`` tensors under ``mimic.ref_state``: the six
+    every motion file has, and two that only some files carry."""
+
+    rigid_body_pos: Tensor = FieldPath(deploy="reference_motion_body_pos")
     rigid_body_rot: Tensor = FieldPath()
     rigid_body_vel: Tensor = FieldPath()
     rigid_body_ang_vel: Tensor = FieldPath()
     dof_pos: Tensor = FieldPath()
     dof_vel: Tensor = FieldPath()
-    actions: Tensor = FieldPath()
-    processed_actions: Tensor = FieldPath()
-    ground_heights: Tensor = FieldPath()
-    body_contacts: Tensor = FieldPath()
-
-    # Root properties (precomputed from buffer)
-    root_pos: Tensor = FieldPath()
-    root_rot: Tensor = FieldPath()
-    root_ang_vel: Tensor = FieldPath()
-    root_local_ang_vel: Tensor = FieldPath()
-
-    # Anchor properties (precomputed from buffer)
-    anchor_pos: Tensor = FieldPath()
-    anchor_rot: Tensor = FieldPath()
-    anchor_vel: Tensor = FieldPath()
-    anchor_ang_vel: Tensor = FieldPath()
-
-    def __init__(
-        self,
-        buffer: "StateHistoryBuffer",
-        use_noisy: bool = False,
-        env_ids: Optional[Tensor] = None,
-    ):
-        """Initialize HistoricalView with precomputed derived values.
-
-        Args:
-            buffer: The underlying StateHistoryBuffer containing historical state.
-            use_noisy: If True, use noisy historical data. If False, use clean data.
-        """
-        self._buffer = buffer
-        self._use_noisy = use_noisy
-        self._env_ids = env_ids
-        self._prefix = "noisy_historical_" if use_noisy else "historical_"
-
-    def _select(self, tensor: Optional[Tensor]) -> Optional[Tensor]:
-        if tensor is None or self._env_ids is None:
-            return tensor
-        return tensor[self._env_ids]
-
-    def _historical_field(self, name: str) -> Optional[Tensor]:
-        return self._select(getattr(self._buffer, f"{self._prefix}{name}"))
-
-    def _clean_field(self, name: str) -> Optional[Tensor]:
-        if self._use_noisy:
-            return None
-        return self._select(getattr(self._buffer, name))
-
-    def _compute_rigid_body_pos(self) -> Tensor:
-        return self._historical_field("rigid_body_pos")
-
-    def _compute_rigid_body_rot(self) -> Tensor:
-        return self._historical_field("rigid_body_rot")
-
-    def _compute_rigid_body_vel(self) -> Tensor:
-        return self._historical_field("rigid_body_vel")
-
-    def _compute_rigid_body_ang_vel(self) -> Tensor:
-        return self._historical_field("rigid_body_ang_vel")
-
-    def _compute_dof_pos(self) -> Tensor:
-        return self._historical_field("dof_pos")
-
-    def _compute_dof_vel(self) -> Tensor:
-        return self._historical_field("dof_vel")
-
-    def _compute_actions(self) -> Optional[Tensor]:
-        return self._clean_field("historical_actions")
-
-    def _compute_processed_actions(self) -> Optional[Tensor]:
-        return self._clean_field("historical_processed_actions")
-
-    def _compute_ground_heights(self) -> Tensor:
-        return self._historical_field("ground_heights")
-
-    def _compute_body_contacts(self) -> Optional[Tensor]:
-        return self._clean_field("historical_body_contacts")
-
-    def _compute_root_pos(self) -> Tensor:
-        return self._historical_field("root_pos")
-
-    def _compute_root_rot(self) -> Tensor:
-        return self._historical_field("root_rot")
-
-    def _compute_root_ang_vel(self) -> Tensor:
-        return self._historical_field("root_ang_vel")
-
-    def _compute_anchor_pos(self) -> Tensor:
-        return self._historical_field("anchor_pos")
-
-    def _compute_anchor_rot(self) -> Tensor:
-        return self._historical_field("anchor_rot")
-
-    def _compute_anchor_vel(self) -> Optional[Tensor]:
-        return self._clean_field("historical_anchor_vel")
-
-    def _compute_anchor_ang_vel(self) -> Optional[Tensor]:
-        return self._clean_field("historical_anchor_ang_vel")
-
-    def _compute_root_local_ang_vel(self) -> Tensor:
-        return compute_local_ang_vel(self.root_rot, self.root_ang_vel)
-
-
-# =============================================================================
-# Control-Specific Contexts
-# =============================================================================
+    rigid_body_contacts: Tensor = FieldPath(requires="motion_file")
+    local_rigid_body_rot: Tensor = FieldPath(requires="motion_file")
 
 
 class MimicContext:
-    """View for mimic control context.
+    """Reference motion: the current reference pose and the future targets."""
 
-    Contains reference state for *reward* computation and multi-step future poses
-    for *observation* computation. The reference state is at the current timestep,
-    while future poses are at t+dt, t+2*dt, etc.
-
-    All fields are FieldPath descriptors for dual class/instance access.
-    """
-
-    # Reference state (nested – needs NestedField so class-level path proxy works)
-    ref_state: "RobotState" = NestedField(RobotStateView)
-
-    # Future state attributes (stored)
-    future_pos: Tensor = FieldPath()
-    future_rot: Tensor = FieldPath()
+    ref_state: RobotStateView = NestedField(RobotStateView)
+    future_pos: Tensor = FieldPath(deploy="reference_motion_body_pos_future")
+    future_rot: Tensor = FieldPath(deploy="reference_motion_body_rot")
     future_vel: Tensor = FieldPath()
     future_ang_vel: Tensor = FieldPath()
-    future_dof_pos: Tensor = FieldPath()
-    future_dof_vel: Tensor = FieldPath()
+    future_dof_pos: Tensor = FieldPath(deploy="reference_motion_joint_pos")
+    future_dof_vel: Tensor = FieldPath(deploy="reference_motion_joint_vel")
     anchor_idx: int = FieldPath()
     ref_lr: Tensor = FieldPath()
-
-    # Future root properties (precomputed)
     future_root_pos: Tensor = FieldPath()
     future_root_rot: Tensor = FieldPath()
     future_root_vel: Tensor = FieldPath()
     future_root_ang_vel: Tensor = FieldPath()
-
-    # Current-frame reference anchor position (precomputed)
-    ref_anchor_pos: Tensor = FieldPath()
-
-    # Future anchor properties (precomputed)
-    future_anchor_pos: Tensor = FieldPath()
-    future_anchor_rot: Tensor = FieldPath()
-    future_anchor_vel: Tensor = FieldPath()
-    future_anchor_ang_vel: Tensor = FieldPath()
-
-    def __init__(
-        self,
-        ref_state: "RobotState",
-        future_pos: Tensor,
-        future_rot: Tensor,
-        future_vel: Tensor,
-        future_ang_vel: Tensor,
-        future_dof_pos: Tensor,
-        future_dof_vel: Tensor,
-        anchor_idx: int,
-        ref_lr: Tensor,
-    ):
-        """Initialize MimicContext with precomputed derived values.
-
-        Args:
-            ref_state: Single-step reference state at current time for reward computation.
-            future_pos: Future body positions [num_envs, future_steps, num_bodies, 3].
-            future_rot: Future body rotations [num_envs, future_steps, num_bodies, 4].
-            future_vel: Future body velocities [num_envs, future_steps, num_bodies, 3].
-            future_ang_vel: Future angular velocities [num_envs, future_steps, num_bodies, 3].
-            future_dof_pos: Future DOF positions [num_envs, future_steps, num_dofs].
-            future_dof_vel: Future DOF velocities [num_envs, future_steps, num_dofs].
-            anchor_idx: Index of anchor body for computing anchor-relative values.
-            ref_lr: Reference DOF in local rotation format for DOF tracking rewards.
-        """
-        # Store direct values
-        self.ref_state = ref_state
-        self.future_pos = future_pos
-        self.future_rot = future_rot
-        self.future_vel = future_vel
-        self.future_ang_vel = future_ang_vel
-        self.future_dof_pos = future_dof_pos
-        self.future_dof_vel = future_dof_vel
-        self.anchor_idx = anchor_idx
-        self.ref_lr = ref_lr
-
-        # Precompute future root properties
-        self.future_root_pos = future_pos[:, :, 0, :]
-        self.future_root_rot = future_rot[:, :, 0, :]
-        self.future_root_vel = future_vel[:, :, 0, :]
-        self.future_root_ang_vel = future_ang_vel[:, :, 0, :]
-
-        # Precompute current-frame reference anchor position
-        self.ref_anchor_pos = ref_state.rigid_body_pos[:, anchor_idx, :]
-
-        # Precompute future anchor properties
-        self.future_anchor_pos = future_pos[:, :, anchor_idx, :]
-        self.future_anchor_rot = future_rot[:, :, anchor_idx, :]
-        self.future_anchor_vel = future_vel[:, :, anchor_idx, :]
-        self.future_anchor_ang_vel = future_ang_vel[:, :, anchor_idx, :]
+    ref_anchor_pos: Tensor = FieldPath(deploy="reference_motion_anchor_pos")
+    ref_anchor_rot: Tensor = FieldPath()
+    ref_anchor_vel: Tensor = FieldPath()
+    ref_anchor_ang_vel: Tensor = FieldPath()
+    future_anchor_pos: Tensor = FieldPath(deploy="reference_motion_anchor_pos_future")
+    future_anchor_rot: Tensor = FieldPath(deploy="reference_motion_anchor_rot")
+    future_anchor_vel: Tensor = FieldPath(deploy="reference_motion_anchor_vel")
+    future_anchor_ang_vel: Tensor = FieldPath(deploy="reference_motion_anchor_ang_vel")
+    # Only with MimicControlConfig.reference_height_smoothing_seconds > 0.
+    smoothed_ref_anchor_height: Tensor = FieldPath(
+        requires="reference_height_smoothing_seconds"
+    )
+    # Whether the clip ends within the next step (the clip-done check's input).
+    clip_done: Tensor = FieldPath()
 
 
 class MaskedMimicContext:
-    """View for masked mimic control context.
+    """Sparse conditioning targets -- the operator's prompt for the MaskedMimic
+    (Metatron) policy. Each modality beyond the global targets is a switch of
+    ``MaskedMimicControlConfig``; a disabled modality is not published.
 
-    Extends MimicContext with sparse target poses and visibility masks for
-    conditional motion generation. Only a subset of bodies and timesteps
-    are revealed to the policy.
+    The deployable prompt carries ``deploy=`` (provider ``masked_mimic``, the
+    operator's prompt stream) in five groups: global targets, the anchor
+    submasks, the local targets, the style conditioning and the velocity command.
+    ``target_times`` and ``local_target_times`` are not graph inputs and stay bare
+    (refused if an actor binds them). Semantics shared across the groups:
+    positions are metres; time offsets are seconds remaining to the target, not
+    timestamps; raw pose rotations are XYZW quaternions; a raw ``*_pos``/``*_rot``
+    tensor carries the full published body axis (the conditionable subset lives in
+    its mask, not the shape); the masks' conditionable-body order (and the style
+    condition mask's) is ``robot.trackable_bodies_subset``
+    (``GoalCanvas.conditionable_bodies``, control/masked_mimic_prompt.py), and a
+    mask bit True means visible/active (the publisher defaults False;
+    ``pack_goals`` sets True)."""
 
-    All fields are FieldPath descriptors for dual class/instance access.
-    """
-
-    # Base mimic context (nested)
-    mimic: MimicContext = NestedField(MimicContext)
-
-    # Sparse target attributes (stored)
-    ref_pos: Tensor = FieldPath()
-    ref_rot: Tensor = FieldPath()
-    target_times: Tensor = FieldPath()
-    time_offsets: Tensor = FieldPath()
-    target_poses_masks: Tensor = FieldPath()
-    target_bodies_masks: Tensor = FieldPath()
-
-    def __init__(
-        self,
-        mimic: MimicContext,
-        ref_pos: Tensor,
-        ref_rot: Tensor,
-        target_times: Tensor,
-        time_offsets: Tensor,
-        target_poses_masks: Tensor,
-        target_bodies_masks: Tensor,
-    ):
-        """Initialize MaskedMimicContext.
-
-        Args:
-            mimic: Base mimic context with full reference state and future poses.
-            ref_pos: Target body positions at sparse times [num_envs, future_steps, num_bodies, 3].
-            ref_rot: Target body rotations at sparse times [num_envs, future_steps, num_bodies, 4].
-            target_times: Absolute target times [num_envs, future_steps].
-            time_offsets: Time offsets from current time [num_envs, future_steps].
-            target_poses_masks: Which timesteps are visible [num_envs, future_steps].
-            target_bodies_masks: Which bodies are visible [num_envs, future_steps * num_bodies * 2].
-        """
-        self.mimic = mimic
-        self.ref_pos = ref_pos
-        self.ref_rot = ref_rot
-        self.target_times = target_times
-        self.time_offsets = time_offsets
-        self.target_poses_masks = target_poses_masks
-        self.target_bodies_masks = target_bodies_masks
+    # -- Global targets: requested targets in the host's localization frame (the
+    # same frame as anchor_pos / root_pos; the graph makes them anchor-relative),
+    # heading included. Raw body targets [env, future, bodies, 3] metres /
+    # [.., 4] XYZW quaternion.
+    ref_pos: Tensor = FieldPath(deploy="masked_mimic_ref_pos")
+    ref_rot: Tensor = FieldPath(deploy="masked_mimic_ref_rot")
+    target_times: Tensor = FieldPath()  # not a graph input; stays bare
+    # Seconds remaining to each future target step.
+    time_offsets: Tensor = FieldPath(deploy="masked_mimic_time_offsets")
+    # Visibility masks (per step; per step/body/[translation, rotation]).
+    target_poses_masks: Tensor = FieldPath(deploy="masked_mimic_target_poses_masks")
+    target_bodies_masks: Tensor = FieldPath(deploy="masked_mimic_target_bodies_masks")
+    # -- Anchor submasks: order [XY, Z] and [full rotation, heading].
+    anchor_translation_mask: Tensor = FieldPath(
+        requires="anchor_pose_submasking",
+        deploy="masked_mimic_anchor_translation_mask",
+    )
+    anchor_rotation_mask: Tensor = FieldPath(
+        requires="anchor_pose_submasking", deploy="masked_mimic_anchor_rotation_mask"
+    )
+    # -- Local targets: raw target poses the observation graph makes local (XY
+    # relative to the target anchor, height to the target pose's lowest body,
+    # rotation with the target-anchor heading removed); the host must NOT localise
+    # them again. On when local_target_condition_probability > 0 (``local_stream``).
+    local_ref_pos: Tensor = FieldPath(
+        requires="local_stream", deploy="masked_mimic_local_ref_pos"
+    )
+    local_ref_rot: Tensor = FieldPath(
+        requires="local_stream", deploy="masked_mimic_local_ref_rot"
+    )
+    local_target_times: Tensor = FieldPath(requires="local_stream")  # not a graph input
+    local_time_offsets: Tensor = FieldPath(
+        requires="local_stream", deploy="masked_mimic_local_time_offsets"
+    )
+    local_target_poses_masks: Tensor = FieldPath(
+        requires="local_stream", deploy="masked_mimic_local_target_poses_masks"
+    )
+    local_target_bodies_masks: Tensor = FieldPath(
+        requires="local_stream", deploy="masked_mimic_local_target_bodies_masks"
+    )
+    # -- Style: already-packed feature arrays (NOT raw poses/quaternions), so the
+    # kind carries no labels. Layout: num_frames x conditionable_bodies x
+    # STYLE_POSE/VELOCITY_FEATURES_PER_BODY (9 / 6, obs/masked_mimic.py), packed
+    # flat by _query_style_samples in control/masked_mimic_control.py.
+    style_pose_samples: Tensor = FieldPath(
+        requires="style", deploy="masked_mimic_style_pose_samples"
+    )
+    style_velocity_samples: Tensor = FieldPath(
+        requires="style", deploy="masked_mimic_style_velocity_samples"
+    )
+    style_condition_masks: Tensor = FieldPath(
+        requires="style", deploy="masked_mimic_style_condition_masks"
+    )
+    style_frame_masks: Tensor = FieldPath(
+        requires="style", deploy="masked_mimic_style_frame_masks"
+    )
+    # -- Velocity command: planar [vx, vy].
+    average_velocity: Tensor = FieldPath(
+        requires="velocity_command", deploy="masked_mimic_average_velocity"
+    )
+    velocity_command_mask: Tensor = FieldPath(
+        requires="velocity_command", deploy="masked_mimic_velocity_command_mask"
+    )
 
 
 class SteeringContext:
-    """View for steering control context.
-
-    Contains target direction, speed, and facing direction for locomotion
-    steering tasks. Also stores previous root position for velocity computation.
-
-    All fields are FieldPath descriptors for dual class/instance access.
-    """
+    """Heading and speed targets of the steering task."""
 
     tar_dir: Tensor = FieldPath()
     tar_dir_theta: Tensor = FieldPath()
@@ -446,334 +301,197 @@ class SteeringContext:
     tar_face_dir: Tensor = FieldPath()
     prev_root_pos: Tensor = FieldPath()
 
-    def __init__(
-        self,
-        tar_dir: Tensor,
-        tar_dir_theta: Tensor,
-        tar_speed: Tensor,
-        tar_face_dir: Tensor,
-        prev_root_pos: Tensor,
-    ):
-        """Initialize SteeringContext.
-
-        Args:
-            tar_dir: Target movement direction in world frame [num_envs, 2] (xy only).
-            tar_dir_theta: Target direction as angle from forward [num_envs].
-            tar_speed: Target movement speed [num_envs].
-            tar_face_dir: Target facing direction in world frame [num_envs, 2] (xy only).
-            prev_root_pos: Previous root position for velocity computation [num_envs, 3].
-        """
-        self.tar_dir = tar_dir
-        self.tar_dir_theta = tar_dir_theta
-        self.tar_speed = tar_speed
-        self.tar_face_dir = tar_face_dir
-        self.prev_root_pos = prev_root_pos
-
 
 class PathContext:
-    """View for path follower control context.
-
-    Contains target position, head position, and trajectory samples for
-    path following tasks.
-
-    All fields are FieldPath descriptors for dual class/instance access.
-    """
+    """Waypoints of the path-following task."""
 
     tar_pos: Tensor = FieldPath()
     head_pos: Tensor = FieldPath()
     traj_samples: Tensor = FieldPath()
     height_conditioned: bool = FieldPath()
     head_body_id: int = FieldPath()
-    progress_buf: Tensor = FieldPath()
-
-    def __init__(
-        self,
-        tar_pos: Tensor,
-        head_pos: Tensor,
-        traj_samples: Tensor,
-        height_conditioned: bool,
-        head_body_id: int,
-        progress_buf: Tensor = None,
-    ):
-        """Initialize PathContext.
-
-        Args:
-            tar_pos: Current target position on path [num_envs, 3].
-            head_pos: Current head body position [num_envs, 3].
-            traj_samples: Future waypoint positions [num_envs, num_samples, 3].
-            height_conditioned: Whether observations include height information.
-            head_body_id: Index of head body in kinematic chain.
-            progress_buf: Episode progress counter [num_envs].
-        """
-        self.tar_pos = tar_pos
-        self.head_pos = head_pos
-        self.traj_samples = traj_samples
-        self.height_conditioned = height_conditioned
-        self.head_body_id = head_body_id
-        self.progress_buf = progress_buf
 
 
 class TargetContext:
-    """View for target-reaching control context."""
+    """The target-reaching task's goal, and what its episode-ending checks read:
+    the fall reference height (the ground under the anchor, or the last
+    elevated support), the anchor height at the last elevated support and the
+    oldest anchor position in the stuck window."""
 
     tar_pos: Tensor = FieldPath()
     tar_proximity_threshold: float = FieldPath()
-
-    def __init__(self, tar_pos: Tensor, tar_proximity_threshold: float):
-        self.tar_pos = tar_pos
-        self.tar_proximity_threshold = tar_proximity_threshold
+    # Only with a TargetControl that has a failure check on (fall, gap or
+    # stuck); ``TargetControl.provides`` answers the tag.
+    fall_ref_height: Tensor = FieldPath(requires="failure_checks")
+    last_support_root_height: Tensor = FieldPath(requires="failure_checks")
+    oldest_root_pos: Tensor = FieldPath(requires="failure_checks")
 
 
 class TerrainContext:
-    """View for terrain tensors used by component observations."""
+    """Terrain tensors used by component observations."""
 
     height_points: Tensor = FieldPath()
     height_samples: Tensor = FieldPath()
-
-    def __init__(self, height_points: Tensor, height_samples: Tensor):
-        self.height_points = height_points
-        self.height_samples = height_samples
+    # Metres per height-field cell (the terrain config's value), so a kernel
+    # over the height field needs no terrain object.
+    horizontal_scale: float = FieldPath()
 
 
 class SceneSurfaceContext:
-    """View for scene-object surface tensors used by observations.
+    """Scene-object surfaces. A configuration without scene objects publishes
+    none of these (no zero-width stand-in); the pointclouds need a library
+    that computed them."""
 
-    Empty tensors are used when the environment has no scene objects, so
-    factories can bind these paths unconditionally while compute kernels decide
-    whether object surfaces are present from the tensor shapes.
-    """
-
-    object_pos: Tensor = FieldPath()
-    object_rot: Tensor = FieldPath()
-    neutral_pointclouds: Tensor = FieldPath()
-    object_valid_mask: Tensor = FieldPath()
-
-    def __init__(
-        self,
-        object_pos: Tensor,
-        object_rot: Tensor,
-        neutral_pointclouds: Tensor,
-        object_valid_mask: Tensor,
-    ):
-        self.object_pos = object_pos
-        self.object_rot = object_rot
-        self.neutral_pointclouds = neutral_pointclouds
-        self.object_valid_mask = object_valid_mask
-
-
-# =============================================================================
-# Main Context Class
-# =============================================================================
+    object_pos: Tensor = FieldPath(requires="objects")
+    object_rot: Tensor = FieldPath(requires="objects")
+    neutral_pointclouds: Tensor = FieldPath(requires="pointclouds")
+    object_valid_mask: Tensor = FieldPath(requires="objects")
 
 
 class EnvContext:
-    """Complete typed context for observation, reward, and termination functions.
+    """Every name in the context map, by namespace; see the module docstring."""
 
-    This class provides typed access to all environment state needed for
-    computing observations, rewards, and terminations. MdpComponent functions
-    receive this context and bind their kernels to context paths with full IDE
-    autocomplete:
+    current: PrivilegedStateView = NestedField(PrivilegedStateView)
+    clean: SensorStateView = NestedField(SensorStateView, requires="sensors")
+    noisy: SensorStateView = NestedField(SensorStateView, requires="sensors")
+    historical: PrivilegedHistoricalView = NestedField(
+        PrivilegedHistoricalView, requires="history"
+    )
+    clean_historical: SensorHistoricalView = NestedField(
+        SensorHistoricalView, requires=("sensors", "history")
+    )
+    noisy_historical: SensorHistoricalView = NestedField(
+        SensorHistoricalView, requires=("sensors", "history")
+    )
 
-        from protomotions.envs.context_views import EnvContext
-        from protomotions.envs.mdp_component import MdpComponent
+    # Policy commands start at slot 0; state history starts at slot 1. The two
+    # action-history windows are the policy's own past actions fed back, the same
+    # last_actions host kind the command history under the historical namespaces
+    # carries, which the exporter reads as the tracker's history input.
+    raw_action_history: Tensor = FieldPath(deploy="last_actions")
+    processed_action_history: Tensor = FieldPath(deploy="last_actions")
+    # The policy's own last raw action fed back one call ago (the recipe's
+    # last_action observation reads this). The exporter treats it as a single-slot
+    # action feedback from the "actions" output.
+    current_action: Tensor = FieldPath(deploy="last_actions")
+    current_processed_action: Tensor = FieldPath()
+    previous_action: Tensor = FieldPath(requires="history")
+    previous_processed_action: Tensor = FieldPath(requires="history")
 
-        observation_components = {
-            "max_coords_obs": MdpComponent(
-                compute_func=compute_humanoid_max_coords_observations,
-                dynamic_vars={
-                    "body_pos": EnvContext.current.rigid_body_pos,  # FieldPath
-                },
-            ),
-        }
-
-    Core state views (current, noisy) are always present. Historical and control-
-    specific views are optional and populated based on environment configuration.
-
-    All fields are FieldPath or NestedField descriptors for dual class/instance access.
-    """
-
-    # Core state (always present)
-    current: CurrentStateView = NestedField(CurrentStateView)
-    noisy: CurrentStateView = NestedField(CurrentStateView)
-
-    # Historical state (optional - depends on state history config)
-    historical: Optional[HistoricalView] = NestedField(HistoricalView)
-    noisy_historical: Optional[HistoricalView] = NestedField(HistoricalView)
-
-    # Actions (historical)
-    current_action: Optional[Tensor] = FieldPath()
-    previous_action: Optional[Tensor] = FieldPath()
-    current_processed_action: Optional[Tensor] = FieldPath()
-    previous_processed_action: Optional[Tensor] = FieldPath()
-
-    # Environment state
+    # The rows this context covers: None when it covers every env, the row
+    # tensor when it was built for a reset's subset.
     env_ids: Optional[Tensor] = FieldPath()
-    ground_heights: Optional[Tensor] = FieldPath()
-    noisy_ground_heights: Optional[Tensor] = FieldPath()
-    terrain: Optional[TerrainContext] = NestedField(TerrainContext)
-    scene: Optional[SceneSurfaceContext] = NestedField(SceneSurfaceContext)
-    body_contacts: Optional[Tensor] = FieldPath()
-    current_contact_force_magnitudes: Optional[Tensor] = FieldPath()
-    prev_contact_force_magnitudes: Optional[Tensor] = FieldPath()
+    ground_heights: Tensor = FieldPath()  # the same object as current.ground_heights
     dt: float = FieldPath()
-    progress_buf: Optional[Tensor] = FieldPath()
+    progress_buf: Tensor = FieldPath()
+    contact_body_ids: Tensor = FieldPath()
+    non_termination_contact_body_ids: Tensor = FieldPath()
+    terrain: TerrainContext = NestedField(
+        TerrainContext, requires="terrain_heightfield"
+    )
+    scene: SceneSurfaceContext = NestedField(SceneSurfaceContext)
+    # PRIVILEGED simulator truth: [env, selected bodies, selected partners, xyz].
+    # World-frame normal force on each row body, in N; not friction or a wrench.
+    # Never exposed through clean/noisy sensor estimates or hardware export.
+    contact_forces: Tensor = FieldPath(requires="contacts")
+    # Static name-to-axis maps, not observations or historical state.
+    contact_body_index: Dict[str, int] = FieldPath(requires="contacts")
+    contact_partner_index: Dict[str, int] = FieldPath(requires="contacts")
+    prev_contact_force_magnitudes: Tensor = FieldPath(requires="contacts")
 
-    # Contact tracking
-    contact_body_ids: Optional[Tensor] = FieldPath()
-    non_termination_contact_body_ids: Optional[Tensor] = FieldPath()
-
-    # Per-episode odometer corruption parameters (sampled once at episode reset).
-    # odom_scale [num_envs]: multiplicative scale for XY offset magnitude.
-    # odom_yaw_cos_sin [num_envs, 2]: (cos, sin) of per-episode yaw bias angle.
-    # Both are always present (initialized to identity: scale=1, angle=0) even
-    # when no corrupted XY observation is used, so factories can always bind to them.
-    odom_scale: Tensor = FieldPath()
-    odom_yaw_cos_sin: Tensor = FieldPath()
-
-    # Drift-from-episode-start odometer sensor fields (set once per step in
-    # _build_global_context). odom_disp_start_corrupt is the corrupted robot
-    # displacement from episode start expressed in the start-heading frame;
-    # odom_disp_start_clean is its ground-truth twin. odom_start_xy /
-    # odom_start_heading_inv anchor that frame. The heading-local offset to the
-    # reference is derived on demand from these raw ingredients by consumers
-    # (obs.target_poses.compute_odom_offset_local), not stored here.
-    odom_start_xy: Optional[Tensor] = FieldPath()
-    odom_start_heading_inv: Optional[Tensor] = FieldPath()
-    odom_disp_start_corrupt: Optional[Tensor] = FieldPath()
-    odom_disp_start_clean: Optional[Tensor] = FieldPath()
-
-    # Control-specific contexts (populated by controllers via populate_context)
-    mimic: Optional[MimicContext] = NestedField(MimicContext)
-    masked_mimic: Optional[MaskedMimicContext] = NestedField(MaskedMimicContext)
-    steering: Optional[SteeringContext] = NestedField(SteeringContext)
-    path: Optional[PathContext] = NestedField(PathContext)
-    target: Optional[TargetContext] = NestedField(TargetContext)
-
-    def __init__(
-        self,
-        current: CurrentStateView,
-        noisy: CurrentStateView,
-        dt: float,
-        historical: Optional[HistoricalView] = None,
-        noisy_historical: Optional[HistoricalView] = None,
-        current_action: Optional[Tensor] = None,
-        previous_action: Optional[Tensor] = None,
-        current_processed_action: Optional[Tensor] = None,
-        previous_processed_action: Optional[Tensor] = None,
-        env_ids: Optional[Tensor] = None,
-        ground_heights: Optional[Tensor] = None,
-        noisy_ground_heights: Optional[Tensor] = None,
-        terrain: Optional[TerrainContext] = None,
-        scene: Optional[SceneSurfaceContext] = None,
-        body_contacts: Optional[Tensor] = None,
-        current_contact_force_magnitudes: Optional[Tensor] = None,
-        prev_contact_force_magnitudes: Optional[Tensor] = None,
-        progress_buf: Optional[Tensor] = None,
-        contact_body_ids: Optional[Tensor] = None,
-        non_termination_contact_body_ids: Optional[Tensor] = None,
-        odom_scale: Optional[Tensor] = None,
-        odom_yaw_cos_sin: Optional[Tensor] = None,
-        odom_start_xy: Optional[Tensor] = None,
-        odom_start_heading_inv: Optional[Tensor] = None,
-        odom_disp_start_corrupt: Optional[Tensor] = None,
-        odom_disp_start_clean: Optional[Tensor] = None,
-        mimic: Optional[MimicContext] = None,
-        masked_mimic: Optional[MaskedMimicContext] = None,
-        steering: Optional[SteeringContext] = None,
-        path: Optional[PathContext] = None,
-        target: Optional[TargetContext] = None,
-    ):
-        """Initialize EnvContext with all state views.
-
-        Args:
-            current: Clean (ground-truth) current robot state for rewards/critic.
-            noisy: Noisy current robot state for actor observations.
-            dt: Simulation timestep in seconds.
-            historical: Clean historical state view (optional).
-            noisy_historical: Noisy historical state view (optional).
-            current_action: Current raw policy action before PD processing (optional).
-            previous_action: Previous raw action [num_envs, action_dim] (optional).
-            current_processed_action: Current processed action (optional).
-            previous_processed_action: Previous processed action (optional).
-            env_ids: Optional subset represented by this context.
-            ground_heights: Ground height beneath root position [num_envs] (optional).
-            noisy_ground_heights: Noisy ground height for actor (optional).
-            terrain: Terrain tensor context (optional).
-            scene: Scene object surface context (optional).
-            body_contacts: Boolean contact flags for tracked bodies (optional).
-            current_contact_force_magnitudes: Current contact force magnitudes (optional).
-            prev_contact_force_magnitudes: Previous contact forces (optional).
-            progress_buf: Episode progress counters (optional).
-            contact_body_ids: Indices of bodies to track contacts for (optional).
-            non_termination_contact_body_ids: Body IDs that may contact the ground without fall termination.
-            odom_scale: Per-episode odometer scale [num_envs] (optional).
-            odom_yaw_cos_sin: Per-episode yaw bias as (cos, sin) [num_envs, 2] (optional).
-            mimic: Mimic control context (optional).
-            masked_mimic: Masked mimic context (optional).
-            steering: Steering control context (optional).
-            path: Path following context (optional).
-            target: Target-reaching context (optional).
-        """
-        # Core state
-        self.current = current
-        self.noisy = noisy
-        self.dt = dt
-
-        # Historical state
-        self.historical = historical
-        self.noisy_historical = noisy_historical
-
-        # Actions
-        self.current_action = current_action
-        self.previous_action = previous_action
-        self.current_processed_action = current_processed_action
-        self.previous_processed_action = previous_processed_action
-
-        # Environment state
-        self.env_ids = env_ids
-        self.ground_heights = ground_heights
-        self.noisy_ground_heights = noisy_ground_heights
-        self.terrain = terrain
-        self.scene = scene
-        self.body_contacts = body_contacts
-        self.current_contact_force_magnitudes = current_contact_force_magnitudes
-        self.prev_contact_force_magnitudes = prev_contact_force_magnitudes
-        self.progress_buf = progress_buf
-
-        # Contact tracking
-        self.contact_body_ids = contact_body_ids
-        self.non_termination_contact_body_ids = non_termination_contact_body_ids
-
-        # Per-episode odometer corruption parameters
-        self.odom_scale = odom_scale
-        self.odom_yaw_cos_sin = odom_yaw_cos_sin
-        # Drift-from-episode-start odometer fields (populated in _build_global_context)
-        self.odom_start_xy = odom_start_xy
-        self.odom_start_heading_inv = odom_start_heading_inv
-        self.odom_disp_start_corrupt = odom_disp_start_corrupt
-        self.odom_disp_start_clean = odom_disp_start_clean
-
-        # Control-specific views
-        self.mimic = mimic
-        self.masked_mimic = masked_mimic
-        self.steering = steering
-        self.path = path
-        self.target = target
+    # Published by the control component of the same task, through the
+    # control manager; absent when the config has no such component.
+    mimic: MimicContext = control_namespace(MimicContext)
+    masked_mimic: MaskedMimicContext = control_namespace(MaskedMimicContext)
+    steering: SteeringContext = control_namespace(SteeringContext)
+    path: PathContext = control_namespace(PathContext)
+    target: TargetContext = control_namespace(TargetContext)
 
 
-# =============================================================================
-# Exports
-# =============================================================================
+# The top-level names (dt, progress_buf, current_action ...) form the namespace "".
+NAMESPACES: Tuple[str, ...] = (
+    "",
+    *(name for name, attr in vars(EnvContext).items() if isinstance(attr, NestedField)),
+)
+# The namespaces tagged owner="control" above.
+CONTROL_NAMESPACES: Tuple[str, ...] = tuple(
+    name
+    for name, attr in vars(EnvContext).items()
+    if isinstance(attr, NestedField) and attr.owner == "control"
+)
+
+
+def _namespace_field(namespace: str) -> NestedField:
+    attr = vars(EnvContext).get(namespace)
+    if not isinstance(attr, NestedField):
+        raise KeyError(f"'{namespace}' is not a declared context namespace")
+    return attr
+
+
+def declared_paths(namespace: str) -> Dict[str, FieldPath]:
+    """The declared names of one namespace, by full path (``""`` = top level).
+
+    Each FieldPath carries the name's own ``requires``; what the namespace as a
+    whole needs is :func:`namespace_requires`.
+    """
+    if namespace == "":
+        return {
+            name: attr
+            for name, attr in vars(EnvContext).items()
+            if isinstance(attr, FieldPath)
+        }
+    _namespace_field(namespace)
+    return declared_fields(getattr(EnvContext, namespace))
+
+
+def namespace_requires(namespace: str) -> Tuple[str, ...]:
+    """What a configuration needs for anything to be published under
+    ``namespace`` (empty for the top level and for always-published
+    namespaces)."""
+    return () if namespace == "" else _namespace_field(namespace).requires
+
+
+def deploy_for(path: str) -> Optional[str]:
+    """The host kind a declared context path carries, or ``None``.
+
+    Resolves the path to its declared ``FieldPath`` and returns its ``deploy``
+    slot: the one string a researcher writes, the host's name for the quantity.
+    Everything else the exporter needs (shape, dtype, the future and history
+    axes, the column labels, the sensor channel) is derived at export, not
+    declared. A path that is not declared, or carries no host kind, returns
+    ``None``, and the exporter refuses to export it.
+    """
+    namespace = path.split(".", 1)[0] if "." in path else ""
+    field = declared_paths(namespace).get(path)
+    return None if field is None else field.deploy
+
+
+def namespace_owner(namespace: str) -> Optional[str]:
+    """``"control"`` for a control component's namespace, else None."""
+    return None if namespace == "" else _namespace_field(namespace).owner
+
 
 __all__ = [
-    "CurrentStateView",
-    "HistoricalView",
-    "MimicContext",
+    "BodyStateView",
+    "CONTROL_NAMESPACES",
+    "CommandHistoryView",
+    "EnvContext",
     "MaskedMimicContext",
-    "SteeringContext",
+    "MimicContext",
+    "NAMESPACES",
     "PathContext",
+    "PrivilegedHistoricalView",
+    "PrivilegedStateView",
+    "RobotStateView",
+    "SceneSurfaceContext",
+    "SensorHistoricalView",
+    "SensorStateView",
+    "SteeringContext",
     "TargetContext",
     "TerrainContext",
-    "SceneSurfaceContext",
-    "EnvContext",
+    "control_namespace",
+    "declared_paths",
+    "deploy_for",
+    "namespace_owner",
+    "namespace_requires",
 ]

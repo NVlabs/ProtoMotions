@@ -8,6 +8,7 @@ Mimic Environment Configuration
 Full-body motion tracking environment with pose and velocity tracking.
 Uses early termination on tracking error and bootstrapping at episode end.
 """
+
 from protomotions.robot_configs.base import RobotConfig
 from protomotions.simulator.base_simulator.config import SimulatorConfig
 from protomotions.components.terrains.config import TerrainConfig
@@ -15,6 +16,8 @@ from protomotions.envs.base_env.config import EnvConfig
 from protomotions.agents.ppo.config import PPOAgentConfig
 from protomotions.components.scene_lib import SceneLibConfig
 from protomotions.components.motion_lib import MotionLibConfig
+from protomotions.envs.presets import tracking_playback
+from protomotions.utils.experiment_configs import ExperimentConfigs
 import argparse
 
 
@@ -25,7 +28,7 @@ def terrain_config(args: argparse.Namespace):
 
 def scene_lib_config(args: argparse.Namespace):
     """Build scene library configuration."""
-    scene_file = args.scenes_file if hasattr(args, "scenes_file") else None
+    scene_file = args.scenes_file
     return SceneLibConfig(scene_file=scene_file)
 
 
@@ -38,16 +41,28 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
     """Build environment configuration (training defaults)."""
     from protomotions.envs.motion_manager.config import MimicMotionManagerConfig
     from protomotions.envs.control.mimic_control import MimicControlConfig
-    from protomotions.envs.component_factories import (
-        max_coords_obs_factory,
-        previous_actions_factory,
-        mimic_target_poses_max_coords_factory,
-        action_smoothness_factory,
-        mimic_tracking_rewards_factory,
-        pow_rew_factory,
-        contact_match_rew_factory,
-        tracking_error_term_factory,
+    from protomotions.envs.obs.humanoid import compute_humanoid_max_coords_observations
+    from protomotions.envs.obs.target_poses import build_max_coords_target_poses
+    from protomotions.envs.obs.humanoid_historical import (
+        compute_historical_actions_from_state,
     )
+    from protomotions.envs.body_selection import BodySelection
+    from protomotions.envs.mdp_component import MdpComponent
+    from protomotions.envs.rewards.meta import RewardMeta
+    from protomotions.envs.rewards.regularization import (
+        compute_action_smoothness,
+        compute_pow_rew,
+        compute_terrain_foot_contact_match_rew,
+    )
+    from protomotions.envs.rewards.tracking import (
+        compute_gav_rew,
+        compute_gr_rew,
+        compute_gt_rew,
+        compute_gv_rew,
+        compute_rh_rew,
+    )
+    from protomotions.envs.terminations.tracking import max_body_pos_error
+    from protomotions.envs.terminations.rule import TerminationRule
     from protomotions.envs.action import make_pd_action_config
 
     control_components = {
@@ -57,39 +72,76 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
     }
 
     observation_components = {
-        "max_coords_obs": max_coords_obs_factory(),
-        "previous_actions": previous_actions_factory(history_steps=1),
-        "mimic_target_poses": mimic_target_poses_max_coords_factory(with_velocities=True),
+        "max_coords_obs": MdpComponent.from_kernel(
+            compute_humanoid_max_coords_observations
+        ),
+        "previous_actions": MdpComponent.from_kernel(
+            compute_historical_actions_from_state, history_steps=1
+        ),
+        "mimic_target_poses": MdpComponent.from_kernel(
+            build_max_coords_target_poses, with_velocities=True
+        ),
     }
 
     termination_components = {
-        "tracking_error": tracking_error_term_factory(threshold=0.5),
+        "tracking_error": TerminationRule(
+            MdpComponent.from_kernel(max_body_pos_error), 0.5
+        ),
     }
 
+    foot_contact_bodies = (
+        robot_cfg.common_naming_to_robot_body_names["all_left_foot_bodies"]
+        + robot_cfg.common_naming_to_robot_body_names["all_right_foot_bodies"]
+    )
     reward_components = {
-        "action_smoothness": action_smoothness_factory(weight=-0.02),
-        **mimic_tracking_rewards_factory(
-            gt_weight=0.5,
-            gr_weight=0.3,
-            gv_weight=0.1,
-            gav_weight=0.2,
-            rh_weight=0.2,
-            gt_coef=-25.0,
-            gr_coef=-5.0,
-            gv_coef=-0.5,
-            gav_coef=-0.1,
-            rh_coef=-100.0,
+        "action_smoothness": MdpComponent.from_kernel(
+            compute_action_smoothness,
+            meta=RewardMeta(weight=-0.02),
         ),
-        "pow_rew": pow_rew_factory(weight=-1e-5, min_value=-0.5),
-        "contact_match_rew": contact_match_rew_factory(
-            weight=-0.1, zero_during_grace_period=True
+        "gt_rew": MdpComponent.from_kernel(
+            compute_gt_rew,
+            meta=RewardMeta(weight=0.5),
+            coefficient=-25.0,
+        ),
+        "gr_rew": MdpComponent.from_kernel(
+            compute_gr_rew,
+            meta=RewardMeta(weight=0.3),
+            coefficient=-5.0,
+        ),
+        "gv_rew": MdpComponent.from_kernel(
+            compute_gv_rew,
+            meta=RewardMeta(weight=0.1),
+            coefficient=-0.5,
+        ),
+        "gav_rew": MdpComponent.from_kernel(
+            compute_gav_rew,
+            meta=RewardMeta(weight=0.2),
+            coefficient=-0.1,
+        ),
+        "rh_rew": MdpComponent.from_kernel(
+            compute_rh_rew,
+            meta=RewardMeta(weight=0.2),
+            coefficient=-100.0,
+        ),
+        "pow_rew": MdpComponent.from_kernel(
+            compute_pow_rew,
+            meta=RewardMeta(weight=-1e-5, min_value=-0.5),
+        ),
+        "contact_match_rew": MdpComponent.from_kernel(
+            compute_terrain_foot_contact_match_rew,
+            meta=RewardMeta(weight=-0.1, zero_during_grace_period=True),
+            required_keys={
+                "contact_body_index": foot_contact_bodies,
+                "contact_partner_index": ["terrain"],
+            },
+            contact_body_ids=BodySelection.named(*foot_contact_bodies),
+            body_names=foot_contact_bodies,
         ),
     }
 
     return EnvConfig(
         ref_contact_smooth_window=7,
         max_episode_length=1000,
-        num_state_history_steps=2,
         control_components=control_components,
         observation_components=observation_components,
         termination_components=termination_components,
@@ -113,15 +165,7 @@ def agent_config(
         AdvantageNormalizationConfig,
     )
     from protomotions.agents.base_agent.config import OptimizerConfig
-    from protomotions.agents.evaluators.config import (
-        MimicEvaluatorConfig,
-        MotionWeightsRulesConfig,
-    )
-    from protomotions.envs.component_factories import (
-        gt_error_factory,
-        gr_error_factory,
-        max_joint_error_factory,
-    )
+    from protomotions.agents.evaluators.presets import mimic_tracking_benchmark
 
     actor_config = PPOActorConfig(
         num_out=robot_config.kinematic_info.num_dofs,
@@ -129,11 +173,6 @@ def agent_config(
         in_keys=["max_coords_obs", "mimic_target_poses", "previous_actions"],
         mu_key="actor_trunk_out",
         mu_model=MLPWithConcatConfig(
-            in_keys=[
-                "max_coords_obs",
-                "mimic_target_poses",
-                "previous_actions",
-            ],
             normalize_obs=True,
             norm_clamp_value=5,
             out_keys=["actor_trunk_out"],
@@ -153,12 +192,6 @@ def agent_config(
 
     agent_config: PPOAgentConfig = PPOAgentConfig(
         model=PPOModelConfig(
-            in_keys=[
-                "max_coords_obs",
-                "mimic_target_poses",
-                "previous_actions",
-            ],
-            out_keys=["action", "mean_action", "neglogp", "value"],
             actor=actor_config,
             critic=critic_config,
             actor_optimizer=OptimizerConfig(_target_="torch.optim.Adam", lr=2e-5),
@@ -168,17 +201,7 @@ def agent_config(
         training_max_steps=args.training_max_steps,
         gradient_clip_val=50.0,
         clip_critic_loss=True,
-        evaluator=MimicEvaluatorConfig(
-            evaluation_components={
-                "gt_error": gt_error_factory(threshold=0.5),
-                "gr_error": gr_error_factory(),
-                "max_joint_error": max_joint_error_factory(),
-            },
-            motion_weights_rules=MotionWeightsRulesConfig(
-                motion_weights_update_success_discount=0.999,
-                motion_weights_update_failure_discount=0,
-            ),
-        ),
+        evaluator=mimic_tracking_benchmark(0.5),
         advantage_normalization=AdvantageNormalizationConfig(
             enabled=True, shift_mean=True, use_ema=True
         ),
@@ -190,27 +213,14 @@ def configure_robot_and_simulator(
     robot_cfg: RobotConfig, simulator_cfg: SimulatorConfig, args: argparse.Namespace
 ):
     """Configure robot to add contact sensors for foot contact tracking."""
-    # Match IsaacLab's implicit robot material when this policy was trained.
-    simulator_cfg.default_robot_friction = 0.5
     robot_cfg.update_fields(
-        contact_bodies=["all_left_foot_bodies", "all_right_foot_bodies"]
+        contact_bodies=["all_left_foot_bodies", "all_right_foot_bodies"],
+        contact_partners=["terrain"],
     )
 
 
 def apply_inference_overrides(
-    robot_cfg: RobotConfig,
-    simulator_cfg: SimulatorConfig,
-    env_cfg,
-    agent_cfg,
-    terrain_cfg: TerrainConfig,
-    motion_lib_cfg: MotionLibConfig,
-    scene_lib_cfg: SceneLibConfig,
-    args: argparse.Namespace,
-):
-    """Apply evaluation-specific overrides."""
-    if hasattr(env_cfg, "termination_components") and env_cfg.termination_components:
-        env_cfg.termination_components = {}
-
-    env_cfg.max_episode_length = 1000000
-    env_cfg.motion_manager.resample_on_reset = True
-    env_cfg.motion_manager.init_start_prob = 1.0
+    configs: ExperimentConfigs, args: argparse.Namespace
+) -> None:
+    """Play each clip through to its end for evaluation."""
+    tracking_playback(configs.env)

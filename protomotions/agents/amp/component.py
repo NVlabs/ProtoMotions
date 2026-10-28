@@ -20,11 +20,11 @@ import torch
 from tensordict import TensorDict
 from torch import Tensor
 
-from protomotions.agents.base_agent.agent import BaseAgent
 from protomotions.agents.optimizer.factory import instantiate_optimizer
-from protomotions.agents.ppo.utils import discount_values
+from protomotions.agents.ppo.utils.advantages import discount_values
 from protomotions.agents.utils.normalization import RewardRunningMeanStd
 from protomotions.agents.utils.replay_buffer import ReplayBuffer
+from protomotions.envs.context_paths import FieldPath
 
 log = logging.getLogger(__name__)
 
@@ -113,7 +113,9 @@ class AMPTrainingComponent:
         self.discriminator_optimizer.load_state_dict(
             state_dict["discriminator_optimizer"]
         )
-        if self.use_disc_critic:
+        if self.use_disc_critic and any(
+            key.startswith("_disc_critic.") for key in state_dict["model"]
+        ):
             self.disc_critic_optimizer.load_state_dict(
                 state_dict["disc_critic_optimizer"]
             )
@@ -265,9 +267,8 @@ class AMPTrainingComponent:
             "motion_ids": motion_ids,
             "motion_times": motion_times,
             "dt": self.agent.env.simulator.dt,
-            "num_state_history_steps": self.agent.env.config.num_state_history_steps,
             "anchor_body_index": self.agent.env.robot_config.anchor_body_index,
-            "contact_body_ids": getattr(self.agent.env, "contact_body_ids", None),
+            "contact_body_ids": self.agent.env.contact_body_ids,
         }
 
     @staticmethod
@@ -285,7 +286,11 @@ class AMPTrainingComponent:
                 continue
             if name in available:
                 func_kwargs[name] = available[name]
-            elif param.default is inspect.Parameter.empty:
+            elif param.default is inspect.Parameter.empty or isinstance(
+                param.default, FieldPath
+            ):
+                # A context-path default is what the environment publishes;
+                # the expert path has no context, so this call must name it.
                 missing.append(name)
 
         if missing:
@@ -731,60 +736,12 @@ class AMPAgentMixin:
         super().create_optimizers(model)
         AMPTrainingComponent.for_agent(self).create_optimizers(model)
 
-    def _load_model_state_dict(self, model_state_dict):
-        has_amp_model = any(k.startswith("_discriminator.") for k in model_state_dict)
-        self._warm_start_from_non_amp_checkpoint = not has_amp_model
-
-        if has_amp_model:
-            super()._load_model_state_dict(model_state_dict)
-            return
-
-        log.info(
-            "Warm-starting AMP from non-AMP checkpoint: loading actor/critic "
-            "weights only; discriminator networks stay randomly initialized."
-        )
-
-        actor_module = self._fixed_logstd_actor_module()
-        has_fixed_logstd = actor_module is not None
-        if has_fixed_logstd:
-            current_logstd = actor_module.logstd.data.clone()
-
-        missing, unexpected = self.model.load_state_dict(
-            model_state_dict,
-            strict=False,
-        )
-        if missing:
-            log.info("Expected missing keys for new AMP networks: %d", len(missing))
-        if unexpected:
-            log.warning("Unexpected keys in checkpoint: %s", unexpected)
-
-        if has_fixed_logstd:
-            checkpoint_logstd = actor_module.logstd.data
-            if not torch.allclose(current_logstd, checkpoint_logstd, atol=1e-6):
-                actor_module.logstd.data = current_logstd
-
-    def _fixed_logstd_actor_module(self):
-        """Return the actor module whose fixed Gaussian logstd should be preserved."""
-        actor_config = self.config.model.actor
-        if not hasattr(actor_config, "learnable_std") or actor_config.learnable_std:
-            return None
-        if not hasattr(self, "actor"):
-            return None
-        actor_module = self.actor_module
-        return actor_module if hasattr(actor_module, "logstd") else None
-
-    def _actor_has_fixed_logstd(self) -> bool:
-        """Whether warm-start loading should preserve a fixed Gaussian logstd."""
-        return self._fixed_logstd_actor_module() is not None
-
     def _load_training_state(self, state_dict):
-        if getattr(self, "_warm_start_from_non_amp_checkpoint", False):
-            BaseAgent._load_training_state(self, state_dict)
-            self._load_ppo_training_state(state_dict, require_optimizers=False)
-            return
-
         super()._load_training_state(state_dict)
-        AMPTrainingComponent.for_agent(self).load_training_state(state_dict)
+        # Policy training state belongs to the host algorithm. AMP restores its
+        # own optimizer/statistics only when its network was actually saved.
+        if any(key.startswith("_discriminator.") for key in state_dict["model"]):
+            AMPTrainingComponent.for_agent(self).load_training_state(state_dict)
 
     def get_state_dict(self, state_dict):
         state_dict = super().get_state_dict(state_dict)

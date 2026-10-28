@@ -288,7 +288,7 @@ def quat_conjugate_np(q_xyzw: np.ndarray) -> np.ndarray:
 
     Used by the deploy ONNX input assembly to invert the captured
     ``odom_start_heading_inv`` back to the forward start-heading quaternion,
-    mirroring ``rotations.quat_conjugate`` in ``BaseEnv._build_context``.
+    mirroring ``rotations.quat_conjugate`` in the env's sensor estimation.
     """
     return _quat_conjugate_np(np.asarray(q_xyzw, dtype=np.float32))
 

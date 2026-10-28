@@ -126,6 +126,23 @@ class ControlInfo:
     effort_limit: Optional[float] = field(default=None)
     velocity_limit: Optional[float] = field(default=None)
 
+    def require(self, name: str) -> float:
+        """Return a PD/limit parameter that must be set, or raise if it is None.
+
+        The backends call this instead of defaulting a missing gain or limit to
+        a silent constant. ``friction`` is asset-owned (``None`` means "use the
+        engine's value"), so it is not requireable.
+        """
+        if name == "friction":
+            raise TypeError("friction is asset-owned; None means the engine's value")
+        value = getattr(self, name)
+        if value is None:
+            raise ValueError(
+                f"ControlInfo.{name} is not set for this joint; declare it in the "
+                f"robot's override_control_info or in the MJCF"
+            )
+        return value
+
 
 def compute_joint_loss_weights(
     kinematic_info: KinematicInfo,
@@ -564,7 +581,9 @@ def extract_kinematic_info(mjcf_path: str) -> KinematicInfo:
 
 
 def extract_control_info(
-    mjcf_path: str, override_control_info: Optional[Dict[str, ControlInfo]] = None
+    mjcf_path: str,
+    override_control_info: Optional[Dict[str, ControlInfo]] = None,
+    asset_default_joints: Tuple[str, ...] = (),
 ) -> Dict[str, ControlInfo]:
     """
     Extracts control information (stiffness, damping, etc.) from an MJCF XML file.
@@ -576,14 +595,24 @@ def extract_control_info(
     3. Default values if parameters are not specified
     4. Override values if specified in the override_control_info dictionary
 
+    When ``override_control_info`` is non-empty the overrides are checked against
+    the joints: a pattern that matches no joint is a mistake (raised), and every
+    joint must be claimed by an override pattern or listed under
+    ``asset_default_joints`` (patterns of joints that deliberately keep the MJCF
+    values) — a joint claimed by neither is raised, so a gains table and the
+    asset cannot drift apart silently.
+
     Args:
         mjcf_path (str): Path to the MJCF XML file.
         override_control_info (Optional[Dict[str, ControlInfo]]): Override control information for specific joints.
+        asset_default_joints (Tuple[str, ...]): Regex patterns of joints that
+            intentionally keep the MJCF's control values (no override needed).
     Returns:
         ControlInfo: An object containing the control information for all DOFs.
 
     Raises:
-        ValueError: If the MJCF file cannot be parsed or if required information is missing.
+        ValueError: If the MJCF file cannot be parsed, a pattern matches no
+            joint, or a joint is claimed by no override or asset-default pattern.
     """
     try:
         mjcf_model = mjcf.from_path(mjcf_path)
@@ -649,7 +678,6 @@ def extract_control_info(
                 override_joint_control_info,
             ) in override_control_info.items():
                 if re.fullmatch(joint_expr, joint_name):
-                    print(f"Overriding control info for {joint_name} with {joint_expr}")
                     if override_joint_control_info.stiffness is not None:
                         stiffness = override_joint_control_info.stiffness
                     if override_joint_control_info.damping is not None:
@@ -704,7 +732,34 @@ def extract_control_info(
     if not control_info:
         raise ValueError(f"No DOFs found in MJCF file {mjcf_path}")
 
-    # Convert lists to tensors
+    # The gains table must agree with the asset: every override pattern claims at
+    # least one joint, and every joint is claimed by an override or an
+    # asset-default pattern. (A robot with no overrides skips the rule entirely.)
+    if override_control_info:
+        joint_names = list(control_info.keys())
+        claims = {
+            joint: [p for p in override_control_info if re.fullmatch(p, joint)]
+            for joint in joint_names
+        }
+        for pattern in override_control_info:
+            if not any(pattern in claims[joint] for joint in joint_names):
+                raise ValueError(
+                    f"override_control_info pattern {pattern!r} matches no joint "
+                    f"of {mjcf_path}; joints: {joint_names}"
+                )
+        unclaimed = [
+            joint
+            for joint in joint_names
+            if not claims[joint]
+            and not any(re.fullmatch(p, joint) for p in asset_default_joints)
+        ]
+        if unclaimed:
+            raise ValueError(
+                f"joints {unclaimed} of {mjcf_path} are claimed by no override "
+                f"pattern; add a pattern or list them under "
+                f"ControlConfig.asset_default_joints"
+            )
+
     return control_info
 
 

@@ -10,7 +10,6 @@
 [![Newton](https://img.shields.io/badge/Newton-1.0.0-brightgreen.svg)](https://pypi.org/project/newton/1.0.0/)
 [![IsaacLab](https://img.shields.io/badge/IsaacLab-3.0-blue.svg)](https://github.com/isaac-sim/IsaacLab/commit/4ecd0b036da19ff6ad2bb4d621f886b63e9f6db8)
 [![IsaacGym](https://img.shields.io/badge/IsaacGym-Preview_4-blue.svg)](https://developer.nvidia.com/isaac-gym)
-[![Genesis](https://img.shields.io/badge/Genesis-untested-lightgrey.svg)](https://github.com/Genesis-Embodied-AI/Genesis)
 [![MuJoCo](https://img.shields.io/badge/MuJoCo-3.0+-orange.svg)](https://github.com/google-deepmind/mujoco)
 [![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/NVlabs/ProtoMotions) (unverified AI generation)
 
@@ -108,6 +107,11 @@ Our deployment pipeline exports a single ONNX model (with observation computatio
 
 📖 [**Full Deployment Tutorial**](https://protomotions.github.io/tutorials/workflows/g1_deployment.html) — from data preparation to real robot, fully reproducible.
 
+For the integrated C++ runtime, MuJoCo/Unitree backends, policy mapping and
+TensorRT build/qualification workflow, see [**Deployment runtime
+(experimental)**](deployment/README.md). That folder is prototyping reference
+code, not a supported release artifact.
+
 ### 🎨 High-Fidelity Rendering
 
 Test your policy in [**IsaacSim 5.0+**](https://developer.nvidia.com/isaac-sim), which allows you to load beautifully rendered Gaussian splatting backgrounds (with [**Omniverse NuRec**](https://developer.nvidia.com/blog/reconstruct-a-scene-in-nvidia-isaac-sim-using-only-a-smartphone/) — this rendered scene is not physically interact-able yet).
@@ -194,9 +198,9 @@ Would like to use your own simulator? Implement these APIs interfacing among dif
 
 📄 [`protomotions/simulator/base_simulator/`](protomotions/simulator/base_simulator/)
 
-Refer to this community-contributed example:
+Refer to the MuJoCo backend as the smallest reference implementation:
 
-📄 [`protomotions/simulator/genesis/`](protomotions/simulator/genesis/)
+📄 [`protomotions/simulator/mujoco/`](protomotions/simulator/mujoco/)
 
 ### 🤖 Add Your Own Robot
 

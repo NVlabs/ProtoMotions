@@ -4,77 +4,22 @@
 """Base termination checking utilities.
 
 Provides core functions for checking common termination conditions:
-- Fall detection (contact + height)
+- Fall detection (contact + height), joint-limit blow-up
 - Episode length limits
-- Generic threshold termination
+
+The two boolean kernels (``named_contact_fall_termination``,
+``joint_limit_termination``) carry their state inputs as context defaults; a
+recipe binds one with ``MdpComponent.from_kernel`` (supplying the body
+selection or the joint limits) and wraps it in a thresholdless
+``TerminationRule``.
 """
 
-import torch
 from torch import Tensor
+from typing import Dict, List
+from protomotions.envs.contact_features import contact_flags, contact_rows
+from protomotions.envs.context_views import EnvContext
 
 
-@torch.jit.script
-def check_fall_contact_term(
-    contact_binary_flags: Tensor,
-    non_termination_body_ids: Tensor,
-    progress_buf: Tensor,
-) -> Tensor:
-    """Check if agent has fallen based on unwanted body contacts.
-
-    An agent is considered fallen if any non-allowed body part is in contact
-    with the ground (e.g., torso, head touching ground when only feet should).
-
-    Args:
-        contact_binary_flags: Binary contact flags [num_envs, num_bodies]
-        non_termination_body_ids: IDs of bodies that are allowed to contact ground
-        progress_buf: Episode progress counter [num_envs]
-
-    Returns:
-        Boolean tensor [num_envs] indicating which environments have fallen
-    """
-    # Create mask for all bodies, then zero out allowed contact bodies
-    masked_contacts = contact_binary_flags.clone()
-    masked_contacts[:, non_termination_body_ids] = False
-
-    # Any contact on non-allowed bodies indicates a fall
-    fall_contact = torch.any(masked_contacts, dim=-1)
-
-    # First timestep can sometimes still have nonzero contact forces
-    # so only check after first couple of steps
-    fall_contact = fall_contact & (progress_buf > 1)
-
-    return fall_contact
-
-
-@torch.jit.script
-def check_height_term(
-    rigid_body_pos: Tensor,
-    termination_heights: Tensor,
-    non_termination_body_ids: Tensor,
-) -> Tensor:
-    """Check if any body parts are below termination height.
-
-    Args:
-        rigid_body_pos: Body positions [num_envs, num_bodies, 3]
-        termination_heights: Height thresholds per body [num_bodies]
-        non_termination_body_ids: IDs of bodies to exclude from check
-
-    Returns:
-        Boolean tensor [num_envs] indicating which environments violated height constraint
-    """
-    body_height = rigid_body_pos[..., 2]  # [num_envs, num_bodies]
-    fall_height = body_height < termination_heights  # [num_envs, num_bodies]
-
-    # Don't check height for allowed contact bodies (e.g., feet)
-    fall_height[:, non_termination_body_ids] = False
-
-    # Any body below threshold indicates termination
-    has_height_violation = torch.any(fall_height, dim=-1)
-
-    return has_height_violation
-
-
-@torch.jit.script
 def check_max_length_term(
     progress_buf: Tensor,
     max_episode_length: float,
@@ -91,181 +36,46 @@ def check_max_length_term(
     return progress_buf >= max_episode_length - 1
 
 
-@torch.jit.script
-def combine_fall_termination(
-    contact_binary_flags: Tensor,
-    rigid_body_pos: Tensor,
-    termination_heights: Tensor,
-    non_termination_body_ids: Tensor,
-    progress_buf: Tensor,
-) -> Tensor:
-    """Combined fall termination check (contact + height).
-
-    Convenience function that combines contact and height checks for standard
-    fall detection (agent fallen if both contact and height conditions met).
-
-    Args:
-        contact_binary_flags: Binary contact flags [num_envs, num_bodies]
-        rigid_body_pos: Body positions [num_envs, num_bodies, 3]
-        termination_heights: Height thresholds per body [num_bodies]
-        non_termination_body_ids: IDs of bodies allowed to contact ground
-        progress_buf: Episode progress counter [num_envs]
-
-    Returns:
-        Boolean tensor [num_envs] indicating which environments have fallen
-    """
-    fall_contact = check_fall_contact_term(
-        contact_binary_flags, non_termination_body_ids, progress_buf
-    )
-    fall_height = check_height_term(
-        rigid_body_pos, termination_heights, non_termination_body_ids
-    )
-
-    # Agent has fallen if BOTH contact and height conditions are met
-    has_fallen = fall_contact & fall_height
-
-    return has_fallen
-
-
 # ==============================================================================
-# Context-taking termination functions
+# Boolean termination kernels
 # ==============================================================================
 
 
-def threshold_termination(value: Tensor, threshold: float, greater_than: bool = True) -> Tensor:
-    """Terminate when value exceeds (or falls below) a threshold.
-    
-    Generic termination function that can be used in MdpComponent.
-    
-    Args:
-        value: Values to check [num_envs] or [num_envs, ...].
-        threshold: Threshold value.
-        greater_than: If True, terminate when value > threshold.
-                     If False, terminate when value < threshold.
-    
-    Returns:
-        Boolean tensor [num_envs] indicating which environments should terminate.
-    """
-    # If value has multiple dimensions, reduce to per-env scalar
-    if value.dim() > 1:
-        value = value.mean(dim=tuple(range(1, value.dim())))
-    
-    if greater_than:
-        return value > threshold
-    else:
-        return value < threshold
-
-
-def fall_termination(
-    rigid_body_pos: Tensor,
-    rigid_body_contacts: Tensor,
-    ground_heights: Tensor,
-    termination_height: float,
-    non_termination_contact_body_ids: Tensor,
-    progress_buf: Tensor,
+def named_contact_fall_termination(
+    body_ids: Tensor,
+    body_names: List[str],
+    partner_names: List[str],
+    rigid_body_pos: Tensor = EnvContext.current.rigid_body_pos,
+    contact_forces: Tensor = EnvContext.contact_forces,
+    contact_body_index: Dict[str, int] = EnvContext.contact_body_index,
+    contact_partner_index: Dict[str, int] = EnvContext.contact_partner_index,
+    ground_heights: Tensor = EnvContext.ground_heights,
+    progress_buf: Tensor = EnvContext.progress_buf,
+    termination_height: float = 0.15,
 ) -> Tensor:
-    """Combined fall termination check.
-    
-    Checks for falls using both unwanted body contacts and height violations.
-    An agent has fallen if both conditions are met: unexpected contact and
-    body parts below height threshold.
-    
-    This is a wrapper around combine_fall_termination that accepts ground_heights
-    as a separate parameter for terrain adjustment.
-    
-    Args:
-        rigid_body_pos: Body positions [num_envs, num_bodies, 3].
-        rigid_body_contacts: Binary contact flags [num_envs, num_bodies].
-        ground_heights: Ground height at root position [num_envs].
-        termination_height: Height threshold for fall detection.
-        non_termination_contact_body_ids: IDs of bodies allowed to contact ground.
-        progress_buf: Episode progress counter [num_envs].
-    
-    Returns:
-        Boolean tensor [num_envs] indicating which environments have fallen.
+    """Contact AND low height for named forbidden bodies, after reset grace.
+
+    Positions/heights are in world metres. Forces are world normal forces in N.
+    ``body_ids`` address the full kinematics (the recipe builds them once with
+    ``build_body_ids_tensor(robot_cfg.kinematic_info.body_names, body_names,
+    device=torch.device("cpu"))``); ``body_names`` and ``partner_names`` address
+    the compact contact matrix and go in ``required_keys=`` too, so a
+    foot-only matrix cannot silently stand in for whole-body fall detection.
+    Both are exact names (:func:`contact_rows` refuses a pattern).
     """
-    num_bodies = rigid_body_pos.shape[1]
-    device = rigid_body_pos.device
-    
-    # Create per-body termination heights adjusted for terrain
-    termination_heights = torch.full(
-        (num_bodies,), termination_height, device=device
-    )
-    adjusted_termination_heights = termination_heights + ground_heights.unsqueeze(-1)
-    
-    return combine_fall_termination(
-        contact_binary_flags=rigid_body_contacts,
-        rigid_body_pos=rigid_body_pos,
-        termination_heights=adjusted_termination_heights,
-        non_termination_body_ids=non_termination_contact_body_ids,
-        progress_buf=progress_buf,
-    )
-
-
-def height_termination(
-    rigid_body_pos: Tensor,
-    ground_heights: Tensor,
-    termination_height: float,
-    non_termination_body_ids: Tensor,
-) -> Tensor:
-    """Height-only termination check.
-    
-    Checks if any body parts are below termination height (adjusted for terrain).
-    
-    Args:
-        rigid_body_pos: Body positions [num_envs, num_bodies, 3].
-        ground_heights: Ground height at root position [num_envs].
-        termination_height: Height threshold for termination.
-        non_termination_body_ids: IDs of bodies to exclude from check.
-    
-    Returns:
-        Boolean tensor [num_envs] indicating which environments violated height constraint.
-    """
-    num_bodies = rigid_body_pos.shape[1]
-    device = rigid_body_pos.device
-    
-    # Create per-body termination heights adjusted for terrain
-    termination_heights = torch.full(
-        (num_bodies,), termination_height, device=device
-    )
-    adjusted_termination_heights = termination_heights + ground_heights.unsqueeze(-1)
-    
-    return check_height_term(
-        rigid_body_pos=rigid_body_pos,
-        termination_heights=adjusted_termination_heights,
-        non_termination_body_ids=non_termination_body_ids,
-    )
-
-
-def contact_termination(
-    rigid_body_contacts: Tensor,
-    non_termination_contact_body_ids: Tensor,
-    progress_buf: Tensor,
-) -> Tensor:
-    """Contact-only termination check.
-    
-    Checks if any non-allowed body parts are in contact with ground.
-    
-    Args:
-        rigid_body_contacts: Binary contact flags [num_envs, num_bodies].
-        non_termination_contact_body_ids: IDs of bodies allowed to contact ground.
-        progress_buf: Episode progress counter [num_envs].
-    
-    Returns:
-        Boolean tensor [num_envs] indicating which environments have unwanted contacts.
-    """
-    return check_fall_contact_term(
-        contact_binary_flags=rigid_body_contacts,
-        non_termination_body_ids=non_termination_contact_body_ids,
-        progress_buf=progress_buf,
-    )
-
+    rows = contact_rows(contact_body_index, body_names, "body_names")
+    columns = contact_rows(contact_partner_index, partner_names, "partner_names")
+    forces = contact_forces[:, rows][:, :, columns]
+    has_contact = contact_flags(forces).any(dim=-1)
+    heights = rigid_body_pos[:, body_ids, 2] - ground_heights.unsqueeze(-1)
+    low_body = (heights < termination_height).any(dim=-1)
+    return has_contact & low_body & (progress_buf > 1)
 
 
 def joint_limit_termination(
-    dof_pos: Tensor,
     dof_limits_lower: Tensor,
     dof_limits_upper: Tensor,
+    dof_pos: Tensor = EnvContext.current.dof_pos,
     max_violation: float = 1.0,
 ) -> Tensor:
     """End the episode once joints are driven far past their limits.
@@ -280,9 +90,10 @@ def joint_limit_termination(
     resets, and the penalty for the steps that did happen stays small.
 
     Args:
-        dof_pos: Joint positions [num_envs, num_dofs].
-        dof_limits_lower: Lower joint limits [num_dofs].
+        dof_limits_lower: Lower joint limits [num_dofs], from
+            ``robot_cfg.kinematic_info.dof_limits_lower``.
         dof_limits_upper: Upper joint limits [num_dofs].
+        dof_pos: Joint positions [num_envs, num_dofs].
         max_violation: Radians past a limit, on any single joint, that ends the
             episode. Per-joint rather than summed so one badly diverged joint is
             caught without needing the whole body to be broken.

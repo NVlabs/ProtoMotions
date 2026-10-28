@@ -5,6 +5,7 @@
 
 import atexit
 from contextlib import nullcontext
+from functools import cached_property
 import logging
 import os
 import tempfile
@@ -33,7 +34,10 @@ from protomotions.simulator.base_simulator.simulator_state import (
 )
 from protomotions.simulator.mujoco.config import MujocoSimulatorConfig
 from protomotions.simulator.mujoco.keyboard import MujocoViewerKeyboard
-from protomotions.simulator.mujoco.recording import recording_dimensions, render_viewport
+from protomotions.simulator.mujoco.recording import (
+    recording_dimensions,
+    render_viewport,
+)
 
 
 # Names accepted by MujocoSimParams.integrator
@@ -137,11 +141,6 @@ class MujocoSimulator(Simulator):
         # Body/DOF indexing
         self._num_actuated_dofs = self.robot_config.number_of_actions
         self._has_free_joint = not self.robot_config.asset.fix_base_link
-
-        # Action EMA filter: a_applied = alpha * a_policy + (1 - alpha) * a_prev
-        # Set alpha=1.0 to disable filtering, lower values = more smoothing
-        self._action_filter_alpha = 1.0
-        self._prev_pd_targets = None  # Initialized on first call
 
         # Debug counter
         self._step_count = 0
@@ -580,11 +579,9 @@ class MujocoSimulator(Simulator):
 
         for dof_name in self._dof_names:
             info = control_info[dof_name]
-            kp_list.append(info.stiffness)
-            kd_list.append(info.damping)
-            effort_list.append(
-                info.effort_limit if info.effort_limit is not None else 1000.0
-            )
+            kp_list.append(info.require("stiffness"))
+            kd_list.append(info.require("damping"))
+            effort_list.append(info.require("effort_limit"))
 
         self._kp = np.array(kp_list, dtype=np.float64)
         self._kd = np.array(kd_list, dtype=np.float64)
@@ -613,28 +610,20 @@ class MujocoSimulator(Simulator):
             )
             return
 
-        # Get PD gains in sim DOF order (matching actuator order via mapping)
-        dof_start = 6 if self._has_free_joint else 0
-
         for act_idx in range(self.model.nu):
             jnt_id = self.model.actuator_trnid[act_idx, 0]
-            dof_addr = self.model.jnt_dofadr[jnt_id]
-            dof_idx = dof_addr - dof_start  # index into common DOF arrays
-
-            # Find which common DOF this actuator controls
-            # dof_idx is in sim DOF order; find corresponding common DOF
-            # Use dof_convert_to_common if available, otherwise direct mapping
+            # The gains come from the robot's control_info keyed by joint name.
             jnt_name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT, jnt_id)
-            if jnt_name in self.robot_config.control.control_info:
-                info = self.robot_config.control.control_info[jnt_name]
-                kp = info.stiffness
-                kd = info.damping
-                effort = info.effort_limit if info.effort_limit is not None else 1000.0
-            else:
-                # Fallback to common DOF order arrays
-                kp = self._kp[dof_idx]
-                kd = self._kd[dof_idx]
-                effort = self._effort_limits[dof_idx]
+            if jnt_name not in self.robot_config.control.control_info:
+                raise ValueError(
+                    f"MuJoCo actuator {act_idx} drives joint {jnt_name!r}, which "
+                    f"has no control_info; every actuated joint must be in the "
+                    f"robot's gains table"
+                )
+            info = self.robot_config.control.control_info[jnt_name]
+            kp = info.require("stiffness")
+            kd = info.require("damping")
+            effort = info.require("effort_limit")
 
             # Configure as position actuator:
             # force = gainprm[0] * ctrl + biasprm[0] + biasprm[1] * q + biasprm[2] * qd
@@ -678,7 +667,7 @@ class MujocoSimulator(Simulator):
             jnt_id = self.model.actuator_trnid[act_idx, 0]
             jnt_name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT, jnt_id)
             if jnt_name in control_info:
-                effort = control_info[jnt_name].effort_limit or 1000.0
+                effort = control_info[jnt_name].require("effort_limit")
                 self.model.actuator_forcerange[act_idx, 0] = -effort
                 self.model.actuator_forcerange[act_idx, 1] = effort
                 self.model.actuator_forcelimited[act_idx] = 1
@@ -723,7 +712,9 @@ class MujocoSimulator(Simulator):
         self._viewer_initialized = True
         self._viewer_keyboard.capture(self.viewer)
         self.user_interface.register_key(
-            ".", owner="mujoco", description="Toggle task / native viewer keys",
+            ".",
+            owner="mujoco",
+            description="Toggle task / native viewer keys",
             on_press=self._viewer_keyboard.toggle_native,
         )
         # Ensure viewer is closed on exit to prevent hangs
@@ -913,8 +904,7 @@ class MujocoSimulator(Simulator):
 
         use_implicit_pd = getattr(self.config, "use_implicit_pd", True)
         use_explicit_substep_pd = (
-            not use_implicit_pd
-            and self.control_type == ControlType.BUILT_IN_PD
+            not use_implicit_pd and self.control_type == ControlType.BUILT_IN_PD
         )
 
         if use_explicit_substep_pd:
@@ -932,6 +922,10 @@ class MujocoSimulator(Simulator):
                     self._apply_control()
                 mujoco.mj_step(self.model, self.data)
 
+        # mj_step integrates qpos/qvel after its forward pass. Recompute both
+        # poses and velocities at the new state before observations read them;
+        # mj_kinematics alone would still leave velocity-dependent fields stale.
+        mujoco.mj_forward(self.model, self.data)
         self._step_count += 1
 
         # Periodic state monitoring
@@ -1084,50 +1078,66 @@ class MujocoSimulator(Simulator):
 
         return lower_limits, upper_limits
 
-    def _get_simulator_bodies_contact_buf(
-        self, env_ids: Optional[torch.Tensor] = None
-    ) -> RobotState:
-        """Extract contact forces from MuJoCo contact buffer (robot bodies only)."""
-        nb = self._num_robot_bodies
-        contact_forces = np.zeros((nb, 3), dtype=np.float32)
-
-        for i in range(self.data.ncon):
-            contact = self.data.contact[i]
-            geom1 = contact.geom1
-            geom2 = contact.geom2
-
-            body1 = self.model.geom_bodyid[geom1]
-            body2 = self.model.geom_bodyid[geom2]
-
-            c_array = np.zeros(6, dtype=np.float64)
-            mujoco.mj_contactForce(self.model, self.data, i, c_array)
-            contact_force_local = c_array[0:3]
-
-            frame = contact.frame.reshape(3, 3)
-            contact_force_world = frame.T @ contact_force_local
-
-            # Only accumulate for robot bodies (body_id 1..nb)
-            if 0 < body1 <= nb:
-                contact_forces[body1 - 1] += contact_force_world
-            if 0 < body2 <= nb:
-                contact_forces[body2 - 1] -= contact_force_world
-
-        return RobotState(
-            rigid_body_contact_forces=_to_torch_f32(contact_forces).unsqueeze(0),
-            state_conversion=StateConversion.SIMULATOR,
-        )
-
     def _get_simulator_object_root_state(
         self, env_ids: Optional[torch.Tensor] = None
     ) -> ObjectState:
         """Return empty object state (no scene support)."""
         return ObjectState(state_conversion=StateConversion.SIMULATOR)
 
-    def _get_simulator_object_contact_buf(
-        self, env_ids: Optional[torch.Tensor] = None
-    ) -> ObjectState:
-        """Return empty object contact buffer (no scene support)."""
-        return ObjectState(state_conversion=StateConversion.SIMULATOR)
+    @cached_property
+    def _contact_geom_indices(self) -> Tuple[np.ndarray, np.ndarray]:
+        """Resolve fixed model geom IDs into contact rows/columns once."""
+        # This backend supports flat terrain. World-attached obstacles and
+        # vertical planes are not the floor, even though their body ID is zero.
+        ground = set(
+            np.flatnonzero(
+                (self.model.geom_bodyid == 0)
+                & (self.model.geom_type == mujoco.mjtGeom.mjGEOM_PLANE)
+                & (self.data.geom_xmat[:, 8] > 1 - 1e-6)
+            )
+        )
+        if "terrain" in self.contact_layout.partner_index and not ground:
+            raise ValueError(
+                "MuJoCo contact matrices require a horizontal world ground plane"
+            )
+        rows = np.full(self.model.ngeom, -1, dtype=np.int64)
+        partners = np.full(self.model.ngeom, -1, dtype=np.int64)
+        layout = self.contact_layout
+        for name, row in layout.body_index.items():
+            geoms = self.model.geom_bodyid == self.model.body(name).id
+            rows[geoms] = row
+        for name, column in layout.partner_index.items():
+            category, _, target = name.partition("/")
+            if category == "terrain":
+                partners[list(ground)] = column
+            elif category == "robot":
+                partners[self.model.geom_bodyid == self.model.body(target).id] = column
+            elif category == "projectile":
+                body = self.model.body(f"projectile_{target}").id
+                partners[self.model.geom_bodyid == body] = column
+        # Scene objects are not supported by this backend. World-attached
+        # decorative/obstacle geoms are not silently classified as terrain.
+        return rows, partners
+
+    def _get_simulator_contact_forces(self) -> torch.Tensor:
+        rows, partners = self._contact_geom_indices
+        layout = self.contact_layout
+        forces = np.zeros(
+            (len(layout.body_index), len(layout.partner_index), 3), dtype=np.float64
+        )
+        contact_force = np.zeros(6, dtype=np.float64)
+        for index in range(self.data.ncon):
+            contact = self.data.contact[index]
+            a, b = contact.geom1, contact.geom2
+            mujoco.mj_contactForce(self.model, self.data, index, contact_force)
+            # MuJoCo's normal points from geom1 to geom2: the force acts
+            # positively on geom2 and negatively on geom1. Ignore friction.
+            normal_force = contact_force[0] * contact.frame[:3]
+            if rows[a] >= 0 and partners[b] >= 0:
+                forces[rows[a], partners[b]] -= normal_force
+            if rows[b] >= 0 and partners[a] >= 0:
+                forces[rows[b], partners[a]] += normal_force
+        return _to_torch_f32(forces).unsqueeze(0)
 
     def _apply_simulator_pd_targets(self, pd_targets: torch.Tensor) -> None:
         """Apply PD position targets.
@@ -1141,14 +1151,6 @@ class MujocoSimulator(Simulator):
             recomputed at each substep in _physics_step via _recompute_explicit_pd.
         """
         targets = pd_targets[0].detach().cpu().numpy()
-
-        # Apply EMA filter
-        alpha = self._action_filter_alpha
-        if alpha < 1.0:
-            if self._prev_pd_targets is None:
-                self._prev_pd_targets = targets.copy()
-            targets = alpha * targets + (1.0 - alpha) * self._prev_pd_targets
-            self._prev_pd_targets = targets.copy()
 
         if getattr(self.config, "use_implicit_pd", True):
             # Implicit: write position targets to ctrl (MuJoCo handles PD)

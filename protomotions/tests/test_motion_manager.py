@@ -39,6 +39,7 @@ def _manager(
         device=torch.device("cpu"),
         motion_lib=_MotionLib(),
         fixed_motion_ids_per_env=fixed_motion_ids_per_env,
+        generator=None,
     )
 
 
@@ -107,10 +108,9 @@ def test_motion_exclusions_merge_config_ids_and_latest_failed_motion_file(tmp_pa
     )
 
     assert torch.equal(manager.excluded_motion_ids, torch.tensor([0, 2]))
-    manager._apply_motion_exclusions()
+    # Excluded from construction on, and kept excluded by the one writer.
     assert torch.equal(manager.motion_weights, torch.tensor([0.0, 0.2, 0.0, 0.4]))
-
-    manager.update_sampling_weights(torch.ones(4))
+    manager.set_sampling_weights(torch.ones(4), floor=0.0, ceiling=float("inf"))
     assert torch.equal(manager.motion_weights, torch.tensor([0.0, 1.0, 0.0, 1.0]))
 
 
@@ -323,6 +323,7 @@ def test_mimic_motion_manager_done_tracks_and_post_physics_step():
         env_dt=0.25,
         device=torch.device("cpu"),
         motion_lib=_MotionLib(),
+        generator=None,
     )
     manager.motion_ids[:] = torch.tensor([0, 1, 2])
     manager.motion_times[:] = torch.tensor([0.8, 1.0, 2.9])
@@ -343,6 +344,7 @@ def test_mimic_motion_manager_resamples_only_done_tracks_when_configured():
         env_dt=0.25,
         device=torch.device("cpu"),
         motion_lib=_MotionLib(),
+        generator=None,
     )
     manager.motion_ids[:] = torch.tensor([0, 1, 2])
     manager.motion_times[:] = torch.tensor([0.1, 1.8, 1.0])
@@ -364,6 +366,7 @@ def test_mimic_motion_manager_returns_when_no_tracks_are_done():
         env_dt=0.25,
         device=torch.device("cpu"),
         motion_lib=_MotionLib(),
+        generator=None,
     )
     manager.motion_ids[:] = torch.tensor([0, 1])
     manager.motion_times[:] = torch.tensor([0.1, 0.2])

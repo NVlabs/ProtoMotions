@@ -195,10 +195,7 @@ def quat_normalize(q):
 
 @torch.jit.script
 def quat_mul_norm(x: Tensor, y: Tensor, w_last: bool) -> Tensor:
-    """
-    Combine two set of 3D rotations together using \**\* operator. The shape needs to be
-    broadcastable
-    """
+    """Compose rotations and normalize the result; input shapes must broadcast."""
     return quat_normalize(quat_mul(x, y, w_last))
 
 

@@ -24,7 +24,7 @@ from protomotions.robot_configs.base import ControlType
 NUM_ENVS = 2
 
 
-def _make_simulator(control_type: ControlType):
+def _make_simulator(control_type: ControlType, device=None):
     pytest.importorskip("warp")
     pytest.importorskip("newton")
     from protomotions.components.scene_lib import SceneLib
@@ -37,7 +37,7 @@ def _make_simulator(control_type: ControlType):
     )
     from protomotions.simulator.newton.simulator import NewtonSimulator
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
     robot_cfg = robot_config("g1")
     robot_cfg.control.control_type = control_type
     terrain = Terrain(
@@ -58,7 +58,7 @@ def _make_simulator(control_type: ControlType):
         config=NewtonSimulatorConfig(
             num_envs=NUM_ENVS,
             headless=True,
-            sim=NewtonSimParams(fps=120, decimation=4),
+            sim=NewtonSimParams(fps=200),  # multiple of g1 control_hz=50
             experiment_name="newton_explicit_control_test",
         ),
         robot_config=robot_cfg,

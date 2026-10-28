@@ -49,7 +49,7 @@ Headless smoke (requires IsaacLab 3 + Kit)
 Run in an IsaacLab 3 environment checked out at the pin above::
 
    python protomotions/inference_agent.py \\
-     --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/last.ckpt \\
+     --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/inference_last.ckpt \\
      --motion-file data/motion_for_trackers/g1_bones_seed_mini.pt \\
      --simulator isaaclab --num-envs 1 --headless
 

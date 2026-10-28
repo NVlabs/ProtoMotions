@@ -18,6 +18,10 @@ from protomotions.agents.common.autoregressive import (
 from protomotions.agents.common.latent import compute_discrete_latent_ppo_loss
 from protomotions.agents.fine_tuning.agent import FineTuningAgent
 from protomotions.agents.peft.prior_setup import DiscretePriorPEFTSetupMixin
+from protomotions.agents.peft.utils.adapter_state import (
+    ReferenceWithoutConditioningError,
+)
+from protomotions.agents.peft.utils.model_state import has_reference_state
 
 log = logging.getLogger(__name__)
 
@@ -38,46 +42,147 @@ class DiscretePriorPEFTRLFTAgent(DiscretePriorPEFTSetupMixin, FineTuningAgent):
             )
         super().__init__(fabric, env, config, root_dir=root_dir)
 
-    def load(self, checkpoint, load_env=True, load_training_state: bool = True):
+    def load(
+        self, checkpoint, load_env=True, load_training_state: bool = True,
+        *, for_inference: bool = False,
+    ):
         self._peft_loading_training_state = load_training_state
-        self._peft_warm_started_from_sft = False
+        self._peft_resumed = False
         try:
             super().load(
                 checkpoint,
                 load_env=load_env,
                 load_training_state=load_training_state,
+                for_inference=for_inference,
             )
+        except ReferenceWithoutConditioningError as error:
+            # The loaders see only the state dict; name the file here.
+            raise ReferenceWithoutConditioningError(f"{checkpoint}: {error}") from None
         finally:
             self._peft_loading_training_state = False
-        require_existing = (
-            checkpoint is not None
-            and load_training_state
-            and not getattr(self, "_peft_warm_started_from_sft", False)
+        # Fit start needs to know: a resume keeps the reference saved in its
+        # checkpoint and never clears the adapters, while a new run pins its own.
+        self._peft_resumed = checkpoint is not None and load_training_state
+
+    def _validate_checkpoint(self, state_dict, *, load_training_state, for_inference):
+        super()._validate_checkpoint(
+            state_dict, load_training_state=load_training_state,
+            for_inference=for_inference,
         )
-        self._prepare_rlft_prior_reference(
-            require_existing=require_existing,
-        )
-
-    def fit(self):
-        self._prepare_rlft_prior_reference()
-        return super().fit()
-
-    def _prepare_rlft_prior_reference(self, *, require_existing: bool = False):
-        """Capture or validate the reference policy used by RLFT KL/sampling.
-
-        Warm-starts capture the loaded SFT/current student policy once at fit
-        start and may then clear only the active student adapter. True resumes
-        must already carry reference state in the checkpoint so the reference is
-        not silently rebuilt from a changed student or configured prior.
-        """
         peft = self.model._actor.prior_with_peft
-        if require_existing:
-            peft.require_reference()
+        if load_training_state and self._reads_reference():
+            if not has_reference_state(state_dict["model"]):
+                raise RuntimeError(
+                    "This checkpoint has no saved reference policy, which is required "
+                    "to resume reference-dependent training. Use a "
+                    "checkpoint containing the reference; new RLFT training may instead "
+                    "warm-start weights with load_training_state=False."
+                )
+        # Only RLFT samples against the reference. SFT inference replays its
+        # expert's tokens, so the SFT agent can load a file without one.
+        if for_inference and peft.sampling_mode == "prior_constraint":
+            if not has_reference_state(state_dict["model"]):
+                raise RuntimeError(
+                    "This checkpoint has no saved reference policy, and "
+                    "prior_constraint sampling needs one: it limits the policy to "
+                    "tokens inside the reference policy's top-p set. Load "
+                    "this run's last.ckpt instead if it was saved with a reference, "
+                    "or sample without the constraint by running inference with "
+                    "--overrides agent.model.actor.peft.sampling_mode=nucleus "
+                    "(agent.model.actor.peft.top_p then sets the nucleus)."
+                )
+
+    def _before_fit(self):
+        self._prepare_rlft_prior_reference()
+
+    def _reads_reference(self) -> bool:
+        """True when sampling or the KL penalty compares against the reference."""
+        actor = self.model._actor
+        return (
+            actor.prior_with_peft.sampling_mode == "prior_constraint"
+            or actor.kl_coeff > 0
+        )
+
+    def _prepare_rlft_prior_reference(self):
+        """Pin the reference policy at training start, after all weight loading.
+
+        The reference is a frozen copy of the policy a run starts from. A new
+        run, fresh or warm-started from any checkpoint, ignores any reference
+        stored in that checkpoint: it pins the policy it just loaded, or the
+        trained policy in ``reference_checkpoint`` if that is set, and only
+        then applies ``clear_peft`` to the student. A resume keeps the reference
+        saved in its checkpoint, which load() already required, and never
+        clears the adapters. A run that never reads a reference holds none, so
+        it saves none either. Inference never reaches this, so it uses the
+        saved reference as-is.
+
+        The student's FiLM input normalizer and the conditioning network's keep
+        updating during training. The frozen prior's normalizers were frozen at
+        setup, and only the reference's own copies are frozen.
+        """
+        actor = self.model._actor
+        peft_cfg = self.config.model.actor.peft
+        resumed = getattr(self, "_peft_resumed", False)
+        if not self._reads_reference():
+            # Never hold, or save again, a reference loaded from another run.
+            actor.reset_reference()
+            if not resumed:
+                self._warn_unused_reference_options()
+            return
+        if resumed:
+            log.info("Resumed run keeps the reference policy saved in its checkpoint.")
             return
 
-        captured = peft.capture_reference()
-        if captured and self.config.model.actor.peft.clear_peft:
-            peft.clear_peft()
+        if actor.reference_ready:
+            log.info(
+                "New run: the reference stored in the loaded checkpoint is not "
+                "used; this run pins its own."
+            )
+        actor.reset_reference()
+        if peft_cfg.reference_checkpoint:
+            self._pin_reference_from_checkpoint(peft_cfg.reference_checkpoint)
+        else:
+            actor.capture_reference()
+        if peft_cfg.clear_peft:
+            actor.prior_with_peft.clear_peft()
+
+    def _pin_reference_from_checkpoint(self, path):
+        """Pin the reference to the trained policy saved in another checkpoint."""
+        try:
+            state = torch.load(path, map_location=self.device, weights_only=False)
+            model_state = (
+                state["model"] if isinstance(state, dict) and "model" in state else state
+            )
+            self.model._actor.capture_reference_from(model_state)
+        except (OSError, RuntimeError, KeyError) as error:
+            raise RuntimeError(
+                f"agent.model.actor.peft.reference_checkpoint={path} cannot be used "
+                f"as the reference policy: {error}"
+            ) from error
+        log.info("Pinned the reference to the trained policy in %s.", path)
+
+    def _warn_unused_reference_options(self):
+        """Warn about configured options that only act on a pinned reference."""
+        peft_cfg = self.config.model.actor.peft
+        sampling_mode = self.model._actor.prior_with_peft.sampling_mode
+        if peft_cfg.clear_peft:
+            log.warning(
+                "clear_peft=True was skipped. With sampling_mode=%r and "
+                "kl_coeff=0 this run pins no reference policy, and clear_peft "
+                "only resets the adapters once a pinned reference keeps the "
+                "loaded policy; without one it would just discard that policy. "
+                "prior_constraint sampling or kl_coeff > 0 pins the loaded "
+                "policy as the reference and then clears the adapters. "
+                "Otherwise drop clear_peft.",
+                sampling_mode,
+            )
+        if peft_cfg.reference_checkpoint:
+            log.warning(
+                "reference_checkpoint=%r was ignored: with sampling_mode=%r and "
+                "kl_coeff=0 this run pins no reference policy.",
+                peft_cfg.reference_checkpoint,
+                sampling_mode,
+            )
 
     @torch.no_grad()
     def _clamp_peft_m(self):
@@ -244,7 +349,6 @@ class DiscretePriorPEFTRLFTAgent(DiscretePriorPEFTSetupMixin, FineTuningAgent):
 
     def _load_training_state(self, state_dict):
         warm_start_from_sft = self.has_critic and "critic_optimizer" not in state_dict
-        self._peft_warm_started_from_sft = warm_start_from_sft
         if not warm_start_from_sft:
             super()._load_training_state(state_dict)
             return

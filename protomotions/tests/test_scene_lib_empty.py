@@ -61,6 +61,7 @@ def test_scene_lib_direct_construction_with_no_scene_file_and_no_scenes_is_empty
 def test_scene_lib_pointcloud_buffers_are_zero_sized_on_empty():
     sl = SceneLib.empty(num_envs=0, device="cpu")
     assert sl._object_pointclouds.shape == (0, 0, 0, 3)
+    assert sl.has_pointclouds is False
     assert sl._object_pointcloud_normals.shape == (0, 0, 0, 3)
     assert sl._object_bbox_extents.shape == (0, 0, 3)
     assert sl._per_object_valid_mask.shape == (0, 0)
@@ -132,76 +133,4 @@ def test_scene_lib_with_scenes_requires_positive_num_envs():
 def test_get_humanoid_motion_ids_returns_none_when_empty():
     sl = SceneLib.empty(num_envs=0, device="cpu")
     assert sl.get_humanoid_motion_ids() is None
-
-
-def test_get_humanoid_motion_ids_returns_none_when_all_scenes_use_sentinel():
-    sl = SceneLib.empty(num_envs=0, device="cpu")
-    sl.scenes = [Scene(humanoid_motion_id=-1), Scene(humanoid_motion_id=-1)]
-    assert sl.get_humanoid_motion_ids() is None
-
-
-def test_get_humanoid_motion_ids_returns_list_when_any_scene_has_real_id():
-    sl = SceneLib.empty(num_envs=0, device="cpu")
-    sl.scenes = [
-        Scene(humanoid_motion_id=-1),
-        Scene(humanoid_motion_id=2),
-        Scene(humanoid_motion_id=-1),
-    ]
-    assert sl.get_humanoid_motion_ids() == [-1, 2, -1]
-
-
-def test_get_per_env_humanoid_motion_ids_tensor_returns_empty_on_empty():
-    sl = SceneLib.empty(num_envs=0, device="cpu")
-    tensor = sl.get_per_env_humanoid_motion_ids_tensor()
-    assert tensor.shape == (0,)
-    assert tensor.dtype == torch.long
-
-
-def test_get_per_env_humanoid_motion_ids_tensor_caches_after_first_call():
-    sl = SceneLib.empty(num_envs=0, device="cpu")
-    sl.scenes = [Scene(humanoid_motion_id=0), Scene(humanoid_motion_id=3)]
-
-    first = sl.get_per_env_humanoid_motion_ids_tensor()
-    # Mutating the underlying scenes list should NOT change subsequent calls
-    # because the tensor is cached on the first call.
-    sl.scenes[0].humanoid_motion_id = 99
-    second = sl.get_per_env_humanoid_motion_ids_tensor()
-    assert torch.equal(first, second)
-    assert first.tolist() == [0, 3]
-
-
-# ---------- build_motion_to_original_scene_map --------------------------------
-
-
-def test_build_motion_to_original_scene_map_returns_negative_one_for_empty():
-    sl = SceneLib.empty(num_envs=0, device="cpu")
-    mapping = sl.build_motion_to_original_scene_map(num_motions=4)
-    assert torch.equal(mapping, torch.tensor([-1, -1, -1, -1], dtype=torch.long))
-
-
-def test_build_motion_to_original_scene_map_assigns_each_scene_to_its_motion():
-    sl = SceneLib.empty(num_envs=0, device="cpu")
-    sl._original_scenes = [
-        Scene(humanoid_motion_id=2),
-        Scene(humanoid_motion_id=0),
-        Scene(humanoid_motion_id=-1),  # universal — should not appear
-    ]
-
-    mapping = sl.build_motion_to_original_scene_map(num_motions=4)
-
-    # motion 0 ← scene 1; motion 2 ← scene 0; motions 1 and 3 stay at -1.
-    assert mapping.tolist() == [1, -1, 0, -1]
-
-
-def test_build_motion_to_original_scene_map_skips_motion_ids_out_of_range():
-    """Motion IDs beyond num_motions should be ignored (not raise / overflow)."""
-    sl = SceneLib.empty(num_envs=0, device="cpu")
-    sl._original_scenes = [
-        Scene(humanoid_motion_id=10),  # out-of-range for num_motions=3
-        Scene(humanoid_motion_id=1),
-    ]
-
-    mapping = sl.build_motion_to_original_scene_map(num_motions=3)
-
-    # Only scene 1's mapping (motion 1 ← scene 1) should land; scene 0 dropped.
-    assert mapping.tolist() == [-1, 1, -1]
+    assert sl.pairing.is_paired is False

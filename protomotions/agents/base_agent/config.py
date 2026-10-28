@@ -14,9 +14,12 @@ Key Classes:
     - MaxEpisodeLengthManagerConfig: Episode length curriculum
 """
 
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, TYPE_CHECKING
 from dataclasses import dataclass, field
 from protomotions.agents.evaluators.config import EvaluatorConfig
+
+if TYPE_CHECKING:
+    from protomotions.envs.base_env.config import EnvConfig
 
 
 @dataclass
@@ -219,6 +222,14 @@ class BaseAgentConfig:
             "Set to e.g. 0.99 to track non-stationary reward distributions."
         },
     )
+
+    def apply_inference_defaults(self, env: "EnvConfig") -> None:
+        """The agent-side inference defaults; the base agent has none.
+
+        Called with the inference env view so a subclass can read or strip the
+        observation components its expert added. Overridden by AMP (discriminator
+        threshold) and the supervised agents (expert removal, action source).
+        """
 
     def resolve_max_epochs(self, total_envs: int) -> int:
         """Resolve the absolute number of whole training iterations."""

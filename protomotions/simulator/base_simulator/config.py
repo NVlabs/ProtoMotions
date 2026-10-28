@@ -222,9 +222,7 @@ class BodyMassDomainRandomizationConfig:
         if self.log_uniform:
             log_min = torch.log(torch.tensor(mass_min, device=device))
             log_max = torch.log(torch.tensor(mass_max, device=device))
-            return torch.exp(
-                samples * (log_max - log_min) + log_min
-            )
+            return torch.exp(samples * (log_max - log_min) + log_min)
         return samples * (mass_max - mass_min) + mass_min
 
 
@@ -386,31 +384,9 @@ class CenterOfMassDomainRandomizationConfig:
 
 @dataclass
 class RobotNoiseConfig:
-    """Configuration for robot state noise.
+    """Reset-only uniform perturbations of joints and the physical root state.
 
-    Used for both observation noise (domain randomization during training) and
-    reset noise (Reference State Initialization / RSI).
-
-    For observation noise: adds noise to state observations for sim-to-real transfer.
-    When enabled, regular state variables have noise applied while privileged_*
-    versions remain clean for asymmetric actor-critic training.
-
-    For reset noise (RSI): adds noise to the robot's physics state during
-    environment resets, helping the policy learn to recover from imperfect
-    initial conditions.
-
-    Noise values are scales for additive uniform noise in [-scale, +scale].
-    Each field accepts a scalar (uniform across all axes) or a list for
-    per-axis control (e.g., [x, y, z]).
-
-    Observation noise is applied hierarchically:
-    - DOF noise: applied to joint positions and velocities
-    - Root noise: applied to root body orientation and angular velocity
-    - Anchor noise: applied to anchor body orientation and angular velocity
-    - Whole-body noise: applied to all rigid body positions, rotations, velocities
-
-    Root and anchor noise are applied on top of clean (privileged) data,
-    not on already-noisy whole-body data.
+    Measurement noise belongs to env.sensors, never to this reset config.
     """
 
     # DOF-level noise
@@ -453,40 +429,6 @@ class RobotNoiseConfig:
         },
     )
 
-    # Anchor body noise (observation noise only)
-    anchor_rot_noise: Union[float, List[float]] = field(
-        default=0.0,
-        metadata={"help": "Noise scale for anchor body orientation quaternion."},
-    )
-    anchor_ang_vel_noise: Union[float, List[float]] = field(
-        default=0.0,
-        metadata={"help": "Noise scale for anchor body angular velocity (rad/s)."},
-    )
-
-    # Whole-body noise (all rigid bodies, observation noise only)
-    body_pos_noise: Union[float, List[float]] = field(
-        default=0.0,
-        metadata={"help": "Noise scale for all rigid body positions (meters)."},
-    )
-    body_rot_noise: Union[float, List[float]] = field(
-        default=0.0,
-        metadata={"help": "Noise scale for all rigid body orientations (quaternion)."},
-    )
-    body_vel_noise: Union[float, List[float]] = field(
-        default=0.0,
-        metadata={"help": "Noise scale for all rigid body linear velocities (m/s)."},
-    )
-    body_ang_vel_noise: Union[float, List[float]] = field(
-        default=0.0,
-        metadata={"help": "Noise scale for all rigid body angular velocities (rad/s)."},
-    )
-
-    # Environment observation noise
-    ground_height_noise: Union[float, List[float]] = field(
-        default=0.0,
-        metadata={"help": "Noise scale for ground height observations (meters)."},
-    )
-
     def _is_nonzero(self, value: Union[float, List[float]]) -> bool:
         if isinstance(value, list):
             return any(v != 0.0 for v in value)
@@ -501,14 +443,8 @@ class RobotNoiseConfig:
             or self._is_nonzero(self.root_rot_noise)
             or self._is_nonzero(self.root_vel_noise)
             or self._is_nonzero(self.root_ang_vel_noise)
-            or self._is_nonzero(self.anchor_rot_noise)
-            or self._is_nonzero(self.anchor_ang_vel_noise)
-            or self._is_nonzero(self.body_pos_noise)
-            or self._is_nonzero(self.body_rot_noise)
-            or self._is_nonzero(self.body_vel_noise)
-            or self._is_nonzero(self.body_ang_vel_noise)
-            or self._is_nonzero(self.ground_height_noise)
         )
+
 
 @dataclass
 class PushDomainRandomizationConfig:
@@ -604,10 +540,6 @@ class DomainRandomizationConfig:
         default=None,
         metadata={"help": "Scene object asset property randomization configuration."},
     )
-    observation_noise: Optional[RobotNoiseConfig] = field(
-        default=None,
-        metadata={"help": "Observation noise configuration for sim-to-real transfer."},
-    )
     push: Optional[PushDomainRandomizationConfig] = field(
         default=None,
         metadata={"help": "Push/perturbation randomization for sim-to-real transfer."},
@@ -616,14 +548,21 @@ class DomainRandomizationConfig:
 
 @dataclass
 class SimParams:
-    """Configuration for core simulation parameters."""
+    """Configuration for core simulation parameters.
 
-    fps: int = field(
-        default=60, metadata={"help": "Simulation frames per second.", "min": 1}
-    )
-    decimation: int = field(
-        default=4,
-        metadata={"help": "Number of physics steps per control step.", "min": 1},
+    Physics steps per control step are not stored here: the policy's control
+    rate is ``RobotConfig.control_hz`` and ``Simulator.__init__`` derives the
+    decimation as ``sim.fps // control_hz``.
+    """
+
+    fps: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "Simulation frames per second. None means derive it as "
+            "control_hz times the backend's physics substeps per control step; "
+            "an explicit value is honoured and must be a multiple of control_hz.",
+            "min": 1,
+        },
     )
 
 
@@ -652,7 +591,7 @@ class SimulatorConfig:
         default=None, metadata={"help": "Number of parallel environments.", "min": 1}
     )
     sim: SimParams = field(
-        default=None, metadata={"help": "Simulation parameters (fps, decimation)."}
+        default=None, metadata={"help": "Simulation parameters (fps)."}
     )
     experiment_name: str = field(
         default=None, metadata={"help": "Name for this experiment (used for logging)."}
@@ -692,7 +631,7 @@ class SimulatorConfig:
                 "None = disabled (no acceleration limit)."
             ),
             "min": 0.0,
-        }
+        },
     )
 
     def __post_init__(self):
@@ -704,16 +643,19 @@ class SimulatorConfig:
         assert (
             self.experiment_name is not None
         ), "SimulatorConfig.experiment_name must be provided"
-        if (
-            self.domain_randomization is not None
-            and self.domain_randomization.latency is not None
-            and self.domain_randomization.latency.max_latency_ms
-            > 1000.0 * self.sim.decimation / self.sim.fps
-        ):
-            raise ValueError(
-                "max_latency_ms must not exceed one control interval "
-                "(1000 * sim.decimation / sim.fps milliseconds)."
-            )
+        # The action-latency bound is checked in Simulator.__init__, where the
+        # robot's control_hz is known: max_latency_ms must not exceed one control
+        # interval (1000 / control_hz ms). SimParams has no decimation to check.
+
+    def apply_inference_defaults(self) -> None:
+        """Make the J-key projectile perturbation available during inference.
+
+        Training defaults to no projectiles; inference enables one so the key
+        does something. A recipe or ``--overrides`` can still set any pool size,
+        including zero.
+        """
+        if self.projectile.num_projectiles == 0:
+            self.projectile.num_projectiles = 1
 
 
 @dataclass

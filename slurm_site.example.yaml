@@ -1,0 +1,61 @@
+# Example cluster settings for train_slurm.py.
+#
+# This is the shipped template. Copy it to `slurm_site.yaml` (gitignored) beside
+# the repository root and fill in your cluster's real values, or point
+# --site-config / $PROTOMOTIONS_SLURM_SITE at your own copy. Fill in every
+# placeholder (the markers are "YOUR_", "/path/to/" and "your_account");
+# train_slurm.py refuses to submit while any remains. The partition, mounts and
+# python invocations below are usable defaults.
+#
+# The launcher looks for a site file in this order (first match wins):
+#   1. --site-config PATH
+#   2. $PROTOMOTIONS_SLURM_SITE
+#   3. slurm_site.yaml beside the repository (your gitignored copy)
+# Pick a cluster with --cluster NAME; `--print-site [--cluster NAME]` shows what
+# resolved. A single-cluster file can instead put the per-cluster keys
+# (login_node, partition, container_images, python_executables) at the top level
+# and omit the `clusters:` block entirely.
+
+# ---- Shared across every cluster below --------------------------------------
+# `account` does not change when you switch cluster (one allocation, many
+# clusters); --account overrides it. "{account}" in base_dir is substituted from
+# --account, moving the experiment directory with the allocation.
+account: your_account
+base_dir: /path/to/your/experiments/{account}
+container_mounts: /scratch:/scratch:rw
+
+# Optional shared keys, shown with their defaults (uncomment to override):
+# array_size: 5                 # job-array size for auto-resume: N tasks run one
+#                               # at a time, each up to --slurm-time
+# rsync_excludes: []            # extra rsync exclude patterns, appended to the
+#                               # built-in list
+# startup_max_attempts: 1       # opt-in startup retry (1 = off); see the
+#                               # --startup-* flags
+# startup_repeat_limit: 3       # fast-fail threshold for a repeated startup error
+# startup_retry_backoff_sec: 15 # backoff between startup retries
+
+# Used when --cluster is omitted.
+default_cluster: cluster-a
+
+clusters:
+  cluster-a:
+    login_node: YOUR_CLUSTER_A_LOGIN_NODE
+    partition: gpu
+    container_images:
+      isaacgym: /path/to/containers/isaacgym.sqsh
+      isaaclab: /path/to/containers/isaaclab.sqsh
+      newton: /path/to/containers/newton.sqsh
+    python_executables:
+      isaacgym: python
+      isaaclab: /workspace/isaaclab/isaaclab.sh -p
+      newton: python
+
+  # A second cluster on the same allocation (only the IsaacLab image staged here,
+  # as an example of a cluster with a subset of the containers).
+  cluster-b:
+    login_node: YOUR_CLUSTER_B_LOGIN_NODE
+    partition: gpu
+    container_images:
+      isaaclab: /path/to/containers/isaaclab.sqsh
+    python_executables:
+      isaaclab: /workspace/isaaclab/isaaclab.sh -p

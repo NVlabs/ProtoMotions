@@ -16,7 +16,7 @@ parser.add_argument(
     "--simulator",
     type=str,
     required=True,
-    help="Simulator to use (e.g., 'isaacgym', 'isaaclab', 'newton', 'genesis')",
+    help="Simulator to use (e.g., 'isaacgym', 'isaaclab', 'newton', 'mujoco')",
 )
 parser.add_argument(
     "--cpu-only",
@@ -43,7 +43,6 @@ from protomotions.simulator.base_simulator.config import SimulatorConfig  # noqa
 from protomotions.robot_configs.base import (  # noqa: E402
     RobotConfig,
     RobotAssetConfig,
-    SimulatorParams,
 )
 from protomotions.utils.hydra_replacement import get_class  # noqa: E402
 import torch  # noqa: E402
@@ -52,10 +51,6 @@ device = torch.device("cuda:0") if not args.cpu_only else torch.device("cpu")
 
 # Import the simulator factory function
 from protomotions.simulator.factory import simulator_config  # noqa: E402
-from protomotions.simulator.isaacgym.config import IsaacGymSimParams  # noqa: E402
-from protomotions.simulator.isaaclab.config import IsaacLabSimParams  # noqa: E402
-from protomotions.simulator.genesis.config import GenesisSimParams  # noqa: E402
-from protomotions.simulator.newton.config import NewtonSimParams  # noqa: E402
 
 robot_cfg = RobotConfig(
     semantic_forward_axis_xy=(1.0, 0.0),
@@ -70,26 +65,8 @@ robot_cfg = RobotConfig(
         "head_body_name": ["head"],
         "torso_body_name": ["torso_link"],
     },
-    simulation_params=SimulatorParams(
-        isaacgym=IsaacGymSimParams(
-            fps=100,
-            decimation=2,
-            substeps=2,
-        ),
-        isaaclab=IsaacLabSimParams(
-            fps=200,
-            decimation=4,
-        ),
-        genesis=GenesisSimParams(
-            fps=100,
-            decimation=2,
-            substeps=2,
-        ),
-        newton=NewtonSimParams(
-            fps=200,
-            decimation=4,
-        ),
-    ),
+    # 50 Hz policy; simulation_params defaults to the humanoid physics for 50 Hz.
+    control_hz=50,
 )
 
 print("\n=== Robot Configuration ===")

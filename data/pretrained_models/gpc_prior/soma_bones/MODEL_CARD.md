@@ -57,21 +57,20 @@ and nearest-surface observations are not part of this prior's input contract.
 
 ## Artifacts
 
-- `inference_last.ckpt`: inference-oriented checkpoint without optimizer state.
-- `last.ckpt`: full training/resume checkpoint.
-- `config.yaml`: concise public artifact metadata.
-- `experiment_config.py`: public experiment source used to regenerate configs.
-- `resolved_configs.pt`: serialized training configuration.
-- `resolved_configs_inference.pt`: serialized inference configuration with the
-  frozen decoder construction config embedded.
-- `resolved_configs.yaml` and `resolved_configs_inference.yaml`: readable
-  configuration sidecars.
+- `inference_last.ckpt`: model-only inference checkpoint (no optimizer or training
+  state); the frozen decoder's weights load with it.
+- `config.yaml`: the portable launcher arguments that regenerate the bundle.
+- `experiment_config.py`: the public experiment source used to regenerate configs.
+- `resolved_configs.json`: the self-contained v2 runtime configuration bundle, with
+  the frozen decoder's construction config embedded. Inference derives its view at
+  load, so there is no separate inference bundle.
+- `provenance.json`: checkpoint provenance (sha256, byte count, tensor count).
 
 ## Runtime Support
 
 - Training simulator: **IsaacLab**.
 - Simulator expectation: **Training simulator only**.
-- Use the SOMA robot and the configuration sidecars shipped with the selected
+- Use the SOMA robot and the `resolved_configs.json` bundle shipped with the
   checkpoint.
 
 ## Limitations

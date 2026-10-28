@@ -26,7 +26,7 @@ parser.add_argument(
     "--simulator",
     type=str,
     required=True,
-    help="Simulator to use (e.g., 'isaacgym', 'isaaclab', 'newton', 'genesis')",
+    help="Simulator to use (e.g., 'isaacgym', 'isaaclab', 'newton', 'mujoco')",
 )
 parser.add_argument(
     "--cpu-only",
@@ -54,12 +54,21 @@ from protomotions.envs.base_env.env import BaseEnv  # noqa: E402
 from protomotions.envs.base_env.config import EnvConfig  # noqa: E402
 from protomotions.envs.motion_manager.config import MimicMotionManagerConfig  # noqa: E402
 from protomotions.envs.control.mimic_control import MimicControlConfig  # noqa: E402
-from protomotions.envs.component_factories import (  # noqa: E402
-    max_coords_obs_factory,
-    previous_actions_factory,
-    mimic_target_poses_max_coords_factory,
-    mimic_tracking_rewards_factory,
-    action_smoothness_factory,
+from protomotions.envs.obs.target_poses import (  # noqa: E402
+    build_max_coords_target_poses,
+)
+from protomotions.envs.obs.humanoid import compute_humanoid_max_coords_observations  # noqa: E402
+from protomotions.envs.obs.humanoid_historical import compute_historical_actions_from_state  # noqa: E402
+from protomotions.envs.mdp_component import MdpComponent  # noqa: E402
+from protomotions.envs.rewards.meta import RewardMeta  # noqa: E402
+from protomotions.envs.rewards.regularization import (  # noqa: E402
+    compute_action_smoothness,
+)
+from protomotions.envs.rewards.tracking import (  # noqa: E402
+    compute_gav_rew,
+    compute_gr_rew,
+    compute_gt_rew,
+    compute_gv_rew,
 )
 from protomotions.components.motion_lib import MotionLibConfig  # noqa: E402
 from protomotions.components.scene_lib import SceneLibConfig  # noqa: E402
@@ -140,11 +149,16 @@ print("    → Provides ref_state context for observations and rewards")
 # Observation components - using factory functions
 observation_components = {
     # Current robot state observation
-    "max_coords_obs": max_coords_obs_factory(),
+    "max_coords_obs": MdpComponent.from_kernel(
+        compute_humanoid_max_coords_observations
+    ),
     # Previous actions for temporal awareness
-    "previous_actions": previous_actions_factory(history_steps=1),
+    "previous_actions": MdpComponent.from_kernel(
+        compute_historical_actions_from_state, history_steps=1
+    ),
     # Mimic target poses - reference motion for policy to track
-    "mimic_target_poses": mimic_target_poses_max_coords_factory(
+    "mimic_target_poses": MdpComponent.from_kernel(
+        build_max_coords_target_poses,
         with_velocities=True,
     ),
 }
@@ -154,20 +168,34 @@ print("  - 'previous_actions': Action history for temporal awareness")
 print("  - 'mimic_target_poses': Reference poses from motion library")
 
 # Reward configuration - tracking rewards for imitation learning
-# Uses factory functions that return pre-configured MdpComponent instances
+# Each kernel is bound with MdpComponent.from_kernel: its context inputs are its
+# parameter defaults, the recipe writes the weight and the coefficients
 reward_components = {
-    "action_smoothness": action_smoothness_factory(weight=-0.02),
-    # Use the mimic_tracking_rewards_factory bundle for standard tracking rewards
-    **mimic_tracking_rewards_factory(
-        gt_weight=0.5,   # Position tracking
-        gr_weight=0.3,   # Rotation tracking
-        gv_weight=0.1,   # Velocity tracking
-        gav_weight=0.1,  # Angular velocity tracking
-        rh_weight=0.0,   # Root height (disabled)
-        gt_coef=-100.0,  # Position coefficient
-        gr_coef=-5.0,    # Rotation coefficient
-        gv_coef=-0.5,    # Velocity coefficient
-        gav_coef=-0.1,   # Angular velocity coefficient
+    "action_smoothness": MdpComponent.from_kernel(
+        compute_action_smoothness,
+        meta=RewardMeta(weight=-0.02),
+    ),
+    # The standard tracking rewards (position, rotation, velocity, angular velocity)
+    # rh_rew was weight 0.0: RewardMeta refuses a zero weight, so it is dropped
+    "gt_rew": MdpComponent.from_kernel(
+        compute_gt_rew,
+        meta=RewardMeta(weight=0.5),
+        coefficient=-100.0,
+    ),
+    "gr_rew": MdpComponent.from_kernel(
+        compute_gr_rew,
+        meta=RewardMeta(weight=0.3),
+        coefficient=-5.0,
+    ),
+    "gv_rew": MdpComponent.from_kernel(
+        compute_gv_rew,
+        meta=RewardMeta(weight=0.1),
+        coefficient=-0.5,
+    ),
+    "gav_rew": MdpComponent.from_kernel(
+        compute_gav_rew,
+        meta=RewardMeta(weight=0.1),
+        coefficient=-0.1,
     ),
 }
 print("\nReward Components:")
@@ -230,7 +258,6 @@ scene = Scene(objects=[chair], humanoid_motion_id=0)
 # Create environment configuration with modular components
 env_config = EnvConfig(
     max_episode_length=300,  # Shorter episodes for training
-    num_state_history_steps=2,  # Required for previous_actions and action_smoothness
     # Modular components replace old-style config classes
     control_components=control_components,
     observation_components=observation_components,
@@ -298,19 +325,19 @@ env = BaseEnv(
 
 print("\n=== Environment Initialization ===")
 print("BaseEnv with MimicControl created successfully")
-print(f"Motion library loaded: {env.motion_lib is not None}")
+print(f"Motion library loaded: {env.reference_motion.motion_lib is not None}")
 
 # Analyze the motion library
-if env.motion_lib is not None:
+if env.reference_motion.motion_lib is not None:
     print("\n=== Motion Library Analysis ===")
-    print(f"Number of motions: {env.motion_lib.num_motions()}")
-    print(f"Motion file: {env.motion_lib.motion_file}")
+    print(f"Number of motions: {env.reference_motion.motion_lib.num_motions()}")
+    print(f"Motion file: {env.reference_motion.motion_lib.motion_file}")
 
-    for motion_id in range(env.motion_lib.num_motions()):
-        motion_length = env.motion_lib.get_motion_length(motion_id)
+    for motion_id in range(env.reference_motion.motion_lib.num_motions()):
+        motion_length = env.reference_motion.motion_lib.get_motion_length(motion_id)
         print(f"  Motion {motion_id}: {motion_length.item():.2f}s duration")
 
-print(f"Motion manager type: {type(env.motion_manager).__name__}")
+print(f"Motion manager type: {type(env.reference_motion.motion_manager).__name__}")
 print(f"Control components: {list(env.control_manager.components.keys())}")
 
 # Reset environment - this also returns observations!
@@ -318,8 +345,8 @@ print("\n=== Resetting Environment ===")
 env.reset()
 
 print("Environment reset - ready for imitation learning")
-print(f"Motion IDs: {env.motion_manager.motion_ids}")
-print(f"Motion times: {env.motion_manager.motion_times}")
+print(f"Motion IDs: {env.reference_motion.motion_manager.motion_ids}")
+print(f"Motion times: {env.reference_motion.motion_manager.motion_times}")
 
 # Use the observations from reset
 obs = env.get_obs()
@@ -395,8 +422,8 @@ try:
 
         # Print detailed information every 100 steps
         if step_count % 100 == 0:
-            motion_times = env.motion_manager.motion_times
-            motion_ids = env.motion_manager.motion_ids
+            motion_times = env.reference_motion.motion_manager.motion_times
+            motion_ids = env.reference_motion.motion_manager.motion_ids
 
             print(f"\nStep {step_count} - Mimic Environment Status:")
             print("  Motion Tracking:")

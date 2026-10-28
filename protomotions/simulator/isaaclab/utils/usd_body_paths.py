@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Iterable, List, Mapping, MutableMapping, Tuple
+from typing import Dict, Iterable, List, Mapping, Tuple
 
 
 def relative_prim_path(full_path: str, default_path: str) -> str:
@@ -32,8 +32,10 @@ def resolve_body_prim_paths_from_records(
     results: Dict[str, str] = {}
     for record in body_records:
         full_path = str(record["full_path"])
-        if default_path and full_path != default_path and not full_path.startswith(
-            default_path + "/"
+        if (
+            default_path
+            and full_path != default_path
+            and not full_path.startswith(default_path + "/")
         ):
             continue
         name = str(record["name"])
@@ -63,8 +65,10 @@ def resolve_articulation_root_prim_path_from_records(
         full_path = str(record["full_path"])
         if not bool(record.get("is_articulation_root", False)):
             continue
-        if default_path and full_path != default_path and not full_path.startswith(
-            default_path + "/"
+        if (
+            default_path
+            and full_path != default_path
+            and not full_path.startswith(default_path + "/")
         ):
             continue
         roots.append(relative_prim_path(full_path, default_path))
@@ -168,14 +172,3 @@ def resolve_robot_prim_paths(
         records, body_names, default_path=default_path
     )
     return articulation_root, body_paths
-
-
-def contact_sensor_prim_path(
-    body_name: str,
-    body_prim_paths: MutableMapping[str, str],
-    *,
-    robot_prim_root: str = "/World/envs/env_.*/Robot",
-) -> str:
-    """Build a ContactSensorCfg prim path for a resolved body."""
-    relative = body_prim_paths[body_name]
-    return f"{robot_prim_root}/{relative}"

@@ -1,0 +1,23 @@
+<!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<mujoco model="sensor_contract_chain">
+  <compiler angle="radian"/>
+  <option gravity="0 0 0"/>
+  <worldbody>
+    <body name="pelvis">
+      <freejoint/>
+      <geom type="sphere" size="0.05" mass="1"/>
+      <body name="torso" pos="0 0 0.3">
+        <joint name="waist" type="hinge" axis="0 1 0" range="-3 3"/>
+        <geom type="capsule" fromto="0 0 0 0.4 0 0" size="0.02" mass="1"/>
+        <body name="forearm" pos="0.4 0 0">
+          <joint name="elbow" type="hinge" axis="0 0 1" range="-3 3"/>
+          <geom type="capsule" fromto="0 0 0 0.25 0 0" size="0.02" mass="0.5"/>
+          <body name="hand" pos="0.25 0 0">
+            <geom type="sphere" size="0.03" mass="0.1"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>

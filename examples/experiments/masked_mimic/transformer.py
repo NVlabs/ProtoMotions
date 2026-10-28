@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from protomotions.robot_configs.base import RobotConfig
-from protomotions.simulator.base_simulator.config import SimulatorConfig
 from protomotions.envs.base_env.config import EnvConfig
 from protomotions.agents.supervised.masked_mimic_config import MaskedMimicSupervisedAgentConfig
+from protomotions.envs.presets import tracking_playback
+from protomotions.envs.steps import normalize_steps
+from protomotions.utils.experiment_configs import ExperimentConfigs
 import argparse
 
 
@@ -35,7 +37,7 @@ def scene_lib_config(args: argparse.Namespace):
     """Build scene library configuration."""
     from protomotions.components.scene_lib import SceneLibConfig
 
-    scene_file = args.scenes_file if hasattr(args, "scenes_file") else None
+    scene_file = args.scenes_file
     return SceneLibConfig(scene_file=scene_file)
 
 
@@ -49,94 +51,72 @@ def motion_lib_config(args: argparse.Namespace):
 def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
     """Build environment configuration (training defaults).
     
-    Uses MdpComponent-based component configuration with explicit context bindings:
-        MdpComponent(compute_func=compute_fn, dynamic_vars={...}, static_params={...})
+    Components bind their kernels with ``MdpComponent.from_kernel``: each kernel
+    carries its context bindings as defaults, and overrides name its parameters.
     """
-    import torch
     from protomotions.envs.motion_manager.config import MimicMotionManagerConfig
     from protomotions.envs.context_views import EnvContext
     from protomotions.envs.mdp_component import MdpComponent
     from protomotions.envs.control.masked_mimic_control import MaskedMimicControlConfig
-    from protomotions.envs.component_factories import (
-        max_coords_obs_factory,
-        historical_max_coords_obs_factory,
-        previous_actions_factory,
-        mimic_target_poses_max_coords_factory,
-        mimic_tracking_rewards_factory,
-        action_smoothness_factory,
-        tracking_error_term_factory,
+    from protomotions.envs.control.masked_mimic_prompt import GoalCanvas
+    from protomotions.envs.obs.humanoid import compute_humanoid_max_coords_observations
+    from protomotions.envs.obs.masked_mimic import masked_mimic_goal_observations
+    from protomotions.envs.obs.target_poses import build_max_coords_target_poses
+    from protomotions.envs.obs.humanoid_historical import (
+        compute_historical_max_coords_from_state,
+        compute_historical_actions_from_state,
     )
+    from protomotions.envs.rewards.meta import RewardMeta
+    from protomotions.envs.rewards.regularization import compute_action_smoothness
+    from protomotions.envs.rewards.tracking import (
+        compute_gav_rew,
+        compute_gr_rew,
+        compute_gt_rew,
+        compute_gv_rew,
+        compute_rh_rew,
+    )
+    from protomotions.envs.terminations.tracking import max_body_pos_error
+    from protomotions.envs.terminations.rule import TerminationRule
     
-    # Import compute kernels for masked_mimic-specific observations
-    from protomotions.envs.obs import (
-        compute_historical_poses_with_time,
-        compute_target_poses_only,
-        compute_target_masks_only,
-        compute_target_time_offsets,
-    )
+    from protomotions.envs.obs.humanoid_historical import compute_historical_poses_with_time
     from protomotions.envs.action import make_pd_action_config
-    from protomotions.envs.obs import to_float
 
     control_components = {
         "masked_mimic": MaskedMimicControlConfig(
             num_masked_future_steps=NUM_FUTURE_STEPS,
             future_steps=1,  # Might be increased if expert requires more
             bootstrap_on_episode_end=True,
-            time_alpha=2.0,
-            time_beta=5.0,
-            repeat_mask_probability=0.8,
-            force_max_conditioned_bodies_prob=0.1,
-            force_small_num_conditioned_bodies_prob=0.1,
             visible_target_pose_prob=0.8
         ),
     }
 
-    # Compute conditionable body IDs from robot config
-    conditionable_body_ids = torch.tensor([
-        robot_cfg.kinematic_info.body_names.index(name)
-        for name in robot_cfg.trackable_bodies_subset
-    ], dtype=torch.long)
-
     # Observation components
     observation_components = {
-        "max_coords_obs": max_coords_obs_factory(
+        "max_coords_obs": MdpComponent.from_kernel(
+            compute_humanoid_max_coords_observations,
             local_obs=True,
             root_height_obs=True,
             observe_contacts=False,
         ),
-        "historical_max_coords_obs": historical_max_coords_obs_factory(
+        "historical_max_coords_obs": MdpComponent.from_kernel(
+            compute_historical_max_coords_from_state,
             local_obs=True,
             root_height_obs=True,
             observe_contacts=False,
+            history_steps=TOTAL_STORED_HISTORICAL_STEPS,
         ),
-        "previous_actions": previous_actions_factory(history_steps=1),
-        "mimic_target_poses": mimic_target_poses_max_coords_factory(
+        "previous_actions": MdpComponent.from_kernel(
+            compute_historical_actions_from_state, history_steps=1
+        ),
+        "mimic_target_poses": MdpComponent.from_kernel(
+            build_max_coords_target_poses,
             with_velocities=True,
             with_relative=True,
         ),
-        "masked_mimic_target_poses": MdpComponent(
-            compute_func=compute_target_poses_only,
-            dynamic_vars={
-                "current_state_body_pos": EnvContext.current.rigid_body_pos,
-                "current_state_body_rot": EnvContext.current.rigid_body_rot,
-                "masked_mimic_ref_pos": EnvContext.masked_mimic.ref_pos,
-                "masked_mimic_ref_rot": EnvContext.masked_mimic.ref_rot,
-                "masked_mimic_target_bodies_masks": EnvContext.masked_mimic.target_bodies_masks,
-            },
-            static_params={"conditionable_body_ids": conditionable_body_ids, "include_root_relative": True},
-        ),
-        "masked_mimic_target_masks": MdpComponent(
-            compute_func=compute_target_masks_only,
-            dynamic_vars={
-                "masked_mimic_target_bodies_masks": EnvContext.masked_mimic.target_bodies_masks,
-            },
-            static_params={"conditionable_body_ids": conditionable_body_ids},
-        ),
-        "masked_mimic_target_times": MdpComponent(
-            compute_func=compute_target_time_offsets,
-            dynamic_vars={
-                "masked_mimic_time_offsets": EnvContext.masked_mimic.time_offsets,
-            },
+        # The five timed-target observations of the goal prompt, laid out by
+        # the control's canvas (its conditionable bodies, resolved at build).
+        **masked_mimic_goal_observations(
+            GoalCanvas.derive(control_components["masked_mimic"], robot_cfg)
         ),
         "historical_pose_obs": MdpComponent(
             compute_func=compute_historical_poses_with_time,
@@ -146,7 +126,6 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
                 "historical_rigid_body_vel": EnvContext.historical.rigid_body_vel,
                 "historical_rigid_body_ang_vel": EnvContext.historical.rigid_body_ang_vel,
                 "historical_ground_heights": EnvContext.historical.ground_heights,
-                "historical_body_contacts": EnvContext.historical.body_contacts,
                 "dt": EnvContext.dt,
             },
             static_params={
@@ -156,45 +135,29 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
                 "w_last": True,
             },
         ),
-        "masked_mimic_target_poses_masks": MdpComponent(
-            compute_func=to_float,
-            dynamic_vars={
-                "x": EnvContext.masked_mimic.target_poses_masks,
-            },
-        ),
-        "masked_mimic_target_bodies_masks": MdpComponent(
-            compute_func=to_float,
-            dynamic_vars={
-                "x": EnvContext.masked_mimic.target_bodies_masks,
-            },
-        ),
     }
 
-    expert_model_path = getattr(args, 'expert_model_path', None)
+    expert_model_path = args.expert_model_path
     if expert_model_path:
         from protomotions.agents.supervised.expert_utils import (
             get_expert_observation_components,
         )
-        from protomotions.utils.config_utils import (
-            load_resolved_configs_from_checkpoint,
+        from protomotions.utils.experiment_configs import (
+            load_experiment_configs_from_checkpoint,
         )
 
-        expert_configs = load_resolved_configs_from_checkpoint(expert_model_path)
-        expert_env_config = expert_configs["env"]
-        expert_agent_config = expert_configs["agent"]
-        
-        expert_history_steps = getattr(expert_env_config, 'num_state_history_steps', 0)
-        assert TOTAL_STORED_HISTORICAL_STEPS >= expert_history_steps, (
-            f"Insufficient history: current={TOTAL_STORED_HISTORICAL_STEPS}, expert requires={expert_history_steps}"
-        )
+        expert_configs = load_experiment_configs_from_checkpoint(expert_model_path)
+        expert_env_config = expert_configs.env
+        expert_agent_config = expert_configs.agent
         
         if hasattr(expert_env_config, 'control_components') and expert_env_config.control_components:
             for ctrl_cfg in expert_env_config.control_components.values():
-                expert_num_future = getattr(ctrl_cfg, 'future_steps', None)
-                if expert_num_future is not None:
+                expert_future = getattr(ctrl_cfg, 'future_steps', None)
+                if expert_future is not None:
+                    expert_steps = normalize_steps(expert_future)
                     masked_mimic_cfg = control_components["masked_mimic"]
-                    if masked_mimic_cfg.future_steps < expert_num_future:
-                        masked_mimic_cfg.future_steps = expert_num_future
+                    if max(masked_mimic_cfg.future_steps) < max(expert_steps):
+                        masked_mimic_cfg.future_steps = expert_steps
         
         expert_obs_components = get_expert_observation_components(
             expert_env_config,
@@ -206,23 +169,37 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
     # Termination components configuration
     termination_components = {
         # Always ran at 0.5 m: the 0.25 m set here before never took effect.
-        "tracking_error": tracking_error_term_factory(threshold=0.5),
+        "tracking_error": TerminationRule(
+            MdpComponent.from_kernel(max_body_pos_error), 0.5
+        ),
     }
 
     # Reward components
     reward_components = {
-        **mimic_tracking_rewards_factory(
-            gt_weight=0.5,
-            gr_weight=0.3,
-            gt_coef=-100.0,
-            gr_coef=-5.0,
+        "gt_rew": MdpComponent.from_kernel(
+            compute_gt_rew,
+            meta=RewardMeta(weight=0.5),
+            coefficient=-100.0,
         ),
-        "action_smoothness": action_smoothness_factory(weight=-0.02),
+        "gr_rew": MdpComponent.from_kernel(
+            compute_gr_rew,
+            meta=RewardMeta(weight=0.3),
+            coefficient=-5.0,
+        ),
+        "gv_rew": MdpComponent.from_kernel(compute_gv_rew, meta=RewardMeta(weight=0.1)),
+        "gav_rew": MdpComponent.from_kernel(
+            compute_gav_rew,
+            meta=RewardMeta(weight=0.1),
+        ),
+        "rh_rew": MdpComponent.from_kernel(compute_rh_rew, meta=RewardMeta(weight=0.2)),
+        "action_smoothness": MdpComponent.from_kernel(
+            compute_action_smoothness,
+            meta=RewardMeta(weight=-0.02),
+        ),
     }
 
     env_config: EnvConfig = EnvConfig(
         max_episode_length=1000,
-        num_state_history_steps=TOTAL_STORED_HISTORICAL_STEPS,  # Historical obs for masked mimic prior
         # Component-based configuration
         control_components=control_components,
         observation_components=observation_components,
@@ -258,8 +235,15 @@ def agent_config(
         ModuleOperationForwardConfig,
     )
     from protomotions.agents.base_agent.config import OptimizerConfig
-    from protomotions.agents.evaluators.config import MimicEvaluatorConfig
-    from protomotions.envs.component_factories import gt_error_factory, gr_error_factory, max_joint_error_factory
+
+    from protomotions.agents.evaluators.config import MaskedMimicEvaluatorConfig
+    from protomotions.envs.mdp_component import MdpComponent
+    from protomotions.envs.terminations.tracking import (
+        max_body_pos_error,
+        mean_body_pos_error,
+        mean_body_rot_error,
+    )
+    from protomotions.envs.terminations.rule import TerminationRule
 
     transformer_token_size = 512
     transformer_encoder_widths = 256
@@ -468,16 +452,22 @@ def agent_config(
         optimizer=OptimizerConfig(_target_="torch.optim.Adam", lr=2e-5),
     )
 
-    evaluator_config = MimicEvaluatorConfig(
-        evaluation_components={
-            "gt_error": gt_error_factory(threshold=0.25),
-            "gr_error": gr_error_factory(),
-            "max_joint_error": max_joint_error_factory(),
+    evaluator_config = MaskedMimicEvaluatorConfig(
+        metric_components={
+            "gt_error": MdpComponent.from_kernel(mean_body_pos_error),
+            "gr_error": MdpComponent.from_kernel(mean_body_rot_error),
+            "max_joint_error": MdpComponent.from_kernel(max_body_pos_error),
         },
+        failure_components={
+            "gt_error": TerminationRule(
+                MdpComponent.from_kernel(mean_body_pos_error), 0.25
+            ),
+        },
+        score_key="eval/success_rate",
     )
 
     # Get expert model path from args (set via --expert-model-path CLI argument)
-    expert_model_path = getattr(args, 'expert_model_path', None)
+    expert_model_path = args.expert_model_path
     
     # Agent configuration
     agent_config = MaskedMimicSupervisedAgentConfig(
@@ -493,43 +483,12 @@ def agent_config(
 
 
 def apply_inference_overrides(
-    robot_cfg: RobotConfig,
-    simulator_cfg: SimulatorConfig,
-    env_cfg: EnvConfig,
-    agent_cfg: MaskedMimicSupervisedAgentConfig,
-    terrain_cfg,
-    motion_lib_cfg,
-    scene_lib_cfg,
-    args: argparse.Namespace,
-):
-    """Apply evaluation-specific overrides."""
-    # Reuse the mimic apply_inference_overrides function from mimic.mlp
-    from protomotions.utils.config_utils import (
-        import_experiment_relative_eval_overrides,
-    )
+    configs: ExperimentConfigs, args: argparse.Namespace
+) -> None:
+    """Play each clip to its end for evaluation.
 
-    apply_inference_overrides_fn = import_experiment_relative_eval_overrides(
-        "../mimic/mlp.py"
-    )
-    apply_inference_overrides_fn(robot_cfg, simulator_cfg, env_cfg, agent_cfg, terrain_cfg, motion_lib_cfg, scene_lib_cfg, args)
-
-    if agent_cfg is not None and hasattr(agent_cfg, "expert_model_path"):
-        expert_model_path = agent_cfg.expert_model_path
-        
-        # Remove expert observation components
-        if expert_model_path is not None and env_cfg is not None:
-            if hasattr(env_cfg, "observation_components") and env_cfg.observation_components is not None:
-                from protomotions.agents.supervised.expert_utils import (
-                    get_expert_observation_keys,
-                )
-                from protomotions.utils.config_utils import (
-                    load_resolved_configs_from_checkpoint,
-                )
-
-                expert_configs = load_resolved_configs_from_checkpoint(expert_model_path)
-                expert_obs_keys = get_expert_observation_keys(expert_configs["env"], expert_configs["agent"])
-                for key in expert_obs_keys:
-                    if key in env_cfg.observation_components:
-                        del env_cfg.observation_components[key]
-        
-        agent_cfg.expert_model_path = None
+    The prior action path, dropping the expert and its observations, and the
+    long episode are framework inference defaults now (the MaskedMimic
+    supervised agent and EnvConfig apply them); only the clip playback stays.
+    """
+    tracking_playback(configs.env)

@@ -754,6 +754,7 @@ def test_pointcloud_parallel_deduplicates_mesh_sampling_and_copies_to_duplicates
 
     assert calls == [(str(mesh_path), 4)]
     assert scene_lib._object_pointclouds.shape == (2, 1, 4, 3)
+    assert scene_lib.has_pointclouds is True
     assert torch.equal(
         scene_lib._object_pointclouds[0],
         scene_lib._object_pointclouds[1],

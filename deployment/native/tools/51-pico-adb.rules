@@ -1,0 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Permit members of plugdev to use ADB with Pico headsets.
+SUBSYSTEM=="usb", ATTR{idVendor}=="2d40", MODE="0660", GROUP="plugdev", TAG+="uaccess"

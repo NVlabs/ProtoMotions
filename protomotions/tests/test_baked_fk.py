@@ -31,6 +31,8 @@ fixed_ki      – 5-body Y-tree where the head (body 4) is a fixed joint
 
 import io
 import os
+from types import SimpleNamespace
+
 import pytest
 import torch
 from torch import Tensor
@@ -372,13 +374,13 @@ class TestTargetFK:
         # NOTE: the full reference body array is deliberately NOT returned --
         # BakedTargetFK only needs the reference ANCHOR position, which it already
         # gets as current_ref_anchor_pos.
-        return (
-            odom_disp_start,
-            odom_start_xy,
-            odom_start_heading_inv,
-            future_ref_anchor_pos,
-            current_ref_anchor_pos,
-        )
+        return {
+            "odom_disp_start": odom_disp_start,
+            "odom_start_xy": odom_start_xy,
+            "odom_start_heading_inv": odom_start_heading_inv,
+            "future_ref_anchor_pos": future_ref_anchor_pos,
+            "current_ref_anchor_pos": current_ref_anchor_pos,
+        }
 
     @pytest.mark.parametrize("anchor_idx", [0, 1, 2])
     def test_matches_world_ground_truth(self, rotref_ki, anchor_idx):
@@ -405,7 +407,7 @@ class TestTargetFK:
         ingredients = self._odom_ingredients(
             xy_offset, R_cur, ki.num_bodies, anchor_idx
         )
-        out = baked(ref_dof.unsqueeze(1), R_cur, R_ref.unsqueeze(1), *ingredients)
+        out = baked(ref_dof.unsqueeze(1), R_cur, R_ref.unsqueeze(1), **ingredients)
         baked_pos = out.reshape(B, 1, nt, 9)[:, 0, :, :3]
 
         torch.testing.assert_close(baked_pos, gt, atol=ATOL, rtol=RTOL)
@@ -438,7 +440,7 @@ class TestTargetFK:
         ingredients = self._odom_ingredients(
             torch.zeros(B, 2), R, ki.num_bodies, anchor_idx
         )
-        tgt = baked(dof.unsqueeze(1), R, R.unsqueeze(1), *ingredients)
+        tgt = baked(dof.unsqueeze(1), R, R.unsqueeze(1), **ingredients)
 
         torch.testing.assert_close(tgt, anchor_obs, atol=ATOL, rtol=RTOL)
 
@@ -509,11 +511,11 @@ class TestTargetFK:
             n_future=n_future,
             travel=travel,
         )
-        flat = baked(future_dof, R_flat, future_rot, *ingredients)
+        flat = baked(future_dof, R_flat, future_rot, **ingredients)
 
         for roll, pitch in [(0.1, 0.0), (0.0, -0.2), (0.4, -0.3), (-0.35, 0.25)]:
             R_tilt = self._zyx_quat(yaw, pitch, roll, B)
-            tilted = baked(future_dof, R_tilt, future_rot, *ingredients)
+            tilted = baked(future_dof, R_tilt, future_rot, **ingredients)
             torch.testing.assert_close(tilted, flat, atol=ATOL, rtol=RTOL)
 
     @pytest.mark.parametrize("anchor_idx", [0, 1, 2])
@@ -540,9 +542,11 @@ class TestTargetFK:
         upright = self._zyx_quat(yaw, 0.0, 0.0, B)
         tilted = self._zyx_quat(yaw, -0.3, 0.25, B)
 
-        body_fixed = baked(dof)
+        body_fixed = baked(dof, current_anchor_rot=None)
         # Body-fixed: no rotation input, so nothing about the robot's pose enters.
-        torch.testing.assert_close(baked(dof), body_fixed, atol=ATOL, rtol=RTOL)
+        torch.testing.assert_close(
+            baked(dof, current_anchor_rot=None), body_fixed, atol=ATOL, rtol=RTOL
+        )
 
         # Heading frame with a level anchor is the body-fixed frame.
         torch.testing.assert_close(baked(dof, upright), body_fixed, atol=1e-5, rtol=0)
@@ -583,9 +587,13 @@ class TestTargetFK:
         ingredients = self._odom_ingredients(
             torch.zeros(B, 2), R_cur, ki.num_bodies, anchor_idx
         )
-        out_odom = odom(ref_dof.unsqueeze(1), R_cur, R_ref.unsqueeze(1), *ingredients)
+        out_odom = odom(ref_dof.unsqueeze(1), R_cur, R_ref.unsqueeze(1), **ingredients)
         out_no_odom = no_odom(
-            ref_dof.unsqueeze(1), R_cur, R_ref.unsqueeze(1), *ingredients[3:]
+            ref_dof.unsqueeze(1),
+            R_cur,
+            R_ref.unsqueeze(1),
+            future_ref_anchor_pos=ingredients["future_ref_anchor_pos"],
+            current_ref_anchor_pos=ingredients["current_ref_anchor_pos"],
         )
 
         torch.testing.assert_close(out_no_odom, out_odom, atol=ATOL, rtol=RTOL)
@@ -623,7 +631,7 @@ class TestTargetFK:
             future_dof,
             R,
             future_rot,
-            *self._odom_ingredients(
+            **self._odom_ingredients(
                 xy_offset, R, ki.num_bodies, anchor_idx, n_future=n_future
             ),
         )
@@ -633,7 +641,7 @@ class TestTargetFK:
             future_dof,
             R,
             future_rot,
-            *self._odom_ingredients(
+            **self._odom_ingredients(
                 xy_offset,
                 R,
                 ki.num_bodies,
@@ -653,7 +661,7 @@ class TestTargetFK:
             future_dof,
             R,
             future_rot,
-            *self._odom_ingredients(
+            **self._odom_ingredients(
                 xy_offset,
                 R,
                 ki.num_bodies,
@@ -670,13 +678,16 @@ class TestTargetFK:
 
         It used to be dropped on the floor, so a config whose MimicControl
         published 25 steps while its baked-FK observation asked for 4 silently
-        emitted all 25.
+        emitted all 25. The selection is a call-time parameter (a
+        ``StepSelection``), like every other target-pose kernel's; a step the
+        control never publishes is refused at build by the manager's window
+        check, not here (``test_steps.py``).
         """
         ki = rotref_ki
         anchor_idx = 1
         trackable = torch.tensor([2, 3, 4])
         nt = trackable.numel()
-        published, requested = 4, [1, 3]
+        published, requested = 4, (1, 3)
         torch.manual_seed(7)
 
         future_dof = torch.randn(B, published, ki.num_dofs)
@@ -696,65 +707,28 @@ class TestTargetFK:
             n_future=published,
             travel=travel,
         )
-        selecting = BakedTargetFK(
-            ki,
-            anchor_idx=anchor_idx,
-            trackable_body_indices=trackable,
-            future_steps=requested,
+        baked = BakedTargetFK(
+            ki, anchor_idx=anchor_idx, trackable_body_indices=trackable
         )
-        out = selecting(future_dof, R, future_rot, *ingredients)
+        out = baked(future_dof, R, future_rot, future_steps=requested, **ingredients)
 
         # Only the requested steps come out.
         assert out.shape == (B, len(requested) * nt * 9)
 
-        # And they are the right ones: hand-select the inputs, feed a component
-        # that does no selection, and the two must agree exactly. 1-indexed.
+        # And they are the right ones: hand-select the inputs, feed the same
+        # kernel with no selection, and the two must agree exactly. 1-indexed.
         positions = [s - 1 for s in requested]
-        odom_disp, odom_xy, odom_head, future_anchor_pos, cur_anchor_pos = ingredients
-        passthrough = BakedTargetFK(
-            ki, anchor_idx=anchor_idx, trackable_body_indices=trackable
-        )
-        expected = passthrough(
+        expected = baked(
             future_dof[:, positions],
             R,
             future_rot[:, positions],
-            odom_disp,
-            odom_xy,
-            odom_head,
-            future_anchor_pos[:, positions],
-            cur_anchor_pos,
+            future_ref_anchor_pos=ingredients["future_ref_anchor_pos"][:, positions],
+            current_ref_anchor_pos=ingredients["current_ref_anchor_pos"],
+            odom_disp_start=ingredients["odom_disp_start"],
+            odom_start_xy=ingredients["odom_start_xy"],
+            odom_start_heading_inv=ingredients["odom_start_heading_inv"],
         )
         torch.testing.assert_close(out, expected, atol=ATOL, rtol=RTOL)
-
-    def test_requesting_a_step_the_control_never_publishes_raises(self, rotref_ki):
-        """Silently emitting the wrong horizon is what shipped; fail instead."""
-        ki = rotref_ki
-        anchor_idx = 1
-        published = 4
-        baked = BakedTargetFK(
-            ki,
-            anchor_idx=anchor_idx,
-            trackable_body_indices=torch.tensor([2, 3, 4]),
-            future_steps=[1, 2, 4, 8],  # step 8 is past the published horizon
-        )
-        future_rot = torch.zeros(B, published, 4)
-        future_rot[..., 3] = 1.0
-        R = torch.zeros(B, 4)
-        R[:, 3] = 1.0
-
-        with pytest.raises(ValueError, match="publishes only 4 step"):
-            baked(
-                torch.zeros(B, published, ki.num_dofs),
-                R,
-                future_rot,
-                *self._odom_ingredients(
-                    torch.zeros(B, 2),
-                    R,
-                    ki.num_bodies,
-                    anchor_idx,
-                    n_future=published,
-                ),
-            )
 
 
 # ===========================================================================
@@ -774,7 +748,7 @@ class TestWorldPositions:
         dof_pos = torch.randn(B, ki.num_dofs)
 
         ref_pos, _ = _ref_fk(ki, dof_pos)
-        baked_obs = baked(dof_pos).reshape(B, ki.num_bodies, 9)
+        baked_obs = baked(dof_pos, current_anchor_rot=None).reshape(B, ki.num_bodies, 9)
         # Positions are the first 3 elements per body
         pos_from_baked = baked_obs[:, :, :3]
 
@@ -795,7 +769,9 @@ class TestWorldPositions:
         baked = BakedAnchorFK(fixed_ki, anchor_idx=0, trackable_body_indices=trackable)
         dof_pos = torch.randn(B, fixed_ki.num_dofs)
         ref_pos, _ = _ref_fk(fixed_ki, dof_pos)
-        pos_from_baked = baked(dof_pos).reshape(B, fixed_ki.num_bodies, 9)[:, :, :3]
+        pos_from_baked = baked(dof_pos, current_anchor_rot=None).reshape(
+            B, fixed_ki.num_bodies, 9
+        )[:, :, :3]
         torch.testing.assert_close(pos_from_baked, ref_pos, atol=ATOL, rtol=RTOL)
 
 
@@ -812,7 +788,7 @@ class TestMatchesReference:
             ki, anchor_idx=anchor_idx, trackable_body_indices=trackable
         )
         ref = _reference_fk_obs(dof_pos, ki, anchor_idx, trackable)
-        out = baked(dof_pos)
+        out = baked(dof_pos, current_anchor_rot=None)
         torch.testing.assert_close(out, ref, atol=ATOL, rtol=RTOL)
 
     def test_chain_anchor_mid(self, chain_ki):
@@ -876,7 +852,7 @@ class TestOutputShape:
         baked = BakedAnchorFK(
             branching_ki, anchor_idx=1, trackable_body_indices=trackable
         )
-        out = baked(torch.randn(5, branching_ki.num_dofs))
+        out = baked(torch.randn(5, branching_ki.num_dofs), current_anchor_rot=None)
         assert out.shape == (5, 3 * 9), f"expected (5, 27), got {out.shape}"
 
     def test_all_bodies_trackable(self, branching_ki):
@@ -884,7 +860,7 @@ class TestOutputShape:
         baked = BakedAnchorFK(
             branching_ki, anchor_idx=1, trackable_body_indices=trackable
         )
-        out = baked(torch.randn(3, branching_ki.num_dofs))
+        out = baked(torch.randn(3, branching_ki.num_dofs), current_anchor_rot=None)
         assert out.shape == (3, branching_ki.num_bodies * 9)
 
 
@@ -903,7 +879,7 @@ class TestAnchorBodyZero:
             branching_ki, anchor_idx=anchor_idx, trackable_body_indices=trackable
         )
         dof_pos = torch.randn(B, branching_ki.num_dofs)
-        obs = baked(dof_pos).reshape(B, 5, 9)
+        obs = baked(dof_pos, current_anchor_rot=None).reshape(B, 5, 9)
         # The anchor body (body 1) is at index 1 in the trackable list
         anchor_pos_in_frame = obs[:, 1, :3]  # should be ~0
         torch.testing.assert_close(
@@ -934,7 +910,7 @@ class _BakedFKModule(torch.nn.Module):
         self._baked = baked
 
     def forward(self, dof_pos: Tensor) -> Tensor:
-        return self._baked(dof_pos)
+        return self._baked(dof_pos, current_anchor_rot=None)
 
 
 def _export_baked(baked: BakedAnchorFK, sample_input: Tensor) -> bytes:
@@ -969,7 +945,7 @@ class TestONNXTrace:
         )
 
         sample_input = torch.randn(1, branching_ki.num_dofs)
-        pt_out = baked(sample_input).detach().numpy()
+        pt_out = baked(sample_input, current_anchor_rot=None).detach().numpy()
 
         onnx_bytes = _export_baked(baked, sample_input)
 
@@ -999,7 +975,7 @@ class TestONNXTrace:
 
         for B_test in [1, 4, 8]:
             batch_input = torch.randn(B_test, branching_ki.num_dofs)
-            pt_out = baked(batch_input).detach().numpy()
+            pt_out = baked(batch_input, current_anchor_rot=None).detach().numpy()
             ort_out = sess.run(["fk_obs"], {"dof_pos": batch_input.numpy()})[0]
             np.testing.assert_allclose(ort_out, pt_out, atol=1e-4, rtol=1e-4)
 
@@ -1012,7 +988,30 @@ class _BakedTargetFKModule(torch.nn.Module):
         self._baked = baked
 
     def forward(self, *args: Tensor) -> Tensor:
-        return self._baked(*args)
+        if isinstance(self._baked, BakedTargetFKNoOdom):
+            # NoOdom: all five inputs are positional.
+            return self._baked(*args)
+        # BakedTargetFK: the odometer inputs are keyword-only on the kernel.
+        (
+            future_dof_pos,
+            current_anchor_rot,
+            future_anchor_rot,
+            odom_disp_start,
+            odom_start_xy,
+            odom_start_heading_inv,
+            future_ref_anchor_pos,
+            current_ref_anchor_pos,
+        ) = args
+        return self._baked(
+            future_dof_pos,
+            current_anchor_rot,
+            future_anchor_rot,
+            future_ref_anchor_pos,
+            current_ref_anchor_pos,
+            odom_disp_start=odom_disp_start,
+            odom_start_xy=odom_start_xy,
+            odom_start_heading_inv=odom_start_heading_inv,
+        )
 
 
 class TestONNXTraceTargetFK:
@@ -1080,7 +1079,7 @@ class TestONNXTraceTargetFK:
                 "current_ref_anchor_pos",
             ]
 
-        pt_out = baked(*args).detach().numpy()
+        pt_out = _BakedTargetFKModule(baked)(*args).detach().numpy()
 
         buf = io.BytesIO()
         torch.onnx.export(
@@ -1114,39 +1113,75 @@ class TestGPU:
             branching_ki, anchor_idx=1, trackable_body_indices=trackable
         )
         dof_pos = torch.randn(8, branching_ki.num_dofs)
-        cpu_out = baked(dof_pos)
-        cuda_out = baked(dof_pos.cuda())
+        cpu_out = baked(dof_pos, current_anchor_rot=None)
+        cuda_out = baked(dof_pos.cuda(), current_anchor_rot=None)
         torch.testing.assert_close(cpu_out, cuda_out.cpu(), atol=1e-4, rtol=1e-4)
 
 
 # ===========================================================================
-# 7. Picklability (needed for resolved_configs.pt)
+# 7. Export protocol (export_init / from_init -- how the config bundle persists)
 # ===========================================================================
 
 
-class TestPicklability:
-    def test_pickle_round_trip(self, branching_ki):
-        """BakedAnchorFK survives torch.save / torch.load round-trip."""
-        import tempfile
-        import os
+class TestExportInitRoundTrip:
+    """The kernel-object protocol the config bundle writes as {kernel_object, init}.
 
+    A baked-FK kernel persists as its JSON-able constants (``export_init``) and is
+    rebuilt from the bundle's robot (``from_init``), never pickled: the kinematic
+    tree comes from the rebuilt robot, so a saved observation can never carry a
+    stale one.
+    """
+
+    def test_anchor_from_init_rebuilds_an_equivalent_kernel(self, branching_ki):
         trackable = torch.tensor([2, 3, 4])
         baked = BakedAnchorFK(
             branching_ki, anchor_idx=1, trackable_body_indices=trackable
         )
         dof_pos = torch.randn(4, branching_ki.num_dofs)
-        out_before = baked(dof_pos)
+        out_before = baked(dof_pos, current_anchor_rot=None)
 
-        with tempfile.NamedTemporaryFile(suffix=".pt", delete=False) as f:
-            path = f.name
-        try:
-            torch.save(baked, path)
-            loaded = torch.load(path, weights_only=False)
-            out_after = loaded(dof_pos)
-        finally:
-            os.unlink(path)
+        init = baked.export_init()
+        assert init == {"anchor_idx": 1, "trackable_body_indices": [2, 3, 4]}
+
+        robot = SimpleNamespace(kinematic_info=branching_ki)
+        rebuilt = BakedAnchorFK.from_init(robot, **init)
+        out_after = rebuilt(dof_pos, current_anchor_rot=None)
 
         torch.testing.assert_close(out_before, out_after, atol=ATOL, rtol=RTOL)
+
+    def test_target_export_init_rebuilds_the_kernel(self, branching_ki):
+        trackable = torch.tensor([2, 3, 4])
+        baked = BakedTargetFK(
+            branching_ki, anchor_idx=1, trackable_body_indices=trackable
+        )
+        init = baked.export_init()
+        # The step selection is the ``future_steps`` kernel parameter and travels
+        # in the component's static_params, not in the constructor constants.
+        assert init == {"anchor_idx": 1, "trackable_body_indices": [2, 3, 4]}
+
+        robot = SimpleNamespace(kinematic_info=branching_ki)
+        rebuilt = BakedTargetFK.from_init(robot, **init)
+        assert isinstance(rebuilt, BakedTargetFK)
+        assert repr(rebuilt) == repr(baked)
+
+    @pytest.mark.parametrize("kernel_cls", [BakedAnchorFK, BakedTargetFK])
+    def test_from_init_refuses_constants_this_code_does_not_write(
+        self, branching_ki, kernel_cls
+    ):
+        """A key the saved bundle carries that the class no longer takes, or one
+        it lacks, is refused with the regenerate wording instead of being
+        ignored or surfacing as a bare KeyError."""
+        robot = SimpleNamespace(kinematic_info=branching_ki)
+        with pytest.raises(
+            ValueError, match=r"unexpected \['future_steps'\], missing \[\].*regenerate"
+        ):
+            kernel_cls.from_init(
+                robot, anchor_idx=1, trackable_body_indices=[2, 3], future_steps=2
+            )
+        with pytest.raises(
+            ValueError, match=r"unexpected \[\], missing \['anchor_idx'\].*regenerate"
+        ):
+            kernel_cls.from_init(robot, trackable_body_indices=[2, 3])
 
 
 # ===========================================================================
@@ -1174,7 +1209,7 @@ class TestG1Integration:
         dof_pos = torch.randn(16, ki.num_dofs) * 0.3  # small angles
 
         ref = _reference_fk_obs(dof_pos, ki, anchor_idx, trackable)
-        out = baked(dof_pos)
+        out = baked(dof_pos, current_anchor_rot=None)
         torch.testing.assert_close(out, ref, atol=ATOL, rtol=RTOL)
 
 
@@ -1319,7 +1354,7 @@ class TestRealMotionData:
         baked = BakedAnchorFK(
             ki, anchor_idx=anchor_idx, trackable_body_indices=trackable
         )
-        baked_obs = baked(dof_pos)  # [F, n_track * 9]
+        baked_obs = baked(dof_pos, current_anchor_rot=None)  # [F, n_track * 9]
 
         # --- RHS: express stored world-frame poses in anchor frame ---
         anchor_pos = body_pos[:, anchor_idx, :]  # [F, 3]

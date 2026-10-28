@@ -10,7 +10,7 @@ Simulator (Base Class)
 
    Base class for all physics simulators.
    
-   Provides unified interface for IsaacGym, IsaacLab, Genesis, and Newton engines.
+   Provides unified interface for IsaacGym, IsaacLab, Newton, and MuJoCo engines.
    Handles robot spawning, environment setup, scene management, terrain integration,
    and state management.
    
@@ -84,22 +84,6 @@ IsaacLab Simulator
    - USD asset pipeline
    - Advanced materials and lighting
    - Camera sensors
-
-Genesis Simulator
------------------
-
-.. py:class:: GenesisSimulator(config, robot_config, terrain, device, scene_lib, visualization_markers)
-
-   Simulator implementation using Genesis physics engine.
-   
-   Modern physics engine for robotics and animation.
-   
-   :param config: Simulator configuration
-   :param robot_config: Robot configuration
-   :param terrain: Optional terrain
-   :param device: PyTorch device
-   :param scene_lib: Optional scene library
-   :param visualization_markers: Optional markers
 
 Newton Simulator
 ----------------

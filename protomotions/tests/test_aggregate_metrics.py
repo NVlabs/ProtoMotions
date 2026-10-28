@@ -69,6 +69,7 @@ def test_action_smoothness_computes_deltas_across_valid_motion_frames(capsys):
             [99.0, 99.0],
         ]
     )
+    actions.frame_counts[:] = torch.tensor([3, 1, 2])
 
     metric = ActionSmoothnessAggregateMetric(_evaluator(dt=0.1))
     result = metric.compute({"actions": actions})

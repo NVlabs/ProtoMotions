@@ -1,578 +1,170 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""State history buffer for storing historical robot state tensors.
+"""One history for physical state, sensor estimates, and incoming commands."""
 
-This module provides the StateHistoryBuffer class that stores raw 4D tensors
-of historical robot state (not RobotState objects) to enable ONNX-compilable
-historical observation functions.
+from __future__ import annotations
 
-The buffer can store both clean (privileged) and noisy observations to support
-asymmetric actor-critic training with observation noise.
-"""
-
-from typing import Dict, Optional
+from dataclasses import dataclass
+from typing import Callable, Iterator, Mapping, Optional, Tuple
 
 import torch
 from torch import Tensor
 
+from protomotions.envs.context_sources import HISTORICAL_NAMESPACES
+from protomotions.envs.state import BodyState, StateSource
+from protomotions.envs.steps import BoundKernel, required_history_depth
+
+
+@dataclass
+class HistorySample:
+    """States and commands sharing the same environment and time dimensions.
+
+    Raw actions are policy outputs; processed actions are simulator commands.
+    An action is stored with the state reached by applying it. The commands are
+    shared across sources, never copied into each source's state record.
+    """
+
+    states: Mapping[StateSource, BodyState]
+    raw_actions: Tensor
+    processed_actions: Tensor
+
+    def map(self, transform: Callable[[Tensor], Tensor]) -> HistorySample:
+        """Transform every available tensor, preserving the source schema."""
+        return HistorySample(
+            states={key: state.map(transform) for key, state in self.states.items()},
+            raw_actions=transform(self.raw_actions),
+            processed_actions=transform(self.processed_actions),
+        )
+
+    def tensors(self) -> Iterator[tuple[str, Tensor]]:
+        """Yield named tensors for shape/schema checks and in-place writes."""
+        for source, state in self.states.items():
+            for name, value in state.tensors():
+                yield f"{source}.{name}", value
+        yield "raw_actions", self.raw_actions
+        yield "processed_actions", self.processed_actions
+
+
+# The context roots the ring publishes as one past slot each.
+SINGLE_SLOT_ROOTS: Tuple[str, ...] = ("previous_action", "previous_processed_action")
+
+
+def first_lag(root: str) -> Optional[int]:
+    """Lag of slot 0 under a context root the ring publishes, None for any
+    other root: the historical namespaces start one step back, the two
+    action rings start at the current command (slot 0, lag 0), and the two
+    ``previous_*`` names are one past slot."""
+    if root in HISTORICAL_NAMESPACES or root in SINGLE_SLOT_ROOTS:
+        return 1
+    if root in ("raw_action_history", "processed_action_history"):
+        return 0
+    return None
+
+
+def history_depth(components: Mapping[str, BoundKernel]) -> int:
+    """How many past slots the ring keeps for ``components``: the one
+    computation (:func:`protomotions.envs.steps.required_history_depth`) over
+    the ring's roots. 0 when no component reads the past; the historical
+    namespaces and the ``previous_*`` names are then not published, which is
+    consistent by construction (a binding to one of them is what makes the
+    depth positive). A component that reads a history window without a step
+    selection is refused here, by name."""
+    return required_history_depth(components, first_lag, SINGLE_SLOT_ROOTS)
+
 
 class StateHistoryBuffer:
-    """Buffer for storing current + historical robot state as raw 4D tensors.
-    
-    Stores robot state tensors with shape [envs, num_history_steps + 1, ...].
-    The buffer holds both current state (index 0) and historical states (index 1+).
-    Uses raw tensors instead of RobotState objects to avoid 3D indexing assumptions
-    and enable ONNX compilation of historical observation functions.
-    
-    Buffer layout after rotate_and_update():
-        - Index 0: current state (t)
-        - Index 1: previous state (t - dt)
-        - Index 2: t - 2*dt
-        - ... up to index num_history_steps
-    
-    The historical_* properties return [:, 1:] which gives exactly num_history_steps
-    elements (excluding current).
-    
-    When store_noisy=True, additional noisy_* buffers are allocated to store
-    observations with noise applied, enabling asymmetric actor-critic training.
-    The main buffers store clean (privileged) data, noisy buffers store noisy data.
-    
-    Args:
-        num_envs: Number of parallel environments.
-        num_history_steps: Number of historical timesteps to store (not including current).
-        num_bodies: Number of rigid bodies in the robot.
-        num_dofs: Number of degrees of freedom.
-        action_dim: Dimension of action space.
-        device: Device for tensor storage.
-        store_noisy: If True, allocate additional buffers for noisy observations.
-    
-    Attributes:
-        rigid_body_pos: Buffer [envs, num_history_steps + 1, bodies, 3].
-        rigid_body_rot: Buffer [envs, num_history_steps + 1, bodies, 4].
-        rigid_body_vel: Buffer [envs, num_history_steps + 1, bodies, 3].
-        rigid_body_ang_vel: Buffer [envs, num_history_steps + 1, bodies, 3].
-        dof_pos: Buffer [envs, num_history_steps + 1, num_dofs].
-        dof_vel: Buffer [envs, num_history_steps + 1, num_dofs].
-        actions: Buffer [envs, num_history_steps + 1, action_dim].
-        historical_*: Properties returning [:, 1:] with exactly num_history_steps elements.
-        noisy_*: Optional noisy versions of buffers (only if store_noisy=True).
+    """Store current state at slot 0 and previous states at slots 1 through H.
+
+    Construction and reset repeat the measured post-reset state into all slots,
+    including the noisy estimate, and zero incoming commands. No reference-clip
+    poses or privileged substitutes are inserted into sensor history.
+
+    The initial sample defines available sources and fields. Subsequent writes
+    must have the same schema; adding a sensor channel does not require editing
+    this class. ``capture`` gives the context its own snapshot so later resets
+    and writes cannot change observations retained by a caller.
     """
-    
-    def __init__(
-        self,
-        num_envs: int,
-        num_history_steps: int,
-        num_bodies: int,
-        num_dofs: int,
-        action_dim: int,
-        num_contact_bodies: int,
-        anchor_body_index: int,
-        device: torch.device,
-        store_noisy: bool = False,
-    ):
-        self.num_envs = num_envs
+
+    # The two slot facts a deployment needs to replay the action rings (the
+    # exporter states them next to each action-history input): slot 0 holds
+    # the action that produced the current state, one policy call back, and
+    # a reset fills the rings with zeros.
+    ACTION_LAG = 1
+    RESET_FILL = "zeros"
+
+    def __init__(self, num_history_steps: int, initial: HistorySample) -> None:
+        if num_history_steps < 0:
+            raise ValueError("num_history_steps must be nonnegative")
         self.num_history_steps = num_history_steps
-        self.num_bodies = num_bodies
-        self.num_dofs = num_dofs
-        self.action_dim = action_dim
-        self.num_contact_bodies = num_contact_bodies
-        self.anchor_body_index = anchor_body_index
-        self.device = device
-        self.store_noisy = store_noisy
-        
-        buffer_size = num_history_steps + 1
-        
-        # Clean (privileged) buffers - always allocated
-        self.rigid_body_pos = torch.zeros(
-            num_envs, buffer_size, num_bodies, 3,
-            dtype=torch.float, device=device
+        self._values = initial.map(
+            lambda value: value.unsqueeze(1)
+            .expand(-1, num_history_steps + 1, *value.shape[1:])
+            .clone()
         )
-        self.rigid_body_rot = torch.zeros(
-            num_envs, buffer_size, num_bodies, 4,
-            dtype=torch.float, device=device
-        )
-        self.rigid_body_vel = torch.zeros(
-            num_envs, buffer_size, num_bodies, 3,
-            dtype=torch.float, device=device
-        )
-        self.rigid_body_ang_vel = torch.zeros(
-            num_envs, buffer_size, num_bodies, 3,
-            dtype=torch.float, device=device
-        )
-        self.dof_pos = torch.zeros(
-            num_envs, buffer_size, num_dofs,
-            dtype=torch.float, device=device
-        )
-        self.dof_vel = torch.zeros(
-            num_envs, buffer_size, num_dofs,
-            dtype=torch.float, device=device
-        )
-        self.actions = torch.zeros(
-            num_envs, buffer_size, action_dim,
-            dtype=torch.float, device=device
-        )
-        self.processed_actions = torch.zeros(
-            num_envs, buffer_size, action_dim,
-            dtype=torch.float, device=device
-        )
-        self.ground_heights = torch.zeros(
-            num_envs, buffer_size,
-            dtype=torch.float, device=device
-        )
-        self.body_contacts = torch.zeros(
-            num_envs, buffer_size, num_contact_bodies,
-            dtype=torch.bool, device=device
-        )
-        
-        # Noisy buffers - only allocated if store_noisy=True
-        if store_noisy:
-            self.noisy_rigid_body_pos = torch.zeros(
-                num_envs, buffer_size, num_bodies, 3,
-                dtype=torch.float, device=device
-            )
-            self.noisy_rigid_body_rot = torch.zeros(
-                num_envs, buffer_size, num_bodies, 4,
-                dtype=torch.float, device=device
-            )
-            self.noisy_rigid_body_vel = torch.zeros(
-                num_envs, buffer_size, num_bodies, 3,
-                dtype=torch.float, device=device
-            )
-            self.noisy_rigid_body_ang_vel = torch.zeros(
-                num_envs, buffer_size, num_bodies, 3,
-                dtype=torch.float, device=device
-            )
-            self.noisy_dof_pos = torch.zeros(
-                num_envs, buffer_size, num_dofs,
-                dtype=torch.float, device=device
-            )
-            self.noisy_dof_vel = torch.zeros(
-                num_envs, buffer_size, num_dofs,
-                dtype=torch.float, device=device
-            )
-            self.noisy_ground_heights = torch.zeros(
-                num_envs, buffer_size,
-                dtype=torch.float, device=device
-            )
-        else:
-            # When not storing noisy, point to clean buffers for memory efficiency
-            self.noisy_rigid_body_pos = self.rigid_body_pos
-            self.noisy_rigid_body_rot = self.rigid_body_rot
-            self.noisy_rigid_body_vel = self.rigid_body_vel
-            self.noisy_rigid_body_ang_vel = self.rigid_body_ang_vel
-            self.noisy_dof_pos = self.dof_pos
-            self.noisy_dof_vel = self.dof_vel
-            self.noisy_ground_heights = self.ground_heights
-    
-    @property
-    def historical_rigid_body_pos(self) -> Tensor:
-        """Historical body positions [envs, history_steps-1, bodies, 3]."""
-        return self.rigid_body_pos[:, 1:]
-    
-    @property
-    def historical_rigid_body_rot(self) -> Tensor:
-        """Historical body rotations [envs, history_steps-1, bodies, 4]."""
-        return self.rigid_body_rot[:, 1:]
-    
-    @property
-    def historical_rigid_body_vel(self) -> Tensor:
-        """Historical body velocities [envs, history_steps-1, bodies, 3]."""
-        return self.rigid_body_vel[:, 1:]
-    
-    @property
-    def historical_rigid_body_ang_vel(self) -> Tensor:
-        """Historical body angular velocities [envs, history_steps-1, bodies, 3]."""
-        return self.rigid_body_ang_vel[:, 1:]
-    
-    @property
-    def historical_dof_pos(self) -> Tensor:
-        """Historical DOF positions [envs, history_steps-1, num_dofs]."""
-        return self.dof_pos[:, 1:]
-    
-    @property
-    def historical_dof_vel(self) -> Tensor:
-        """Historical DOF velocities [envs, history_steps-1, num_dofs]."""
-        return self.dof_vel[:, 1:]
-    
-    @property
-    def historical_actions(self) -> Tensor:
-        """Historical actions [envs, history_steps-1, action_dim]."""
-        return self.actions[:, 1:]
-    
-    @property
-    def historical_processed_actions(self) -> Tensor:
-        """Historical processed actions [envs, history_steps-1, action_dim]."""
-        return self.processed_actions[:, 1:]
-    
-    @property
-    def historical_ground_heights(self) -> Tensor:
-        """Historical ground heights beneath root [envs, history_steps-1]."""
-        return self.ground_heights[:, 1:]
-    
-    @property
-    def historical_body_contacts(self) -> Tensor:
-        """Historical body contacts [envs, history_steps-1, num_contact_bodies]."""
-        return self.body_contacts[:, 1:]
-    
-    @property
-    def historical_root_pos(self) -> Tensor:
-        """Historical root positions [envs, history_steps-1, 3]."""
-        return self.rigid_body_pos[:, 1:, 0, :]
-    
-    @property
-    def historical_root_rot(self) -> Tensor:
-        """Historical root rotations [envs, history_steps-1, 4]."""
-        return self.rigid_body_rot[:, 1:, 0, :]
-    
-    @property
-    def historical_root_ang_vel(self) -> Tensor:
-        """Historical root angular velocities [envs, history_steps-1, 3]."""
-        return self.rigid_body_ang_vel[:, 1:, 0, :]
-    
-    @property
-    def historical_anchor_pos(self) -> Tensor:
-        """Historical anchor body positions [envs, history_steps-1, 3]."""
-        return self.rigid_body_pos[:, 1:, self.anchor_body_index, :]
-    
-    @property
-    def historical_anchor_rot(self) -> Tensor:
-        """Historical anchor body rotations [envs, history_steps-1, 4]."""
-        return self.rigid_body_rot[:, 1:, self.anchor_body_index, :]
-    
-    # =========================================================================
-    # Noisy historical properties (for actor with observation noise)
-    # =========================================================================
-    
-    @property
-    def noisy_historical_rigid_body_pos(self) -> Tensor:
-        """Noisy historical body positions [envs, history_steps-1, bodies, 3]."""
-        return self.noisy_rigid_body_pos[:, 1:]
-    
-    @property
-    def noisy_historical_rigid_body_rot(self) -> Tensor:
-        """Noisy historical body rotations [envs, history_steps-1, bodies, 4]."""
-        return self.noisy_rigid_body_rot[:, 1:]
-    
-    @property
-    def noisy_historical_rigid_body_vel(self) -> Tensor:
-        """Noisy historical body velocities [envs, history_steps-1, bodies, 3]."""
-        return self.noisy_rigid_body_vel[:, 1:]
-    
-    @property
-    def noisy_historical_rigid_body_ang_vel(self) -> Tensor:
-        """Noisy historical body angular velocities [envs, history_steps-1, bodies, 3]."""
-        return self.noisy_rigid_body_ang_vel[:, 1:]
-    
-    @property
-    def noisy_historical_dof_pos(self) -> Tensor:
-        """Noisy historical DOF positions [envs, history_steps-1, num_dofs]."""
-        return self.noisy_dof_pos[:, 1:]
-    
-    @property
-    def noisy_historical_dof_vel(self) -> Tensor:
-        """Noisy historical DOF velocities [envs, history_steps-1, num_dofs]."""
-        return self.noisy_dof_vel[:, 1:]
-    
-    @property
-    def noisy_historical_root_pos(self) -> Tensor:
-        """Noisy historical root positions [envs, history_steps-1, 3]."""
-        return self.noisy_rigid_body_pos[:, 1:, 0, :]
-    
-    @property
-    def noisy_historical_root_rot(self) -> Tensor:
-        """Noisy historical root rotations [envs, history_steps-1, 4]."""
-        return self.noisy_rigid_body_rot[:, 1:, 0, :]
-    
-    @property
-    def noisy_historical_root_ang_vel(self) -> Tensor:
-        """Noisy historical root angular velocities [envs, history_steps-1, 3]."""
-        return self.noisy_rigid_body_ang_vel[:, 1:, 0, :]
-    
-    @property
-    def noisy_historical_anchor_pos(self) -> Tensor:
-        """Noisy historical anchor body positions [envs, history_steps-1, 3]."""
-        return self.noisy_rigid_body_pos[:, 1:, self.anchor_body_index, :]
-    
-    @property
-    def noisy_historical_anchor_rot(self) -> Tensor:
-        """Noisy historical anchor body rotations [envs, history_steps-1, 4]."""
-        return self.noisy_rigid_body_rot[:, 1:, self.anchor_body_index, :]
-    
-    @property
-    def noisy_historical_ground_heights(self) -> Tensor:
-        """Noisy historical ground heights [envs, history_steps-1]."""
-        return self.noisy_ground_heights[:, 1:]
-    
-    @property
-    def historical_anchor_vel(self) -> Tensor:
-        """Historical anchor body velocities [envs, history_steps-1, 3]."""
-        return self.rigid_body_vel[:, 1:, self.anchor_body_index, :]
-    
-    @property
-    def historical_anchor_ang_vel(self) -> Tensor:
-        """Historical anchor body angular velocities [envs, history_steps-1, 3]."""
-        return self.rigid_body_ang_vel[:, 1:, self.anchor_body_index, :]
-    
+        self._values.raw_actions.zero_()
+        self._values.processed_actions.zero_()
+
     @torch.no_grad()
-    def rotate_and_update(
-        self,
-        rigid_body_pos: Tensor,
-        rigid_body_rot: Tensor,
-        rigid_body_vel: Tensor,
-        rigid_body_ang_vel: Tensor,
-        dof_pos: Tensor,
-        dof_vel: Tensor,
-        actions: Tensor,
-        ground_heights: Tensor,
-        body_contacts: Tensor,
-        processed_actions: Optional[Tensor] = None,
-        noisy_rigid_body_pos: Optional[Tensor] = None,
-        noisy_rigid_body_rot: Optional[Tensor] = None,
-        noisy_rigid_body_vel: Optional[Tensor] = None,
-        noisy_rigid_body_ang_vel: Optional[Tensor] = None,
-        noisy_dof_pos: Optional[Tensor] = None,
-        noisy_dof_vel: Optional[Tensor] = None,
-        noisy_ground_heights: Optional[Tensor] = None,
-    ):
-        """Rotate history buffer and insert current state at the front.
-        
-        Shifts all history one step back (discarding oldest) and inserts
-        the current state at index 0.
-        
-        Args:
-            rigid_body_pos: Current body positions [envs, bodies, 3] (clean/privileged).
-            rigid_body_rot: Current body rotations [envs, bodies, 4] (clean/privileged).
-            rigid_body_vel: Current body velocities [envs, bodies, 3] (clean/privileged).
-            rigid_body_ang_vel: Current body angular velocities [envs, bodies, 3] (clean/privileged).
-            dof_pos: Current DOF positions [envs, num_dofs] (clean/privileged).
-            dof_vel: Current DOF velocities [envs, num_dofs] (clean/privileged).
-            actions: Current raw actions [envs, action_dim].
-            ground_heights: Ground heights beneath root [envs] (clean/privileged).
-            body_contacts: Body contact flags [envs, num_contact_bodies].
-            processed_actions: Optional processed actions [envs, action_dim] (after tanh/clamp).
-            noisy_rigid_body_pos: Optional noisy body positions [envs, bodies, 3].
-            noisy_rigid_body_rot: Optional noisy body rotations [envs, bodies, 4].
-            noisy_rigid_body_vel: Optional noisy body velocities [envs, bodies, 3].
-            noisy_rigid_body_ang_vel: Optional noisy body angular velocities [envs, bodies, 3].
-            noisy_dof_pos: Optional noisy DOF positions [envs, num_dofs].
-            noisy_dof_vel: Optional noisy DOF velocities [envs, num_dofs].
-            noisy_ground_heights: Optional noisy ground heights [envs].
-        """
-        # Roll all clean tensors: shift history back by 1 (index 0 becomes 1, etc.)
-        self.rigid_body_pos = self.rigid_body_pos.roll(shifts=1, dims=1)
-        self.rigid_body_rot = self.rigid_body_rot.roll(shifts=1, dims=1)
-        self.rigid_body_vel = self.rigid_body_vel.roll(shifts=1, dims=1)
-        self.rigid_body_ang_vel = self.rigid_body_ang_vel.roll(shifts=1, dims=1)
-        self.dof_pos = self.dof_pos.roll(shifts=1, dims=1)
-        self.dof_vel = self.dof_vel.roll(shifts=1, dims=1)
-        self.actions = self.actions.roll(shifts=1, dims=1)
-        self.processed_actions = self.processed_actions.roll(shifts=1, dims=1)
-        self.ground_heights = self.ground_heights.roll(shifts=1, dims=1)
-        self.body_contacts = self.body_contacts.roll(shifts=1, dims=1)
-        
-        # Insert clean data at front
-        self.rigid_body_pos[:, 0] = rigid_body_pos
-        self.rigid_body_rot[:, 0] = rigid_body_rot
-        self.rigid_body_vel[:, 0] = rigid_body_vel
-        self.rigid_body_ang_vel[:, 0] = rigid_body_ang_vel
-        self.dof_pos[:, 0] = dof_pos
-        self.dof_vel[:, 0] = dof_vel
-        self.actions[:, 0] = actions
-        self.processed_actions[:, 0] = processed_actions if processed_actions is not None else actions
-        self.ground_heights[:, 0] = ground_heights
-        self.body_contacts[:, 0] = body_contacts
-        
-        # Handle noisy buffers if store_noisy is enabled
-        if self.store_noisy:
-            self.noisy_rigid_body_pos = self.noisy_rigid_body_pos.roll(shifts=1, dims=1)
-            self.noisy_rigid_body_rot = self.noisy_rigid_body_rot.roll(shifts=1, dims=1)
-            self.noisy_rigid_body_vel = self.noisy_rigid_body_vel.roll(shifts=1, dims=1)
-            self.noisy_rigid_body_ang_vel = self.noisy_rigid_body_ang_vel.roll(shifts=1, dims=1)
-            self.noisy_dof_pos = self.noisy_dof_pos.roll(shifts=1, dims=1)
-            self.noisy_dof_vel = self.noisy_dof_vel.roll(shifts=1, dims=1)
-            self.noisy_ground_heights = self.noisy_ground_heights.roll(shifts=1, dims=1)
-            
-            # Insert noisy data at front (use clean if noisy not provided)
-            self.noisy_rigid_body_pos[:, 0] = noisy_rigid_body_pos if noisy_rigid_body_pos is not None else rigid_body_pos
-            self.noisy_rigid_body_rot[:, 0] = noisy_rigid_body_rot if noisy_rigid_body_rot is not None else rigid_body_rot
-            self.noisy_rigid_body_vel[:, 0] = noisy_rigid_body_vel if noisy_rigid_body_vel is not None else rigid_body_vel
-            self.noisy_rigid_body_ang_vel[:, 0] = noisy_rigid_body_ang_vel if noisy_rigid_body_ang_vel is not None else rigid_body_ang_vel
-            self.noisy_dof_pos[:, 0] = noisy_dof_pos if noisy_dof_pos is not None else dof_pos
-            self.noisy_dof_vel[:, 0] = noisy_dof_vel if noisy_dof_vel is not None else dof_vel
-            self.noisy_ground_heights[:, 0] = noisy_ground_heights if noisy_ground_heights is not None else ground_heights
-    
+    def push(self, sample: HistorySample) -> None:
+        """Advance all sources once and insert the resulting state/commands."""
+        pairs = self._matching_tensors(sample, history=False)
+        for target, value in pairs:
+            target[:, 1:] = target[:, :-1].clone()
+            target[:, 0] = value
+
     @torch.no_grad()
-    def reset_from_states(
-        self,
-        env_ids: Tensor,
-        rigid_body_pos: Tensor,
-        rigid_body_rot: Tensor,
-        rigid_body_vel: Tensor,
-        rigid_body_ang_vel: Tensor,
-        dof_pos: Tensor,
-        dof_vel: Tensor,
-        ground_heights: Tensor,
-        body_contacts: Tensor,
-        actions: Optional[Tensor] = None,
-    ):
-        """Reset history for specified environments from historical state tensors.
-        
-        Used for reset-from-reference where we have historical states from motion_lib.
-        Noisy buffers are also reset to clean data (no noise on reset).
-        
-        Args:
-            env_ids: Environment indices to reset.
-            rigid_body_pos: Historical body positions [len(env_ids), steps, bodies, 3].
-            rigid_body_rot: Historical body rotations [len(env_ids), steps, bodies, 4].
-            rigid_body_vel: Historical body velocities [len(env_ids), steps, bodies, 3].
-            rigid_body_ang_vel: Historical body angular velocities [len(env_ids), steps, bodies, 3].
-            dof_pos: Historical DOF positions [len(env_ids), steps, num_dofs].
-            dof_vel: Historical DOF velocities [len(env_ids), steps, num_dofs].
-            ground_heights: Historical ground heights [len(env_ids), steps].
-            body_contacts: Historical body contacts [len(env_ids), steps, num_contact_bodies].
-            actions: Historical actions [len(env_ids), steps, action_dim] or None to zero.
-        """
-        self.rigid_body_pos[env_ids] = rigid_body_pos
-        self.rigid_body_rot[env_ids] = rigid_body_rot
-        self.rigid_body_vel[env_ids] = rigid_body_vel
-        self.rigid_body_ang_vel[env_ids] = rigid_body_ang_vel
-        self.dof_pos[env_ids] = dof_pos
-        self.dof_vel[env_ids] = dof_vel
-        self.ground_heights[env_ids] = ground_heights
-        self.body_contacts[env_ids] = body_contacts
-        
-        if actions is not None:
-            self.actions[env_ids] = actions
-            self.processed_actions[env_ids] = actions  # Use raw actions as processed on reset
-        else:
-            self.actions[env_ids] = 0.0
-            self.processed_actions[env_ids] = 0.0
-        
-        # Reset noisy buffers to clean data (no noise on reset)
-        if self.store_noisy:
-            self.noisy_rigid_body_pos[env_ids] = rigid_body_pos
-            self.noisy_rigid_body_rot[env_ids] = rigid_body_rot
-            self.noisy_rigid_body_vel[env_ids] = rigid_body_vel
-            self.noisy_rigid_body_ang_vel[env_ids] = rigid_body_ang_vel
-            self.noisy_dof_pos[env_ids] = dof_pos
-            self.noisy_dof_vel[env_ids] = dof_vel
-            self.noisy_ground_heights[env_ids] = ground_heights
-    
+    def reset(self, env_ids: Tensor, sample: HistorySample) -> None:
+        """Repeat subset post-reset states and clear only their commands."""
+        pairs = self._matching_tensors(sample, history=False, num_envs=len(env_ids))
+        for target, value in pairs:
+            target[env_ids] = value.unsqueeze(1)
+        self._values.raw_actions[env_ids] = 0
+        self._values.processed_actions[env_ids] = 0
+
+    def capture(self, env_ids: Optional[Tensor] = None) -> HistorySample:
+        """Return one owned snapshot; current/history views slice it directly."""
+        if env_ids is None:
+            return self._values.map(torch.clone)
+        # Tensor indexing already makes an owned copy of the selected rows.
+        return self._values.map(lambda value: value[env_ids])
+
+    def save_state(self) -> HistorySample:
+        """Snapshot the complete history without sampling or reconstruction."""
+        return self.capture()
+
     @torch.no_grad()
-    def reset_from_single_state(
+    def load_state(self, snapshot: HistorySample) -> None:
+        """Restore values exactly; schema mismatches are errors, not migrations."""
+        for target, value in self._matching_tensors(snapshot, history=True):
+            target.copy_(value)
+
+    def _matching_tensors(
         self,
-        env_ids: Tensor,
-        rigid_body_pos: Tensor,
-        rigid_body_rot: Tensor,
-        rigid_body_vel: Tensor,
-        rigid_body_ang_vel: Tensor,
-        dof_pos: Tensor,
-        dof_vel: Tensor,
-        ground_heights: Tensor,
-        body_contacts: Tensor,
-    ):
-        """Reset history for specified environments by repeating a single state.
-        
-        Used for default reset where we just copy the current state to all buffer slots.
-        Buffer has num_history_steps + 1 slots (current + history).
-        Noisy buffers are also reset to clean data (no noise on reset).
-        
-        Args:
-            env_ids: Environment indices to reset.
-            rigid_body_pos: Current body positions [len(env_ids), bodies, 3].
-            rigid_body_rot: Current body rotations [len(env_ids), bodies, 4].
-            rigid_body_vel: Current body velocities [len(env_ids), bodies, 3].
-            rigid_body_ang_vel: Current body angular velocities [len(env_ids), bodies, 3].
-            dof_pos: Current DOF positions [len(env_ids), num_dofs].
-            dof_vel: Current DOF velocities [len(env_ids), num_dofs].
-            ground_heights: Current ground heights [len(env_ids)].
-            body_contacts: Current body contacts [len(env_ids), num_contact_bodies].
-        """
-        buffer_size = self.rigid_body_pos.shape[1]
-        
-        # Expand tensors for clean buffers
-        expanded_rigid_body_pos = rigid_body_pos.unsqueeze(1).expand(-1, buffer_size, -1, -1)
-        expanded_rigid_body_rot = rigid_body_rot.unsqueeze(1).expand(-1, buffer_size, -1, -1)
-        expanded_rigid_body_vel = rigid_body_vel.unsqueeze(1).expand(-1, buffer_size, -1, -1)
-        expanded_rigid_body_ang_vel = rigid_body_ang_vel.unsqueeze(1).expand(-1, buffer_size, -1, -1)
-        expanded_dof_pos = dof_pos.unsqueeze(1).expand(-1, buffer_size, -1)
-        expanded_dof_vel = dof_vel.unsqueeze(1).expand(-1, buffer_size, -1)
-        
-        self.rigid_body_pos[env_ids] = expanded_rigid_body_pos
-        self.rigid_body_rot[env_ids] = expanded_rigid_body_rot
-        self.rigid_body_vel[env_ids] = expanded_rigid_body_vel
-        self.rigid_body_ang_vel[env_ids] = expanded_rigid_body_ang_vel
-        self.dof_pos[env_ids] = expanded_dof_pos
-        self.dof_vel[env_ids] = expanded_dof_vel
-        self.ground_heights[env_ids] = ground_heights.unsqueeze(1).expand(-1, buffer_size)
-        self.body_contacts[env_ids] = body_contacts.unsqueeze(1).expand(-1, buffer_size, -1)
-        self.actions[env_ids] = 0.0
-        self.processed_actions[env_ids] = 0.0
-        
-        # Reset noisy buffers to clean data (no noise on reset)
-        if self.store_noisy:
-            self.noisy_rigid_body_pos[env_ids] = expanded_rigid_body_pos
-            self.noisy_rigid_body_rot[env_ids] = expanded_rigid_body_rot
-            self.noisy_rigid_body_vel[env_ids] = expanded_rigid_body_vel
-            self.noisy_rigid_body_ang_vel[env_ids] = expanded_rigid_body_ang_vel
-            self.noisy_dof_pos[env_ids] = expanded_dof_pos
-            self.noisy_dof_vel[env_ids] = expanded_dof_vel
-            self.noisy_ground_heights[env_ids] = ground_heights.unsqueeze(1).expand(-1, buffer_size)
-    
-    def save_state(self) -> Dict[str, Tensor]:
-        """Save the entire buffer state for later restoration.
-        
-        Returns a dictionary containing cloned copies of all buffer tensors.
-        Use with load_state() to cache and restore buffer state.
-        
-        Returns:
-            Dictionary mapping tensor names to cloned tensors.
-        """
-        state = {
-            'rigid_body_pos': self.rigid_body_pos.clone(),
-            'rigid_body_rot': self.rigid_body_rot.clone(),
-            'rigid_body_vel': self.rigid_body_vel.clone(),
-            'rigid_body_ang_vel': self.rigid_body_ang_vel.clone(),
-            'dof_pos': self.dof_pos.clone(),
-            'dof_vel': self.dof_vel.clone(),
-            'actions': self.actions.clone(),
-            'processed_actions': self.processed_actions.clone(),
-            'ground_heights': self.ground_heights.clone(),
-            'body_contacts': self.body_contacts.clone(),
-            'store_noisy': self.store_noisy,
-        }
-        if self.store_noisy:
-            state['noisy_rigid_body_pos'] = self.noisy_rigid_body_pos.clone()
-            state['noisy_rigid_body_rot'] = self.noisy_rigid_body_rot.clone()
-            state['noisy_rigid_body_vel'] = self.noisy_rigid_body_vel.clone()
-            state['noisy_rigid_body_ang_vel'] = self.noisy_rigid_body_ang_vel.clone()
-            state['noisy_dof_pos'] = self.noisy_dof_pos.clone()
-            state['noisy_dof_vel'] = self.noisy_dof_vel.clone()
-            state['noisy_ground_heights'] = self.noisy_ground_heights.clone()
-        return state
-    
-    def load_state(self, state: Dict[str, Tensor]) -> None:
-        """Restore buffer state from a previously saved state.
-        
-        Args:
-            state: Dictionary from save_state() containing buffer tensors.
-        """
-        self.rigid_body_pos.copy_(state['rigid_body_pos'])
-        self.rigid_body_rot.copy_(state['rigid_body_rot'])
-        self.rigid_body_vel.copy_(state['rigid_body_vel'])
-        self.rigid_body_ang_vel.copy_(state['rigid_body_ang_vel'])
-        self.dof_pos.copy_(state['dof_pos'])
-        self.dof_vel.copy_(state['dof_vel'])
-        self.actions.copy_(state['actions'])
-        self.processed_actions.copy_(state['processed_actions'])
-        self.ground_heights.copy_(state['ground_heights'])
-        self.body_contacts.copy_(state['body_contacts'])
-        if self.store_noisy and state.get('store_noisy', False):
-            self.noisy_rigid_body_pos.copy_(state['noisy_rigid_body_pos'])
-            self.noisy_rigid_body_rot.copy_(state['noisy_rigid_body_rot'])
-            self.noisy_rigid_body_vel.copy_(state['noisy_rigid_body_vel'])
-            self.noisy_rigid_body_ang_vel.copy_(state['noisy_rigid_body_ang_vel'])
-            self.noisy_dof_pos.copy_(state['noisy_dof_pos'])
-            self.noisy_dof_vel.copy_(state['noisy_dof_vel'])
-            self.noisy_ground_heights.copy_(state['noisy_ground_heights'])
+        sample: HistorySample,
+        *,
+        history: bool,
+        num_envs: Optional[int] = None,
+    ) -> list[tuple[Tensor, Tensor]]:
+        # Validate the whole write before changing storage, including partial
+        # resets, so an invalid sample cannot leave mixed old/new state behind.
+        targets = dict(self._values.tensors())
+        values = dict(sample.tensors())
+        if targets.keys() != values.keys():
+            raise ValueError("History sample sources/fields differ from initial schema")
+        pairs = []
+        for name, target in targets.items():
+            value = values[name]
+            shape = target.shape if history else target[:, 0].shape
+            if num_envs is not None:
+                shape = (num_envs, *shape[1:])
+            if (
+                value.shape != shape
+                or value.dtype != target.dtype
+                or value.device != target.device
+            ):
+                raise ValueError(
+                    f"History tensor {name} has incompatible shape, dtype, or device"
+                )
+            pairs.append((target, value))
+        return pairs

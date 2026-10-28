@@ -3,6 +3,8 @@
 
 """Tests for reusable transformer PEFT helpers."""
 
+import threading
+
 import pytest
 import torch
 import torch.nn.functional as F
@@ -24,7 +26,7 @@ from protomotions.agents.peft.adapters import (
     TransformerLayerWithLoRA,
     inject_transformer_peft,
 )
-from protomotions.agents.peft.prior_with_peft import DiscretePriorWithPEFT
+from protomotions.agents.peft.prior_with_peft import DiscretePriorWithPEFT, frozen_copy
 
 
 def _prior():
@@ -240,7 +242,7 @@ def test_prior_with_peft_persists_reference_position_embedding_after_capture():
     peft.init_peft()
 
     assert not any(key.startswith("_anchor_") for key in peft.state_dict())
-    assert peft.capture_reference() is True
+    peft.capture_reference()
     state = peft.state_dict()
 
     assert "reference_prior._pos_emb" in state
@@ -374,11 +376,18 @@ def test_prior_with_peft_direct_conditioning_and_reference_prior_paths():
         "prior_context": torch.randn(2, 4),
         "prior_tokens": F.one_hot(tokens, 5).float(),
         "task_cond": torch.randn(2, 2),
+        # The actor writes the reference's condition, computed by its own copy
+        # of the conditioning network, next to the student's.
+        "reference_task_cond": torch.randn(2, 2),
     }
 
     logits = peft(input_dict)
     peft.capture_reference()
     prior_logits = peft.forward_prior(input_dict)
+    # The reference never falls back to the student's condition.
+    del input_dict["reference_task_cond"]
+    with pytest.raises(RuntimeError, match="reference_task_cond"):
+        peft.forward_prior(input_dict)
     generated_only = peft.generate(
         {
             "prior_context": torch.randn(2, 4),
@@ -411,11 +420,13 @@ def test_prior_with_peft_can_sample_under_frozen_prior_constraint():
         sampling_mode="prior_constraint",
     )
     peft.init_peft()
+    peft.capture_reference()
 
     generated, logits = peft.generate(
         {
             "prior_context": torch.randn(2, 4),
             "task_cond": torch.randn(2, 2),
+            "reference_task_cond": torch.randn(2, 2),
         },
         return_logits=True,
         return_logprob=False,
@@ -440,21 +451,22 @@ def test_prior_with_peft_reference_can_be_pinned_and_clear_keeps_reference():
     layer = peft.base_prior._transformer.layers[0]
     layer.m.data.fill_(0.25)
 
-    assert peft.capture_reference() is True
+    peft.capture_reference()
     assert peft.reference_ready is True
     reference_layer = peft.reference_prior._transformer.layers[0]
     assert torch.equal(reference_layer.m, layer.m)
 
+    # Capturing again re-pins the reference to the current adapters.
     layer.m.data.fill_(0.5)
-    assert peft.capture_reference() is False
-    assert torch.all(reference_layer.m == 0.25)
+    peft.capture_reference()
+    assert torch.all(reference_layer.m == 0.5)
 
     peft.clear_peft()
     assert torch.all(layer.m == 0)
-    assert torch.all(reference_layer.m == 0.25)
+    assert torch.all(reference_layer.m == 0.5)
 
 
-def test_prior_with_peft_film_input_norm_learns_until_reference_capture():
+def test_prior_with_peft_film_input_norm_keeps_learning_after_reference_capture():
     prior = _prior()
     _materialize_prior(prior)
     peft = DiscretePriorWithPEFT(
@@ -485,17 +497,49 @@ def test_prior_with_peft_film_input_norm_learns_until_reference_capture():
         torch.zeros_like(mean_after_train_forward),
     )
 
-    assert peft.capture_reference() is True
-    assert peft.film_input_norm._freeze_running is True
-    assert peft.reference_film_input_norm is not None
-    peft._build_task_c(
-        {
-            "prior_context": torch.full((4, 4), 10.0),
-            "task_cond": torch.full((4, 2), 10.0),
-        },
-        peft.film_input_norm,
+    peft.capture_reference()
+    assert peft.film_input_norm._freeze_running is False
+    assert peft.reference_film_input_norm._freeze_running is True
+    shifted = {
+        "prior_context": torch.full((4, 4), 10.0),
+        "task_cond": torch.full((4, 2), 10.0),
+    }
+    peft._build_task_c(shifted, peft.film_input_norm)
+    peft._build_task_c(shifted, peft.reference_film_input_norm)
+    assert not torch.equal(
+        peft.film_input_norm.running_obs_norm.mean, mean_after_train_forward
     )
-    assert torch.equal(peft.film_input_norm.running_obs_norm.mean, mean_after_train_forward)
+    assert torch.equal(
+        peft.reference_film_input_norm.running_obs_norm.mean, mean_after_train_forward
+    )
+
+
+def test_frozen_copy_shares_the_fabric_and_copies_everything_else():
+    module = nn.Module()
+    module.linear = nn.Linear(3, 3)
+    module.norm = NormObsBase(NormObsBaseConfig(normalize_obs=True))
+    module.train()
+    module.norm(torch.randn(4, 3))
+    # Stands in for a Fabric holding process handles, which cannot be copied.
+    fabric = threading.Lock()
+    module.norm.running_obs_norm.fabric = fabric
+
+    copied = frozen_copy(module)
+
+    assert copied.norm.running_obs_norm.fabric is fabric
+    buffers = dict(module.named_buffers())
+    copied_buffers = dict(copied.named_buffers())
+    assert buffers.keys() == copied_buffers.keys()
+    for name, buffer in buffers.items():
+        assert torch.equal(copied_buffers[name], buffer)
+        assert copied_buffers[name].data_ptr() != buffer.data_ptr()
+    assert not copied.training
+    assert not any(parameter.requires_grad for parameter in copied.parameters())
+    assert copied.norm._freeze_running
+    # The original is untouched.
+    assert module.training
+    assert all(parameter.requires_grad for parameter in module.parameters())
+    assert not module.norm._freeze_running
 
 
 def test_prior_with_peft_generate_restores_training_mode():
@@ -553,6 +597,7 @@ def test_prior_constraint_sampling_uses_pinned_reference_prior_logits(monkeypatc
         sampling_mode="prior_constraint",
     )
     peft.init_peft()
+    peft.capture_reference()
     calls = []
 
     def fake_prior_constraint_log_probs(logits, prior_logits, p, temperature):
@@ -570,6 +615,7 @@ def test_prior_constraint_sampling_uses_pinned_reference_prior_logits(monkeypatc
         {
             "prior_context": torch.randn(2, 4),
             "task_cond": torch.randn(2, 2),
+            "reference_task_cond": torch.randn(2, 2),
         },
         return_logits=False,
         return_logprob=False,

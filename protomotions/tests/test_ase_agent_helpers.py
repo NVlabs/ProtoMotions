@@ -240,7 +240,8 @@ def test_ase_setup_initializes_latent_state_before_parent_setup(monkeypatch):
             setup_calls.append((num_envs, min_steps, max_steps, device))
             self.num_envs = num_envs
 
-    def fake_parent_setup(self):
+    def fake_parent_setup(self, *, training=True):
+        assert training
         setup_calls.append(("parent", self.latents.clone(), self.latent_reset_steps))
 
     monkeypatch.setattr(ase_agent_module, "StepTracker", _StepTracker)

@@ -65,6 +65,10 @@ with PPO on task rewards. The actor config stays compatible with the SFT config,
 so an SFT checkpoint can warm-start RLFT. The environment usually swaps from the
 SFT mimic-target source to a task control source such as random target reaching.
 
+SFT is optional. RLFT can start straight from the trained prior: leave out
+``--checkpoint`` and the adapters start freshly initialized. Their output weights
+start near zero, so the first rollouts behave almost exactly like the prior.
+
 ``examples/experiments/gpc/task_target_prior_peft_amp.py`` adds AMP rewards to
 the same PEFT actor and task critic when dense style reward is useful.
 
@@ -94,6 +98,9 @@ conditioning. ``actor.peft.model`` is a TensorDict module that consumes those
 keys and writes ``actor.peft.condition_key``. That condition key is the only
 task-conditioning tensor produced by the public config. ``DiscretePriorWithPEFT`` then
 combines it with the frozen prior context keys discovered from the checkpoint.
+``actor.peft.model`` may read those context keys but must not write them: the frozen
+prior, and the RLFT reference policy, read them straight from the observations, and the
+actor refuses a model whose ``out_keys`` include one.
 
 The frozen prior's own context keys are discovered from the loaded prior
 checkpoint and appended by ``DiscretePriorPEFTActor`` at runtime. Experiment configs do
@@ -111,15 +118,84 @@ real conditioning network or extra preprocessing.
 KL and Prior-Constraint Sampling
 --------------------------------
 
-During RLFT, ``DiscretePriorPEFTRLFTAgent`` pins an anchor from the checkpoint-loaded
-PEFT-wrapped prior at fit start. When ``kl_coeff > 0``, the KL term compares the
-active adapter logits against that anchor on the same batch. With
-``sampling_mode="prior_constraint"``, generation samples from the active adapter
-while constraining support to the anchor prior's top-p nucleus.
+During RLFT, ``DiscretePriorPEFTRLFTAgent`` compares the policy it is training
+(the student) against a frozen anchor, the reference policy. The reference is a
+frozen copy of the policy training starts from: its adapters, its FiLM input
+normalizer and its conditioning network (``actor.peft.model``). When
+``kl_coeff > 0``, the KL term compares the student's logits against the
+reference's on the same batch. With ``sampling_mode="prior_constraint"``,
+generation samples from the student while limiting each token to the
+reference's top-p nucleus.
 
-Resume loads the latest checkpoint state first, then pins the anchor from that
-loaded state. Warm-starting a new RLFT experiment from an SFT checkpoint pins the
-SFT adapter; resuming an RLFT run pins the resumed RLFT adapter.
+The reference is pinned explicitly at training start, after checkpoint
+loading. A new RLFT run that needs one, fresh or warm-started from any
+checkpoint, pins the policy it just loaded (including SFT adapters), in either
+sampling mode, and ignores any reference stored in that checkpoint.
+``--overrides agent.model.actor.peft.reference_checkpoint=<file>`` pins the
+trained policy saved in that full or adapter checkpoint instead. A resume
+keeps the reference saved in its checkpoint. ``clear_peft`` clears the student
+only right after a new run pins its reference; it never applies on resume or
+during inference. Setup materializes shapes without sampling, and sampling
+never creates a reference implicitly.
+
+With ``sampling_mode="nucleus"`` and ``kl_coeff=0`` nothing reads a reference,
+so the run holds none and drops a loaded one, and a new run skips a configured
+``clear_peft`` with a warning rather than discarding the loaded policy. The
+student's FiLM input normalizer and the conditioning network's own observation
+normalizer keep updating during training. The frozen prior's normalizers are
+frozen at setup, and only the reference's own copies are frozen. Because the
+reference reads its condition from its own frozen copy of the conditioning
+network, its logits do not drift while the student trains.
+
+RLFT files saved before the reference kept that copy store the reference
+without ``reference_peft_model.*`` keys. Loading one is refused with a message
+naming ``scripts/migrate_peft_reference_conditioning.py``; the script copies the
+student conditioning network saved in the same file, the network that reference
+read when the file was saved, under the reference prefix and writes a new file.
+Load that file instead; nothing fills the copy in on load.
+
+Checkpoint loading ignores saved critic, discriminator and discriminator-critic
+weights only when the destination has no corresponding network. AMP permits
+new discriminator networks to keep their initialization, and PEFT permits a
+new value critic when starting RLFT from SFT. When a network is present on both
+sides, partial or incompatible weights fail validation. Actor weights are
+never optional. Student and reference keys and shapes are checked before any
+checkpoint weights are copied.
+
+``last.ckpt`` is the full training checkpoint, including optimizer state.
+``inference_last.ckpt`` is the adapter checkpoint: the student's adapter and
+task tensors and, when the run holds a reference, the reference's adapter
+tensors, FiLM input normalizer and conditioning network. Frozen base weights
+come from the configured prior. Both files restore the same policy and
+reference.
+
+Files saved before the reference kept its own conditioning network are
+refused until ``scripts/migrate_peft_reference_conditioning.py`` has written
+a migrated copy (see above). The compatibility only goes one way: older
+ProtoMotions code cannot load a newer file that holds a reference.
+
+Missing-reference behavior depends on the operation, not the checkpoint format:
+
+* Ordinary nucleus inference does not need a reference and loads silently.
+* Prior-constrained RLFT inference fails if the checkpoint has no saved
+  reference. The error suggests loading the run's ``last.ckpt`` or overriding
+  ``agent.model.actor.peft.sampling_mode=nucleus``.
+* SFT inference never needs a reference, because the SFT model replays its
+  target encoder's tokens instead of sampling, so it loads either SFT file.
+* Resume fails without a saved reference when KL or constrained sampling needs it.
+* A new training run never uses a saved reference, so it can warm-start from a
+  file with or without one; a file whose reference lacks its conditioning
+  network is still migrated first, since the loaders refuse it on every path.
+  At training start it pins the policy it loaded, or the trained policy in
+  ``agent.model.actor.peft.reference_checkpoint`` if that is set. An adapter
+  checkpoint is not a full optimizer resume.
+
+The inference entry point passes ``for_inference=True`` to ``agent.load`` so
+missing-reference requirements are checked before weights change. Programmatic
+inference should do the same, with ``load_training_state=False``. Warm starts
+use ``load_training_state=False`` without the inference flag; ``fit()`` prepares
+the reference. An older RLFT adapter file missing its reference cannot reproduce
+constrained sampling: use a checkpoint that actually contains that reference.
 
 Common Commands
 ---------------
@@ -176,9 +252,58 @@ Run RLFT from the SFT checkpoint:
        --batch-size 512 \
        --experiment-name rlft_target_peft_crouch_soma
 
+Or skip SFT and run RLFT straight from the prior. The command is the same
+without ``--checkpoint``:
+
+.. code-block:: bash
+
+   python protomotions/train_agent.py \
+       --robot-name soma23 \
+       --simulator isaaclab \
+       --motion-file data/motion_for_trackers/crouch_soma23.pt \
+       --experiment-path examples/experiments/gpc/target_prior_peft.py \
+       --prior-checkpoint results/prior_gpc_soma23/last.ckpt \
+       --num-envs 512 \
+       --batch-size 512 \
+       --experiment-name rlft_target_peft_from_prior_crouch_soma
+
 Use ``--peft-sampling-mode nucleus`` to sample from the student's nucleus and
-regularize toward the prior with KL. The default ``prior_constraint`` mode uses
-the frozen-prior nucleus as the rollout constraint.
+regularize it toward the reference policy with KL. The default
+``prior_constraint`` mode instead limits each sampled token to the reference
+policy's top-p set. Either way the reference is the policy a new run starts
+from: the loaded SFT policy when RLFT starts from SFT, the loaded RLFT policy
+when it warm-starts from another RLFT run, or the frozen prior with its freshly
+initialized adapters when it starts from the prior. A resume keeps the
+reference the run started with.
+
+To anchor a new run to a different policy, point
+``agent.model.actor.peft.reference_checkpoint`` at the checkpoint of the run
+that trained it. Either file works, but the adapter file is much smaller to
+load. For example, this command starts a new run from the RLFT run above and
+keeps training its policy, while keeping the SFT policy as the reference. It
+is the RLFT command with a different ``--checkpoint``, a new experiment name
+and the override:
+
+.. code-block:: bash
+
+   python protomotions/train_agent.py \
+       --robot-name soma23 \
+       --simulator isaaclab \
+       --motion-file data/motion_for_trackers/crouch_soma23.pt \
+       --experiment-path examples/experiments/gpc/target_prior_peft.py \
+       --prior-checkpoint results/prior_gpc_soma23/last.ckpt \
+       --checkpoint results/rlft_target_peft_crouch_soma/last.ckpt \
+       --num-envs 512 \
+       --batch-size 512 \
+       --experiment-name rlft_target_peft_crouch_soma_sft_anchor \
+       --overrides agent.model.actor.peft.reference_checkpoint=results/sft_target_peft_crouch_soma/inference_last.ckpt
+
+Warm-starting from a run's own ``last.ckpt`` under a new experiment name is a
+new run, so it re-anchors to the trained policy. To keep the original anchor
+when you move a run, resume it instead: copy the whole
+``results/<experiment-name>/`` directory and rerun with the same experiment
+name. Or set ``reference_checkpoint`` to the file the run originally started
+from.
 
 Checkpoint Roles During Training
 --------------------------------
@@ -201,8 +326,11 @@ Checkpoint Roles During Training
        PEFT agent loads the whole prior model, not an ``actor.mu`` submodule.
    * - SFT/RLFT ``last.ckpt``
      - Resume and warm-start
-     - RLFT should warm-start from the SFT ``last.ckpt`` so optimizer/training
-       state and the full PEFT model are available.
+     - A resume restores the weights, optimizer and training state. When RLFT
+       follows SFT, warm-start it from the SFT ``last.ckpt``; a warm start
+       loads the full PEFT model's weights only, and the optimizer and
+       training state start fresh. RLFT straight from the prior needs no SFT
+       checkpoint.
    * - SFT/RLFT ``inference_last.ckpt``
      - Inference and sharing
      - This is the small PEFT-only artifact. Do not use it to resume training.
@@ -221,18 +349,28 @@ The PEFT checkpoint contract keeps two artifacts:
 * ``last.ckpt`` is the full training/resume checkpoint. It contains the full
   PEFT model state plus optimizer/training state. Use this when resuming SFT
   or RLFT.
-* ``inference_last.ckpt`` is the slim shareable checkpoint. It contains only
-  trainable PEFT/task state selected by ``actor.adapter_state_dict()``
-  (``actor_peft_model.*``, PEFT adapter ``lora`` / ``gamma`` / ``beta`` /
-  ``m`` entries, and PEFT conditioning-normalizer state). It does not duplicate
-  the frozen base prior, critic, optimizer, or tracker decoder.
+* ``inference_last.ckpt`` is the small, shareable adapter checkpoint. It contains
+  only trainable PEFT/task state selected by ``actor.adapter_state_dict()``:
+  the conditioning network (``actor_peft_model.*``), PEFT adapter ``lora`` /
+  ``gamma`` / ``beta`` / ``m`` entries, and the FiLM input normalizer
+  (``prior_with_peft.film_input_norm.*``). When the run holds a reference
+  policy, it also stores the reference's own adapter tensors
+  (``prior_with_peft.reference_prior.*``), FiLM input normalizer
+  (``prior_with_peft.reference_film_input_norm.*``) and conditioning network
+  (``reference_peft_model.*``), selected by ``actor.reference_state_dict()``,
+  so loading it gives the same reference as loading ``last.ckpt``. This
+  roughly doubles its size. RLFT runs pin a reference at training start when
+  they sample with ``prior_constraint`` or set ``kl_coeff > 0``. RLFT runs with
+  nucleus sampling and no KL penalty never hold one, and neither do SFT runs,
+  which drop any reference they load. The file never duplicates the frozen
+  base prior, critic, optimizer, or tracker decoder.
 
 ``DiscretePriorPEFTRLFTAgentConfig`` enables inference checkpoint saves by default, so
 normal SFT/RLFT checkpoint writes produce both files. The size difference is
-intentional: the full checkpoint is for training continuity, while the slim
+intentional: the full checkpoint is for training continuity, while the adapter
 checkpoint is the artifact to move between machines or use for deployment.
 
-Run inference directly from the PEFT run's slim checkpoint:
+Run inference directly from the PEFT run's adapter checkpoint:
 
 .. code-block:: bash
 
@@ -243,16 +381,16 @@ Run inference directly from the PEFT run's slim checkpoint:
        --checkpoint results/rlft_target_peft_crouch_soma/inference_last.ckpt \
        --num-envs 16
 
-At inference, the PEFT run's ``resolved_configs_inference.pt`` builds the PEFT
-agent and points it at the frozen prior checkpoint. The slim PEFT checkpoint is
+At inference, the PEFT run's ``resolved_configs.json`` builds the PEFT
+agent and points it at the frozen prior checkpoint. The adapter PEFT checkpoint is
 loaded onto that prior as adapter/task state. Updated prior checkpoints embed
 their own ``latent_decoder`` config (originally sourced from the tracker at
 prior-train time), so a separate tracker file is not required at PEFT inference
 time.
 
 If you move the PEFT run to another machine, keep the PEFT
-``resolved_configs_inference.pt`` next to ``inference_last.ckpt`` and override
-only the prior path:
+``resolved_configs.json`` and ``experiment_config.py`` next to
+``inference_last.ckpt`` and override only the prior path:
 
 .. code-block:: bash
 

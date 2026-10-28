@@ -3,7 +3,7 @@
 
 import torch
 import numpy as np
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 from protomotions.simulator.base_simulator.simulator import Simulator
 from protomotions.simulator.base_simulator.config import (
@@ -22,8 +22,10 @@ from protomotions.simulator.base_simulator.simulator_state import (
 )
 from protomotions.simulator.newton.config import NewtonSimulatorConfig
 from protomotions.simulator.newton.contact_utils import (
-    get_contact_sensor_body_patterns,
-    validate_contact_sensor_match,
+    contact_force_matrix,
+    resolve_world_body_indices,
+    resolve_world_projectile_indices,
+    shape_axes,
 )
 from protomotions.simulator.base_simulator.utils import (
     get_friction_bucket_count,
@@ -37,7 +39,6 @@ import warp as wp
 import newton
 from newton import JointTargetMode
 from newton.selection import ArticulationView
-from newton.sensors import SensorContact
 from newton.solvers import SolverNotifyFlags
 import copy
 import logging
@@ -123,14 +124,14 @@ class NewtonSimulator(Simulator):
 
         self._register_custom_user_interface_keys(custom_key_handlers or {})
 
-        # Configure timing
+        # Configure timing. self.decimation is derived by the base Simulator
+        # from control_hz; sim_dt is the per-physics-substep timestep.
         self.sim_time = 0.0
         self.sim_dt = 1.0 / self.config.sim.fps
-        self.decimation = self.config.sim.decimation
         self.frame_dt = self.sim_dt * self.decimation
 
-        self._contact_sensors = {}
-        self._contact_forces = {}  # Store contact forces per body
+        self._contact_shape_row = None
+        self._contact_shape_column = None
         self.contacts = None  # Initialized after solver/sensors are set up
         self._camera_initialized = False
 
@@ -146,8 +147,10 @@ class NewtonSimulator(Simulator):
         self._zero_passive_forces()
         self._setup_robot()
         self._setup_sim()
-        if self.robot_config.contact_bodies is not None:
-            self._setup_contact_sensors()
+        if self.contacts_enabled:
+            # Requests the per-contact force attribute, so it must run before
+            # model.contacts() allocates the Contacts buffers.
+            self._setup_contact_matrix_maps()
         self._create_contacts()
         self._set_robot_friction_to_terrain()
         self._apply_domain_randomization_if_needed()
@@ -337,8 +340,8 @@ class NewtonSimulator(Simulator):
     def _set_builder_dof_properties(self, dof_idx: int, info) -> None:
         """Set a single builder DOF's properties from a ControlInfo entry."""
         if self.control_type == ControlType.BUILT_IN_PD:
-            self.robot.joint_target_ke[dof_idx] = info.stiffness
-            self.robot.joint_target_kd[dof_idx] = info.damping
+            self.robot.joint_target_ke[dof_idx] = info.require("stiffness")
+            self.robot.joint_target_kd[dof_idx] = info.require("damping")
             self.robot.joint_target_mode[dof_idx] = int(JointTargetMode.POSITION)
         else:
             # PROPORTIONAL / TORQUE: we apply forces ourselves
@@ -385,8 +388,7 @@ class NewtonSimulator(Simulator):
 
                 newton_dof_names[multi_dof_name] = []
                 while (
-                    len(common_dof_names) > 0
-                    and common_dof_names[0] in multi_dof_name
+                    len(common_dof_names) > 0 and common_dof_names[0] in multi_dof_name
                 ):
                     newton_dof_names[multi_dof_name].append(common_dof_names[0])
                     common_dof_names.pop(0)
@@ -462,16 +464,10 @@ class NewtonSimulator(Simulator):
             if not isinstance(common_dof_names, list):
                 common_dof_names = [common_dof_names]
             for common_dof_name in common_dof_names:
-                kp_list.append(
-                    self.robot_config.control.control_info[common_dof_name].stiffness
-                )
-                kd_list.append(
-                    self.robot_config.control.control_info[common_dof_name].damping
-                )
-                limit = self.robot_config.control.control_info[
-                    common_dof_name
-                ].effort_limit
-                torque_limits_list.append(limit if limit is not None else 1000.0)
+                info = self.robot_config.control.control_info[common_dof_name]
+                kp_list.append(info.require("stiffness"))
+                kd_list.append(info.require("damping"))
+                torque_limits_list.append(info.require("effort_limit"))
 
         self._pd_kp_wp = wp.from_torch(
             torch.tensor(kp_list, device=self.device, dtype=torch.float32)
@@ -714,7 +710,9 @@ class NewtonSimulator(Simulator):
         # Write back through ArticulationView
         self.robot_view.set_attribute("shape_material_mu", self.model, mu_wp)
         if self.terrain is not None and self.terrain.sim_config is not None:
-            self.robot_view.set_attribute("shape_material_restitution", self.model, rest_wp)
+            self.robot_view.set_attribute(
+                "shape_material_restitution", self.model, rest_wp
+            )
         self.solver.notify_model_changed(SolverNotifyFlags.SHAPE_PROPERTIES)
 
     def _get_sim_body_ordering(self) -> SimBodyOrdering:
@@ -737,59 +735,6 @@ class NewtonSimulator(Simulator):
     ) -> None:
         """Setup visualization markers."""
         return
-
-    @staticmethod
-    def _get_contact_sensor_body_patterns(body_name: str) -> List[str]:
-        return get_contact_sensor_body_patterns(body_name)
-
-    @staticmethod
-    def _count_sensor_sensing_objects(sensor: SensorContact) -> int:
-        """Count matched sensing objects across all Newton worlds."""
-        return sum(len(world_objs) for world_objs in getattr(sensor, "sensing_objs", []))
-
-    @staticmethod
-    def _validate_contact_sensor_match(
-        body_name: str, sensor_body_patterns: List[str], matched_body_count: int
-    ) -> None:
-        validate_contact_sensor_match(
-            body_name, sensor_body_patterns, matched_body_count
-        )
-
-    def _setup_contact_sensors(self) -> None:
-        """Setup contact sensors for each contact body."""
-        if (
-            self.robot_config.contact_bodies is None
-            or len(self.robot_config.contact_bodies) == 0
-        ):
-            return
-
-        print(
-            f"[INFO] Setting up contact sensors for bodies: {self.robot_config.contact_bodies}"
-        )
-
-        # Create a contact sensor for each specified contact body
-        for body_name in self.robot_config.contact_bodies:
-            sensor_body_patterns = self._get_contact_sensor_body_patterns(body_name)
-            # Create sensor that detects contacts between this body and anything
-            # The sensor will aggregate contacts across all environments
-            sensor = SensorContact(
-                self.model, sensing_obj_bodies=sensor_body_patterns, verbose=False
-            )
-
-            matched_body_count = self._count_sensor_sensing_objects(sensor)
-            self._validate_contact_sensor_match(
-                body_name, sensor_body_patterns, matched_body_count
-            )
-
-            self._contact_sensors[body_name] = sensor
-
-            self._contact_forces[body_name] = torch.zeros(
-                self.num_envs, 3, device=self.device, dtype=torch.float32
-            )
-
-        print(
-            f"[INFO] Contact sensors setup complete for {len(self._contact_sensors)} bodies"
-        )
 
     def _create_contacts(self) -> None:
         """Create Contacts object via Model.contacts() (Newton 1.0+ API)."""
@@ -820,23 +765,95 @@ class NewtonSimulator(Simulator):
         if self.decimation % 2 != 0:
             self.state_0.assign(self.state_1)
 
+    def _setup_contact_matrix_maps(self) -> None:
+        """Per-shape row/column maps for the partner-resolved matrix.
+
+        The matrix is reduced from Newton's per-contact records (shape pair,
+        unit normal and the requested per-contact force, in newtons, world
+        axes). Rows are the layout's selected robot bodies, environment-major;
+        columns are the selected partners only (robot links and projectiles
+        named in the layout, the ground plane when terrain is selected).
+        Shapes outside both selections map to -1 and are dropped at reduction
+        time, so nothing is allocated for unselected pairs.
+        """
+        layout = self.contact_layout
+        if any(name.startswith("object/") for name in layout.partner_index):
+            raise NotImplementedError(
+                "Newton contact matrix does not support scene-object partners"
+            )
+        body_world = self.model.body_world.numpy().tolist()
+        num_worlds = self.model.world_count
+        if num_worlds != self.num_envs:
+            raise ValueError(
+                f"Newton model has {num_worlds} worlds for {self.num_envs} environments"
+            )
+        # Full robot membership comes from the robot config, not the layout:
+        # the layout may select a subset of rows and partners.
+        all_names = list(self._body_names)
+        robot_bodies = resolve_world_body_indices(
+            self.model.body_label, body_world, num_worlds, all_names
+        )
+        projectiles = resolve_world_projectile_indices(
+            body_world, num_worlds, robot_bodies, self._proj_config.num_projectiles
+        )
+        num_rows = len(layout.body_index)
+        row_of_body, column_of_body = {}, {}
+        for world in range(num_worlds):
+            by_name = dict(zip(all_names, robot_bodies[world]))
+            for name, row in layout.body_index.items():
+                row_of_body[by_name[name]] = world * num_rows + row
+            for name, index in by_name.items():
+                column = layout.partner_index.get(f"robot/{name}")
+                if column is not None:
+                    column_of_body[index] = column
+            for slot, index in enumerate(projectiles[world]):
+                column = layout.partner_index.get(f"projectile/{slot}")
+                if column is not None:
+                    column_of_body[index] = column
+        shape_row, shape_column = shape_axes(
+            self.model.shape_body.numpy().tolist(),
+            self.model.shape_world.numpy().tolist(),
+            self.model.shape_flags.numpy().tolist(),
+            int(newton.ShapeFlags.COLLIDE_SHAPES),
+            row_of_body,
+            column_of_body,
+            layout.partner_index.get("terrain"),
+        )
+        if not (shape_column >= 0).any():
+            raise ValueError(
+                "Newton contact matrix needs at least one selected partner with "
+                "collision shapes"
+            )
+        self._contact_shape_row = shape_row.to(self.device)
+        self._contact_shape_column = shape_column.to(self.device)
+        # Contacts allocates the per-contact force only when requested before
+        # model.contacts(); the solver fills it in update_contacts().
+        self.model.request_contact_attributes("force")
+
+    def _get_simulator_contact_forces(self) -> torch.Tensor:
+        if self._contact_shape_row is None:
+            raise NotImplementedError(
+                "NewtonSimulator contact matrix requires robot contact bodies"
+            )
+        layout = self.contact_layout
+        contacts = self.contacts
+        return contact_force_matrix(
+            wp.to_torch(contacts.rigid_contact_count),
+            wp.to_torch(contacts.rigid_contact_shape0),
+            wp.to_torch(contacts.rigid_contact_shape1),
+            wp.to_torch(contacts.force),
+            wp.to_torch(contacts.rigid_contact_normal),
+            self._contact_shape_row,
+            self._contact_shape_column,
+            self.num_envs,
+            len(layout.body_index),
+            len(layout.partner_index),
+        )
+
     def _update_contact_sensors(self) -> None:
-        """Update contact sensors after physics step. Must be called outside CUDA graph."""
-        if len(self._contact_sensors) > 0:
+        """Refresh per-contact forces after a physics step, outside the CUDA graph."""
+        if self._contact_shape_row is not None:
             self.solver.update_contacts(self.contacts, self.state_0)
-            for body_name, sensor in self._contact_sensors.items():
-                sensor.update(self.state_0, self.contacts)
-                if hasattr(sensor, "net_force") and sensor.net_force is not None:
-                    net_force = wp.to_torch(sensor.net_force).clone()
-                    # net_force shape: (n_sensing_objs, max_readings, 3)
-                    # Sum over readings dimension and reshape to (num_envs, 3)
-                    if net_force.numel() == 0:
-                        net_force = torch.zeros(
-                            self.num_envs, 3, device=self.device
-                        )
-                    else:
-                        net_force = net_force.sum(dim=-2).view(self.num_envs, 3)
-                    self._contact_forces[body_name] = net_force
 
     def _physics_step(self) -> None:
         """Performs a physics simulation step."""
@@ -957,61 +974,27 @@ class NewtonSimulator(Simulator):
             self.model, self.state_1.joint_q, self.state_1.joint_qd, self.state_1
         )
 
+        # SolverMuJoCo uses MuJoCo-Warp's previous acceleration as its initial
+        # guess. A teleported world must not inherit the preceding episode's
+        # guess. Mutate only the reset worlds, preserving CUDA-graph storage.
+        wp.to_torch(self.solver.mjw_data.qacc_warmstart)[env_ids] = 0.0
+
+    def save_backend_state(self) -> Dict[str, torch.Tensor]:
+        return {
+            "qacc_warmstart": wp.to_torch(self.solver.mjw_data.qacc_warmstart).clone()
+        }
+
+    def restore_backend_state(self, state: Dict[str, torch.Tensor]) -> None:
+        warmstart = wp.to_torch(self.solver.mjw_data.qacc_warmstart)
+        saved = state["qacc_warmstart"]
+        if saved.shape != warmstart.shape:
+            raise ValueError(
+                "Newton warm-start snapshot shape does not match the simulator"
+            )
+        # Do not replace the Warp array: a captured graph still references it.
+        warmstart.copy_(saved)
+
     # ===== Group 4: State Getters =====
-    def _get_simulator_bodies_contact_buf(
-        self, env_ids: Optional[torch.Tensor] = None
-    ) -> RobotState:
-        """Returns contact forces for robot bodies."""
-        # Initialize with zeros for all bodies
-        rigid_body_contact_forces = torch.zeros(
-            self.num_envs, len(self._body_names), 3, device=self.device
-        )
-
-        # Populate contact forces from sensors
-        if len(self._contact_sensors) > 0:
-            for body_name, contact_force in self._contact_forces.items():
-                # Find the index of this body in the body_names list
-                if body_name in self._body_names:
-                    body_idx = self._body_names.index(body_name)
-                    rigid_body_contact_forces[:, body_idx, :] = contact_force
-
-        if env_ids is not None:
-            rigid_body_contact_forces = rigid_body_contact_forces[env_ids]
-
-        return RobotState(
-            rigid_body_contact_forces=rigid_body_contact_forces,
-            state_conversion=StateConversion.SIMULATOR,
-        )
-
-    def _get_simulator_bodies_contact_binary(
-        self, env_ids: Optional[torch.Tensor] = None, force_threshold: float = 1.0
-    ) -> torch.Tensor:
-        """
-        Returns binary contact labels for robot bodies.
-
-        A body is considered in contact if its contact force magnitude exceeds the threshold.
-
-        Args:
-            env_ids: Optional tensor of environment IDs to query
-            force_threshold: Minimum contact force magnitude to consider as contact (default: 1.0 N)
-
-        Returns:
-            Binary tensor of shape [num_envs, num_bodies] where 1 indicates contact
-        """
-        # Get contact forces
-        contact_state = self._get_simulator_bodies_contact_buf(env_ids=env_ids)
-        contact_forces = (
-            contact_state.rigid_body_contact_forces
-        )  # [num_envs, num_bodies, 3]
-
-        # Compute force magnitudes
-        force_magnitudes = torch.norm(contact_forces, dim=-1)  # [num_envs, num_bodies]
-
-        # Apply threshold to get binary labels
-        contact_binary = (force_magnitudes > force_threshold).float()
-
-        return contact_binary
-
     def _get_simulator_bodies_state(
         self, env_ids: Optional[torch.Tensor] = None
     ) -> RobotState:
@@ -1073,12 +1056,6 @@ class NewtonSimulator(Simulator):
         self, env_ids: Optional[torch.Tensor] = None
     ) -> ObjectState:
         """Returns empty object state (objects not supported in Newton)."""
-        return ObjectState(state_conversion=StateConversion.SIMULATOR)
-
-    def _get_simulator_object_contact_buf(
-        self, env_ids: Optional[torch.Tensor] = None
-    ) -> ObjectState:
-        """Returns contact forces for simulation objects."""
         return ObjectState(state_conversion=StateConversion.SIMULATOR)
 
     def _get_simulator_dof_forces(self, env_ids=None):
@@ -1388,7 +1365,9 @@ class NewtonSimulator(Simulator):
 
         super().render()
 
-    def _register_custom_user_interface_keys(self, handlers: Dict[str, callable]) -> None:
+    def _register_custom_user_interface_keys(
+        self, handlers: Dict[str, callable]
+    ) -> None:
         for key_name, handler in handlers.items():
             self.user_interface.register_key(
                 key_name,

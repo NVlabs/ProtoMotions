@@ -3,9 +3,9 @@
 
 """Tests for MaskedMimic supervised losses."""
 
-from dataclasses import asdict
 from types import SimpleNamespace
 
+import pytest
 import torch
 from torch import nn
 from tensordict import TensorDict
@@ -25,11 +25,12 @@ from protomotions.agents.common.supervision import (
 from protomotions.agents.supervised.agent import SupervisedAgent
 from protomotions.agents.supervised.config import SupervisedAgentConfig, RolloutActor
 from protomotions.agents.supervised.masked_mimic_config import (
+    MaskedMimicVAEConfig,
+    MaskedMimicModelConfig,
     MaskedMimicSupervisedAgentConfig,
     VAENoiseType,
 )
 from protomotions.components.motion_lib import MotionFileSwitchMode
-from protomotions.utils.config_utils import clean_dict_for_storage
 from protomotions.utils.hydra_replacement import get_class
 
 
@@ -95,16 +96,6 @@ class _DummyNoModelExpertRollout(nn.Module):
         return tensordict
 
 
-class _DummyPrivilegedStudentModel(nn.Module):
-    out_keys = ["action", "mean_action", "privileged_action"]
-
-    def forward(self, tensordict):
-        tensordict["action"] = torch.full_like(tensordict["obs"].float(), 1.0)
-        tensordict["mean_action"] = tensordict["action"]
-        tensordict["privileged_action"] = tensordict["action"] + 100.0
-        return tensordict
-
-
 class _DummyExperienceBuffer:
     def __init__(self):
         self.data = {}
@@ -117,13 +108,16 @@ class _DummyExperienceBuffer:
 
 class _DummyExternalExpert:
     in_keys = ["obs"]
+    deployable_action_key = "mean_action"
 
-    def __call__(self, tensordict):
+    def forward_deployable(self, tensordict):
         tensordict["mean_action"] = tensordict["obs"].float() + 20.0
         return tensordict
 
 
 class _RawDummyExternalExpert:
+    """A plain module with no deployable contract: refused as an expert."""
+
     in_keys = ["obs"]
 
     def __call__(self, tensordict):
@@ -146,7 +140,7 @@ def test_masked_mimic_config_uses_generic_supervised_agent():
 
 def test_masked_mimic_forward_uses_training_contract():
     latent_dim = 2
-    config = SimpleNamespace(
+    config = MaskedMimicModelConfig(
         encoder=ModuleContainerConfig(
             in_keys=["privileged_obs"],
             out_keys=["encoder_mu", "encoder_logvar"],
@@ -168,7 +162,7 @@ def test_masked_mimic_forward_uses_training_contract():
             out_keys=["decoded_action"],
             models=[_mlp(["obs", "vae_latent"], "decoded_action", 1)],
         ),
-        vae=SimpleNamespace(vae_latent_dim=latent_dim, vae_noise_type="zeros"),
+        vae=MaskedMimicVAEConfig(vae_latent_dim=latent_dim, vae_noise_type="zeros"),
     )
     model = MaskedMimicModel(config)
     model.reset_rollout_context(num_envs=3, device="cpu")
@@ -197,29 +191,22 @@ def test_supervised_config_uses_loss_target_instead_of_rollout_labeler():
 
 
 def test_rollout_actor_serializes_as_readable_value():
+    from protomotions.utils.config_schema import to_tree
+
     config = SupervisedAgentConfig(
         batch_size=1,
         training_max_steps=1,
         rollout_actor=RolloutActor.EXPERT,
     )
 
-    stored = clean_dict_for_storage(asdict(config))
+    stored = to_tree(config, where="agent")["rollout_actor"]
 
-    assert stored["rollout_actor"] == "expert"
+    assert stored["name"] == "EXPERT" and stored["$enum"].endswith("RolloutActor")
 
 
-def test_rollout_actor_and_vae_noise_type_parse_case_insensitive_values():
-    assert RolloutActor.from_str("STUDENT") is RolloutActor.STUDENT
-    assert RolloutActor.from_str("expert") is RolloutActor.EXPERT
+def test_vae_noise_type_parses_case_insensitive_values():
     assert VAENoiseType.from_str("NORMAL") is VAENoiseType.NORMAL
     assert VAENoiseType.from_str("uniform") is VAENoiseType.UNIFORM
-
-    try:
-        RolloutActor.from_str("teacher")
-    except ValueError as error:
-        assert "not a valid RolloutActor" in str(error)
-    else:
-        raise AssertionError("Expected invalid rollout actor to fail")
 
     try:
         VAENoiseType.from_str("gaussian")
@@ -229,7 +216,7 @@ def test_rollout_actor_and_vae_noise_type_parse_case_insensitive_values():
         raise AssertionError("Expected invalid VAE noise type to fail")
 
 
-def test_supervised_expert_rollout_requires_external_or_model_owned_expert():
+def test_supervised_expert_rollout_requires_model_owned_expert():
     agent = object.__new__(SupervisedAgent)
     agent.config = SimpleNamespace(
         rollout_actor=RolloutActor.EXPERT,
@@ -243,10 +230,24 @@ def test_supervised_expert_rollout_requires_external_or_model_owned_expert():
             agent,
             TensorDict({"obs": torch.tensor([[1]])}, batch_size=1),
         )
-    except ValueError as error:
-        assert "rollout_actor=EXPERT needs an expert source" in str(error)
+    except AttributeError as error:
+        assert "collect_expert_rollout" in str(error)
     else:
         raise AssertionError("Expected expert rollout without an expert source to fail")
+
+
+def test_supervised_config_rejects_external_expert_outside_student_rollouts():
+    try:
+        SupervisedAgentConfig(
+            batch_size=1,
+            training_max_steps=1,
+            rollout_actor=RolloutActor.EXPERT,
+            expert_model_path="expert.ckpt",
+        )
+    except ValueError as error:
+        assert "rollout_actor=student" in str(error)
+    else:
+        raise AssertionError("Expected EXPERT with an external expert to fail")
 
 
 def test_masked_mimic_does_not_own_expert_rollout_actions():
@@ -261,7 +262,9 @@ def test_supervised_collect_rollout_stores_external_expert_actions_once():
     )
     agent.model = _DummyRolloutModel()
     agent.model_output_keys = agent.model.out_keys
-    agent.expert_model = _DummyExternalExpert()
+    agent.expert_model = agent.expert_actor = _DummyExternalExpert()
+    agent.expert_actor_in_keys = agent.expert_actor.in_keys
+    agent._expert_episode_mask = torch.zeros(2, dtype=torch.bool)
     agent.device = torch.device("cpu")
     agent.experience_buffer = _DummyExperienceBuffer()
     obs_td = TensorDict(
@@ -279,59 +282,47 @@ def test_supervised_collect_rollout_stores_external_expert_actions_once():
     assert agent.experience_buffer.counts[("expert_actions", 4)] == 1
 
 
-def test_supervised_external_expert_can_be_raw_frozen_module():
-    agent = object.__new__(SupervisedAgent)
-    agent.expert_model = _RawDummyExternalExpert()
-    agent.device = torch.device("cpu")
-    obs_td = TensorDict(
-        {"obs": torch.tensor([[1], [2]]), "expert_obs": torch.tensor([[1], [2]])},
-        batch_size=2,
-    )
+def test_supervised_external_expert_raw_module_is_refused():
+    # A plain frozen module is no longer accepted as an expert: the distillation
+    # loop labels through forward_deployable and reads deployable_action_key, so
+    # a module without them is refused up front and must be wrapped in an adapter.
+    from protomotions.agents.supervised.agent import _require_deployable_expert
 
-    action = SupervisedAgent._collect_external_expert_action(agent, obs_td)
+    with pytest.raises(TypeError) as error:
+        _require_deployable_expert(_RawDummyExternalExpert())
 
-    assert torch.equal(action, torch.tensor([[31.0], [32.0]]))
+    message = str(error.value)
+    assert "forward_deployable" in message
+    assert "deployable_action_key" in message
+    assert "adapter" in message
 
 
 def test_supervised_expert_rollout_ignores_student_privileged_action():
     agent = object.__new__(SupervisedAgent)
     agent.config = SimpleNamespace(
         rollout_actor=RolloutActor.EXPERT,
-        loss=SupervisionLossConfig(target_key="expert_actions"),
-    )
-    agent.model = _DummyPrivilegedStudentModel()
-    agent.model_output_keys = agent.model.out_keys
-    agent.expert_model = _DummyExternalExpert()
-    agent.device = torch.device("cpu")
-    agent.experience_buffer = _DummyExperienceBuffer()
-    obs_td = TensorDict(
-        {"obs": torch.tensor([[1], [2]]), "expert_obs": torch.tensor([[1], [2]])},
-        batch_size=2,
-    )
-
-    out = SupervisedAgent.collect_rollout_step(agent, obs_td, step=5)
-
-    assert torch.equal(out["action"], torch.tensor([[21.0], [22.0]]))
-
-
-def test_supervised_collect_rollout_rejects_string_rollout_actor():
-    agent = object.__new__(SupervisedAgent)
-    agent.config = SimpleNamespace(
-        rollout_actor="expert",
         loss=SupervisionLossConfig(target_key=TARGET_LATENT_KEY),
     )
     agent.model = _DummyRolloutModel()
+    agent.model_output_keys = agent.model.out_keys
     agent.expert_model = None
+    agent.device = torch.device("cpu")
+    agent.experience_buffer = _DummyExperienceBuffer()
+    obs_td = TensorDict({"obs": torch.tensor([[1], [2]])}, batch_size=2)
+    obs_td["privileged_action"] = torch.tensor([[7.0], [7.0]])
 
+    out = SupervisedAgent.collect_rollout_step(agent, obs_td, step=5)
+
+    assert torch.equal(out["action"], torch.tensor([[11.0], [12.0]]))
+
+
+def test_supervised_config_rejects_string_rollout_actor():
     try:
-        SupervisedAgent._collect_rollout_output(
-            agent,
-            TensorDict({"obs": torch.tensor([[1]])}, batch_size=1),
-        )
-    except ValueError as error:
-        assert "Unsupported supervised rollout_actor" in str(error)
+        SupervisedAgentConfig(batch_size=1, training_max_steps=1, rollout_actor="expert")
+    except TypeError as error:
+        assert "RolloutActor" in str(error)
     else:
-        raise AssertionError("Expected a ValueError for string rollout_actor")
+        raise AssertionError("Expected a TypeError for string rollout_actor")
 
 
 def test_supervised_step_uses_configured_supervision_loss():
@@ -350,10 +341,6 @@ def test_supervised_step_uses_configured_supervision_loss():
     agent.model = policy
     agent.device = torch.device("cpu")
     agent.current_epoch = 0
-    agent.calculate_extra_loss = lambda batch, actions: (
-        torch.zeros((), device=agent.device),
-        {},
-    )
 
     batch = {
         "action": torch.zeros(2, 1),
@@ -363,7 +350,9 @@ def test_supervised_step_uses_configured_supervision_loss():
 
     loss, log_dict = agent.supervised_step(batch)
 
-    expected = torch.nn.functional.mse_loss(batch["model_latent"], batch["target_latent"])
+    expected = torch.nn.functional.mse_loss(
+        batch["model_latent"], batch["target_latent"]
+    )
     assert torch.allclose(loss, expected)
     assert torch.allclose(log_dict["latent_bc/mse"], expected.detach())
     assert torch.allclose(log_dict["supervised/loss"], expected.detach())
@@ -385,10 +374,6 @@ def test_supervised_step_adds_model_exposed_loss_without_model_specific_config()
     agent.model = policy
     agent.device = torch.device("cpu")
     agent.current_epoch = 3
-    agent.calculate_extra_loss = lambda batch, actions: (
-        torch.zeros((), device=agent.device),
-        {},
-    )
 
     batch = {
         "action": torch.zeros(2, 1),

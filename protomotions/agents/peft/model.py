@@ -8,6 +8,8 @@ PEFT actor to the optional PPO critic. Rollout is the module forward path.
 """
 from __future__ import annotations
 
+import torch
+
 from protomotions.agents.base_agent.model import BaseModel
 from tensordict import TensorDict
 
@@ -47,9 +49,23 @@ class DiscretePriorPEFTModel(BaseModel):
             self.in_keys = list(dict.fromkeys(self.in_keys + self._critic.in_keys))
             self.out_keys = list(dict.fromkeys(self.out_keys + ["value"]))
 
-    def optional_full_checkpoint_state_prefixes(self) -> tuple[str, ...]:
-        """State sections that may differ between SFT and RLFT checkpoints."""
-        return ("_critic.",)
+    def optional_checkpoint_modules(self) -> tuple[str, ...]:
+        """SFT checkpoints can initialize RLFT with a fresh value critic."""
+        return super().optional_checkpoint_modules() + ("_critic",)
+
+    def materialize(self, tensordict: TensorDict) -> TensorDict:
+        """Initialize shapes with teacher forcing, never sampling or pinning a reference."""
+        actor = self._actor
+        tokens = torch.zeros(
+            tensordict.batch_size[0],
+            actor.num_prior_tokens,
+            dtype=torch.long,
+            device=tensordict.device or next(actor.parameters()).device,
+        )
+        actor(actor.build_prior_input(tensordict, tokens=tokens))
+        fsq_codes = actor.fsq_indices_to_codes(actor.prior_tokens_to_fsq_indices(tokens))
+        actor._decode(tensordict, fsq_codes)
+        return self._forward_critic(tensordict)
 
     def _forward_critic(self, tensordict: TensorDict) -> TensorDict:
         if self._critic is None:

@@ -84,13 +84,21 @@ def single_actuator_params_by_joint(
                 re.escape(dof_name): 0.0 for dof_name in control_info_by_dof
             }
             continue
-        values = {
-            re.escape(dof_name): getattr(control_info, control_key)
+        if control_key == "friction":
+            # Friction is asset-owned: None means "use the engine's value", so a
+            # DOF that leaves it unset is simply omitted (require() is a TypeError).
+            values = {
+                re.escape(dof_name): control_info.friction
+                for dof_name, control_info in control_info_by_dof.items()
+                if control_info.friction is not None
+            }
+            if values:
+                params[config_key] = values
+            continue
+        params[config_key] = {
+            re.escape(dof_name): control_info.require(control_key)
             for dof_name, control_info in control_info_by_dof.items()
-            if getattr(control_info, control_key) is not None
         }
-        if values:
-            params[config_key] = values
     return SingleActuatorSpec(
         name="actuator_group_0",
         joint_names_expr=joint_names_expr,
@@ -120,14 +128,16 @@ def resolve_actuator_specs_for_control_type(
     for index, (dof_name, control_info) in enumerate(control_info_by_dof.items()):
         params = {}
         for config_key, control_key in _ACTUATOR_PARAM_FIELDS:
-            value = getattr(control_info, control_key)
-            if zero_stiffness_and_damping and config_key in {
-                "stiffness",
-                "damping",
-            }:
-                value = 0.0
-            if value is not None:
-                params[config_key] = value
+            if config_key == "friction":
+                # Asset-owned: omit a DOF that leaves friction unset.
+                friction = control_info.friction
+                if friction is not None:
+                    params[config_key] = friction
+                continue
+            if zero_stiffness_and_damping and config_key in {"stiffness", "damping"}:
+                params[config_key] = 0.0
+            else:
+                params[config_key] = control_info.require(control_key)
         specs.append(
             SingleActuatorSpec(
                 name=f"actuator_group_{index}",

@@ -6,48 +6,22 @@ from protomotions.robot_configs.base import (
     RobotAssetConfig,
     ControlConfig,
     ControlType,
-    SimulatorParams,
 )
-from protomotions.simulator.isaacgym.config import (
-    IsaacGymSimParams,
-    IsaacGymPhysXParams,
+from protomotions.robot_configs.motor_classes import (
+    H1_2_300,
+    H1_2_200,
+    H1_2_60,
+    H1_2_40,
 )
-from protomotions.simulator.isaaclab.config import (
-    IsaacLabSimParams,
-    IsaacLabPhysXParams,
-)
-from protomotions.simulator.genesis.config import GenesisSimParams
-from protomotions.simulator.newton.config import NewtonSimParams
-from protomotions.components.pose_lib import ControlInfo
 from typing import List, Dict, Tuple
 from dataclasses import dataclass, field
-
-
-# Armature constants for different joint types based on torque capabilities
-ARMATURE_300 = 0.040  # High torque joints (knees - 300 N⋅m)
-ARMATURE_200 = 0.030  # Medium-high torque joints (hips, torso - 200 N⋅m)
-ARMATURE_60 = 0.010  # Medium torque joints (ankle pitch - 60 N⋅m)
-ARMATURE_40 = (
-    0.005  # Medium-low torque joints (shoulder pitch/roll, ankle roll - 40 N⋅m)
-)
-
-NATURAL_FREQ = 10 * 2.0 * 3.1415926535  # 10Hz
-DAMPING_RATIO = 2.0
-
-STIFFNESS_300 = ARMATURE_300 * NATURAL_FREQ**2
-STIFFNESS_200 = ARMATURE_200 * NATURAL_FREQ**2
-STIFFNESS_60 = ARMATURE_60 * NATURAL_FREQ**2
-STIFFNESS_40 = ARMATURE_40 * NATURAL_FREQ**2
-
-DAMPING_300 = 2.0 * DAMPING_RATIO * ARMATURE_300 * NATURAL_FREQ
-DAMPING_200 = 2.0 * DAMPING_RATIO * ARMATURE_200 * NATURAL_FREQ
-DAMPING_60 = 2.0 * DAMPING_RATIO * ARMATURE_60 * NATURAL_FREQ
-DAMPING_40 = 2.0 * DAMPING_RATIO * ARMATURE_40 * NATURAL_FREQ
 
 
 @dataclass
 class H1_2RobotConfig(RobotConfig):
     semantic_forward_axis_xy: Tuple[float, float] = (1.0, 0.0)
+    # The MJCF imu site has identity axes on torso_link.
+    imu_body_name: str = "torso_link"
 
     common_naming_to_robot_body_names: Dict[str, List[str]] = field(
         default_factory=lambda: {
@@ -90,111 +64,24 @@ class H1_2RobotConfig(RobotConfig):
         default_factory=lambda: ControlConfig(
             control_type=ControlType.BUILT_IN_PD,
             override_control_info={
-                # Hip joints (200 N⋅m, 23 rad/s)
-                ".*_hip_(yaw|pitch|roll)_joint": ControlInfo(
-                    stiffness=STIFFNESS_200,
-                    damping=DAMPING_200,
-                    effort_limit=200,
-                    velocity_limit=50,
-                    armature=ARMATURE_200,
-                ),
-                # Knee joints (300 N⋅m, 14 rad/s)
-                ".*_knee_joint": ControlInfo(
-                    stiffness=STIFFNESS_300,
-                    damping=DAMPING_300,
-                    effort_limit=300,
-                    velocity_limit=50,
-                    armature=ARMATURE_300,
-                ),
-                # Ankle pitch joints (60 N⋅m, 9 rad/s)
-                ".*_ankle_pitch_joint": ControlInfo(
-                    stiffness=2 * STIFFNESS_60,
-                    damping=2 * DAMPING_60,
-                    effort_limit=60,
-                    velocity_limit=50,
-                    armature=2 * ARMATURE_60,
-                ),
-                # Ankle roll joints (40 N⋅m, 9 rad/s)
-                ".*_ankle_roll_joint": ControlInfo(
-                    stiffness=2 * STIFFNESS_40,
-                    damping=2 * DAMPING_40,
-                    effort_limit=40,
-                    velocity_limit=50,
-                    armature=2 * ARMATURE_40,
-                ),
-                # Torso joint (200 N⋅m, 23 rad/s)
-                "torso_joint": ControlInfo(
-                    stiffness=STIFFNESS_200,
-                    damping=DAMPING_200,
-                    effort_limit=200,
-                    velocity_limit=50,
-                    armature=ARMATURE_200,
-                ),
-                # Shoulder pitch/roll joints (40 N⋅m, 9 rad/s)
-                ".*_shoulder_(pitch|roll)_joint": ControlInfo(
-                    stiffness=STIFFNESS_40,
-                    damping=DAMPING_40,
-                    effort_limit=40,
-                    velocity_limit=50,
-                    armature=ARMATURE_40,
-                ),
-                # Shoulder yaw joints (18 N⋅m, 20 rad/s)
-                ".*_shoulder_yaw_joint": ControlInfo(
-                    stiffness=STIFFNESS_40,
-                    damping=DAMPING_40,
-                    effort_limit=18,
-                    velocity_limit=50,
-                    armature=ARMATURE_40,
-                ),
-                # Elbow joints (18 N⋅m, 20 rad/s)
-                ".*_elbow_joint": ControlInfo(
-                    stiffness=STIFFNESS_40,
-                    damping=DAMPING_40,
-                    effort_limit=18,
-                    velocity_limit=50,
-                    armature=ARMATURE_40,
-                ),
-                # Wrist joints (19 N⋅m, 31.4 rad/s)
-                ".*_wrist_(roll|pitch|yaw)_joint": ControlInfo(
-                    stiffness=STIFFNESS_40,
-                    damping=DAMPING_40,
-                    effort_limit=19,
-                    velocity_limit=50,
-                    armature=ARMATURE_40,
+                # Gains follow from the motor rating; scale=2 is two motors in
+                # parallel (ankle pitch/roll). effort_limit overrides the motor
+                # default for joints whose actuator differs from its gain class.
+                ".*_hip_(yaw|pitch|roll)_joint": H1_2_200.control_info(),
+                ".*_knee_joint": H1_2_300.control_info(),
+                ".*_ankle_pitch_joint": H1_2_60.control_info(scale=2),
+                ".*_ankle_roll_joint": H1_2_40.control_info(scale=2),
+                "torso_joint": H1_2_200.control_info(),
+                ".*_shoulder_(pitch|roll)_joint": H1_2_40.control_info(),
+                ".*_shoulder_yaw_joint": H1_2_40.control_info(effort_limit=18),
+                ".*_elbow_joint": H1_2_40.control_info(effort_limit=18),
+                ".*_wrist_(roll|pitch|yaw)_joint": H1_2_40.control_info(
+                    effort_limit=19
                 ),
             },
         )
     )
 
-    simulation_params: SimulatorParams = field(
-        default_factory=lambda: SimulatorParams(
-            isaacgym=IsaacGymSimParams(
-                fps=100,
-                decimation=2,
-                substeps=2,
-                physx=IsaacGymPhysXParams(
-                    num_position_iterations=8,
-                    num_velocity_iterations=4,
-                    max_depenetration_velocity=1,
-                ),
-            ),
-            isaaclab=IsaacLabSimParams(
-                fps=200,
-                decimation=4,
-                physx=IsaacLabPhysXParams(
-                    num_position_iterations=8,
-                    num_velocity_iterations=4,
-                    max_depenetration_velocity=1,
-                ),
-            ),
-            genesis=GenesisSimParams(
-                fps=100,
-                decimation=2,
-                substeps=2,
-            ),
-            newton=NewtonSimParams(
-                fps=200,
-                decimation=4,
-            ),
-        )
-    )
+    # 50 Hz policy; simulation_params defaults to the humanoid physics for 50 Hz
+    # (isaacgym 100, isaaclab/newton 200, mujoco 1000 fps).
+    control_hz: int = 50

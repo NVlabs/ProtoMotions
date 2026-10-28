@@ -25,7 +25,7 @@ parser.add_argument(
     "--simulator",
     type=str,
     required=True,
-    help="Simulator to use (e.g., 'isaacgym', 'isaaclab', 'newton', 'genesis')",
+    help="Simulator to use (e.g., 'isaacgym', 'isaaclab', 'newton', 'mujoco')",
 )
 parser.add_argument(
     "--robot", type=str, required=True, help="Robot to use (e.g., 'g1', 'smpl')"
@@ -54,7 +54,7 @@ AppLauncher = import_simulator_before_torch(args.simulator)
 from protomotions.simulator.base_simulator.config import SimulatorConfig  # noqa: E402
 from protomotions.envs.base_env.env import BaseEnv  # noqa: E402
 from protomotions.envs.base_env.config import EnvConfig  # noqa: E402
-from protomotions.envs.component_factories import max_coords_obs_factory  # noqa: E402
+from protomotions.envs.obs.humanoid import compute_humanoid_max_coords_observations  # noqa: E402
 from protomotions.components.terrains.config import TerrainConfig  # noqa: E402
 from protomotions.utils.hydra_replacement import get_class  # noqa: E402
 import torch  # noqa: E402
@@ -136,12 +136,20 @@ chair = MeshSceneObject(
 scene = Scene(objects=[chair], humanoid_motion_id=0)
 
 
+from protomotions.envs.mdp_component import MdpComponent  # noqa: E402
+from protomotions.envs.obs.terrain import compute_terrain_height_map  # noqa: E402
+
 env_config = EnvConfig(
     max_episode_length=1000,
-    # Modular observation components using factory functions
-    # Factory functions return pre-configured MdpComponent instances
+    # Modular observation components: factory functions return pre-configured
+    # MdpComponent instances, and a kernel is bound with from_kernel. The
+    # terrain height map around the root is one such kernel, over the
+    # published terrain names.
     observation_components={
-        "max_coords_obs": max_coords_obs_factory(),
+        "max_coords_obs": MdpComponent.from_kernel(
+            compute_humanoid_max_coords_observations
+        ),
+        "terrain": MdpComponent.from_kernel(compute_terrain_height_map),
     },
 )
 

@@ -19,9 +19,9 @@ Algorithm (per-step):
     3. Add proportional log-space noise: log(1+mag) + N(0, σ) * mag/(mag+threshold)
     4. Reconstruct: direction * max(exp(noisy_log) - 1, 0)
 
-The result is a corrupted displacement.  In ``BaseEnv._build_global_context``,
-this is added back to the start position to get a believed world position, and
-the offset to the reference is derived from that.
+The result is a corrupted displacement.  The odometry observation kernel adds
+it back to the start position to get a believed world position, and derives
+the offset to the reference from that.
 
 Design rationale — see ``data/scripts/visualize_odometer_corruption.py`` for
 interactive parameter tuning and ``protomotions/tests/test_odom_corruption.py``
@@ -46,7 +46,7 @@ Deployment usage::
 from __future__ import annotations
 
 import math
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -64,6 +64,8 @@ def apply_odom_corruption_torch(
     odom_yaw_cos_sin: Tensor,
     log_noise_std: float = 0.12,
     soft_threshold: float = 0.15,
+    *,
+    standardized_draw: Optional[Tensor] = None,
 ) -> Tensor:
     """Apply odometer corruption to a 2D displacement vector (batched GPU).
 
@@ -77,6 +79,9 @@ def apply_odom_corruption_torch(
         odom_yaw_cos_sin: Per-episode yaw bias as (cos, sin) [envs, 2].
         log_noise_std: Std of per-step noise in log(1+mag) space.
         soft_threshold: Smooth noise ramp characteristic length (metres).
+        standardized_draw: Optional N(0, 1) draw [envs, 1] supplied by the
+            caller. The sensor pipeline passes its own isolated draw so this
+            law never touches the global generator; omitted, it samples one.
 
     Returns:
         Corrupted displacement [envs, 2].
@@ -95,7 +100,8 @@ def apply_odom_corruption_torch(
     # Step 3: proportional log-space noise
     log_mag = torch.log(1.0 + mag)
     noise_weight = mag / (mag + soft_threshold)
-    noisy_log_mag = log_mag + torch.randn_like(log_mag) * log_noise_std * noise_weight
+    draw = torch.randn_like(log_mag) if standardized_draw is None else standardized_draw
+    noisy_log_mag = log_mag + draw * log_noise_std * noise_weight
 
     # Step 4: reconstruct
     noisy_mag = (torch.exp(noisy_log_mag) - 1.0).clamp(min=0.0)

@@ -1,0 +1,89 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+include("${CMAKE_CURRENT_LIST_DIR}/ProtoMotionsDeploymentTargets.cmake")
+
+if(TARGET ProtoMotions::protomotions_sdl2_input)
+  find_package(PkgConfig QUIET)
+  if(PkgConfig_FOUND)
+    pkg_check_modules(SDL2 QUIET IMPORTED_TARGET sdl2)
+  endif()
+  if(NOT TARGET PkgConfig::SDL2)
+    message(WARNING
+            "ProtoMotions SDL2 input target is installed but SDL2 was not found; "
+            "install SDL2 before linking ProtoMotions::protomotions_sdl2_input")
+  endif()
+endif()
+
+if(TARGET ProtoMotions::protomotions_mujoco)
+  set(_pm_mujoco_roots)
+  if(DEFINED MUJOCO_ROOT)
+    list(APPEND _pm_mujoco_roots "${MUJOCO_ROOT}")
+  endif()
+  if(DEFINED ENV{MUJOCO_ROOT})
+    list(APPEND _pm_mujoco_roots "$ENV{MUJOCO_ROOT}")
+  endif()
+  find_library(_pm_mujoco_library NAMES mujoco PATHS ${_pm_mujoco_roots}
+               PATH_SUFFIXES lib NO_DEFAULT_PATH)
+  if(NOT _pm_mujoco_library)
+    foreach(_pm_root IN LISTS _pm_mujoco_roots)
+      file(GLOB _pm_mujoco_candidates
+           "${_pm_root}/libmujoco.so*" "${_pm_root}/lib/libmujoco.so*")
+      list(SORT _pm_mujoco_candidates COMPARE NATURAL ORDER DESCENDING)
+      if(_pm_mujoco_candidates)
+        list(GET _pm_mujoco_candidates 0 _pm_mujoco_library)
+        break()
+      endif()
+    endforeach()
+  endif()
+  if(NOT _pm_mujoco_library)
+    message(WARNING
+            "ProtoMotions MuJoCo target is installed but MuJoCo was not found; "
+            "set MUJOCO_ROOT before linking ProtoMotions::protomotions_mujoco")
+  else()
+    add_library(ProtoMotions::MuJoCo UNKNOWN IMPORTED)
+    set_target_properties(ProtoMotions::MuJoCo PROPERTIES
+                          IMPORTED_LOCATION "${_pm_mujoco_library}")
+    set_property(TARGET ProtoMotions::protomotions_mujoco PROPERTY
+                 INTERFACE_LINK_LIBRARIES
+                 "ProtoMotions::Deployment;ProtoMotions::MuJoCo")
+  endif()
+endif()
+
+if(TARGET ProtoMotions::protomotions_unitree_sdk2)
+  find_dependency(Threads)
+  set(_pm_unitree_roots)
+  if(DEFINED UNITREE_SDK2_ROOT)
+    list(APPEND _pm_unitree_roots "${UNITREE_SDK2_ROOT}")
+  endif()
+  if(DEFINED ENV{UNITREE_SDK2_ROOT})
+    list(APPEND _pm_unitree_roots "$ENV{UNITREE_SDK2_ROOT}")
+  endif()
+  find_library(_pm_unitree_sdk2 NAMES unitree_sdk2
+               PATHS ${_pm_unitree_roots}
+               PATH_SUFFIXES lib/${CMAKE_SYSTEM_PROCESSOR} lib lib64
+               NO_DEFAULT_PATH)
+  find_library(_pm_unitree_ddscxx NAMES ddscxx
+               PATHS ${_pm_unitree_roots}
+               PATH_SUFFIXES thirdparty/lib/${CMAKE_SYSTEM_PROCESSOR}
+                            thirdparty/lib lib lib64
+               NO_DEFAULT_PATH)
+  find_library(_pm_unitree_ddsc NAMES ddsc
+               PATHS ${_pm_unitree_roots}
+               PATH_SUFFIXES thirdparty/lib/${CMAKE_SYSTEM_PROCESSOR}
+                            thirdparty/lib lib lib64
+               NO_DEFAULT_PATH)
+  if(NOT _pm_unitree_sdk2 OR NOT _pm_unitree_ddscxx OR NOT _pm_unitree_ddsc)
+    message(WARNING
+            "ProtoMotions Unitree target is installed but SDK2 was not found; "
+            "set UNITREE_SDK2_ROOT before linking ProtoMotions::protomotions_unitree_sdk2")
+  else()
+    set_property(TARGET ProtoMotions::protomotions_unitree_sdk2 PROPERTY
+                 INTERFACE_LINK_LIBRARIES
+                 "ProtoMotions::Deployment;${_pm_unitree_sdk2};${_pm_unitree_ddscxx};${_pm_unitree_ddsc};Threads::Threads")
+  endif()
+endif()
+
+check_required_components(ProtoMotionsDeployment)

@@ -1,196 +1,103 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for train_agent.py helper paths."""
+"""Unit tests for the training entry point.
 
-import json
-import os
-import runpy
-import sys
+The shim ``protomotions/train_agent.py`` is import-safe; the build sequence and
+run body live in ``protomotions.launch.training`` and ``config_builder``, so
+these tests import those functions directly instead of running the script.
+"""
+
 import argparse
+import json
+import subprocess
+import sys
+import textwrap
 from dataclasses import dataclass
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 
 import pytest
 import torch
 
+import protomotions.launch.training as launch_training
+from protomotions.components.motion_lib import MotionFileSwitchMode
+from protomotions.launch.training import (
+    build_wandb_logger_config,
+    detect_checkpoint_mode,
+    load_motion_shard_cycle,
+    resolve_resume_motion_shard_cycle,
+    run,
+    save_configs,
+    save_training_configs,
+    try_log_hyperparams_to_wandb,
+)
+from protomotions.launch.training_cli import create_training_parser
 from protomotions.utils.cli_utils import parse_bool
-from protomotions.components.motion_lib import MotionFileSwitchMode, MotionLibConfig
-
-
-TRAIN_AGENT_PATH = str(Path(__file__).resolve().parents[1] / "train_agent.py")
+from protomotions.utils.config_builder import load_experiment_module
+from protomotions.utils.experiment_configs import (
+    BUNDLE_FILENAME,
+    ExperimentConfigs,
+    load_experiment_configs,
+)
 
 
 @dataclass
 class _TinyConfig:
     _target_: str = "unit.Target"
     value: int = 1
+    # The env root's field build_env_from_configs reads for the curriculum weights.
+    save_dir: str = ""
 
     def validate(self):
         self.validate_calls = getattr(self, "validate_calls", 0) + 1
 
+    def validate_anchor_body(self):
+        pass
 
-class _TinyFabricConfig:
+
+def _bundle(**overrides):
+    """An ExperimentConfigs whose seven roots are a shared tiny config."""
+    config = overrides.pop("config", _TinyConfig(value=5))
+    fields = dict(
+        robot=config,
+        simulator=config,
+        terrain=config,
+        scene_lib=config,
+        motion_lib=config,
+        env=config,
+        agent=config,
+    )
+    fields.update(overrides)
+    return ExperimentConfigs(**fields)
+
+
+class _FakeFabricConfig:
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+
     def as_loggable_dict(self):
         return {"devices": 1, "num_nodes": 1}
 
-
-def _install_train_agent_import_fakes(monkeypatch):
-    simulator_imports = ModuleType("protomotions.utils.simulator_imports")
-    simulator_imports.import_simulator_before_torch = lambda simulator: None
-    monkeypatch.setitem(
-        sys.modules,
-        "protomotions.utils.simulator_imports",
-        simulator_imports,
-    )
-
-    wandb = ModuleType("wandb")
-    wandb.run = SimpleNamespace(id="wandb-unit")
-    monkeypatch.setitem(sys.modules, "wandb", wandb)
-
-    class FakeWandbLogger:
-        def __init__(self):
-            self.logged = None
-
-        def log_hyperparams(self, params):
-            self.logged = params
-
-    lightning = ModuleType("lightning")
-    lightning_pytorch = ModuleType("lightning.pytorch")
-    lightning_loggers = ModuleType("lightning.pytorch.loggers")
-    lightning_loggers.WandbLogger = FakeWandbLogger
-    monkeypatch.setitem(sys.modules, "lightning", lightning)
-    monkeypatch.setitem(sys.modules, "lightning.pytorch", lightning_pytorch)
-    monkeypatch.setitem(sys.modules, "lightning.pytorch.loggers", lightning_loggers)
-
-    utils_pkg = ModuleType("utils")
-    torch_utils = ModuleType("utils.torch_utils")
-    torch_utils.seeding = lambda seed, torch_deterministic=False: None
-    monkeypatch.setitem(sys.modules, "utils", utils_pkg)
-    monkeypatch.setitem(sys.modules, "utils.torch_utils", torch_utils)
-
-    return FakeWandbLogger
+    def as_kwargs(self):
+        return {}
 
 
-def _load_train_agent_globals(monkeypatch, tmp_path):
-    _install_train_agent_import_fakes(monkeypatch)
-    experiment = tmp_path / "experiment.py"
-    experiment.write_text("VALUE = 1\n")
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "train_agent.py",
-            "--robot-name",
-            "g1",
-            "--simulator",
-            "isaacgym",
-            "--num-envs",
-            "4",
-            "--batch-size",
-            "8",
-            "--motion-file",
-            "motions.pt",
-            "--experiment-path",
-            str(experiment),
-            "--experiment-name",
-            "unit",
-            "--headless",
-            "off",
-            "--overrides",
-            "env.max_episode_length=12",
-        ],
-    )
-    return runpy.run_path(TRAIN_AGENT_PATH, run_name="train_agent_unit")
+# ---------------------------------------------------------------------------
+# Command line
+# ---------------------------------------------------------------------------
 
 
-def test_train_agent_parser_and_bool_helpers(monkeypatch, tmp_path):
-    module = _load_train_agent_globals(monkeypatch, tmp_path)
-
-    assert module["args"].headless is False
-    assert module["args"].overrides == ["env.max_episode_length=12"]
+def test_training_parser_and_bool_helpers():
+    """create_training_parser declares the training flags and parse_bool parses."""
     assert parse_bool(True) is True
     assert parse_bool("yes") is True
     assert parse_bool("0") is False
-
     with pytest.raises(argparse.ArgumentTypeError):
         parse_bool("maybe")
 
-    parser = module["create_parser"]()
-    parsed = parser.parse_args(
-        [
-            "--robot-name",
-            "g1",
-            "--simulator",
-            "newton",
-            "--num-envs",
-            "2",
-            "--batch-size",
-            "4",
-            "--motion-file",
-            "m.pt",
-            "--experiment-path",
-            "exp.py",
-            "--experiment-name",
-            "parser",
-            "--headless",
-            "false",
-            "--torch-deterministic",
-            "--create-config-only",
-        ]
-    )
-    assert parsed.headless is False
-    assert parsed.torch_deterministic is True
-    assert parsed.wandb_project == "physical_animation"
-    assert parsed.create_config_only is True
-    assert parsed.training_max_iterations is None
-
-    parsed = parser.parse_args(
-        [
-            "--robot-name",
-            "g1",
-            "--simulator",
-            "newton",
-            "--num-envs",
-            "2",
-            "--batch-size",
-            "4",
-            "--motion-file",
-            "m.pt",
-            "--experiment-path",
-            "exp.py",
-            "--experiment-name",
-            "parser",
-            "--wandb-project",
-            "custom-project",
-        ]
-    )
-    assert parsed.wandb_project == "custom-project"
-
-    parsed = parser.parse_args(
-        [
-            "--robot-name",
-            "g1",
-            "--simulator",
-            "newton",
-            "--num-envs",
-            "2",
-            "--batch-size",
-            "4",
-            "--motion-file",
-            "m.pt",
-            "--experiment-path",
-            "exp.py",
-            "--experiment-name",
-            "parser",
-            "--training-max-iterations",
-            "30",
-        ]
-    )
-    assert parsed.training_max_iterations == 30
-
-    required_args = [
+    parser = create_training_parser()
+    required = [
         "--robot-name",
         "g1",
         "--simulator",
@@ -206,83 +113,84 @@ def test_train_agent_parser_and_bool_helpers(monkeypatch, tmp_path):
         "--experiment-name",
         "parser",
     ]
+    parsed = parser.parse_args(
+        required
+        + ["--headless", "false", "--torch-deterministic", "--create-config-only"]
+    )
+    assert parsed.headless is False
+    assert parsed.torch_deterministic is True
+    assert parsed.wandb_project == "physical_animation"
+    assert parsed.create_config_only is True
+    assert parsed.training_max_iterations is None
+
+    assert (
+        parser.parse_args(required + ["--wandb-project", "custom"]).wandb_project
+        == "custom"
+    )
+    assert (
+        parser.parse_args(
+            required + ["--training-max-iterations", "30"]
+        ).training_max_iterations
+        == 30
+    )
+
     with pytest.raises(SystemExit):
         parser.parse_args(
-            required_args
-            + [
-                "--training-max-steps",
-                "100",
-                "--training-max-iterations",
-                "10",
-            ]
+            required
+            + ["--training-max-steps", "100", "--training-max-iterations", "10"]
         )
     with pytest.raises(SystemExit):
-        parser.parse_args(required_args + ["--training-max-iterations", "0"])
+        parser.parse_args(required + ["--training-max-iterations", "0"])
 
 
-def test_apply_training_iteration_limit(monkeypatch, tmp_path):
-    module = _load_train_agent_globals(monkeypatch, tmp_path)
-    config = SimpleNamespace(training_max_iterations=None)
-
-    module["apply_training_iteration_limit"](
-        SimpleNamespace(training_max_iterations=42), config
-    )
-    assert config.training_max_iterations == 42
-
-    module["apply_training_iteration_limit"](
-        SimpleNamespace(training_max_iterations=None), config
-    )
-    assert config.training_max_iterations == 42
+# ---------------------------------------------------------------------------
+# Motion shard cycle
+# ---------------------------------------------------------------------------
 
 
-def test_load_motion_shard_cycle_reads_required_checkpoint_state(monkeypatch, tmp_path):
-    module = _load_train_agent_globals(monkeypatch, tmp_path)
+def test_load_motion_shard_cycle_reads_required_checkpoint_state(tmp_path):
+    """The shard cycle is read from the checkpoint, and a missing key raises."""
     checkpoint = tmp_path / "last.ckpt"
     torch.save({"motion_shard_cycle": 4}, checkpoint)
-
-    assert module["load_motion_shard_cycle"](checkpoint) == 4
+    assert load_motion_shard_cycle(checkpoint) == 4
 
     torch.save({}, checkpoint)
     with pytest.raises(KeyError, match="motion_shard_cycle"):
-        module["load_motion_shard_cycle"](checkpoint)
+        load_motion_shard_cycle(checkpoint)
 
 
 @pytest.mark.parametrize("bad_cycle", [1.5, True, "4"])
-def test_load_motion_shard_cycle_rejects_non_plain_integer_values(
-    monkeypatch, tmp_path, bad_cycle
-):
-    module = _load_train_agent_globals(monkeypatch, tmp_path)
+def test_load_motion_shard_cycle_rejects_non_plain_integer_values(tmp_path, bad_cycle):
+    """A non-int shard cycle is rejected."""
     checkpoint = tmp_path / "last.ckpt"
     torch.save({"motion_shard_cycle": bad_cycle}, checkpoint)
-
     with pytest.raises(TypeError, match="plain Python int"):
-        module["load_motion_shard_cycle"](checkpoint)
+        load_motion_shard_cycle(checkpoint)
 
 
 def test_resume_motion_shard_cycle_fails_all_ranks_before_broadcast(
     monkeypatch, tmp_path
 ):
-    module = _load_train_agent_globals(monkeypatch, tmp_path)
+    """A rank-0 load failure is raised across all ranks before any broadcast."""
     calls = []
     fabric = SimpleNamespace(
         global_rank=0,
         device=torch.device("cpu"),
         broadcast=lambda value: calls.append(("broadcast", value)),
     )
-    motion_lib_config = SimpleNamespace(
-        motion_file_switch_mode=MotionFileSwitchMode.LIVE,
-    )
-
-    monkeypatch.setitem(
-        module["resolve_resume_motion_shard_cycle"].__globals__,
+    monkeypatch.setattr(
+        launch_training,
         "load_motion_shard_cycle",
         lambda checkpoint: (_ for _ in ()).throw(OSError("checkpoint unavailable")),
     )
-    with pytest.raises(RuntimeError, match="Motion shard cycle checkpoint load") as error:
-        module["resolve_resume_motion_shard_cycle"](
-            fabric, tmp_path / "last.ckpt", motion_lib_config
+    with pytest.raises(
+        RuntimeError, match="Motion shard cycle checkpoint load"
+    ) as error:
+        resolve_resume_motion_shard_cycle(
+            fabric,
+            tmp_path / "last.ckpt",
+            SimpleNamespace(motion_file_switch_mode=MotionFileSwitchMode.LIVE),
         )
-
     assert isinstance(error.value.__cause__, OSError)
     assert calls == []
 
@@ -290,22 +198,21 @@ def test_resume_motion_shard_cycle_fails_all_ranks_before_broadcast(
 def test_fixed_resume_motion_shard_cycle_bypasses_checkpoint_and_broadcast(
     monkeypatch, tmp_path
 ):
-    module = _load_train_agent_globals(monkeypatch, tmp_path)
+    """FIXED mode returns 0 without reading the checkpoint or broadcasting."""
     fabric = SimpleNamespace(
         global_rank=0,
         device=torch.device("cpu"),
         broadcast=lambda value: pytest.fail("fixed mode must not broadcast"),
     )
-    monkeypatch.setitem(
-        module["resolve_resume_motion_shard_cycle"].__globals__,
+    monkeypatch.setattr(
+        launch_training,
         "load_motion_shard_cycle",
         lambda checkpoint: pytest.fail("fixed mode must not load checkpoint"),
     )
-
     assert (
-        module["resolve_resume_motion_shard_cycle"](
+        resolve_resume_motion_shard_cycle(
             fabric,
-            tmp_path / "checkpoint-without-cycle.ckpt",
+            tmp_path / "ckpt.ckpt",
             SimpleNamespace(motion_file_switch_mode=MotionFileSwitchMode.FIXED),
         )
         == 0
@@ -315,17 +222,17 @@ def test_fixed_resume_motion_shard_cycle_bypasses_checkpoint_and_broadcast(
 def test_healthy_resume_rank_fails_before_broadcast_when_remote_load_fails(
     monkeypatch, tmp_path
 ):
+    """A non-zero rank fails via the collective check, never loading or broadcasting."""
     from protomotions.agents.utils import distributed
 
-    module = _load_train_agent_globals(monkeypatch, tmp_path)
     calls = []
     fabric = SimpleNamespace(
         global_rank=1,
         device=torch.device("cpu"),
         broadcast=lambda value: calls.append(("broadcast", value)),
     )
-    monkeypatch.setitem(
-        module["resolve_resume_motion_shard_cycle"].__globals__,
+    monkeypatch.setattr(
+        launch_training,
         "load_motion_shard_cycle",
         lambda checkpoint: pytest.fail("healthy rank must not load checkpoint"),
     )
@@ -336,48 +243,42 @@ def test_healthy_resume_rank_fails_before_broadcast_when_remote_load_fails(
             RuntimeError("Motion shard cycle checkpoint load failed on another rank")
         ),
     )
-
     with pytest.raises(RuntimeError, match="another rank"):
-        module["resolve_resume_motion_shard_cycle"](
+        resolve_resume_motion_shard_cycle(
             fabric,
             tmp_path / "last.ckpt",
             SimpleNamespace(motion_file_switch_mode=MotionFileSwitchMode.LIVE),
         )
-
     assert calls == []
 
 
-def test_build_wandb_logger_config_uses_cli_project(monkeypatch, tmp_path):
-    module = _load_train_agent_globals(monkeypatch, tmp_path)
-    config = module["build_wandb_logger_config"](
-        SimpleNamespace(
-            experiment_name="unit-run",
-            wandb_project="custom-project",
-        ),
+# ---------------------------------------------------------------------------
+# Checkpoint mode, wandb logger, experiment module
+# ---------------------------------------------------------------------------
+
+
+def test_build_wandb_logger_config_uses_cli_project(tmp_path):
+    """The wandb logger config carries the CLI name, project and wandb id."""
+    config = build_wandb_logger_config(
+        SimpleNamespace(experiment_name="unit-run", wandb_project="custom-project"),
         tmp_path,
         "wandb-id",
     )
-
     assert config["name"] == "unit-run"
     assert config["project"] == "custom-project"
     assert config["save_dir"] == tmp_path
     assert config["id"] == "wandb-id"
 
 
-def test_detect_checkpoint_mode_handles_fresh_warm_start_and_resume(
-    monkeypatch,
-    tmp_path,
-):
-    module = _load_train_agent_globals(monkeypatch, tmp_path)
-    detect_checkpoint_mode = module["detect_checkpoint_mode"]
-
-    fresh_args = SimpleNamespace(checkpoint=None)
-    assert detect_checkpoint_mode(fresh_args, tmp_path / "fresh") == (
+def test_detect_checkpoint_mode_handles_fresh_warm_start_and_resume(tmp_path):
+    """detect_checkpoint_mode classifies fresh, warm start and resume runs."""
+    assert detect_checkpoint_mode(
+        SimpleNamespace(checkpoint=None), tmp_path / "fresh"
+    ) == (
         "fresh",
         None,
         None,
     )
-
     warm_args = SimpleNamespace(checkpoint=str(tmp_path / "weights.ckpt"))
     assert detect_checkpoint_mode(warm_args, tmp_path / "warm") == (
         "warm_start",
@@ -389,18 +290,10 @@ def test_detect_checkpoint_mode_handles_fresh_warm_start_and_resume(
     resume_dir.mkdir()
     (resume_dir / "last.ckpt").write_text("checkpoint")
     (resume_dir / "config.yaml").write_text(
-        json.dumps(
-            {
-                "robot_name": "smpl",
-                "batch_size": 64,
-                "wandb_id": "wandb-resume",
-            }
-        )
+        json.dumps({"robot_name": "smpl", "batch_size": 64, "wandb_id": "wandb-resume"})
     )
     resume_args = SimpleNamespace(checkpoint=None, robot_name="g1")
-
     mode, checkpoint, wandb_id = detect_checkpoint_mode(resume_args, resume_dir)
-
     assert mode == "resume"
     assert checkpoint == resume_dir / "last.ckpt"
     assert wandb_id == "wandb-resume"
@@ -414,12 +307,8 @@ def test_detect_checkpoint_mode_handles_fresh_warm_start_and_resume(
         detect_checkpoint_mode(SimpleNamespace(checkpoint=None), missing_config_dir)
 
 
-def test_resume_keeps_kit_thread_count_given_on_the_command_line(
-    monkeypatch,
-    tmp_path,
-):
-    module = _load_train_agent_globals(monkeypatch, tmp_path)
-    detect_checkpoint_mode = module["detect_checkpoint_mode"]
+def test_resume_keeps_kit_thread_count_given_on_the_command_line(tmp_path):
+    """A command-line --kit-thread-count wins over the saved value on resume."""
     resume_dir = tmp_path / "resume"
     resume_dir.mkdir()
     (resume_dir / "last.ckpt").write_text("checkpoint")
@@ -433,145 +322,88 @@ def test_resume_keeps_kit_thread_count_given_on_the_command_line(
         assert args.batch_size == 64
         return args.kit_thread_count
 
-    # The fix for a run that starts aborting at startup is to add the flag to the
-    # resume command; the saved None from the original launch must not erase it.
     assert resume(saved=None, cli=1) == 1
     assert resume(saved=4, cli=1) == 1
-    # Without the flag, the saved value is used as before.
     assert resume(saved=1, cli=None) == 1
     assert resume(saved=None, cli=None) is None
 
 
-def test_load_experiment_module_loads_file_and_rejects_missing_paths(
-    monkeypatch,
-    tmp_path,
-):
-    module = _load_train_agent_globals(monkeypatch, tmp_path)
+def test_load_experiment_module_loads_file_and_rejects_missing_paths(tmp_path):
+    """load_experiment_module imports a file and names a missing path."""
     experiment = tmp_path / "custom_experiment.py"
     experiment.write_text("VALUE = 7\n")
-
-    loaded = module["load_experiment_module"](experiment)
-
-    assert loaded.VALUE == 7
+    assert load_experiment_module(experiment).VALUE == 7
     with pytest.raises(FileNotFoundError, match="Experiment file not found"):
-        module["load_experiment_module"](tmp_path / "missing.py")
+        load_experiment_module(tmp_path / "missing.py")
 
 
-def test_save_configs_writes_json_pickle_yaml_and_experiment_copy(
-    monkeypatch,
-    tmp_path,
+# ---------------------------------------------------------------------------
+# Saving the bundle
+# ---------------------------------------------------------------------------
+
+
+def test_save_configs_writes_config_yaml_the_bundle_and_experiment_copy(
+    monkeypatch, tmp_path
 ):
-    module = _load_train_agent_globals(monkeypatch, tmp_path)
+    """save_configs writes config.yaml, the typed JSON bundle and an experiment copy."""
+    wandb = SimpleNamespace(run=SimpleNamespace(id="wandb-unit"))
+    monkeypatch.setattr(launch_training, "wandb", wandb)
     save_dir = tmp_path / "results"
     experiment = tmp_path / "experiment.py"
     experiment.write_text("# experiment\n")
     args = SimpleNamespace(use_wandb=True, experiment_name="unit", seed=123)
-    config = _TinyConfig(value=5)
 
-    module["save_configs"](
-        save_dir,
-        args,
-        config,
-        config,
-        config,
-        config,
-        config,
-        config,
-        config,
-        _TinyFabricConfig(),
-        experiment_source_path=experiment,
-    )
+    save_configs(save_dir, args, _bundle(), experiment_source_path=experiment)
 
     checkpoint_config = json.loads((save_dir / "config.yaml").read_text())
     assert checkpoint_config["wandb_id"] == "wandb-unit"
     assert checkpoint_config["seed"] == 123
-    assert (save_dir / "resolved_configs.pt").exists()
-    assert (save_dir / "resolved_configs.yaml").read_text()
+    assert (save_dir / BUNDLE_FILENAME).exists()
     assert (save_dir / "experiment_config.py").read_text() == "# experiment\n"
 
-    loaded = torch.load(
-        save_dir / "resolved_configs.pt",
-        map_location="cpu",
-        weights_only=False,
-    )
-    assert loaded["robot"].value == 5
+    # The bundle is a tagged JSON tree rebuilt through the real constructor.
+    loaded = load_experiment_configs(save_dir / BUNDLE_FILENAME)
+    assert isinstance(loaded, ExperimentConfigs)
+    assert loaded.robot.value == 5
 
 
-def test_save_configs_tolerates_missing_wandb_id_and_yaml_failure(
-    monkeypatch,
-    tmp_path,
-):
-    module = _load_train_agent_globals(monkeypatch, tmp_path)
-    module["wandb"].run = object()
+def test_save_configs_tolerates_a_missing_wandb_id(monkeypatch, tmp_path):
+    """A missing wandb id leaves wandb_id None and still writes the bundle."""
+    monkeypatch.setattr(launch_training, "wandb", SimpleNamespace(run=object()))
     save_dir = tmp_path / "results"
     experiment = tmp_path / "experiment.py"
     experiment.write_text("# experiment\n")
     args = SimpleNamespace(use_wandb=True, experiment_name="unit")
-    config = SimpleNamespace(value=5)
 
-    module["save_configs"](
+    save_configs(
         save_dir,
         args,
-        config,
-        config,
-        config,
-        config,
-        config,
-        config,
-        config,
-        _TinyFabricConfig(),
+        _bundle(),
         experiment_source_path=experiment,
-        file_name="no_yaml",
+        bundle_filename="alt_bundle.json",
     )
 
     checkpoint_config = json.loads((save_dir / "config.yaml").read_text())
     assert checkpoint_config["wandb_id"] is None
-    assert (save_dir / "no_yaml.pt").exists()
-    assert not (save_dir / "no_yaml.yaml").exists()
+    assert (save_dir / "alt_bundle.json").exists()
 
 
-def test_prepare_inference_configs_for_save_calls_optional_hooks(
-    monkeypatch,
-    tmp_path,
-):
-    module = _load_train_agent_globals(monkeypatch, tmp_path)
+def test_try_log_hyperparams_to_wandb_logs_only_matching_logger(monkeypatch):
+    """Only a WandbLogger is logged to, with one entry per config root plus fabric."""
 
-    class ConfigWithHook:
-        called = False
+    class FakeWandbLogger:
+        def __init__(self):
+            self.logged = None
 
-        def prepare_inference_config_for_save(self):
-            self.called = True
+        def log_hyperparams(self, params):
+            self.logged = params
 
-    config_with_hook = ConfigWithHook()
-    config_without_hook = object()
-
-    module["prepare_inference_configs_for_save"](
-        config_without_hook,
-        config_with_hook,
-    )
-
-    assert config_with_hook.called
-
-
-def test_try_log_hyperparams_to_wandb_logs_only_matching_logger(
-    monkeypatch,
-    tmp_path,
-):
-    module = _load_train_agent_globals(monkeypatch, tmp_path)
-    logger = module["WandbLogger"]()
+    monkeypatch.setattr(launch_training, "WandbLogger", FakeWandbLogger)
+    logger = FakeWandbLogger()
     fabric = SimpleNamespace(loggers=[object(), logger])
-    config = _TinyConfig(value=9)
 
-    module["try_log_hyperparams_to_wandb"](
-        fabric,
-        config,
-        config,
-        config,
-        config,
-        config,
-        config,
-        config,
-        _TinyFabricConfig(),
+    try_log_hyperparams_to_wandb(
+        fabric, _bundle(config=_TinyConfig(value=9)), _FakeFabricConfig()
     )
 
     assert logger.logged["robot"]["value"] in (9, "9")
@@ -581,785 +413,396 @@ def test_try_log_hyperparams_to_wandb_logs_only_matching_logger(
     )
 
 
-def test_try_log_hyperparams_to_wandb_tolerates_logger_failures(
-    monkeypatch,
-    tmp_path,
-):
-    module = _load_train_agent_globals(monkeypatch, tmp_path)
+def test_try_log_hyperparams_to_wandb_tolerates_logger_failures(monkeypatch):
+    """A logger that raises during logging does not propagate."""
 
-    class FailingWandbLogger(module["WandbLogger"]):
+    class FailingWandbLogger:
         def log_hyperparams(self, params):
             raise RuntimeError("wandb is offline")
 
-    module["try_log_hyperparams_to_wandb"](
+    monkeypatch.setattr(launch_training, "WandbLogger", FailingWandbLogger)
+    try_log_hyperparams_to_wandb(
         SimpleNamespace(loggers=[FailingWandbLogger()]),
-        _TinyConfig(value=9),
-        _TinyConfig(value=9),
-        _TinyConfig(value=9),
-        _TinyConfig(value=9),
-        _TinyConfig(value=9),
-        _TinyConfig(value=9),
-        _TinyConfig(value=9),
-        _TinyFabricConfig(),
+        _bundle(config=_TinyConfig(value=9)),
+        _FakeFabricConfig(),
     )
 
 
-def test_create_config_only_saves_training_and_inference_configs(
-    monkeypatch,
-    tmp_path,
+def test_save_training_configs_saves_one_bundle_and_dry_runs_inference(
+    monkeypatch, tmp_path
 ):
-    module = _load_train_agent_globals(monkeypatch, tmp_path)
-
-    save_calls = []
-    override_calls = []
+    """Only the training bundle is written, then the inference derivation is dry-run."""
+    saved = []
 
     def fake_save_configs(
-        save_dir,
-        args,
-        robot_config,
-        simulator_config,
-        terrain_config,
-        scene_lib_config,
-        motion_lib_config,
-        env_config,
-        agent_config,
-        fabric_config,
-        experiment_source_path,
-        file_name,
+        save_dir, args, configs, experiment_source_path, bundle_filename=BUNDLE_FILENAME
     ):
-        save_calls.append(
-            {
-                "file_name": file_name,
-                "robot_value": robot_config.value,
-                "fabric": fabric_config.as_loggable_dict(),
-                "experiment_source_path": experiment_source_path,
-            }
-        )
+        saved.append((bundle_filename, configs.robot.value))
 
-    def fake_apply_all_inference_overrides(
-        robot_config,
-        simulator_config,
-        env_config,
-        agent_config,
-        terrain_config,
-        motion_lib_config,
-        scene_lib_config,
-        experiment_module,
+    monkeypatch.setattr(launch_training, "save_configs", fake_save_configs)
+
+    dry_runs = []
+    inference_utils = SimpleNamespace(
+        derive_inference_configs=lambda training,
         args,
-    ):
-        override_calls.append((experiment_module, args.experiment_name))
-        robot_config.value = 99
-
-    fabric_config_module = ModuleType("protomotions.utils.fabric_config")
-
-    class FakeFabricConfig:
-        def __init__(self, devices, num_nodes, loggers, callbacks):
-            self.devices = devices
-            self.num_nodes = num_nodes
-            self.loggers = loggers
-            self.callbacks = callbacks
-
-        def as_loggable_dict(self):
-            return {"devices": self.devices, "num_nodes": self.num_nodes}
-
-    fabric_config_module.FabricConfig = FakeFabricConfig
-    inference_utils = ModuleType("protomotions.utils.inference_utils")
-    inference_utils.apply_all_inference_overrides = fake_apply_all_inference_overrides
-
-    monkeypatch.setitem(
-        module["_handle_create_config_only"].__globals__,
-        "save_configs",
-        fake_save_configs,
+        overrides,
+        hooks: dry_runs.append((training, overrides, hooks)),
+        recipe_hooks=lambda checkpoint_dir, inference_config: ["hook"],
     )
     monkeypatch.setitem(
-        sys.modules,
-        "protomotions.utils.fabric_config",
-        fabric_config_module,
-    )
-    monkeypatch.setitem(
-        sys.modules,
-        "protomotions.utils.inference_utils",
-        inference_utils,
+        sys.modules, "protomotions.utils.inference_utils", inference_utils
     )
 
-    args = SimpleNamespace(ngpu=2, nodes=3, experiment_name="config-only")
-    experiment = tmp_path / "experiment.py"
-    config = _TinyConfig(value=5)
-
-    module["_handle_create_config_only"](
-        args,
-        tmp_path / "results",
-        experiment,
-        experiment_module=SimpleNamespace(name="experiment"),
-        robot_config=config,
-        simulator_config=config,
-        terrain_config=config,
-        scene_lib_config=config,
-        motion_lib_config=config,
-        env_config=config,
-        agent_config=config,
+    configs = _bundle()
+    save_training_configs(
+        tmp_path,
+        SimpleNamespace(experiment_name="unit"),
+        configs,
+        experiment_source_path="experiment.py",
     )
 
-    assert [call["file_name"] for call in save_calls] == [
-        "resolved_configs",
-        "resolved_configs_inference",
-    ]
-    assert save_calls[0]["robot_value"] == 5
-    assert save_calls[1]["robot_value"] == 99
-    assert save_calls[0]["fabric"]["devices"] == 2
-    assert save_calls[0]["fabric"]["num_nodes"] == 3
-    assert override_calls == [(SimpleNamespace(name="experiment"), "config-only")]
+    assert [name for name, _ in saved] == [
+        BUNDLE_FILENAME
+    ]  # one bundle, no inference copy
+    assert len(dry_runs) == 1  # the derivation ran once as a dry-run
+    training, overrides, hooks = dry_runs[0]
+    assert training is configs and overrides == {} and hooks == ["hook"]
+    assert configs.robot.value == 5  # the training bundle is untouched
 
 
-def test_main_create_config_only_builds_configs_and_exits_before_training(
-    monkeypatch,
-    tmp_path,
-):
-    module = _load_train_agent_globals(monkeypatch, tmp_path)
-    main_globals = module["main"].__globals__
-    config = _TinyConfig(value=11)
-    args = SimpleNamespace(
-        experiment_name="main-config-only",
-        experiment_path=str(tmp_path / "experiment.py"),
-        create_config_only=True,
-        checkpoint=None,
-        overrides=[],
-        ngpu=1,
-        nodes=1,
-        simulator="isaacgym",
-        training_max_iterations=None,
-    )
-    fake_experiment = SimpleNamespace(
-        terrain_config=lambda: "terrain",
-        scene_lib_config=lambda: "scene",
-        motion_lib_config=lambda: "motion",
-        env_config=lambda: "env",
-        configure_robot_and_simulator=lambda *args, **kwargs: None,
-        agent_config=lambda: "agent",
-    )
-    handled = []
-
-    def fake_build_standard_configs(**kwargs):
-        assert kwargs["terrain_config_fn"] is fake_experiment.terrain_config
-        assert kwargs["agent_config_fn"] is fake_experiment.agent_config
-        return {
-            "robot": config,
-            "simulator": config,
-            "terrain": config,
-            "scene_lib": config,
-            "motion_lib": config,
-            "env": config,
-            "agent": config,
-        }
-
-    config_builder = ModuleType("protomotions.utils.config_builder")
-    config_builder.build_standard_configs = fake_build_standard_configs
-
-    def fake_handle_create_config_only(
-        parsed_args,
-        save_dir,
-        experiment_source_path,
-        experiment_module,
-        robot_config,
-        simulator_config,
-        terrain_config,
-        scene_lib_config,
-        motion_lib_config,
-        env_config,
-        agent_config,
-    ):
-        handled.append(
-            {
-                "args": parsed_args,
-                "save_dir": save_dir,
-                "experiment_source_path": experiment_source_path,
-                "experiment_module": experiment_module,
-                "robot_config": robot_config,
-                "agent_config": agent_config,
-            }
-        )
-
-    monkeypatch.setitem(main_globals, "args", args)
-    monkeypatch.setitem(
-        main_globals,
-        "parser",
-        SimpleNamespace(parse_args=lambda: args),
-    )
-    monkeypatch.setitem(
-        main_globals,
-        "load_experiment_module",
-        lambda path: fake_experiment,
-    )
-    monkeypatch.setitem(
-        main_globals,
-        "_handle_create_config_only",
-        fake_handle_create_config_only,
-    )
-    monkeypatch.setitem(
-        sys.modules,
-        "protomotions.utils.config_builder",
-        config_builder,
-    )
-
-    module["main"]()
-
-    assert len(handled) == 1
-    assert handled[0]["save_dir"] == Path("results") / "main-config-only"
-    assert handled[0]["experiment_source_path"] == Path(args.experiment_path)
-    assert handled[0]["experiment_module"] is fake_experiment
-    assert handled[0]["robot_config"] is config
-    assert handled[0]["agent_config"] is config
+# ---------------------------------------------------------------------------
+# The run() flow
+# ---------------------------------------------------------------------------
 
 
-def test_main_config_only_registers_custom_args_and_applies_cli_overrides(
-    monkeypatch,
-    tmp_path,
-):
-    module = _load_train_agent_globals(monkeypatch, tmp_path)
-    main_globals = module["main"].__globals__
-    parser_calls = []
-    override_calls = []
-    config = _TinyConfig(value=11)
-    motion_lib_config = MotionLibConfig(motion_file="motions.pt")
-    args = SimpleNamespace(
-        experiment_name="main-config-overrides",
-        experiment_path=str(tmp_path / "experiment.py"),
-        create_config_only=True,
-        checkpoint=None,
-        overrides=["env.value=17"],
-        ngpu=1,
-        nodes=1,
-        simulator="isaacgym",
-        training_max_iterations=None,
-    )
+class _FakeFabric:
+    def __init__(self, calls):
+        self.calls = calls
+        self.global_rank = 0
+        self.local_rank = 0
+        self.world_size = 1
+        self.device = torch.device("cpu")
+        self.strategy = SimpleNamespace(barrier=lambda: calls.append(("barrier",)))
+        self.loggers = []
 
-    fake_parser = SimpleNamespace(
-        add_argument=lambda *items, **kwargs: parser_calls.append((items, kwargs)),
-        parse_args=lambda: args,
-    )
-    fake_experiment = SimpleNamespace(
-        additional_experiment_arguments=lambda parser: parser.add_argument(
-            "--custom-scale", type=float, default=1.0
-        ),
-        terrain_config=lambda: "terrain",
-        scene_lib_config=lambda: "scene",
-        motion_lib_config=lambda: "motion",
-        env_config=lambda: "env",
-    )
+    def launch(self):
+        self.calls.append(("launch",))
 
-    def fake_build_standard_configs(**kwargs):
-        assert kwargs["configure_robot_and_simulator_fn"] is None
-        assert kwargs["agent_config_fn"] is None
-        return {
-            "robot": config,
-            "simulator": config,
-            "terrain": config,
-            "scene_lib": config,
-            "motion_lib": motion_lib_config,
-            "env": config,
-            "agent": config,
-        }
+    def seed_everything(self, seed):
+        self.calls.append(("seed_everything", seed))
 
-    config_builder = ModuleType("protomotions.utils.config_builder")
-    config_builder.build_standard_configs = fake_build_standard_configs
+    def call(self, hook, *args, **kwargs):
+        self.calls.append(("fabric_call", hook))
 
-    monkeypatch.setitem(main_globals, "args", args)
-    monkeypatch.setitem(main_globals, "parser", fake_parser)
-    monkeypatch.setitem(
-        main_globals,
-        "load_experiment_module",
-        lambda path: fake_experiment,
-    )
-    monkeypatch.setitem(
-        main_globals,
-        "_handle_create_config_only",
-        lambda *items, **kwargs: None,
-    )
-    monkeypatch.setitem(
-        sys.modules,
-        "protomotions.utils.config_builder",
-        config_builder,
-    )
+    def broadcast(self, value):
+        return value
+
+
+def _install_run_fakes(monkeypatch, calls, configs):
+    """Replace run()'s heavy collaborators with recording fakes.
+
+    run() constructs the env through ``build_env_from_configs`` and the agent
+    through ``get_class(config._target_)`` (the imported ``BaseEnv``/``BaseAgent``
+    are only type hints), so the fakes are wired through ``get_class`` where
+    each module binds it: ``component_builder`` for the env, ``hydra_replacement``
+    for the agent.
+    """
+    # Import the env/agent modules now so the ones that bind get_class at module
+    # scope (e.g. base_env/reset/motion.py) hold the real get_class, not the fake
+    # below -- otherwise a later test that builds a real env would get our fake.
+    import protomotions.envs.base_env.env  # noqa: F401
+    import protomotions.agents.base_agent.agent  # noqa: F401
+
+    fabric = _FakeFabric(calls)
+    agents = []
     monkeypatch.setattr(
-        sys.modules["protomotions.utils.config_utils"],
-        "parse_cli_overrides",
-        lambda raw: {"env.value": 17},
+        "protomotions.utils.fabric_config.FabricConfig", _FakeFabricConfig
     )
+    monkeypatch.setattr("lightning.fabric.Fabric", lambda **kwargs: fabric)
     monkeypatch.setattr(
-        sys.modules["protomotions.utils.config_utils"],
-        "apply_config_overrides",
-        lambda overrides, env, simulator, robot, agent, **kwargs: (
-            override_calls.append((overrides, env, simulator, robot, agent, kwargs)),
-            setattr(kwargs["motion_lib_config"], "motion_file_switch_mode", "fixed"),
-        ),
-    )
-
-    module["main"]()
-
-    assert parser_calls == [(("--custom-scale",), {"type": float, "default": 1.0})]
-    assert len(override_calls) == 1
-    assert override_calls[0][0] == {"env.value": 17}
-    assert override_calls[0][1] is config
-    assert override_calls[0][5]["terrain_config"] is config
-    assert motion_lib_config.motion_file_switch_mode is MotionFileSwitchMode.FIXED
-
-
-def test_main_fresh_training_path_wires_fabric_components_agent_and_saves(
-    monkeypatch,
-    tmp_path,
-):
-    module = _load_train_agent_globals(monkeypatch, tmp_path)
-    main_globals = module["main"].__globals__
-    calls = []
-    args = SimpleNamespace(
-        experiment_name="fresh",
-        experiment_path=str(tmp_path / "experiment.py"),
-        create_config_only=False,
-        checkpoint=None,
-        overrides=[],
-        ngpu=2,
-        nodes=1,
-        use_wandb=True,
-        wandb_project="custom-project",
-        use_slurm=True,
-        simulator="isaacgym",
-        headless=True,
-        seed=10,
-        torch_deterministic=True,
-        training_max_iterations=None,
-    )
-    robot_config = SimpleNamespace(_target_="robot.Target")
-    simulator_config = SimpleNamespace(_target_="sim.Target")
-    terrain_config = SimpleNamespace(_target_="terrain.Target")
-    scene_lib_config = SimpleNamespace(_target_="scene.Target")
-    motion_lib_config = _TinyConfig(_target_="motion.Target")
-    env_config = SimpleNamespace(_target_="env.Target", save_dir="weights")
-    agent_config = SimpleNamespace(_target_="agent.Target")
-    fake_experiment = SimpleNamespace(
-        terrain_config=lambda: "terrain",
-        scene_lib_config=lambda: "scene",
-        motion_lib_config=lambda: "motion",
-        env_config=lambda: "env",
-        configure_robot_and_simulator=lambda *args, **kwargs: None,
-        agent_config=lambda: "agent",
-    )
-
-    class FakeFabricConfig:
-        def __init__(self, devices, num_nodes, loggers, callbacks, **kwargs):
-            self.devices = devices
-            self.num_nodes = num_nodes
-            self.loggers = loggers
-            self.callbacks = callbacks
-
-        def as_kwargs(self):
-            return {
-                "devices": self.devices,
-                "num_nodes": self.num_nodes,
-                "loggers": self.loggers,
-                "callbacks": self.callbacks,
-            }
-
-        def as_loggable_dict(self):
-            return {"devices": self.devices, "num_nodes": self.num_nodes}
-
-    class FakeFabric:
-        def __init__(self, **kwargs):
-            calls.append(("fabric_init", kwargs))
-            self.device = torch.device("cpu")
-            self.world_size = 1
-            self.global_rank = 0
-            self.local_rank = 0
-            self.strategy = SimpleNamespace(
-                barrier=lambda: calls.append(("agent_barrier", None))
-            )
-            self.loggers = []
-
-        def launch(self):
-            calls.append(("launch", None))
-
-        def seed_everything(self, seed):
-            calls.append(("seed_everything", seed))
-
-        def call(self, name, *args, **kwargs):
-            calls.append(("fabric_call", name))
-
-    class FakeEnv:
-        def __init__(self, **kwargs):
-            calls.append(("env_init", kwargs))
-            self.simulator = kwargs["simulator"]
-
-    class FakeAgent:
-        def __init__(self, config, env, fabric):
-            calls.append(("agent_init", config, env))
-            self.fabric = fabric
-            self.loaded = None
-
-        def setup(self):
-            calls.append(("agent_setup", None))
-
-        def load(self, checkpoint, load_training_state: bool = True):
-            self.loaded = checkpoint
-            calls.append(("agent_load", checkpoint, load_training_state))
-
-        def fit(self):
-            calls.append(("agent_fit", None))
-
-    def fake_build_standard_configs(**kwargs):
-        return {
-            "robot": robot_config,
-            "simulator": simulator_config,
-            "terrain": terrain_config,
-            "scene_lib": scene_lib_config,
-            "motion_lib": motion_lib_config,
-            "env": env_config,
-            "agent": agent_config,
-        }
-
-    def fake_build_all_components(**kwargs):
-        calls.append(("build_components", kwargs))
-        return {
-            "terrain": "terrain",
-            "scene_lib": "scene_lib",
-            "motion_lib": "motion_lib",
-            "simulator": SimpleNamespace(name="simulator"),
-        }
-
-    def fake_save_configs(*args, **kwargs):
-        calls.append(("save_configs", kwargs["file_name"]))
-
-    def fake_apply_all_inference_overrides(*args, **kwargs):
-        calls.append(("inference_overrides", kwargs["args"].experiment_name))
-
-    fabric_config_module = ModuleType("protomotions.utils.fabric_config")
-    fabric_config_module.FabricConfig = FakeFabricConfig
-    lightning_fabric = ModuleType("lightning.fabric")
-    lightning_fabric.Fabric = FakeFabric
-    sys.modules["lightning"].__path__ = []
-    sys.modules["lightning"].fabric = lightning_fabric
-    config_builder = ModuleType("protomotions.utils.config_builder")
-    config_builder.build_standard_configs = fake_build_standard_configs
-    component_builder = ModuleType("protomotions.utils.component_builder")
-    component_builder.build_all_components = fake_build_all_components
-    inference_utils = ModuleType("protomotions.utils.inference_utils")
-    inference_utils.apply_all_inference_overrides = fake_apply_all_inference_overrides
-    simulator_utils = ModuleType("protomotions.simulator.base_simulator.utils")
-    simulator_utils.convert_friction_for_simulator = (
-        lambda terrain, simulator: (terrain, simulator)
-    )
-    base_env = ModuleType("protomotions.envs.base_env.env")
-    base_env.BaseEnv = object
-
-    monkeypatch.setitem(main_globals, "args", args)
-    monkeypatch.setitem(
-        main_globals,
-        "parser",
-        SimpleNamespace(parse_args=lambda: args),
-    )
-    monkeypatch.setitem(
-        main_globals,
-        "detect_checkpoint_mode",
-        lambda parsed_args, save_dir: ("fresh", None, None),
-    )
-    monkeypatch.setitem(
-        main_globals,
-        "load_experiment_module",
-        lambda path: fake_experiment,
-    )
-    monkeypatch.setitem(
-        main_globals,
-        "get_class",
-        lambda target: FakeEnv if target == "env.Target" else FakeAgent,
-    )
-    monkeypatch.setitem(main_globals, "save_configs", fake_save_configs)
-    monkeypatch.setitem(
-        main_globals,
-        "try_log_hyperparams_to_wandb",
-        lambda *args, **kwargs: calls.append(("try_log_hparams", None)),
-    )
-    monkeypatch.setitem(
-        main_globals,
-        "seeding",
+        "protomotions.utils.torch_utils.seeding",
         lambda seed, torch_deterministic=False: calls.append(
             ("seeding", seed, torch_deterministic)
         ),
     )
-    monkeypatch.setitem(
-        sys.modules,
-        "protomotions.utils.fabric_config",
-        fabric_config_module,
+    monkeypatch.setattr(
+        "protomotions.utils.component_builder.convert_friction_for_simulator",
+        lambda terrain, simulator: (terrain, simulator),
     )
-    monkeypatch.setitem(sys.modules, "lightning.fabric", lightning_fabric)
-    monkeypatch.setitem(
-        sys.modules,
-        "protomotions.utils.config_builder",
-        config_builder,
-    )
-    monkeypatch.setitem(
-        sys.modules,
-        "protomotions.utils.component_builder",
-        component_builder,
-    )
-    monkeypatch.setitem(
-        sys.modules,
-        "protomotions.utils.inference_utils",
-        inference_utils,
-    )
-    monkeypatch.setitem(
-        sys.modules,
-        "protomotions.simulator.base_simulator.utils",
-        simulator_utils,
-    )
-    monkeypatch.setitem(sys.modules, "protomotions.envs.base_env.env", base_env)
-
-    module["main"]()
-
-    assert ("launch", None) in calls
-    assert ("seed_everything", 10) in calls
-    assert ("seeding", 10, True) in calls
-    assert ("fabric_call", "on_app_start") in calls
-    assert ("fabric_call", "on_env_init_start") in calls
-    assert ("fabric_call", "on_env_init_end") in calls
-    assert ("agent_setup", None) in calls
-    assert ("agent_load", None, False) in calls
-    assert ("agent_fit", None) in calls
-    assert ("try_log_hparams", None) in calls
-    assert ("save_configs", "resolved_configs") in calls
-    assert ("save_configs", "resolved_configs_inference") in calls
-    build_call = next(call for call in calls if call[0] == "build_components")
-    assert build_call[1]["save_dir"] == "weights"
-    assert motion_lib_config.validate_calls == 1
-    fabric_call = next(call for call in calls if call[0] == "fabric_init")
-    assert len(fabric_call[1]["loggers"]) == 2
-    wandb_logger = next(
-        logger
-        for logger in fabric_call[1]["loggers"]
-        if logger["_target_"].endswith("WandbLogger")
-    )
-    assert wandb_logger["project"] == "custom-project"
-    assert len(fabric_call[1]["callbacks"]) == 1
-
-
-def test_main_resume_isaaclab_uses_saved_configs_launcher_and_skip_flag(
-    monkeypatch,
-    tmp_path,
-):
-    module = _load_train_agent_globals(monkeypatch, tmp_path)
-    main_globals = module["main"].__globals__
-    monkeypatch.chdir(tmp_path)
-    calls = []
-    resume_dir = tmp_path / "results" / "resume"
-    resume_dir.mkdir(parents=True)
-    checkpoint_path = resume_dir / "last.ckpt"
-    torch.save({"motion_shard_cycle": 7}, checkpoint_path)
-    (resume_dir / "config.yaml").write_text(
-        json.dumps(
-            {
-                "experiment_name": "resume",
-                "experiment_path": str(tmp_path / "ignored_experiment.py"),
-                "create_config_only": False,
-                "checkpoint": None,
-                "overrides": ["saved.override=1"],
-                "ngpu": 1,
-                "nodes": 2,
-                "use_wandb": False,
-                "use_slurm": False,
-                "simulator": "isaaclab",
-                "headless": False,
-                "seed": None,
-                "torch_deterministic": False,
-            }
-        )
-    )
-    robot_config = SimpleNamespace(_target_="robot.Target")
-    simulator_config = SimpleNamespace(_target_="sim.Target", w_last=False)
-    terrain_config = SimpleNamespace(_target_="terrain.Target")
-    scene_lib_config = SimpleNamespace(_target_="scene.Target")
-    motion_lib_config = MotionLibConfig(
-        motion_file="motions_slurmrank.pt",
-        motion_file_switch_mode=MotionFileSwitchMode.RESTART,
-    )
-    env_config = SimpleNamespace(_target_="env.Target", save_dir="resume_weights")
-    agent_config = SimpleNamespace(_target_="agent.Target")
-    torch.save(
-        {
-            "robot": robot_config,
-            "simulator": simulator_config,
-            "terrain": terrain_config,
-            "scene_lib": scene_lib_config,
-            "motion_lib": motion_lib_config,
-            "env": env_config,
-            "agent": agent_config,
+    monkeypatch.setattr(
+        "protomotions.utils.component_builder.build_all_components",
+        lambda **kwargs: {
+            "terrain": "terrain",
+            "scene_lib": "scene",
+            "motion_lib": "motion",
+            "simulator": "simulator",
         },
-        resume_dir / "resolved_configs.pt",
     )
 
-    args = SimpleNamespace(
-        experiment_name="resume",
-        experiment_path=str(tmp_path / "ignored_experiment.py"),
-        create_config_only=False,
-        checkpoint=None,
-        overrides=["user.override=2"],
-        ngpu=99,
-        nodes=99,
-    )
-
-    class FakeAppLauncher:
-        def __init__(self, flags):
-            calls.append(("app_launcher", flags))
-            self.app = "simulation-app"
-
-    class FakeFabricConfig:
-        def __init__(self, devices, num_nodes, loggers, callbacks, **kwargs):
-            self.devices = devices
-            self.num_nodes = num_nodes
-            self.loggers = loggers
-            self.callbacks = callbacks
-
-        def as_kwargs(self):
-            return {"devices": self.devices, "num_nodes": self.num_nodes}
-
-        def as_loggable_dict(self):
-            return {"devices": self.devices, "num_nodes": self.num_nodes}
-
-    class FakeFabric:
+    class _FakeEnv:
         def __init__(self, **kwargs):
-            calls.append(("fabric_init", kwargs))
-            self.device = torch.device("cpu")
-            self.world_size = 2
-            self.global_rank = 0
-            self.local_rank = 0
-            self.strategy = SimpleNamespace(
-                barrier=lambda: calls.append(("agent_barrier", None))
-            )
-            self.loggers = []
+            self.simulator = SimpleNamespace()
 
-        def launch(self):
-            calls.append(("launch", None))
-
-        def call(self, name, *args, **kwargs):
-            calls.append(("fabric_call", name))
-
-        def broadcast(self, value):
-            calls.append(("broadcast", value))
-            return value
-
-    class FakeEnv:
+    class _FakeAgent:
         def __init__(self, **kwargs):
-            calls.append(("env_init", kwargs))
-
-    class FakeAgent:
-        def __init__(self, config, env, fabric):
             self.fabric = fabric
-            self._skip_next_policy_update = False
-            calls.append(("agent_init", config, env))
+            agents.append(self)
 
         def setup(self):
-            calls.append(("agent_setup", None))
+            calls.append(("agent_setup",))
 
-        def load(self, checkpoint, load_training_state: bool = True):
+        def load(self, checkpoint, load_training_state=True):
             calls.append(("agent_load", checkpoint, load_training_state))
 
         def fit(self):
-            calls.append(("agent_fit", self._skip_next_policy_update))
+            calls.append(("agent_fit",))
 
-    def fake_build_all_components(**kwargs):
-        calls.append(("build_components", kwargs))
-        return {
-            "terrain": "terrain",
-            "scene_lib": "scene_lib",
-            "motion_lib": "motion_lib",
-            "simulator": "simulator",
-        }
+    def fake_get_class(target):
+        return _FakeEnv if "Env" in target else _FakeAgent
 
-    fabric_config_module = ModuleType("protomotions.utils.fabric_config")
-    fabric_config_module.FabricConfig = FakeFabricConfig
-    lightning_fabric = ModuleType("lightning.fabric")
-    lightning_fabric.Fabric = FakeFabric
-    sys.modules["lightning"].__path__ = []
-    sys.modules["lightning"].fabric = lightning_fabric
-    component_builder = ModuleType("protomotions.utils.component_builder")
-    component_builder.build_all_components = fake_build_all_components
-    simulator_utils = ModuleType("protomotions.simulator.base_simulator.utils")
-    simulator_utils.convert_friction_for_simulator = (
-        lambda terrain, simulator: (terrain, simulator)
+    monkeypatch.setattr(
+        "protomotions.utils.component_builder.get_class", fake_get_class
     )
-    base_env = ModuleType("protomotions.envs.base_env.env")
-    base_env.BaseEnv = object
-    omni = ModuleType("omni")
-    omni.__path__ = []
-    omni_log_module = ModuleType("omni.log")
-    omni_log_module.SettingBehavior = SimpleNamespace(OVERRIDE="override")
-    omni_log_module.get_log = lambda: SimpleNamespace(
-        set_channel_enabled=lambda *items: calls.append(("omni_log", items))
+    monkeypatch.setattr(
+        "protomotions.utils.hydra_replacement.get_class", fake_get_class
     )
-    omni.log = omni_log_module
-
-    monkeypatch.setitem(main_globals, "args", args)
-    monkeypatch.setitem(main_globals, "AppLauncher", FakeAppLauncher)
-    monkeypatch.setitem(
-        main_globals,
+    monkeypatch.setattr(
+        "protomotions.envs.context_check.run_config_binding_check",
+        lambda *a, **k: calls.append(("binding_check",)),
+    )
+    monkeypatch.setattr(
+        launch_training, "build_configs", lambda module, args, overrides: configs
+    )
+    monkeypatch.setattr(
+        launch_training,
         "load_experiment_module",
-        lambda path: pytest.fail("resume should not load experiment module"),
+        lambda path: SimpleNamespace(__file__=str(path)),
     )
-    monkeypatch.setitem(
-        main_globals,
-        "get_class",
-        lambda target: FakeEnv if target == "env.Target" else FakeAgent,
+    monkeypatch.setattr(
+        launch_training,
+        "save_training_configs",
+        lambda *a, **k: calls.append(("save",)),
     )
-    monkeypatch.setitem(
-        main_globals,
-        "save_configs",
-        lambda *items, **kwargs: pytest.fail("resume should not save configs"),
+    monkeypatch.setattr(
+        launch_training,
+        "try_log_hyperparams_to_wandb",
+        lambda *a, **k: calls.append(("hparams",)),
     )
-    monkeypatch.setitem(
-        sys.modules,
-        "protomotions.utils.fabric_config",
-        fabric_config_module,
-    )
-    monkeypatch.setitem(sys.modules, "lightning.fabric", lightning_fabric)
-    monkeypatch.setitem(
-        sys.modules,
-        "protomotions.utils.component_builder",
-        component_builder,
-    )
-    monkeypatch.setitem(
-        sys.modules,
-        "protomotions.simulator.base_simulator.utils",
-        simulator_utils,
-    )
-    monkeypatch.setitem(sys.modules, "protomotions.envs.base_env.env", base_env)
-    monkeypatch.setitem(sys.modules, "omni", omni)
-    monkeypatch.setitem(sys.modules, "omni.log", omni_log_module)
+    return fabric, agents
 
-    module["main"]()
 
+def _flow_bundle(agent=...):
+    """A bundle whose env and agent carry distinct _target_s for get_class."""
+    env = _TinyConfig(value=1, _target_="fake.EnvClass")
+    if agent is ...:
+        agent = _TinyConfig(value=7, _target_="fake.AgentClass")
+    return _bundle(env=env, agent=agent)
+
+
+def _fresh_argv(experiment, name="fresh-run"):
+    return [
+        "--robot-name",
+        "g1",
+        "--simulator",
+        "newton",
+        "--num-envs",
+        "4",
+        "--batch-size",
+        "8",
+        "--motion-file",
+        "motions.pt",
+        "--experiment-path",
+        str(experiment),
+        "--experiment-name",
+        name,
+    ]
+
+
+def test_run_fresh_training_wires_fabric_components_agent_and_saves(
+    monkeypatch, tmp_path
+):
+    """A fresh run builds configs, launches fabric, constructs env+agent, saves and fits."""
+    monkeypatch.chdir(tmp_path)
+    calls = []
+    configs = _flow_bundle()
+    _install_run_fakes(monkeypatch, calls, configs)
+    experiment = tmp_path / "experiment.py"
+    experiment.write_text("VALUE = 1\n")
+
+    run(_fresh_argv(experiment), app_launcher=None)
+
+    assert ("launch",) in calls
+    assert ("seed_everything", 0) in calls
+    assert ("seeding", 0, False) in calls
+    assert ("fabric_call", "on_app_start") in calls
+    assert ("fabric_call", "on_env_init_start") in calls
+    assert ("fabric_call", "on_env_init_end") in calls
+    assert ("agent_setup",) in calls
     assert (
         "agent_load",
-        Path("results") / "resume" / "last.ckpt",
-        True,
-    ) in calls
-    assert ("agent_fit", True) in calls
-    assert (
-        "app_launcher",
-        {
-            "headless": False,
-            "device": "cpu",
-            "visualizer": ["kit"],
-            "distributed": True,
-        },
-    ) in calls
-    assert os.environ["LOCAL_RANK"] == "0"
-    assert os.environ["RANK"] == "0"
-    build_call = next(call for call in calls if call[0] == "build_components")
-    assert build_call[1]["simulator_config"].w_last is True
-    assert build_call[1]["simulation_app"] == "simulation-app"
-    assert build_call[1]["save_dir"] == "resume_weights"
-    assert build_call[1]["motion_shard_cycle"] == 7
-    assert ("broadcast", 7) in calls
-    assert calls.index(("broadcast", 7)) < calls.index(build_call)
-    omni_log_calls = [call for call in calls if call[0] == "omni_log"]
-    assert [call[1][0] for call in omni_log_calls] == [
-        "omni.physx.plugin",
-        "omni.physx.tensors.plugin",
-        "isaaclab.sim.utils",
-    ]
+        None,
+        False,
+    ) in calls  # fresh: no checkpoint, no training state
+    assert ("agent_fit",) in calls
+    assert ("save",) in calls
+
+
+def test_run_create_config_only_saves_and_exits_before_training(monkeypatch, tmp_path):
+    """--create-config-only saves both bundles and returns before building fabric."""
+    monkeypatch.chdir(tmp_path)
+    calls = []
+    configs = _flow_bundle()
+    _install_run_fakes(monkeypatch, calls, configs)
+    handled = []
+    monkeypatch.setattr(
+        launch_training,
+        "_handle_create_config_only",
+        lambda args, save_dir, src, cfgs: handled.append((save_dir, cfgs)),
+    )
+    experiment = tmp_path / "experiment.py"
+    experiment.write_text("VALUE = 1\n")
+
+    run(
+        _fresh_argv(experiment, "cfg-only") + ["--create-config-only"],
+        app_launcher=None,
+    )
+
+    assert len(handled) == 1
+    assert handled[0][0] == Path("results") / "cfg-only"
+    assert handled[0][1] is configs
+    assert ("launch",) not in calls  # exited before fabric
+    assert ("agent_fit",) not in calls
+
+
+def test_run_requires_an_agent_config(monkeypatch, tmp_path):
+    """Training refuses a recipe with no agent_config()."""
+    monkeypatch.chdir(tmp_path)
+    calls = []
+    _install_run_fakes(monkeypatch, calls, _flow_bundle(agent=None))
+    experiment = tmp_path / "experiment.py"
+    experiment.write_text("VALUE = 1\n")
+    with pytest.raises(ValueError, match="defines no agent_config"):
+        run(_fresh_argv(experiment, "no-agent"), app_launcher=None)
+
+
+def test_run_resume_uses_saved_bundle_and_sets_skip_flag(monkeypatch, tmp_path):
+    """Resume loads the saved bundle, loads training state and skips the next update."""
+    monkeypatch.chdir(tmp_path)
+    calls = []
+    configs = _flow_bundle()
+    # Resume reads the switch mode and validates the motion lib from the bundle.
+    configs.motion_lib = SimpleNamespace(
+        motion_file_switch_mode=MotionFileSwitchMode.FIXED, validate=lambda: None
+    )
+    _, agents = _install_run_fakes(monkeypatch, calls, configs)
+    # build_configs must not run on resume: the bundle is loaded from disk.
+    monkeypatch.setattr(
+        launch_training,
+        "build_configs",
+        lambda *a, **k: pytest.fail("resume must not rebuild configs"),
+    )
+    monkeypatch.setattr(
+        launch_training, "load_experiment_configs", lambda path: configs
+    )
+
+    save_dir = tmp_path / "results" / "resume-run"
+    save_dir.mkdir(parents=True)
+    (save_dir / "last.ckpt").write_text("checkpoint")
+    (save_dir / BUNDLE_FILENAME).write_text("bundle")  # existence is checked
+    (save_dir / "config.yaml").write_text(
+        json.dumps({"batch_size": 8, "wandb_id": None})
+    )
+
+    run(_fresh_argv(tmp_path / "experiment.py", "resume-run"), app_launcher=None)
+
+    load_calls = [call for call in calls if call[0] == "agent_load"]
+    assert load_calls and load_calls[0][2] is True  # resume loads training state
+    assert load_calls[0][1].name == "last.ckpt"  # from the saved run, not --checkpoint
+    assert ("save",) not in calls  # resume does not re-save configs
+    assert ("agent_fit",) in calls
+    assert agents[0]._skip_next_policy_update is True
+
+
+def test_run_warm_start_saves_configs_with_a_json_serializable_checkpoint(
+    monkeypatch, tmp_path
+):
+    """Warm start keeps args.checkpoint a string so save_configs' json.dump works.
+
+    Regression: assigning the Path from detect_checkpoint_mode left
+    args.checkpoint a PosixPath, and save_configs' json.dump(vars(args)) then
+    raised on the first run, after the env and agent were already built. The
+    other run() tests fake the save, so warm start needs the real save path.
+    """
+    monkeypatch.chdir(tmp_path)
+    calls = []
+    configs = _flow_bundle()
+    _install_run_fakes(monkeypatch, calls, configs)
+    # Exercise the real save (that is where the crash was); only wandb and the
+    # inference-derivation dry-run are faked (the dry-run would otherwise need a
+    # real recipe and real config classes, not the tiny stand-ins).
+    monkeypatch.setattr(
+        launch_training,
+        "save_training_configs",
+        save_training_configs,
+    )
+    monkeypatch.setattr(
+        launch_training, "wandb", SimpleNamespace(run=SimpleNamespace(id="warm"))
+    )
+    inference_utils = SimpleNamespace(
+        derive_inference_configs=lambda *a, **k: None,
+        recipe_hooks=lambda *a, **k: [],
+    )
+    monkeypatch.setitem(
+        sys.modules, "protomotions.utils.inference_utils", inference_utils
+    )
+
+    experiment = tmp_path / "experiment.py"
+    experiment.write_text("VALUE = 1\n")
+    checkpoint = tmp_path / "pretrained" / "weights.ckpt"
+    checkpoint.parent.mkdir()
+    checkpoint.write_text("weights")
+
+    run(
+        _fresh_argv(experiment, "warm-run") + ["--checkpoint", str(checkpoint)],
+        app_launcher=None,
+    )
+
+    # The string path reached agent.load unchanged, without training state.
+    load_calls = [call for call in calls if call[0] == "agent_load"]
+    assert load_calls and load_calls[0][1] == str(checkpoint)
+    assert load_calls[0][2] is False
+
+    # The real save ran and config.yaml holds the checkpoint as a string.
+    save_dir = tmp_path / "results" / "warm-run"
+    saved_config = json.loads((save_dir / "config.yaml").read_text())
+    assert saved_config["checkpoint"] == str(checkpoint)
+    assert isinstance(saved_config["checkpoint"], str)
+    assert (save_dir / BUNDLE_FILENAME).exists()
+    assert ("agent_fit",) in calls
+
+
+# ---------------------------------------------------------------------------
+# Import safety
+# ---------------------------------------------------------------------------
+
+
+def test_importing_the_shims_pulls_no_heavy_dependency():
+    """Importing the train/inference shims imports neither torch nor wandb."""
+    script = textwrap.dedent(
+        """
+        import sys
+        import protomotions.train_agent
+        import protomotions.inference_agent
+        leaked = [m for m in ("torch", "wandb", "lightning") if m in sys.modules]
+        assert not leaked, leaked
+        print("OK")
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        cwd=str(Path(__file__).resolve().parents[2]),
+    )
+    assert result.returncode == 0, result.stderr
+    assert "OK" in result.stdout

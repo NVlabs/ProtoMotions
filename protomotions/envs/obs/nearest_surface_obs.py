@@ -6,6 +6,21 @@
 For each selected body, computes an ego-centric heading-relative vector to the
 closest interaction surface. The surface can be sampled terrain points, scene
 object pointclouds, or both.
+
+The kernel's defaults bind the terrain and the scene-object surfaces
+(``scene.*``, names a configuration without objects does not publish). A recipe
+whose run has no scene file unbinds the four object inputs with ``None``::
+
+    "nearest_surface": MdpComponent.from_kernel(
+        compute_nearest_surface_vectors,
+        body_ids=[...],
+        object_pos=None,
+        object_rot=None,
+        neutral_pointclouds=None,
+        object_valid_mask=None,
+    ),
+
+and only the terrain is a surface.
 """
 
 from typing import Optional
@@ -14,24 +29,30 @@ import torch
 from torch import Tensor
 
 from protomotions.components.terrains.terrain_utils import get_height_maps_jit
+from protomotions.envs.context_views import EnvContext
 from protomotions.envs.utils.scene import closest_points_on_object_surface
 from protomotions.utils.rotations import calc_heading_quat_inv, quat_rotate
 
 
 def compute_nearest_surface_vectors(
-    rigid_body_pos: Tensor,
-    root_pos: Tensor,
-    root_rot: Tensor,
-    height_points: Optional[Tensor] = None,
-    height_samples: Optional[Tensor] = None,
-    object_pos: Optional[Tensor] = None,
-    object_rot: Optional[Tensor] = None,
-    neutral_pointclouds: Optional[Tensor] = None,
-    object_valid_mask: Optional[Tensor] = None,
+    rigid_body_pos: Tensor = EnvContext.current.rigid_body_pos,
+    root_pos: Tensor = EnvContext.current.root_pos,
+    root_rot: Tensor = EnvContext.current.root_rot,
+    height_points: Optional[Tensor] = EnvContext.terrain.height_points,
+    height_samples: Optional[Tensor] = EnvContext.terrain.height_samples,
+    object_pos: Optional[Tensor] = EnvContext.scene.object_pos,
+    object_rot: Optional[Tensor] = EnvContext.scene.object_rot,
+    neutral_pointclouds: Optional[Tensor] = EnvContext.scene.neutral_pointclouds,
+    object_valid_mask: Optional[Tensor] = EnvContext.scene.object_valid_mask,
     terrain_horizontal_scale: float = 0.1,
     body_ids: Optional[list] = None,
 ) -> Tensor:
-    """Return per-body vectors to the nearest terrain/object surface."""
+    """Return per-body vectors to the nearest terrain/object surface.
+
+    The object inputs are optional together: a recipe binds all four (the
+    defaults) or passes ``None`` for all four; a scene without objects is also
+    skipped at the call (``object_pos`` of width 0).
+    """
     if body_ids is not None:
         rigid_body_pos = rigid_body_pos[:, body_ids]
     num_envs, num_bodies = rigid_body_pos.shape[:2]

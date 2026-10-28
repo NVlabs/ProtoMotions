@@ -3,33 +3,25 @@
 
 """Test trained agents and visualize their behavior.
 
-This script loads trained checkpoints and runs agents in the simulation environment
-for inference, visualization, and analysis. It supports interactive controls,
-video recording, and motion playback.
+This script loads trained checkpoints and runs agents in the simulation
+environment for inference, visualization, and analysis. It supports interactive
+controls, video recording, and motion playback.
 
-Motion Playback
----------------
+Inference derives its config view from the training bundle
+(``resolved_configs.json``) beside the checkpoint at load, then applies
+inference-specific overrides.
 
-For kinematic motion playback (no physics simulation)::
+Override Priority (highest wins; the view is built in reverse of this order):
 
-    PYTHON_PATH protomotions/inference_agent.py \\
-        --config-name play_motion \\
-        +robot=smpl \\
-        +simulator=isaacgym \\
-        +motion_file=data/motions/walk.motion
+1. CLI overrides (``--overrides``) - highest; a later hook that undoes one is
+   refused by name
+2. The ``--inference-config`` file's ``apply_inference_overrides()`` hook (if passed)
+3. The recipe's own ``apply_inference_overrides()``, loaded from the
+   ``experiment_config.py`` copy beside the checkpoint
+4. Framework inference defaults derived from ``resolved_configs.json`` at load
 
-Inference Config System
-------------------------
-
-Inference loads frozen configs from resolved_configs_inference.pt and applies inference-specific overrides.
-
-Override Priority:
-
-1. CLI overrides (--overrides) - Highest (runtime control)
-2. Experiment inference overrides (apply_inference_overrides) - High (experiment-specific inference settings)
-3. Frozen configs from resolved_configs.pt - Lowest (exact training configs)
-
-Note: configure_robot_and_simulator() is NOT called during inference (already baked into frozen configs).
+Note: ``configure_robot_and_simulator()`` is NOT called during inference
+(its result is already in the training bundle).
 
 Keyboard Controls
 -----------------
@@ -41,448 +33,33 @@ During inference, these controls are available:
 - **O**: Toggle camera view
 - **L**: Start/stop video recording
 - **Q**: Quit
-- **W/A/S/D**: Move target when running with ``--command-source target=keyboard``
+- **W/A/S/D**: Move target when running with
+  ``--inference-config examples/inference/target_keyboard.py``
 
-Example
--------
->>> # Test with custom settings
->>> # PYTHON_PATH protomotions/inference_agent.py \\
->>> #     +robot=smpl \\
->>> #     +simulator=isaacgym \\
->>> #     +checkpoint=results/tracker/last.ckpt \\
->>> #     motion_file=data/motions/test.pt \\
->>> #     num_envs=16
+This file is an import-safe shim: importing it parses nothing and imports no
+heavy dependency. ``main()`` picks the simulator backend and hands off to
+``protomotions.launch.inference.run``.
 """
 
+from __future__ import annotations
 
-def create_parser():
-    """Create and configure the argument parser for inference."""
-    parser = argparse.ArgumentParser(
-        description="Test trained reinforcement learning agent",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-
-    # Required arguments
-    parser.add_argument(
-        "--checkpoint", type=str, required=True, help="Path to checkpoint file to test"
-    )
-    # Optional arguments
-    parser.add_argument(
-        "--full-eval",
-        action="store_true",
-        default=False,
-        help="Run full evaluation instead of simple inference",
-    )
-    parser.add_argument(
-        "--headless",
-        action="store_true",
-        default=False,
-        help="Run simulation in headless mode",
-    )
-    parser.add_argument(
-        "--simulator",
-        type=str,
-        required=True,
-        help="Simulator to use (e.g., 'isaacgym', 'isaaclab', 'newton', 'genesis')",
-    )
-    parser.add_argument(
-        "--num-envs", type=int, default=1, help="Number of parallel environments to run"
-    )
-    parser.add_argument(
-        "--motion-file",
-        type=str,
-        required=False,
-        default=None,
-        help="Path to motion file for inference. If not provided, will use the motion file from the checkpoint.",
-    )
-    parser.add_argument(
-        "--scenes-file", type=str, default=None, help="Path to scenes file (optional)"
-    )
-    parser.add_argument(
-        "--overrides",
-        nargs="*",
-        default=[],
-        help="Config overrides in format key=value (e.g., env.max_episode_length=5000 simulator.headless=True)",
-    )
-    parser.add_argument(
-        "--command-source",
-        nargs="*",
-        default=[],
-        help=(
-            "Override task command sources for inference, e.g. "
-            "target=keyboard. A bare value applies to the single target "
-            "control component."
-        ),
-    )
-
-    return parser
+import sys
+from typing import Optional, Sequence
 
 
-# Parse arguments first (argparse is safe, doesn't import torch)
-import argparse  # noqa: E402
+def main(argv: Optional[Sequence[str]] = None) -> None:
+    """Import the simulator backend before torch, then run the inference body."""
+    from protomotions.launch.startup import simulator_from_argv
+    from protomotions.utils.simulator_imports import import_simulator_before_torch
 
-parser = create_parser()
-args, unknown_args = parser.parse_known_args()
+    argv = list(sys.argv[1:] if argv is None else argv)
+    app_launcher = import_simulator_before_torch(simulator_from_argv(argv))
+    from protomotions.launch.inference import run
 
-# Import simulator before torch - isaacgym/isaaclab must be imported before torch
-# This also returns AppLauncher if using isaaclab, None otherwise
-from protomotions.utils.simulator_imports import import_simulator_before_torch  # noqa: E402
-
-AppLauncher = import_simulator_before_torch(args.simulator)
-
-# Now safe to import everything else including torch
-import logging  # noqa: E402
-from pathlib import Path  # noqa: E402
-import torch  # noqa: E402
-from protomotions.utils.hydra_replacement import get_class  # noqa: E402
-from protomotions.utils.fabric_config import FabricConfig  # noqa: E402
-from lightning.fabric import Fabric  # noqa: E402
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s: %(message)s")
-
-log = logging.getLogger(__name__)
-
-
-# def tmp_enable_domain_randomization(robot_cfg, simulator_cfg, env_cfg):
-#     """Example for quick inference-only config experiments.
-#
-#     Keep this commented out unless you are doing a local smoke test and need a
-#     richer temporary override than the CLI can express. For reusable behavior,
-#     put the override in an experiment file's apply_inference_overrides hook.
-#     """
-#     from protomotions.simulator.base_simulator.config import (
-#         # FrictionDomainRandomizationConfig,
-#         CenterOfMassDomainRandomizationConfig,
-#         DomainRandomizationConfig,
-#     )
-#
-#     # env_cfg.terrain.sim_config.static_friction = 0.01
-#     # env_cfg.terrain.sim_config.dynamic_friction = 0.01
-#
-#     simulator_cfg.domain_randomization = DomainRandomizationConfig(
-#         # Uncomment to enable action noise and friction randomization:
-#         # action_noise=ActionNoiseDomainRandomizationConfig(
-#         #     action_noise_range=(-0.01, 0.01),
-#         #     dof_names=[".*"],
-#         #     dof_indices=None,
-#         # ),
-#         # friction=FrictionDomainRandomizationConfig(
-#         #     num_buckets=64,
-#         #     static_friction_range=(0.0, 1.0),
-#         #     dynamic_friction_range=(0.0, 1.0),
-#         #     restitution_range=(0.0, 0.0),
-#         #     body_names=[".*"],
-#         #     body_indices=None,
-#         # ),
-#     )
-#     log.info("Enabled domain randomization for testing")
-#
-
-def apply_command_source_overrides(env_config, command_source_specs):
-    """Apply inference-only task command source overrides."""
-    if len(command_source_specs) == 0:
-        return
-
-    from protomotions.envs.control.target_control import (
-        KeyboardTargetCommandSourceConfig,
-        RandomTargetCommandSourceConfig,
-        TargetControlConfig,
-    )
-
-    control_components = env_config.control_components
-    for spec in command_source_specs:
-        if "=" in spec:
-            component_name, source_name = spec.split("=", 1)
-        else:
-            target_components = [
-                name
-                for name, component in control_components.items()
-                if isinstance(component, TargetControlConfig)
-            ]
-            if len(target_components) != 1:
-                raise ValueError(
-                    "Bare --command-source values require exactly one "
-                    "TargetControlConfig component"
-                )
-            component_name = target_components[0]
-            source_name = spec
-
-        if component_name not in control_components:
-            raise ValueError(
-                f"Cannot override command source for unknown control component "
-                f"'{component_name}'"
-            )
-
-        component_config = control_components[component_name]
-        if not isinstance(component_config, TargetControlConfig):
-            raise ValueError(
-                f"Command source override '{component_name}={source_name}' only "
-                "supports TargetControlConfig components"
-            )
-
-        source_name = source_name.lower()
-        if source_name in ("keyboard", "manual", "user", "user-control"):
-            component_config.command_source = KeyboardTargetCommandSourceConfig()
-        elif source_name in ("random", "training"):
-            component_config.command_source = RandomTargetCommandSourceConfig()
-        else:
-            raise ValueError(
-                f"Unsupported command source '{source_name}' for component "
-                f"'{component_name}'"
-            )
-
-
-def main():
-    # Re-use the parser and args from module level
-    global parser, args
-    args = parser.parse_args()
-
-    checkpoint = Path(args.checkpoint)
-
-    # Load frozen configs from resolved_configs.pt (exact reproducibility)
-    resolved_configs_path = checkpoint.parent / "resolved_configs_inference.pt"
-    assert (
-        resolved_configs_path.exists()
-    ), f"Could not find resolved configs at {resolved_configs_path}"
-
-    log.info(f"Loading resolved configs from {resolved_configs_path}")
-    resolved_configs = torch.load(
-        resolved_configs_path, map_location="cpu", weights_only=False
-    )
-
-    robot_config = resolved_configs["robot"]
-    simulator_config = resolved_configs["simulator"]
-    terrain_config = resolved_configs.get("terrain")
-    scene_lib_config = resolved_configs["scene_lib"]
-    motion_lib_config = resolved_configs["motion_lib"]
-    env_config = resolved_configs["env"]
-    agent_config = resolved_configs["agent"]
-
-    # Check if we need to switch simulators
-    # Extract simulator name from current config's _target_
-    current_simulator = simulator_config._target_.split(
-        "."
-    )[
-        -3
-    ]  # e.g., "isaacgym" from "protomotions.simulator.isaacgym.simulator.IsaacGymSimulator"
-
-    train_sim_params = None
-    if args.simulator != current_simulator:
-        log.info(
-            f"Switching simulator from '{current_simulator}' (training) to '{args.simulator}' (inference)"
-        )
-        train_sim_params = simulator_config.sim
-        from protomotions.simulator.factory import update_simulator_config_for_test
-
-        simulator_config = update_simulator_config_for_test(
-            current_simulator_config=simulator_config,
-            new_simulator=args.simulator,
-            robot_config=robot_config,
-        )
-    # # Temporary: Enable domain randomization for local inference testing.
-    # # Prefer --overrides or apply_inference_overrides for reusable changes.
-    # tmp_enable_domain_randomization(robot_config, simulator_config, env_config)
-
-    # from protomotions.robot_configs.base import ControlType
-    # robot_config.control.control_type = ControlType.PROPORTIONAL
-
-    # Apply CLI runtime overrides
-    if args.num_envs is not None:
-        log.info(f"CLI override: num_envs = {args.num_envs}")
-        simulator_config.num_envs = args.num_envs
-
-    if args.motion_file is not None:
-        log.info(f"CLI override: motion_file = {args.motion_file}")
-        motion_lib_config.motion_file = args.motion_file  # Always present
-        motion_lib_config.motion_file_shard_indices = None
-
-    if args.scenes_file is not None:
-        # Normalise "None"/"null" strings to actual None (disable scenes)
-        scenes_file = (
-            None if args.scenes_file.lower() in ("none", "null") else args.scenes_file
-        )
-        log.info(f"CLI override: scenes_file = {scenes_file}")
-        scene_lib_config.scene_file = scenes_file
-        if scenes_file is None:
-            scene_lib_config.asset_root = None
-        # Recompute asset_root from the new scene file path (experiment's
-        # asset_root may point to a different machine, e.g. lustre vs local)
-        elif scene_lib_config.asset_root is not None:
-            import os
-
-            scene_lib_config.asset_root = os.path.dirname(
-                os.path.dirname(os.path.abspath(scenes_file))
-            )
-
-    if args.headless is not None:
-        log.info(f"CLI override: headless = {args.headless}")
-        simulator_config.headless = args.headless
-
-    # Parse and apply general CLI overrides
-    from protomotions.utils.config_utils import (
-        parse_cli_overrides,
-        apply_config_overrides,
-    )
-
-    cli_overrides = parse_cli_overrides(args.overrides) if args.overrides else None
-
-    if cli_overrides:
-        apply_config_overrides(
-            cli_overrides,
-            env_config,
-            simulator_config,
-            robot_config,
-            agent_config,
-            terrain_config,
-            motion_lib_config,
-            scene_lib_config,
-        )
-
-    if args.command_source:
-        log.info(f"CLI override: command_source = {args.command_source}")
-        apply_command_source_overrides(env_config, args.command_source)
-
-    if train_sim_params is not None:
-        from protomotions.simulator.factory import warn_on_control_rate_change
-
-        warn_on_control_rate_change(
-            train_sim_params, simulator_config.sim, args.simulator
-        )
-
-    motion_lib_config.validate()
-
-    # Create fabric config for inference (simplified)
-    # MuJoCo is CPU-only, so force CPU accelerator
-    accelerator = "cpu" if args.simulator == "mujoco" else "gpu"
-    fabric_config = FabricConfig(
-        accelerator=accelerator,
-        devices=1,
-        num_nodes=1,
-        loggers=[],  # No loggers needed for inference
-        callbacks=[],  # No callbacks needed for inference
-    )
-    fabric: Fabric = Fabric(**fabric_config.as_kwargs())
-    fabric.launch()
-
-    # Setup IsaacLab simulation_app if using IsaacLab simulator
-    simulator_extra_params = {}
-    if args.simulator == "isaaclab":
-        # Old checkpoints may still have w_last=False from IsaacLab 2.x.
-        if hasattr(simulator_config, "w_last") and not simulator_config.w_last:
-            log.info(
-                "Overriding w_last=False -> True for IsaacLab 3 (xyzw quaternions)"
-            )
-            simulator_config.w_last = True
-        app_launcher_flags = {"headless": args.headless, "device": str(fabric.device)}
-        if not args.headless:
-            app_launcher_flags["visualizer"] = ["kit"]
-        app_launcher = AppLauncher(app_launcher_flags)
-        simulator_extra_params["simulation_app"] = app_launcher.app
-
-    # Convert friction for simulator compatibility
-    from protomotions.simulator.base_simulator.utils import (
-        convert_friction_for_simulator,
-    )
-
-    terrain_config, simulator_config = convert_friction_for_simulator(
-        terrain_config, simulator_config
-    )
-
-    # Create components
-    from protomotions.utils.component_builder import build_all_components
-
-    save_dir_for_weights = (
-        getattr(env_config, "save_dir", None)
-        if hasattr(env_config, "save_dir")
-        else None
-    )
-    components = build_all_components(
-        terrain_config=terrain_config,
-        scene_lib_config=scene_lib_config,
-        motion_lib_config=motion_lib_config,
-        simulator_config=simulator_config,
-        robot_config=robot_config,
-        device=fabric.device,
-        save_dir=save_dir_for_weights,
-        **simulator_extra_params,  # simulation_app for IsaacLab
-    )
-
-    terrain = components["terrain"]
-    scene_lib = components["scene_lib"]
-    motion_lib = components["motion_lib"]
-    simulator = components["simulator"]
-
-    # Create env (auto-initializes simulator)
-    from protomotions.envs.base_env.env import BaseEnv
-
-    EnvClass = get_class(env_config._target_)
-    env: BaseEnv = EnvClass(
-        config=env_config,
-        robot_config=robot_config,
-        device=fabric.device,
-        terrain=terrain,
-        scene_lib=scene_lib,
-        motion_lib=motion_lib,
-        simulator=simulator,
-    )
-
-    # Determine root_dir for agent based on checkpoint path
-    agent_kwargs = {}
-    checkpoint_path = Path(args.checkpoint)
-    agent_kwargs["root_dir"] = checkpoint_path.parent
-
-    # Create agent
-    from protomotions.agents.base_agent.agent import BaseAgent
-
-    # agent_config.evaluator.eval_metric_keys = [
-    #     "gt_err",
-    #     "gr_err_degrees",
-    #     "pow_rew",
-    #     "gt_left_foot_contact",
-    #     "gt_right_foot_contact",
-    #     "pred_left_foot_contact",
-    #     "pred_right_foot_contact"
-    # ]
-    AgentClass = get_class(agent_config._target_)
-    agent: BaseAgent = AgentClass(
-        config=agent_config, env=env, fabric=fabric, **agent_kwargs
-    )
-
-    agent.setup()
-    agent.load(args.checkpoint, load_env=False, load_training_state=False)
-    headless = getattr(env.simulator, "headless", True)
-    ui = getattr(env.simulator, "user_interface", None)
-    if not headless and ui is not None:
-        help_text = ui.help_text()
-        if help_text:
-            log.info("Viewer keybinds:\n%s", help_text)
-
-    try:
-        if args.full_eval:
-            agent.evaluator.eval_count = 0
-            evaluation_log, evaluated_score, num_eval_items = (
-                agent.evaluator.evaluate()
-            )
-
-            # Print evaluation metrics
-            print("\n" + "=" * 60)
-            print("EVALUATION RESULTS")
-            print("=" * 60)
-            for key, value in sorted(evaluation_log.items()):
-                print(f"  {key}: {value:.6f}")
-            print(f"  Items Evaluated: {num_eval_items}")
-            print("=" * 60)
-            if evaluated_score is not None:
-                print(f"  Overall Score: {evaluated_score:.6f}")
-            print("=" * 60 + "\n")
-        else:
-            agent.evaluator.simple_test_policy(collect_metrics=True)
-    finally:
-        # Ensure simulator viewer is properly closed (prevents hangs)
-        if hasattr(env.simulator, "shutdown"):
-            env.simulator.shutdown()
+    run(argv, app_launcher)
 
 
 if __name__ == "__main__":
-    main()
+    from protomotions.launch.startup import run_reporting_failures
+
+    run_reporting_failures(main)

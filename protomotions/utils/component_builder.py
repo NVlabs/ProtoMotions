@@ -4,7 +4,9 @@
 """Utility functions for building environment components.
 
 This module provides helper functions to create terrain, scene_lib, motion_lib,
-and simulator objects from their configs, reducing boilerplate in entry scripts.
+and simulator objects from their configs, reducing boilerplate in entry scripts,
+and :func:`build_env_from_configs`, the environment of a resolved-config bundle
+as every entry point builds it.
 """
 
 from copy import deepcopy
@@ -12,6 +14,7 @@ from pathlib import Path
 from typing import Optional, Dict
 import torch
 from protomotions.components.motion_lib import MotionFileSwitchMode, resolve_shard_file
+from protomotions.simulator.base_simulator.utils import convert_friction_for_simulator
 from protomotions.utils.hydra_replacement import get_class
 
 
@@ -40,6 +43,7 @@ def build_scene_lib_from_config(
     device: torch.device,
     terrain,
     scene_weights: Optional[list] = None,
+    motion_weights: Optional[list] = None,
 ):
     """Build SceneLib from config.
 
@@ -66,6 +70,7 @@ def build_scene_lib_from_config(
         device=device,
         terrain=terrain,
         scene_weights=scene_weights,
+        motion_weights=motion_weights,
     )
 
 
@@ -90,9 +95,7 @@ def build_motion_lib_from_config(
     """
     from protomotions.components.motion_lib import MotionLib
 
-    return MotionLib(
-        config=motion_lib_config, device=device, shard_cycle=shard_cycle
-    )
+    return MotionLib(config=motion_lib_config, device=device, shard_cycle=shard_cycle)
 
 
 def build_simulator_from_config(
@@ -127,6 +130,53 @@ def build_simulator_from_config(
         device=device,
         **simulator_extra_params,
     )
+
+
+def apply_motion_weights_to_scene_weights(
+    save_dir: Optional[str], motion_file: Optional[str], device: torch.device
+) -> Optional[list]:
+    """Apply motion weights from checkpoint as scene weights for curriculum learning.
+
+    Loads motion weights from a previous training checkpoint and uses them as
+    scene replication weights, allowing over-sampling of scenes corresponding to
+    failed motions in curriculum learning. Called from :func:`build_all_components`
+    only; it reads a checkpoint the env wrote (``env_<motion file>.ckpt``).
+
+    The returned per-motion weights reach each scene by its humanoid_motion_id
+    in SceneLib (scene_weights_by_clip_id), so no 1:1 scene-to-motion ordering
+    is assumed.
+
+    Args:
+        save_dir: Directory where checkpoints are saved (or None)
+        motion_file: Motion file path to identify checkpoint (or None)
+        device: PyTorch device
+
+    Returns:
+        List of scene weights from motion training or None if not available
+
+    Missing checkpoints or checkpoints without a motion manager have no
+    curriculum to restore. Corrupt files and malformed manager state must
+    raise rather than silently changing a resumed run to uniform sampling.
+    """
+    if not save_dir or not motion_file:
+        return None
+
+    evaluated_motions = Path(motion_file).name
+    checkpoint_path = Path(save_dir) / f"env_{evaluated_motions}.ckpt"
+    if not checkpoint_path.exists():
+        return None
+
+    print(f"Loading motion weights from checkpoint: {checkpoint_path}")
+    checkpoint_data = torch.load(
+        checkpoint_path, map_location=device, weights_only=False
+    )
+    if "motion_manager" not in checkpoint_data:
+        print("No motion_manager found in checkpoint, using uniform scene weights.")
+        return None
+
+    motion_weights = checkpoint_data["motion_manager"]["motion_weights"]
+    print(f"Loaded {len(motion_weights)} motion weights for curriculum sampling")
+    return motion_weights.cpu().tolist()
 
 
 def build_all_components(
@@ -185,32 +235,38 @@ def build_all_components(
         )
 
     # Load motion weights from checkpoint to use as scene weights for prioritized sampling.
-    scene_weights = None
+    motion_weights = None
     if save_dir and motion_lib.motion_file:
-        from protomotions.envs.base_env.env import BaseEnv
-
-        scene_weights = BaseEnv.apply_motion_weights_to_scene_weights(
+        motion_weights = apply_motion_weights_to_scene_weights(
             save_dir=save_dir, motion_file=motion_lib.motion_file, device=device
         )
 
-    # Create scene_lib (always created, empty if scene_file is None)
+    # Create scene_lib (always created, empty if scene_file is None). Curriculum
+    # weights reach each scene by clip id inside SceneLib.
     scene_lib = build_scene_lib_from_config(
-        scene_config, simulator_config.num_envs, device, terrain, scene_weights
+        scene_config,
+        simulator_config.num_envs,
+        device,
+        terrain,
+        motion_weights=motion_weights,
     )
 
-    if motion_lib_config.motion_file_switch_mode is not MotionFileSwitchMode.FIXED:
-        paired_motion_ids = scene_lib.get_humanoid_motion_ids()
-        if paired_motion_ids is not None:
-            if motion_lib_config.motion_file_switch_mode is MotionFileSwitchMode.LIVE:
-                raise ValueError(
-                    "Live motion switching is incompatible with motion-paired scenes; "
-                    "use restart mode"
-                )
-            if not scene_is_sharded:
-                raise ValueError(
-                    "Restart motion switching requires a matching sharded scene file "
-                    "for motion-paired scenes"
-                )
+    # When the motion file is sharded, a motion-paired scene library needs a
+    # matching sharded scene file; that holds in every switch mode, not only when
+    # switching, so it sits after the switch-mode branch. A paired library on a
+    # single unsharded motion file (ordinary scene-interaction training) builds.
+    # The LIVE refusal for paired scenes is unconditional.
+    if scene_lib.pairing.is_paired:
+        if motion_lib_config.motion_file_switch_mode is MotionFileSwitchMode.LIVE:
+            raise ValueError(
+                "Live motion switching is incompatible with motion-paired scenes; "
+                "use restart mode"
+            )
+        if motion_lib.motion_file_shard_index is not None and not scene_is_sharded:
+            raise ValueError(
+                "A sharded motion file with motion-paired scenes requires a "
+                "matching sharded scene file"
+            )
 
     # Create simulator shell
     simulator = build_simulator_from_config(
@@ -228,3 +284,56 @@ def build_all_components(
         "motion_lib": motion_lib,
         "simulator": simulator,
     }
+
+
+def build_env_from_configs(
+    configs,
+    device: torch.device,
+    motion_shard_cycle: int = 0,
+    **simulator_extra_params,
+):
+    """Build the environment of a resolved-config bundle.
+
+    The one path from ``configs`` to a constructed env, shared by training,
+    inference, the examples and the tests: the friction conversion the
+    simulator's combine mode needs, written back into ``configs.terrain`` and
+    ``configs.simulator`` so a bundle saved afterwards describes what the env
+    was built from; :func:`build_all_components`; the env class
+    ``configs.env._target_`` names. The curriculum weights of a resumed run
+    come from ``configs.env.save_dir``.
+
+    Args:
+        configs: ExperimentConfigs (``terrain``, ``scene_lib``, ``motion_lib``,
+            ``simulator``, ``robot``, ``env``); ``terrain`` and ``simulator``
+            are replaced by their converted forms.
+        device: PyTorch device of the components and the env.
+        motion_shard_cycle: Distributed shard-selection cycle (a resumed run's).
+        **simulator_extra_params: Simulator-specific params (``simulation_app``
+            for IsaacLab).
+
+    Returns:
+        The constructed env (the simulator initialises inside its constructor).
+    """
+    configs.terrain, configs.simulator = convert_friction_for_simulator(
+        configs.terrain, configs.simulator
+    )
+    components = build_all_components(
+        terrain_config=configs.terrain,
+        scene_lib_config=configs.scene_lib,
+        motion_lib_config=configs.motion_lib,
+        simulator_config=configs.simulator,
+        robot_config=configs.robot,
+        device=device,
+        save_dir=configs.env.save_dir,
+        motion_shard_cycle=motion_shard_cycle,
+        **simulator_extra_params,
+    )
+    return get_class(configs.env._target_)(
+        config=configs.env,
+        robot_config=configs.robot,
+        device=device,
+        terrain=components["terrain"],
+        scene_lib=components["scene_lib"],
+        motion_lib=components["motion_lib"],
+        simulator=components["simulator"],
+    )

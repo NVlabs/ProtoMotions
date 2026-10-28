@@ -158,8 +158,7 @@ class NewtonSimulatorFKHarness:
             num_envs=self.num_envs,
             headless=True,
             sim=NewtonSimParams(
-                fps=30,
-                decimation=1,
+                fps=50,  # a multiple of g1 control_hz=50 (one physics step)
             ),
             experiment_name="newton_simulator_fk_test",
         )
@@ -537,7 +536,7 @@ def main():
         "--robot",
         type=str,
         default="g1",
-        choices=["g1", "h1", "h1_2", "smpl", "smplx", "amp"],
+        choices=["g1", "h1_2", "smpl", "smplx", "amp"],
         help="Robot type",
     )
     parser.add_argument(

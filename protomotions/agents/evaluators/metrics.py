@@ -83,7 +83,9 @@ class MotionMetrics:
         if valid_mask.any():
             valid_motion_ids = motion_ids[valid_mask]
             valid_frame_indices = frame_indices[valid_mask]
-            valid_values = values[valid_mask]
+            # Contacts are bool; numeric reductions use the configured storage dtype.
+            # Advanced-index assignment requires matching dtypes (no implicit cast).
+            valid_values = values[valid_mask].to(dtype=self.data.dtype)
 
             # Use advanced indexing to update only valid entries
             self.data[valid_motion_ids, valid_frame_indices] = valid_values

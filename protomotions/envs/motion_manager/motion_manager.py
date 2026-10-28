@@ -37,8 +37,8 @@
 
 # 2. **`exclude_motion_ids: [2, 5, 8, 12]`**
 #    - Excludes the specified motion IDs from probabilistic sampling
-#    - Sets their weights to 0 before each sampling operation
-#    - Persistent exclusion even if motion weights are updated by other classes
+#    - Their weights are 0 from construction on; `set_sampling_weights`, the
+#      one writer of the weight vector, keeps them at 0 whatever it is given
 #    - Can be used during training or evaluation
 #    - Works with any subset_method configuration
 
@@ -56,6 +56,14 @@ class MotionManager:
 
     Handles sampling of reference motions, time progression, and weighted sampling based on performance.
     Supports motion subsetting and exclusion for focused training/evaluation.
+    ``set_sampling_weights`` is the only writer of ``motion_weights`` (the
+    curriculum, a resumed checkpoint and the library's initial weights all go
+    through it), over an eligibility mask fixed at construction.
+
+    ``motion_ids`` and ``motion_times`` hold the per-env clip assignment. To
+    pin clips from outside, use ``get_assignment`` / ``set_assignment`` /
+    ``assign``; they update the tensors in place so everyone holding them
+    sees the change.
 
     Args:
         config: Configuration object for motion manager.
@@ -74,13 +82,24 @@ class MotionManager:
         device: torch.device,
         motion_lib: MotionLib,
         fixed_motion_ids_per_env: Optional[torch.Tensor] = None,
+        *,
+        generator: Optional[torch.Generator],
     ):
         self.config = config
         self.num_envs = num_envs
         self.device = device
         self.motion_lib = motion_lib
         self.env_dt = env_dt
+        # The motion-sampling stage's generator (None: the global stream);
+        # every draw below passes it.
+        self.generator = generator
 
+        # Who writes motion_ids / motion_times: other objects keep references
+        # to the two tensors, so nothing rebinds them. Resets choose clips
+        # through sample_motions; the evaluator pins clips through
+        # get_assignment / set_assignment / assign; the kinematic replay
+        # control component (kinematic_replay_control.py) zeroes motion_times
+        # on a user reset and advances it every step. All write in place.
         self.motion_ids = torch.zeros(
             self.num_envs, dtype=torch.long, device=self.device
         )
@@ -92,23 +111,31 @@ class MotionManager:
             * self.config.init_start_prob
         )
 
-        # initialize motion weights from motion lib, in case user specified initial weights there
-        self.motion_weights = self.motion_lib.motion_weights.clone().to(device=device)
-
         # Handle motion subsetting (only affects sampling, not weights)
         self._setup_motion_subset()
 
-        # Handle motion exclusion (store excluded IDs to apply during sampling)
+        # Which clips may ever be sampled, fixed at construction: not excluded
+        # by the config, and long enough for the reset window when
+        # sample_time_truncate_s is set (reset sampling truncates the window by
+        # truncate_s + env_dt; a shorter clip has no valid window and would be
+        # forced to t=0, see sample_time's clamp). ``set_sampling_weights`` is
+        # the one writer of the weight vector and keeps every other clip at 0.
         self._setup_motion_exclusion()
-
-        # Zero out weights for clips too short to satisfy sample_time_truncate_s.
-        # Reset sampling truncates the window by (truncate_s + env_dt); a clip
-        # shorter than that has no valid sampling window and would otherwise be
-        # forced to t=0 (see sample_time's clamp), so exclude it from sampling.
+        eligible = torch.ones(
+            self.motion_lib.num_motions(), dtype=torch.bool, device=device
+        )
+        if self.excluded_motion_ids is not None:
+            eligible[self.excluded_motion_ids] = False
         if self.config.sample_time_truncate_s is not None:
             min_length = float(self.config.sample_time_truncate_s) + self.env_dt
-            too_short = self.motion_lib.motion_lengths.to(device=device) < min_length
-            self.motion_weights[too_short] = 0.0
+            eligible &= self.motion_lib.motion_lengths.to(device=device) >= min_length
+        self._eligible = eligible
+
+        # The initial weights are the library's (a user may specify them there),
+        # through the writer so the ineligible clips start at 0.
+        initial_weights = self.motion_lib.motion_weights.to(device=device)
+        self.motion_weights = torch.zeros_like(initial_weights)
+        self.set_sampling_weights(initial_weights, floor=0.0, ceiling=float("inf"))
 
         # Handle fixed motion IDs for scene-motion correspondence
         self._setup_fixed_motion_ids(fixed_motion_ids_per_env)
@@ -225,10 +252,78 @@ class MotionManager:
             assert fixed_motion_ids_per_env.shape == (
                 self.num_envs,
             ), f"fixed_motion_ids_per_env must be of shape ({self.num_envs},), got {fixed_motion_ids_per_env.shape}"
+            num_motions = self.motion_lib.num_motions()
+            ids = fixed_motion_ids_per_env
+            bad = (ids != -1) & ((ids < 0) | (ids >= num_motions))
+            if bool(bad.any()):
+                env = int(bad.nonzero()[0])
+                raise ValueError(
+                    f"environment {env} is paired to clip {int(ids[env])}, but "
+                    f"the loaded motion library has {num_motions} clips"
+                )
             self._env_has_fixed_motion = fixed_motion_ids_per_env != -1
             num_fixed = self._env_has_fixed_motion.sum().item()
             if num_fixed > 0:
                 print(f"Motion Manager: {num_fixed} environments have fixed motion IDs")
+
+    @property
+    def fixed_motion_ids_per_env(self) -> Optional[torch.Tensor]:
+        """Per-env pinned clip (-1 where the env samples), or None when nothing is pinned."""
+        return self._fixed_motion_ids_per_env
+
+    def get_assignment(self) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Clones of ``(motion_ids, motion_times)``: a snapshot later writes cannot change.
+
+        This is the supported way for outside code (the evaluator) to save the
+        clip assignment before overwriting it; ``set_assignment`` puts it back.
+        """
+        return self.motion_ids.clone(), self.motion_times.clone()
+
+    def set_assignment(
+        self, motion_ids: torch.Tensor, motion_times: torch.Tensor
+    ) -> None:
+        """Overwrite every env's clip and time in place.
+
+        Both tensors must have shape ``(num_envs,)``. The values are copied into
+        the existing ``motion_ids`` / ``motion_times`` tensors, never rebound,
+        because other objects hold references to them. This is the supported
+        way for outside code (the evaluator) to pin clips; ``sample_motions``
+        stays the way resets choose clips.
+        """
+        expected = (self.num_envs,)
+        for name, value in (("motion_ids", motion_ids), ("motion_times", motion_times)):
+            if tuple(value.shape) != expected:
+                raise ValueError(
+                    f"{name} must have shape {expected}, got {tuple(value.shape)}"
+                )
+        self.motion_ids.copy_(motion_ids)
+        self.motion_times.copy_(motion_times)
+
+    def assign(
+        self,
+        env_ids: torch.Tensor,
+        *,
+        motion_ids: Optional[torch.Tensor] = None,
+        motion_times: Optional[torch.Tensor] = None,
+    ) -> None:
+        """Write the clip and/or time of ``env_ids`` only, in place.
+
+        Each given tensor must match ``env_ids.shape``; at least one must be
+        given. Rows outside ``env_ids`` are untouched. Like ``set_assignment``,
+        this is for outside code that pins clips; resets use ``sample_motions``.
+        """
+        if motion_ids is None and motion_times is None:
+            raise ValueError("assign needs motion_ids, motion_times or both")
+        for name, value in (("motion_ids", motion_ids), ("motion_times", motion_times)):
+            if value is not None and value.shape != env_ids.shape:
+                raise ValueError(
+                    f"{name} must match env_ids.shape {tuple(env_ids.shape)}, "
+                    f"got {tuple(value.shape)}"
+                )
+        if motion_ids is not None:
+            self.motion_ids[env_ids] = motion_ids
+        if motion_times is not None:
+            self.motion_times[env_ids] = motion_times
 
     def get_unique_fixed_motions(self) -> Tuple[torch.Tensor, torch.Tensor]:
         """Get unique fixed motion IDs and the first environment index for each.
@@ -318,13 +413,31 @@ class MotionManager:
         print(f"Motion Manager: Loaded {len(motion_ids)} motion IDs to exclude from {path}")
         return motion_ids
 
-    def _apply_motion_exclusions(self):
+    def set_sampling_weights(
+        self, weights: torch.Tensor, *, floor: float, ceiling: float
+    ) -> None:
+        """The one writer of ``motion_weights``.
+
+        Every eligible clip (not excluded, not too short for the reset window)
+        gets ``weights`` clamped to ``[floor, ceiling]``; every other clip
+        stays at 0, whatever ``weights`` says. The evaluator's curriculum, a
+        resumed checkpoint and the library's initial weights all pass through
+        here, so the eligibility mask can never be undone by a write.
         """
-        Apply motion exclusions by setting weights of excluded motions to 0.
-        This should be called before each sampling operation.
-        """
-        if self.excluded_motion_ids is not None:
-            self.motion_weights[self.excluded_motion_ids] = 0.0
+        num_motions = self.motion_weights.shape[0]
+        if tuple(weights.shape) != (num_motions,):
+            raise ValueError(
+                f"sampling weights must have shape ({num_motions},), got "
+                f"{tuple(weights.shape)}"
+            )
+        if not 0 <= floor <= ceiling:
+            raise ValueError("floor must satisfy 0 <= floor <= ceiling")
+        clamped = weights.to(
+            device=self.motion_weights.device, dtype=self.motion_weights.dtype
+        ).clamp(min=floor, max=ceiling)
+        self.motion_weights[:] = torch.where(
+            self._eligible, clamped, torch.zeros_like(clamped)
+        )
 
     def sample_n_motion_ids(self, n: int) -> Tuple[torch.Tensor, torch.Tensor]:
         """Sample motion IDs from weighted distribution.
@@ -338,9 +451,13 @@ class MotionManager:
         if n == 0:
             return torch.empty(0, dtype=torch.long, device=self.device)
 
-        # Apply exclusions before sampling
-        self._apply_motion_exclusions()
-        return torch.multinomial(self.motion_weights, num_samples=n, replacement=True)
+        # The weight vector already carries 0 for every ineligible clip.
+        return torch.multinomial(
+            self.motion_weights,
+            num_samples=n,
+            replacement=True,
+            generator=self.generator,
+        )
 
     def sample_time(
         self, motion_ids: torch.Tensor, truncate_time: Optional[float] = None
@@ -354,7 +471,9 @@ class MotionManager:
         Returns:
             Sampled times [num_samples]
         """
-        phase = torch.rand(motion_ids.shape, device=self.device)
+        phase = torch.rand(
+            motion_ids.shape, device=self.device, generator=self.generator
+        )
 
         max_time = self.motion_lib.motion_lengths[motion_ids].clone()
 
@@ -425,7 +544,9 @@ class MotionManager:
         new_times = self.sample_time(new_motion_ids, truncate_time=reset_truncate)
 
         if self.config.init_start_prob > 0:
-            init_start = torch.bernoulli(self.init_start_probs[: len(env_ids)])
+            init_start = torch.bernoulli(
+                self.init_start_probs[: len(env_ids)], generator=self.generator
+            )
             new_times = torch.where(
                 init_start == 1,
                 torch.zeros_like(new_times),
@@ -434,17 +555,6 @@ class MotionManager:
 
         self.motion_ids[env_ids] = new_motion_ids
         self.motion_times[env_ids] = new_times
-
-    def update_sampling_weights(self, weights: torch.Tensor):
-        k = min(50, weights.shape[0])
-        topk = torch.topk(weights, k, largest=True)
-        print(f"Top {k} weights:")
-        print("Indices:", topk.indices)
-        print("Values:", topk.values)
-
-        self.motion_weights[:] = weights
-        # Apply exclusions after updating weights
-        self._apply_motion_exclusions()
 
     def get_state_dict(self):
         state_dict = {
@@ -461,6 +571,6 @@ class MotionManager:
                     f"Warning: skip loading motion weights due to motion file name mismatch: {state_dict['motion_file_name']} != {self.motion_lib.motion_file}"
                 )
             else:
-                self.motion_weights[:] = state_dict["motion_weights"].to(
-                    self.motion_weights.device
+                self.set_sampling_weights(
+                    state_dict["motion_weights"], floor=0.0, ceiling=float("inf")
                 )

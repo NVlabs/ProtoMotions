@@ -145,7 +145,7 @@ class IsaacLabSimulator(Simulator):
         sim_cfg = sim_utils.SimulationCfg(
             device=str(device),
             dt=1.0 / self.config.sim.fps,
-            render_interval=self.config.sim.decimation,
+            render_interval=self.decimation,
             physics=PhysxCfg(
                 solver_type=self.config.sim.physx.solver_type,
                 max_position_iteration_count=self.config.sim.physx.num_position_iterations,
@@ -155,6 +155,7 @@ class IsaacLabSimulator(Simulator):
                 gpu_found_lost_pairs_capacity=self.config.sim.physx.gpu_found_lost_pairs_capacity,
                 gpu_found_lost_aggregate_pairs_capacity=self.config.sim.physx.gpu_found_lost_aggregate_pairs_capacity,
                 gpu_max_rigid_patch_count=self.config.sim.physx.gpu_max_rigid_patch_count,
+                gpu_collision_stack_size=self.config.sim.physx.gpu_collision_stack_size,
             ),
         )
         self._simulation_app = simulation_app
@@ -189,25 +190,10 @@ class IsaacLabSimulator(Simulator):
         are set. Completes scene setup and resets simulation.
         """
         self._robot = self._scene["robot"]
-        # Build a mapping from body name to contact sensor (if it exists)
-        self._contact_sensor_map = {}
-        for body_name in self._body_names:
-            if f"contact_sensor_{body_name}" in self._scene.keys():
-                self._contact_sensor_map[body_name] = self._scene[
-                    f"contact_sensor_{body_name}"
-                ]
-
         self._object = []
-        self._object_contact_sensor = []
         if self.scene_lib.num_scenes() > 0:
             for obj_idx in range(self.scene_lib.num_objects_per_scene):
                 self._object.append(self._scene[f"object_{obj_idx}"])
-                if f"object_{obj_idx}_contact_sensor" in self._scene.keys():
-                    self._object_contact_sensor.append(
-                        self._scene[f"object_{obj_idx}_contact_sensor"]
-                    )
-                else:
-                    self._object_contact_sensor.append(None)
         # Retrieve projectile rigid objects from scene
         self._projectile_objects = []
         for proj_idx in range(self._proj_config.num_projectiles):
@@ -216,6 +202,37 @@ class IsaacLabSimulator(Simulator):
         if self._visualization_markers:
             self._build_markers(self._visualization_markers)
         self._sim.reset()
+        if self.contacts_enabled:
+            self._create_contact_matrix_view()
+
+    def _create_contact_matrix_view(self) -> None:
+        """Create one current-only PhysX view with explicit per-environment pairs."""
+        from isaaclab_physx.physics import PhysxManager
+        from protomotions.simulator.isaaclab.utils.contact_matrix import (
+            contact_view_patterns,
+        )
+        from protomotions.simulator.isaaclab.utils.usd_body_paths import (
+            resolve_body_prim_paths,
+        )
+
+        body_paths = resolve_body_prim_paths(
+            self._scene.cfg.robot.spawn.usd_path, self._body_names
+        )
+        sources, filters = contact_view_patterns(
+            self.contact_layout, body_paths, self._scene.env_prim_paths
+        )
+        self._contact_matrix_view = (
+            PhysxManager.get_physics_sim_view().create_rigid_contact_view(
+                sources, filter_patterns=filters
+            )
+        )
+        actual = (
+            self._contact_matrix_view.sensor_count,
+            self._contact_matrix_view.filter_count,
+        )
+        expected = (len(sources), len(self.contact_layout.partner_index))
+        if actual != expected:
+            raise ValueError(f"PhysX contact view axes {actual} != {expected}")
 
     def _get_scene_cfg(self) -> SceneCfg:
         """
@@ -396,7 +413,9 @@ class IsaacLabSimulator(Simulator):
             replay_existing=True,
         )
 
-    def _register_custom_user_interface_keys(self, handlers: Dict[str, callable]) -> None:
+    def _register_custom_user_interface_keys(
+        self, handlers: Dict[str, callable]
+    ) -> None:
         for key_name, handler in handlers.items():
             self.user_interface.register_key(
                 key_name,
@@ -434,8 +453,7 @@ class IsaacLabSimulator(Simulator):
                 )
         except Exception as e:
             raise RuntimeError(
-                f"Failed to register IsaacLab key '{key_name}' "
-                f"as '{callback_key}'"
+                f"Failed to register IsaacLab key '{key_name}' " f"as '{callback_key}'"
             ) from e
 
     @staticmethod
@@ -578,13 +596,17 @@ class IsaacLabSimulator(Simulator):
                 :, self._domain_randomization["center_of_mass"]["body_indices"], :3
             ] += self._domain_randomization["center_of_mass"]["com"].to(coms.device)
 
-            # Set the new COMs.
-            self._robot.root_view.set_coms(
-                wp.from_torch(coms, dtype=wp.float32),
-                wp.from_torch(all_env_ids, dtype=wp.int32),
+            # Use the articulation API so cached COM offsets are invalidated.
+            # Root link/COM velocity conversion depends on these offsets.
+            self._robot.set_coms_index(
+                coms=coms.to(self.device),
+                env_ids=all_env_ids.to(self.device),
             )
 
-        if self._domain_randomization is not None and "body_mass" in self._domain_randomization:
+        if (
+            self._domain_randomization is not None
+            and "body_mass" in self._domain_randomization
+        ):
             body_mass = self._domain_randomization["body_mass"]
             body_names = [
                 self.robot_config.kinematic_info.body_names[body_idx]
@@ -593,10 +615,10 @@ class IsaacLabSimulator(Simulator):
             isaaclab_body_ids, _ = self._robot.find_bodies(
                 body_names, preserve_order=True
             )
-            body_ids = torch.tensor(isaaclab_body_ids, dtype=torch.int32, device=self.device)
-            env_ids = torch.arange(
-                self.num_envs, dtype=torch.int32, device=self.device
+            body_ids = torch.tensor(
+                isaaclab_body_ids, dtype=torch.int32, device=self.device
             )
+            env_ids = torch.arange(self.num_envs, dtype=torch.int32, device=self.device)
             num_buckets = body_mass["mass"].shape[0]
             bucket_ids = torch.randint(
                 0, num_buckets, (self.num_envs,), device=self.device
@@ -750,16 +772,27 @@ class IsaacLabSimulator(Simulator):
             new_object_states (ObjectState): The new object state.
             env_ids (torch.Tensor): Specific environment IDs to update.
         """
-        init_root_state = torch.cat(
-            [
-                new_states.root_pos,
-                new_states.root_rot,
-                new_states.root_vel,
-                new_states.root_ang_vel,
-            ],
-            dim=-1,
+        from protomotions.utils.rotations import quat_rotate
+
+        # The pinned IsaacLab link-velocity writer updates its cache with COM
+        # velocity but sends the unconverted link velocity to PhysX. Convert
+        # explicitly and use the COM writer (also correct on newer IsaacLab).
+        # Write pose first: the velocity writer uses it to refresh link caches.
+        com_b = wp.to_torch(self._robot.data.body_com_pos_b)[:, 0]
+        if env_ids is not None:
+            com_b = com_b[env_ids]
+        com_w = quat_rotate(new_states.root_rot, com_b, w_last=True)
+        com_velocity = new_states.root_vel + torch.cross(
+            new_states.root_ang_vel, com_w, dim=-1
         )
-        self._robot.write_root_state_to_sim(init_root_state, env_ids)
+        self._robot.write_root_link_pose_to_sim_index(
+            root_pose=torch.cat((new_states.root_pos, new_states.root_rot), dim=-1),
+            env_ids=env_ids,
+        )
+        self._robot.write_root_com_velocity_to_sim_index(
+            root_velocity=torch.cat((com_velocity, new_states.root_ang_vel), dim=-1),
+            env_ids=env_ids,
+        )
         self._robot.set_joint_position_target(
             new_states.dof_pos, joint_ids=None, env_ids=env_ids
         )
@@ -791,9 +824,7 @@ class IsaacLabSimulator(Simulator):
         Returns:
             SimBodyOrdering: An object containing the body names and DOF names.
         """
-        joint_names = build_isaaclab_joint_name_map(
-            self.robot_config.kinematic_info
-        )
+        joint_names = build_isaaclab_joint_name_map(self.robot_config.kinematic_info)
         try:
             semantic_joint_names = [
                 joint_names.backend_to_semantic[name]
@@ -823,7 +854,12 @@ class IsaacLabSimulator(Simulator):
         """
         isaacsim_bodies_positions = wp.to_torch(self._robot.data.body_pos_w).clone()
         isaacsim_bodies_rotations = wp.to_torch(self._robot.data.body_quat_w).clone()
-        isaacsim_bodies_velocities = wp.to_torch(self._robot.data.body_lin_vel_w).clone()
+        # Positions refer to link origins. IsaacLab's body_lin_vel_w is COM
+        # velocity: using it here adds omega x COM-offset to sensor-derived
+        # velocities even with Exact readings. Keep this state origin-based.
+        isaacsim_bodies_velocities = wp.to_torch(
+            self._robot.data.body_link_lin_vel_w
+        ).clone()
         isaacsim_bodies_ang_velocities = wp.to_torch(
             self._robot.data.body_ang_vel_w
         ).clone()
@@ -910,86 +946,20 @@ class IsaacLabSimulator(Simulator):
         # IsaacLab stores limits as [num_envs, num_dofs, 2], we take from first env
         return dof_limits[0, :, 0].to(self.device), dof_limits[0, :, 1].to(self.device)
 
-    def _get_simulator_bodies_contact_buf(
-        self, env_ids: Optional[torch.Tensor] = None
-    ) -> RobotState:
-        """
-        Retrieve the contact force buffer for simulation bodies in sim body order.
-
-        Parameters:
-            env_ids (Optional[torch.Tensor]): Specific environments to query.
-
-        Returns:
-            RobotState: Robot state containing contact forces in simulator body order.
-        """
-        # Get simulator body ordering
-        sim_body_names = self._robot.body_names
-        num_bodies = len(sim_body_names)
-
-        # Pre-allocate tensor for contact forces (initialized to zeros)
-        rigid_body_contact_forces = torch.zeros(
-            self.num_envs, num_bodies, 3, device=self.device
-        )
-
-        # Fill in contact forces for bodies that have sensors
-        for body_idx, body_name in enumerate(sim_body_names):
-            if body_name in self._contact_sensor_map:
-                contact_sensor = self._contact_sensor_map[body_name]
-                # net_forces_w has shape [num_envs, 1, 3], extract the single body dimension
-                rigid_body_contact_forces[:, body_idx, :] = (
-                    wp.to_torch(contact_sensor.data.net_forces_w).clone()[:, 0, :]
-                )
-
-        if env_ids is not None:
-            rigid_body_contact_forces = rigid_body_contact_forces[env_ids]
-        return RobotState(
-            rigid_body_contact_forces=rigid_body_contact_forces,
-            state_conversion=StateConversion.SIMULATOR,
-        )
-
-    def _get_simulator_object_contact_buf(
-        self,
-        env_ids: Optional[torch.Tensor] = None,
-    ) -> ObjectState:
-        """
-        Retrieve the contact buffer for simulation objects.
-
-        Parameters:
-            env_ids (Optional[torch.Tensor]): Specific environments to query.
-
-        Returns:
-            torch.Tensor: The object contact buffer.
-        """
-        if self.scene_lib.num_scenes() > 0:
-            object_forces = []
-            for obj_idx in range(self.scene_lib.num_objects_per_scene):
-                if self._object_contact_sensor[obj_idx] is not None:
-                    object_forces.append(
-                        wp.to_torch(
-                            self._object_contact_sensor[obj_idx].data.force_matrix_w
-                        ).clone()
-                    )
-                else:
-                    object_forces.append(
-                        torch.zeros(
-                            self.num_envs,
-                            1,
-                            1,
-                            3,
-                            device=self.device,
-                            dtype=torch.float,
-                        )
-                    )
-            if env_ids is not None:
-                object_forces = object_forces[env_ids]
-            return torch.cat(object_forces, dim=1)
-        else:
-            return_tensor = torch.zeros(
-                self.num_envs, 1, 1, 3, device=self.device, dtype=torch.float
+    def _get_simulator_contact_forces(self) -> torch.Tensor:
+        # The native view contains environment-major, common-order source links.
+        # It reports impulse/dt: use physics dt, not the decimated control dt.
+        forces = wp.to_torch(
+            self._contact_matrix_view.get_contact_force_matrix(
+                dt=self._sim.get_physics_dt()
             )
-            if env_ids is not None:
-                return_tensor = return_tensor[env_ids]
-            return return_tensor
+        )
+        return forces.reshape(
+            self.num_envs,
+            len(self.contact_layout.body_index),
+            len(self.contact_layout.partner_index),
+            3,
+        ).clone()
 
     def _get_simulator_root_state(
         self, env_ids: Optional[torch.Tensor] = None
@@ -1005,7 +975,7 @@ class IsaacLabSimulator(Simulator):
         """
         isaacsim_root_pos = wp.to_torch(self._robot.data.root_pos_w).clone()
         isaacsim_root_rot = wp.to_torch(self._robot.data.root_quat_w).clone()
-        isaacsim_root_vel = wp.to_torch(self._robot.data.root_lin_vel_w).clone()
+        isaacsim_root_vel = wp.to_torch(self._robot.data.root_link_lin_vel_w).clone()
         isaacsim_root_ang_vel = wp.to_torch(self._robot.data.root_ang_vel_w).clone()
         if env_ids is not None:
             isaacsim_root_pos = isaacsim_root_pos[env_ids]

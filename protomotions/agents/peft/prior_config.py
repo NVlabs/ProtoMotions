@@ -74,15 +74,21 @@ class DiscretePriorPEFTConfig(TransformerPEFTConfig):
     ``model`` is the task-side TensorDict module that writes ``condition_key``.
     Adapter layers receive that condition tensor plus the frozen prior context
     discovered from the checkpoint; they do not read task or terrain-specific
-    observation keys directly.
+    observation keys directly. ``model`` must not write the frozen prior's
+    context keys: the frozen prior and the RLFT reference read those straight
+    from the observations.
     """
 
     model: Optional[ModuleContainerConfig] = field(
         default=None,
         metadata={
             "help": (
-                "TensorDict module that writes PEFT conditioning features. If "
-                "omitted, a parameter-free ObsProcessor is built from actor in_keys."
+                "TensorDict module that writes PEFT conditioning features. It "
+                "may read the frozen prior's context keys but must not write "
+                "them. If omitted, an ObsProcessor is built from actor in_keys; it has no "
+                "trainable weights, but its running observation normalizer keeps "
+                "updating during training. The RLFT reference policy keeps its "
+                "own frozen copy of this module."
             )
         },
     )
@@ -100,7 +106,7 @@ class DiscretePriorPEFTConfig(TransformerPEFTConfig):
             "help": (
                 "Student nucleus sampling threshold. Ignored when "
                 "sampling_mode='prior_constraint', where prior_top_p controls "
-                "the frozen-prior nucleus."
+                "the reference policy's nucleus."
             )
         },
     )
@@ -111,23 +117,44 @@ class DiscretePriorPEFTConfig(TransformerPEFTConfig):
     prior_top_p: float = field(
         default=0.99,
         metadata={
-            "help": "Nucleus threshold for the frozen prior when "
-            "sampling_mode='prior_constraint'."
+            "help": "Nucleus threshold for the reference policy when "
+            "sampling_mode='prior_constraint'. The reference is pinned at the "
+            "start of a new run; a resume keeps it."
         },
     )
     kl_coeff: float = field(
         default=0.0,
         metadata={
-            "help": "KL divergence loss coefficient for training (0 = disabled)."
+            "help": "Coefficient of the KL penalty between the student and the "
+            "reference policy during RLFT (0 = disabled)."
         },
     )
     clear_peft: bool = field(
         default=False,
         metadata={
             "help": (
-                "If True, zero adapter residuals once after the RL reference "
-                "is pinned. This lets RLFT keep an SFT prior constraint while "
-                "starting the active student from the base prior."
+                "If True, zero the student's adapter residuals once, right after "
+                "a new RLFT run pins its reference. This lets RLFT keep an SFT "
+                "policy as the reference while starting the student from the "
+                "base prior. Never applies on resume or inference, and is "
+                "skipped with a warning when nothing reads a reference (nucleus "
+                "sampling with kl_coeff=0)."
+            )
+        },
+    )
+    reference_checkpoint: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                "RLFT only. A full last.ckpt or adapter inference_last.ckpt from "
+                "an SFT or RLFT run whose trained policy (student) becomes the "
+                "reference for a new run, instead of the policy the run starts "
+                "from. Its adapters, FiLM input normalizer and conditioning "
+                "network are attached to the configured frozen prior; any "
+                "reference stored in that file is ignored. Ignored on resume, "
+                "which keeps its saved reference, and ignored with a warning "
+                "when nothing reads a reference (nucleus sampling with "
+                "kl_coeff=0)."
             )
         },
     )
@@ -145,8 +172,9 @@ class DiscretePriorPEFTConfig(TransformerPEFTConfig):
         metadata={
             "help": (
                 "Normalize the full PEFT conditioning vector before FiLM "
-                "gamma/beta layers. Enable in both SFT and RLFT so the "
-                "SFT-learned stats load into RLFT."
+                "gamma/beta layers. Its statistics keep updating during SFT and "
+                "RLFT, and the RLFT reference policy keeps a frozen copy. Enable "
+                "in both SFT and RLFT so the SFT-learned stats load into RLFT."
             )
         },
     )

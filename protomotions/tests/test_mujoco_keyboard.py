@@ -104,6 +104,9 @@ def test_physics_step_dispatches_keys_before_control_and_integration(monkeypatch
     simulator._apply_control = lambda: order.append("control")
     simulator._print_state_debug = lambda: None
     monkeypatch.setattr(mujoco, "mj_step", lambda model, data: order.append("physics"))
+    monkeypatch.setattr(
+        mujoco, "mj_forward", lambda model, data: order.append("kinematics")
+    )
     simulator.user_interface.register_key(
         "J",
         owner="test",
@@ -112,7 +115,7 @@ def test_physics_step_dispatches_keys_before_control_and_integration(monkeypatch
     )
     simulator._viewer_keyboard.on_key(ord("J"))
     simulator._physics_step()
-    assert order == ["key", "control", "physics"]
+    assert order == ["key", "control", "physics", "kinematics"]
 
 
 @pytest.mark.parametrize("keycode", [-1, 0, 32, 127, 256, 1000])

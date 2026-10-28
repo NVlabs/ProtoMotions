@@ -22,8 +22,9 @@ It handles code synchronization, container setup, and job submission.
 
 BEFORE USING:
 -------------
-1. Write a site YAML describing your cluster, rather than editing this file.
-   Keys are listed in SITE_DEFAULTS below; any you omit keep their default.
+1. Copy slurm_site.example.yaml to slurm_site.yaml (gitignored) and fill it in,
+   rather than editing this file. Keys are listed in SITE_DEFAULTS below; any
+   you omit keep their default.
 
        login_node: login.mycluster.edu
        base_dir: /scratch/{account}/experiments
@@ -92,6 +93,7 @@ import argparse
 import datetime
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -102,10 +104,8 @@ import tempfile
 # install.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from protomotions._train_launch_common import (  # noqa: E402
-    RSYNC_EXCLUDES,
-    build_train_agent_args,
-)
+from protomotions._train_launch_common import RSYNC_EXCLUDES  # noqa: E402
+from protomotions.launch.training_cli import apply_launch_facts  # noqa: E402
 
 
 # =============================================================================
@@ -178,9 +178,10 @@ _PLACEHOLDER_MARKERS = ("YOUR_", "/path/to/", "your_account")
 #   2. $PROTOMOTIONS_SLURM_SITE
 #   3. slurm_site.yaml, beside the repository this script lives in
 #
-# Entry 3 is what lets a fork keep cluster settings in the tree, shared through
-# git, without them reaching anyone downstream: the file is excluded from the
-# release projection, so it is version-controlled but never published.
+# Entry 3 is your gitignored copy of slurm_site.example.yaml; slurm_site.yaml is
+# gitignored, so it is never tracked or published. A fork that wants its cluster
+# settings shared through git tracks a file under another name and points
+# --site-config or $PROTOMOTIONS_SLURM_SITE at it.
 SITE_CONFIG_ENV = "PROTOMOTIONS_SLURM_SITE"
 SITE_CONFIG_DEFAULT_RELPATH = Path("slurm_site.yaml")
 
@@ -400,83 +401,26 @@ def create_parser():
     parser = argparse.ArgumentParser(
         description="Launch ProtoMotions training on SLURM cluster",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        allow_abbrev=False,
+        epilog=(
+            "All other arguments are the training command line, forwarded to "
+            "protomotions/train_agent.py verbatim (with --use-slurm prepended); run "
+            "'python protomotions/train_agent.py --help' to list them."
+        ),
     )
 
-    # Required arguments
-    parser.add_argument(
-        "--robot-name", type=str, required=True, help="Robot name (e.g., 'g1', 'smpl')"
-    )
-    parser.add_argument(
-        "--simulator",
-        type=str,
-        required=True,
-        help="Simulator (isaacgym/isaaclab/newton)",
-    )
-    parser.add_argument(
-        "--num-envs", type=int, required=True, help="Number of parallel environments"
-    )
-    parser.add_argument(
-        "--batch-size", type=int, required=True, help="Training batch size"
-    )
-    parser.add_argument(
-        "--motion-file", type=str, required=True, help="Path to motion data file"
-    )
-    parser.add_argument(
-        "--experiment-path", type=str, required=True, help="Path to experiment config"
-    )
-    parser.add_argument(
-        "--experiment-name", type=str, required=True, help="Experiment name for logging"
-    )
+    # The launcher declares only its own cluster/submit flags. Every training
+    # flag (--robot-name, --simulator, --num-envs, --batch-size, --motion-file,
+    # --experiment-path, --experiment-name, --scenes-file, --checkpoint,
+    # --use-wandb, --wandb-project, --training-max-steps/-iterations, --ngpu,
+    # --nodes, --seed, --torch-deterministic, --headless, --overrides) belongs to
+    # protomotions/train_agent.py and rides the forwarded tail verbatim, with
+    # --use-slurm prepended; re-declaring one here would silently swallow its
+    # value (allow_abbrev=False keeps an own-flag prefix from eating a forwarded
+    # token). The few values the submission itself needs -- simulator, experiment
+    # name, ngpu, nodes, use_wandb -- are read off that tail with
+    # training_cli.read_launch_facts.
     parser.add_argument("--user", type=str, required=True, help="Cluster username")
-
-    # Optional arguments
-    parser.add_argument(
-        "--scenes-file", type=str, default=None, help="Path to scenes file (optional)"
-    )
-    # --headless is intentionally NOT declared here. train_agent.py owns it
-    # (nargs="?", parse_bool), and parse_known_args forwards it through unchanged.
-    # Declared here as a bare flag it silently swallowed the value -- the same
-    # class of bug as --seed below.
-    training_limit_group = parser.add_mutually_exclusive_group()
-    training_limit_group.add_argument(
-        "--training-max-steps",
-        type=int,
-        default=10000000000,
-        help="Max training steps",
-    )
-    training_limit_group.add_argument(
-        "--training-max-iterations",
-        type=int,
-        default=None,
-        help="Max complete training iterations",
-    )
-    parser.add_argument(
-        "--checkpoint", type=str, default=None, help="Resume from checkpoint"
-    )
-    parser.add_argument(
-        "--use-wandb", action="store_true", help="Enable Weights & Biases logging"
-    )
-    parser.add_argument(
-        "--wandb-project",
-        type=str,
-        default="physical_animation",
-        help="Weights & Biases project name",
-    )
-    parser.add_argument(
-        "--use-slurm", action="store_true", default=True, help="Enable SLURM autoresume"
-    )
-    parser.add_argument("--ngpu", type=int, default=1, help="GPUs per node")
-    parser.add_argument("--nodes", type=int, default=1, help="Number of nodes")
-    parser.add_argument("--seed", type=int, default=0, help="Random seed")
-    parser.add_argument(
-        "--torch-deterministic",
-        action="store_true",
-        default=False,
-        help="Enable deterministic PyTorch ops (forwarded to train_agent.py)",
-    )
-    parser.add_argument(
-        "--overrides", nargs="*", default=[], help="Config overrides (key=value)"
-    )
 
     # SLURM arguments
     parser.add_argument("-t", "--slurm-time", default="4:00:00", help="Job time limit")
@@ -558,6 +502,21 @@ def create_parser():
     )
 
     return parser
+
+
+def parse_launcher_args(argv=None):
+    """Parse the launcher's own flags and read the forwarded tail's job facts.
+
+    Returns ``(args, passthrough_args)``. ``passthrough_args`` is the training
+    command line (every token the own parser did not claim), forwarded to
+    train_agent.py verbatim. ``args`` carries the launcher's own flags plus the
+    handful of training values the submission itself needs -- simulator,
+    experiment name, ngpu, nodes, use_wandb -- read off the tail with
+    ``read_launch_facts`` so no training flag is declared twice.
+    """
+    args, passthrough_args = create_parser().parse_known_args(argv)
+    apply_launch_facts(args, passthrough_args)
+    return args, passthrough_args
 
 
 def sync_code_to_cluster(user, exp_folder, local_repo, extra_excludes=None):
@@ -671,25 +630,19 @@ def build_job_command(args, exp_folder, python_path, passthrough_args=None):
             job_cmd += f"export WANDB_API_KEY={wandb_key}; "
 
     # Assemble the train_agent.py command, then run it under the stall watchdog
-    # below. The shared tail (robot/sim/motion/.../overrides, incl. experiment
-    # passthrough) comes from build_train_agent_args so this stays in lockstep with
-    # train_lepton.py and the two launchers cannot drift. Appended after it are the
-    # SLURM-only flags: --use-slurm (the walltime autoresume callback that
-    # stops-and-requeues at ~3.5h, which Lepton omits) and the reproducibility
-    # flags this parser owns -- --seed / --torch-deterministic are consumed by
-    # parse_known_args, so they must be forwarded explicitly or --seed 3 is
-    # silently dropped and every job runs train_agent's default seed 0. All three
-    # start with -- so the trailing --overrides (nargs="*") does not swallow them.
-    # (--seed / --torch-deterministic are appended here rather than in the shared
-    # builder because train_lepton.py does not yet expose them; unifying that is a
-    # follow-up.)
+    # below. The launcher declares only its own flags, so parse_known_args hands
+    # back the entire training command line as passthrough_args; forward it
+    # verbatim, in the user's order, with --use-slurm prepended -- the walltime
+    # autoresume callback that stops-and-requeues at ~3.5h, which Lepton omits.
+    # --seed, --torch-deterministic, --headless and the rest ride the tail
+    # unchanged; the launcher no longer parses, defaults or re-emits any of them.
+    # shlex.join quotes each token for the bash -c string, so a value with a space
+    # survives, and --use-slurm leads so a trailing --overrides (nargs="*") in the
+    # user's command cannot swallow it.
     train_cmd = (
         f"{python_path} -u protomotions/train_agent.py "
-        f"{build_train_agent_args(args, passthrough_args)} "
-        f"--use-slurm --seed={args.seed} "
+        f"{shlex.join(['--use-slurm', *(passthrough_args or [])])} "
     )
-    if args.torch_deterministic:
-        train_cmd += "--torch-deterministic "
 
     # Stall watchdog. It catches ONE failure mode: a WHOLE-JOB wedge, where a rank
     # gets stuck (e.g. never finishes setup) and every other rank then blocks at
@@ -814,13 +767,13 @@ def main():
         print_site(load_site_config(pre_args.site_config, pre_args.cluster))
         return
 
-    parser = create_parser()
-    # parse_known_args, not parse_args: experiment files contribute their own CLI
-    # flags via additional_experiment_arguments (e.g. gpc/prior.py's required
-    # --tracker-checkpoint), which train_agent.py parses but this launcher does
-    # not. Rejecting unknown flags made every such run unsubmittable; instead
-    # forward the unknowns to train_agent.py (see build_job_command).
-    args, passthrough_args = parser.parse_known_args()
+    # The launcher declares only its own cluster flags; the whole training command
+    # line (including any experiment-contributed flag) comes back as passthrough_args
+    # and is forwarded to train_agent.py verbatim (see build_job_command), while the
+    # few values the submission needs are read off that tail. A command missing a
+    # required training flag fails here on the submit host, as it did when the
+    # launcher re-declared them.
+    args, passthrough_args = parse_launcher_args()
 
     # Resolve the cluster before anything else, so a misconfiguration is caught
     # before code is synced rather than after.
@@ -862,9 +815,9 @@ def main():
             f"{_repo_root() / SITE_CONFIG_DEFAULT_RELPATH}\n"
             f"Loaded:   {site['_source'] or '(nothing)'}\n"
             f"{cluster_line}\n"
-            "Write a site YAML with the keys you need and pass it with "
-            "--site-config, or place it at the path above. `--print-site` shows "
-            "what was resolved."
+            "Copy slurm_site.example.yaml to slurm_site.yaml and fill in the "
+            "values (or pass --site-config). `--print-site` shows what was "
+            "resolved."
         )
 
     # Startup retry multiplies with the job array. Print the worst-case execution

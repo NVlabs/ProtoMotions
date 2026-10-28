@@ -1,0 +1,9 @@
+{
+  "name": "SOMA GPC prior",
+  "robot": "soma23",
+  "inference_checkpoint": "inference_last.ckpt",
+  "inference_checkpoint_sha256": "13b48605622b1eabe75cc10ccf15a2ab9c05cd953115da6ce08ad9716344a51d",
+  "inference_checkpoint_bytes": 831589795,
+  "model_tensor_count": 114,
+  "resumable": false
+}

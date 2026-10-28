@@ -1,9 +1,23 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+"""Random paths for the path-following task: one polyline of ``num_verts``
+vertices per env, sampled at reset from a heading and speed random walk (and
+a head-height walk when height conditioned), queried by time
+(``calc_pos``). The vertices live in the control's state registry (a child
+registry), so the env's row reset, snapshot and restore reach them; every
+draw is on the generator the control was handed."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Optional
+
 import numpy as np
 import torch
-from dataclasses import dataclass
+from torch import Tensor
+
+from protomotions.envs.base_env.episode_tensors import EpisodeTensors
 
 
 @dataclass
@@ -32,24 +46,24 @@ class PathGenerator:
     def __init__(
         self,
         config: PathGeneratorConfig,
-        device: torch.device,
+        state: EpisodeTensors,
+        generator: Optional[torch.Generator],
         num_envs: int,
         episode_dur: float,
         height_conditioned: bool,
     ):
         self.config = config
-        self.device = device
+        self.device = state.device
+        self.generator = generator
 
         self.height_conditioned = height_conditioned
 
         self.dt = episode_dur / (self.config.num_verts - 1)
 
-        self.verts_flat = torch.zeros(
-            (num_envs * self.config.num_verts, 3),
-            dtype=torch.float32,
-            device=self.device,
-        )
-        self.verts = self.verts_flat.view((num_envs, self.config.num_verts, 3))
+        # The vertices, [num_envs, num_verts, 3], through the registry; the
+        # flat view shares the storage (calc_pos indexes it).
+        self.verts = state.add("verts", (self.config.num_verts, 3), torch.float32, 0.0)
+        self.verts_flat = self.verts.view((num_envs * self.config.num_verts, 3))
 
         self.head_max = self.config.head_height_max
         self.head_min = (
@@ -60,7 +74,10 @@ class PathGenerator:
             self.config.use_naive_path_generator or not self.height_conditioned
         )
 
-    def reset(self, env_ids, init_pos):
+    def _rand(self, *shape: int) -> Tensor:
+        return torch.rand(shape, device=self.device, generator=self.generator)
+
+    def reset(self, env_ids: Tensor, init_pos: Tensor) -> None:
         init_pos = init_pos.clone()
         init_pos[..., 2] = torch.clip(
             init_pos[..., 2], min=self.head_min, max=self.head_max
@@ -70,15 +87,15 @@ class PathGenerator:
         if n > 0:
             num_verts = self.get_num_verts()
             dtheta = (
-                2 * torch.rand([n, num_verts - 1], device=self.device) - 1.0
+                2 * self._rand(n, num_verts - 1) - 1.0
             )  # Sample the angles at each waypoint
             dtheta *= self.config.dtheta_max * self.dt
 
             dtheta_sharp = np.pi * (
-                2 * torch.rand([n, num_verts - 1], device=self.device) - 1.0
+                2 * self._rand(n, num_verts - 1) - 1.0
             )  # Sharp Angles Angle
             sharp_probs = self.config.sharp_turn_prob * torch.ones_like(dtheta)
-            sharp_mask = torch.bernoulli(sharp_probs) == 1.0
+            sharp_mask = torch.bernoulli(sharp_probs, generator=self.generator) == 1.0
             dtheta[sharp_mask] = dtheta_sharp[sharp_mask]
 
             if self.config.use_forward_path_only:
@@ -86,17 +103,15 @@ class PathGenerator:
                     n, device=self.device
                 )  # straight path
             else:
-                dtheta[:, 0] = np.pi * (
-                    2 * torch.rand([n], device=self.device) - 1.0
-                )  # Heading
+                dtheta[:, 0] = np.pi * (2 * self._rand(n) - 1.0)  # Heading
 
-            dspeed = 2 * torch.rand([n, num_verts - 1], device=self.device) - 1.0
+            dspeed = 2 * self._rand(n, num_verts - 1) - 1.0
             dspeed *= self.config.accel_max * self.dt
             dspeed[:, 0] = (
                 self.config.start_speed_max - self.config.speed_min
-            ) * torch.rand([n], device=self.device) + self.config.speed_min  # Speed
+            ) * self._rand(n) + self.config.speed_min  # Speed
 
-            dspeed_z = 2 * torch.rand([n, num_verts - 1], device=self.device) - 1.0
+            dspeed_z = 2 * self._rand(n, num_verts - 1) - 1.0
             dspeed_z *= self.config.accel_z_max * self.dt
 
             speed_z = torch.zeros_like(dspeed_z)

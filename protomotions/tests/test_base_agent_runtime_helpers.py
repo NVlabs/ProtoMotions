@@ -11,6 +11,8 @@ import torch
 from tensordict import TensorDict
 from torch import nn
 
+from protomotions.agents.ppo.config import StdMode
+
 from protomotions.agents.base_agent import agent as base_agent_module
 from protomotions.agents.base_agent.agent import BaseAgent
 from protomotions.agents.base_agent.motion_shards import (
@@ -296,8 +298,9 @@ def test_base_agent_init_sets_distributed_sizes_reward_norm_and_evaluator(
     monkeypatch.setattr(base_agent_module, "get_class", lambda target: _Evaluator)
 
     env = SimpleNamespace(
-        motion_lib=_fixed_motion_lib(),
-        motion_manager="motion-manager",
+        reference_motion=SimpleNamespace(
+            motion_lib=_fixed_motion_lib(), motion_manager="motion-manager"
+        ),
         num_envs=2,
     )
     config = BaseAgentConfig(
@@ -315,7 +318,7 @@ def test_base_agent_init_sets_distributed_sizes_reward_norm_and_evaluator(
 
     agent = BaseAgent(_FabricRecorder(), env, config, root_dir=tmp_path)
 
-    assert agent.motion_lib is env.motion_lib
+    assert agent.motion_lib is env.reference_motion.motion_lib
     assert agent.motion_shard_cycle == 0
     assert agent.motion_manager == "motion-manager"
     assert agent._total_envs == 5
@@ -336,7 +339,10 @@ def test_base_agent_init_rejects_mismatched_batch_counts(tmp_path):
             return torch.tensor([[1], [2]], device=value.device)
 
     env = SimpleNamespace(
-        motion_lib=_fixed_motion_lib(), motion_manager=None, num_envs=2
+        reference_motion=SimpleNamespace(
+            motion_lib=_fixed_motion_lib(), motion_manager=None
+        ),
+        num_envs=2,
     )
     config = BaseAgentConfig(
         num_steps=3,
@@ -935,6 +941,14 @@ def test_raise_if_any_rank_failed_raises_when_a_healthy_rank_sees_remote_failure
         )
 
 
+class _FakeReferenceMotion(SimpleNamespace):
+    """The owner the shard switcher clears and the install refills."""
+
+    def clear(self):
+        self.motion_lib = None
+        self.motion_manager = None
+
+
 def _motion_shard_agent(mode, selection, events):
     agent = object.__new__(BaseAgent)
     agent.device = torch.device("cpu")
@@ -951,8 +965,9 @@ def _motion_shard_agent(mode, selection, events):
     agent.motion_lib = old_motion_lib
     agent.motion_manager = "old-manager"
     agent.env = SimpleNamespace(
-        motion_lib=old_motion_lib,
-        motion_manager="old-manager",
+        reference_motion=_FakeReferenceMotion(
+            motion_lib=old_motion_lib, motion_manager="old-manager"
+        ),
     )
     agent.model = SimpleNamespace(
         reset_rollout_context=lambda env_ids: events.append(("reset_context", env_ids))
@@ -992,8 +1007,8 @@ def test_motion_shard_live_replaces_only_after_releasing_old_references(monkeypa
     def build(config, device, shard_cycle):
         assert agent.motion_lib is None
         assert agent.motion_manager is None
-        assert agent.env.motion_lib is None
-        assert agent.env.motion_manager is None
+        assert agent.env.reference_motion.motion_lib is None
+        assert agent.env.reference_motion.motion_manager is None
         assert config is replacement_config
         assert device == torch.device("cpu")
         assert shard_cycle == 1
@@ -1004,8 +1019,8 @@ def test_motion_shard_live_replaces_only_after_releasing_old_references(monkeypa
 
     def install(motion_lib):
         assert motion_lib is replacement
-        agent.env.motion_lib = motion_lib
-        agent.env.motion_manager = "new-manager"
+        agent.env.reference_motion.motion_lib = motion_lib
+        agent.env.reference_motion.motion_manager = "new-manager"
         events.append(("install", motion_lib))
 
     agent.env.install_motion_lib = install
@@ -1191,7 +1206,7 @@ def test_ppo_load_model_state_preserves_fixed_actor_logstd_override():
     agent.actor = agent.model._actor
     agent.config = SimpleNamespace(
         model=SimpleNamespace(
-            actor=SimpleNamespace(learnable_std=False, actor_logstd=-1.25)
+            actor=SimpleNamespace(std_mode=StdMode.FIXED, actor_logstd=-1.25)
         )
     )
 
@@ -1212,7 +1227,7 @@ def test_ppo_load_model_state_restores_learnable_actor_logstd():
     agent.actor = agent.model._actor
     agent.config = SimpleNamespace(
         model=SimpleNamespace(
-            actor=SimpleNamespace(learnable_std=True, actor_logstd=-1.25)
+            actor=SimpleNamespace(std_mode=StdMode.GLOBAL, actor_logstd=-1.25)
         )
     )
 
@@ -1300,22 +1315,21 @@ def test_base_training_state_load_restores_metadata_norm_and_evaluator():
     assert loaded["evaluator"] == state_dict["evaluator"]
 
 
-def test_amp_model_load_detects_non_amp_warm_start_and_uses_partial_load():
+def test_amp_model_load_uses_normal_policy_loader_without_discriminator():
     from protomotions.agents.amp.agent import AMP
 
     agent = object.__new__(AMP)
-    agent.model = _StateDictLoadRecorder()
-    agent.actor = SimpleNamespace(logstd=SimpleNamespace(data=torch.tensor([0.0])))
+    agent.model = _PPOLogstdLoadModel(actor_logstd=0.0)
+    agent.actor = agent.model._actor
     agent.config = SimpleNamespace(
-        model=SimpleNamespace(actor=SimpleNamespace(learnable_std=True))
+        model=SimpleNamespace(actor=SimpleNamespace(std_mode=StdMode.GLOBAL))
     )
-    state = {"_actor.weight": torch.tensor([1.0])}
+    state = {"_actor.logstd": torch.tensor([1.0])}
 
     AMP._load_model_state_dict(agent, state)
 
-    assert agent._warm_start_from_non_amp_checkpoint is True
-    assert agent.model.loaded_state == state
-    assert agent.model.strict is False
+    assert agent.model.materialized_from_keys == ["_actor.logstd"]
+    assert torch.equal(agent.actor.logstd, state["_actor.logstd"])
 
 
 def test_amp_non_amp_warm_start_training_state_skips_discriminator_optimizers():
@@ -1323,7 +1337,6 @@ def test_amp_non_amp_warm_start_training_state_skips_discriminator_optimizers():
 
     calls = []
     agent = object.__new__(AMP)
-    agent._warm_start_from_non_amp_checkpoint = True
     agent.config = SimpleNamespace(normalize_rewards=False)
     agent.evaluator = None
     agent.current_epoch = 0
@@ -1337,19 +1350,18 @@ def test_amp_non_amp_warm_start_training_state_skips_discriminator_optimizers():
         load_state_dict=lambda state: calls.append(("disc", state))
     )
     agent.motion_lib = _fixed_motion_lib()
-    state = {"epoch": 5, "discriminator_optimizer": {"disc": 1}}
+    state = {"model": {}, "epoch": 5, "discriminator_optimizer": {"disc": 1}}
 
     AMP._load_training_state(agent, state)
 
     assert agent.current_epoch == 5
-    assert calls == [("ppo", False)]
+    assert calls == [("ppo", True)]
 
 
 def test_amp_full_training_state_loads_discriminator_optimizer():
     from protomotions.agents.amp.agent import AMP
 
     agent = object.__new__(AMP)
-    agent._warm_start_from_non_amp_checkpoint = False
     agent.config = SimpleNamespace(
         normalize_rewards=False,
         adaptive_lr=SimpleNamespace(enabled=False),
@@ -1370,6 +1382,7 @@ def test_amp_full_training_state_loads_discriminator_optimizer():
     agent.motion_lib = _fixed_motion_lib()
     state = {
         "epoch": 5,
+        "model": {"_discriminator.weight": torch.ones(1)},
         "actor_optimizer": {"actor": 1},
         "critic_optimizer": {"critic": 1},
         "discriminator_optimizer": {"disc": 1},
@@ -1626,9 +1639,7 @@ def test_record_rollout_step_tracks_episode_stats_and_extras():
     agent.episode_length_meter = TensorAverageMeterDict(device=torch.device("cpu"))
     agent.episode_env_tensors = TensorAverageMeterDict(device=torch.device("cpu"))
     agent.experience_buffer = _ExperienceBufferRecorder()
-    agent.config = SimpleNamespace(
-        normalize_rewards=False,
-    )
+    agent.config = SimpleNamespace(normalize_rewards=False)
 
     BaseAgent.record_rollout_step(
         agent,
@@ -1683,11 +1694,13 @@ def test_normalize_rewards_in_buffer_keeps_raw_rewards_and_writes_normalized_val
 
 def test_optimize_model_averages_logs_and_reshuffles_reused_dataset():
     agent = object.__new__(BaseAgent)
+    agent.model = SimpleNamespace(build_training_targets=lambda rollout: {})
     dataset = _OneBatchDataset({"x": torch.tensor([1.0])})
     calls = []
     modes = []
     agent.current_epoch = 0
     agent.experience_buffer = _BatchExperience({"x": torch.tensor([1.0])})
+    agent.experience_buffer.named_buffers = lambda: []
     agent.pre_process_dataset = lambda: calls.append("pre")
     agent.process_dataset = lambda data: dataset
     agent.train = lambda: modes.append("train")
@@ -1711,10 +1724,60 @@ def test_optimize_model_averages_logs_and_reshuffles_reused_dataset():
     assert log_dict["scalar"] == 3.0
 
 
+@pytest.mark.parametrize("bad_target", [None, "collision", "shape"])
+def test_model_targets_keep_rollout_alignment_through_dataset_shuffle(bad_target):
+    from protomotions.agents.common.temporal import adjacent_targets
+
+    agent = object.__new__(BaseAgent)
+    agent.num_steps, agent.num_envs = 3, 2
+    agent.current_epoch = 0
+    buffer = ExperienceBuffer(2, 3, torch.device("cpu"))
+    buffer.register_key("x", (1,))
+    buffer.register_key("dones", dtype=torch.bool)
+    values = torch.tensor([[[1.], [10.]], [[2.], [20.]], [[3.], [30.]]])
+    buffer.batch_update_data("x", values)
+    buffer.batch_update_data("dones", torch.tensor([[False, True], [False, False], [False, False]]))
+    agent.experience_buffer = buffer
+
+    def targets(rollout):
+        assert not torch.is_grad_enabled()
+        assert rollout["x"].shape == (3, 2, 1)
+        target, valid = adjacent_targets(rollout["x"], rollout["dones"], forward=False)
+        if bad_target == "collision":
+            return {"x": target}
+        if bad_target == "shape":
+            return {"previous": target[:1]}
+        return {"previous": target, "valid": valid}
+
+    agent.model = SimpleNamespace(build_training_targets=targets)
+    agent.pre_process_dataset = lambda: None
+    agent.train = lambda: None
+    agent.eval = lambda: None
+    agent.max_num_batches = lambda: 1
+    order = torch.tensor([4, 0, 3, 2, 1, 5])
+    agent.process_dataset = lambda data: _OneBatchDataset({key: value[order] for key, value in data.items()})
+
+    def optimize(batch, batch_idx):
+        assert batch["x"].flatten().tolist() == [20., 1., 10., 3., 2., 30.]
+        assert batch["previous"].flatten().tolist() == [0., 0., 0., 2., 1., 20.]
+        assert batch["valid"].tolist() == [False, False, False, True, True, True]
+        return {}
+
+    agent.perform_optimization_step = optimize
+    if bad_target is None:
+        agent.optimize_model()
+        torch.testing.assert_close(buffer.x, values)
+    else:
+        with pytest.raises(ValueError, match="overwrites rollout key|invalid time/env shape"):
+            agent.optimize_model()
+
+
 def test_optimize_model_rejects_nan_minibatches_before_training_step():
     agent = object.__new__(BaseAgent)
+    agent.model = SimpleNamespace(build_training_targets=lambda rollout: {})
     agent.current_epoch = 0
     agent.experience_buffer = _BatchExperience({"x": torch.tensor([1.0])})
+    agent.experience_buffer.named_buffers = lambda: []
     agent.pre_process_dataset = lambda: None
     agent.process_dataset = lambda data: _OneBatchDataset(
         {"x": torch.tensor([float("nan")])}

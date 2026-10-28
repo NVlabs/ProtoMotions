@@ -76,7 +76,7 @@ control interval (``1000 * sim.decimation / sim.fps`` milliseconds). A value of
    )
 
 The setting applies to all supported simulator backends: IsaacGym, IsaacLab,
-Newton, Genesis, and MuJoCo. On Newton, enabling action latency disables CUDA
+Newton, and MuJoCo. On Newton, enabling action latency disables CUDA
 graph execution because control targets must change between physics substeps;
 expect lower simulation throughput while it is enabled.
 
@@ -138,7 +138,7 @@ scene-lib objects, so object asset randomization has no effect there.
 
 Robot body mass randomization samples absolute masses and scales inertia by the
 same ratio. It is supported by IsaacGym, IsaacLab, and Newton. Body-mass domain
-randomization is not supported yet in MuJoCo or Genesis; those backends fail
+randomization is not supported yet in MuJoCo; that backend fails
 immediately when it is configured instead of silently ignoring it.
 
 .. code-block:: python
@@ -159,39 +159,194 @@ immediately when it is configured instead of silently ignoring it.
        body_names=["torso_link"],  # Apply to torso
    )
 
-**Observation Noise:**
+**Sensor Noise:**
 
-Adds Gaussian noise to observations to improve robustness to real-world sensor
-imperfections.  The noise levels are set empirically to make the policy robust
--- they are not calibrated against specific sensor datasheets.
-
-The BM tracker config uses per-component noise via ``RobotNoiseConfig``:
+Declare physical sensors on ``env.sensors``. Joint encoders, IMU orientation and
+gyro are always present. Localization, base linear velocity and height are
+optional. The robot config declares the IMU body and mounting quaternion
+separately from the observation anchor.
 
 .. code-block:: python
 
-   RobotNoiseConfig(
-       dof_pos_noise=0.01,         # Joint encoder noise (radians)
-       dof_vel_noise=0.5,          # Joint velocity noise (rad/s)
-       anchor_rot_noise=0.05,      # Torso IMU orientation noise (quat components)
-       anchor_ang_vel_noise=0.2,   # Pelvis IMU gyroscope noise (rad/s)
+   from protomotions.envs.sensors.config import (
+       NoNoise, SensorConfig, SensorNoise, SensorSuite,
    )
 
-At inference time (and in the exported ONNX model), all noise is disabled --
-the policy sees clean sensor data but has learned to be robust to the noise
-levels encountered during training.
+   env_cfg.sensors = SensorConfig(
+       suite=SensorSuite.from_robot(robot_cfg),
+       noise=SensorNoise(
+           joint_pos=0.01,        # Uniform half-width, radians
+           joint_vel=0.5,         # Uniform half-width, rad/s
+           imu_quat=0.05,         # Quaternion-component perturbation, then normalize
+           imu_gyro=0.2,          # Uniform half-width, rad/s in sensor axes
+           localization=NoNoise("No localization sensor in this suite"),
+       ),
+   )
 
-When observation noise is configured, the environment provides both clean and
-noisy versions of state variables in the context.  Observation components can
-request noisy inputs (for actor) or clean inputs (for critic) via the
-``use_noisy`` parameter:
+These are empirical robustness settings, not a hardware calibration. Each
+physical channel is sampled once per step. Body positions, rotations and
+velocities are reconstructed from those readings using forward kinematics, so
+noise remains correlated across the body. Both ideal and noisy readings use the
+same estimator. Reset perturbations remain separate in ``RobotNoiseConfig``.
+
+.. note::
+
+   On G1 the IMU is on the pelvis (``imu_body_name``) and the observation
+   anchor is ``torso_link`` (``anchor_body_name``).  The anchor is not measured
+   directly: its orientation and angular velocity are computed from the pelvis
+   IMU and the waist joint encoders, so IMU and joint-encoder noise both reach
+   it.  The default deploy path computes the torso orientation the same way
+   (see :doc:`g1_deployment`).
+
+   To anchor on the pelvis instead, call
+   ``robot_cfg.update_fields(anchor_body_name=None)``, which also resets
+   ``anchor_body_index`` to 0.  Training refuses to start if the two fields
+   name different bodies.
+
+Observation kernels bind the privileged names (``current.*``) by default;
+``sensed()`` repoints a dict of components at one source and returns the
+rebound copies:
 
 .. code-block:: python
 
-   # Noisy observations for actor (helps sim-to-real transfer)
-   "noisy_obs": reduced_coords_obs_factory(use_noisy=True),
+   from protomotions.envs.context_sources import sensed
+   from protomotions.envs.mdp_component import MdpComponent
+   from protomotions.envs.obs.humanoid import (
+       compute_humanoid_reduced_coords_observations,
+   )
 
-   # Clean observations for critic (asymmetric actor-critic)
-   "clean_obs": reduced_coords_obs_factory(use_noisy=False),
+   reduced = {
+       "self_obs": MdpComponent.from_kernel(
+           compute_humanoid_reduced_coords_observations
+       )
+   }
+   actor_obs = sensed(reduced, "noisy")
+   ideal_sensor_obs = sensed(reduced, "clean")
+   critic_obs = reduced  # privileged: the kernel's own defaults
+
+.. _sensor-observation-sources:
+
+Privileged, clean and noisy sources
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+These names specify both **where the values come from** and **which information
+is available**. They are not three interchangeable noise levels.
+
+.. list-table:: Observation sources
+   :header-rows: 1
+   :widths: 15 45 40
+
+   * - Source
+     - Construction
+     - Typical use
+   * - ``privileged``
+     - Read simulator state directly, including available body positions,
+       velocities, contacts and forces. This is the default source.
+     - Ground-truth rewards/evaluation and privileged critic or teacher inputs.
+   * - ``clean``
+     - Measure only the declared sensors without added noise or drift, then
+       reconstruct body state using the kinematic model.
+     - A noise-free sensor baseline, including the clean side of L2C2.
+   * - ``noisy``
+     - Perturb those same sensor readings, then run the same reconstruction.
+     - Policy observations during sensor-noise training.
+
+For example, without a localization channel, the simulator still knows the
+robot's world position, but neither ``clean`` nor ``noisy`` exposes it. Without
+a base-velocity channel, neither estimate exposes world linear body velocities.
+Turning off noise does not add missing measurements. The sensor estimates also
+do not acquire simulator contact forces simply because those forces are known
+to the simulator.
+
+Why keep ``clean`` as well as ``privileged``? A clean/noisy pair lets us isolate
+the effect of sensor corruption while keeping the sensor suite, estimator,
+feature layout and coordinate conventions the same. Replacing the clean side
+with privileged state could instead change the available information or its
+derivation. The BM L2C2 recipe uses this pair for its actor consistency loss;
+the critic can independently use privileged observations. Experiments that do
+not use a clean baseline need not bind any observations to it; the current
+runtime nevertheless reconstructs and stores both estimates when a suite is
+configured.
+
+With the required sensors present and an exact kinematic model, corresponding
+clean values should agree with simulator truth to numerical tolerance. This
+does not make the sources interchangeable: unmeasured fields remain absent,
+and derived quantities must use matching conventions. When localization and the
+height channel are declared, sensor ground height is inferred from root clearance,
+whereas the privileged view queries terrain under the observation anchor; these
+may differ on uneven ground. Without those channels, sensor ground height is
+absent, not a substitute terrain query.
+
+Without a configured suite, neither sensor source exists. A component that
+binds an undeclared channel fails when its bindings are finalized, naming the
+component and path. For example, enabling root velocity observations requires
+the suite's base-velocity channel.
+
+The current root-height observation takes world root position minus ground
+height, so it requires both localization and the height channel. A height
+reading alone does not provide world positions; the estimator never invents
+world XY coordinates to satisfy a position binding.
+
+For noise-free simulation inference, replace the noise config explicitly with
+``SensorNoise.exact("Simulation inference")``; keep the suite and source
+bindings unchanged. Exported policies do not sample noise. Their contract
+describes the physical sensor contract and their host must supply those
+measurements. ``deployment/export_to_onnx.py`` reads the sensor suite
+from the checkpoint and records the channels the actor binds in the sidecar.
+The current standalone tracker host requires a root-body IMU with identity
+mount. Other placements need host-side conversion before using that exporter.
+
+**Implementation and history:**
+
+* ``envs/sensors/measurement.py`` reads the physical channels.
+* ``noise.py`` applies channel noise and shared odometry corruption math.
+* ``estimation.py`` reconstructs body state in world SI units using xyzw quaternions.
+* ``runtime.py`` owns the random generator and episode-start odometry records.
+
+After each physical step, ideal and noisy readings are reconstructed together
+in one FK call. A single history buffer stores privileged, clean and noisy
+states, with commands shared between the sources. A reset repeats the measured
+post-reset state into history and zeros its commands; it does not insert earlier
+poses from the reference motion.
+
+Raw actions are policy outputs before action processing. Processed actions are
+the action pipeline's simulator commands. Command-history observations start
+with the command that produced the current state (one decision ago).
+Previous-state history excludes the current state and carries each older
+state's incoming command (starting two decisions ago).
+The action-smoothness reward reads ``previous_action``, so the history ring
+keeps one past slot for it; nothing has to be configured.
+
+**Migration from observation-level noise:**
+
+Saved configs containing the retired ``observation_noise`` or environment
+odometry fields are rejected at config loading. Regenerate the
+``resolved_configs.json`` bundle from an experiment with an explicit sensor
+suite and source selectors. Retrain policies:
+correlated sensor noise, reset history and action-history timing change the
+observation contract. Renaming fields in an old checkpoint does not preserve
+its training semantics.
+
+IsaacLab and IsaacGym root and body linear velocities in this update refer to
+the link origin, not the center of mass. Both engines report center-of-mass
+velocities natively, and the backends convert them; MuJoCo already reported
+link-origin velocities. For G1 the difference reaches a few tenths of a meter
+per second when the robot turns quickly. MuJoCo refreshes kinematics after
+stepping.
+
+IsaacGym needs two more corrections, both checked against native Gym on a GPU:
+
+- Gym's body tensors only update when physics steps, so right after a reset they
+  still hold the previous episode's poses. The backend reconstructs post-reset
+  body kinematics before observations, sensor readings and history are
+  captured.
+- Gym keeps only the last root-state write of each kind before physics runs.
+  The backend now merges every write in a step (resets, pushes, projectiles,
+  markers) into one. Before this update, a push was silently lost whenever a
+  reset or marker update followed it in the same step. With thousands of
+  environments some environment resets almost every step, so most pushes never
+  reached the physics engine, and recipes tuned on IsaacGym before this update
+  were in effect trained with few pushes.
 
 **Push/Perturbation Randomization:**
 
@@ -266,8 +421,11 @@ observations:
 * An auxiliary loss penalizes ``MSE(mu_noisy, mu_clean)``
 * This encourages the policy to produce similar actions regardless of sensor noise
 
-At inference time, only the clean (noise-free) observations are used and the
-L2C2 components are removed.
+For simulation inference, the recipe disables injected sensor noise and removes
+the extra L2C2 observations/loss. It keeps the actor's sensor-source bindings;
+it does not replace them with privileged simulator state. On hardware, the host
+supplies real measurements, which may themselves be noisy. Disabling simulated
+noise does not make real sensors perfect.
 
 
 Sim2Sim Testing

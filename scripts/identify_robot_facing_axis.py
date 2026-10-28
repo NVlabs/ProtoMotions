@@ -22,7 +22,7 @@ import mujoco
 import numpy as np
 import torch
 
-from protomotions.robot_configs.factory import robot_config
+from protomotions.robot_configs.factory import robot_config, registered_robot_names
 
 
 Z_UP_EXPLANATION = (
@@ -281,7 +281,9 @@ def _build_parser() -> argparse.ArgumentParser:
         epilog=Z_UP_EXPLANATION,
     )
     parser.add_argument("--yaw-deg", type=float, default=35.0)
-    parser.add_argument("--robots", nargs="+", default=["smpl", "g1", "soma23"])
+    parser.add_argument(
+        "--robots", nargs="+", default=list(registered_robot_names())
+    )
     parser.add_argument("--verbose-config", action="store_true")
     parser.add_argument(
         "--view",

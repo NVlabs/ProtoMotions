@@ -26,13 +26,6 @@ class DiscretePriorPEFTRLFTAMPModel(AMPModelComponentsMixin, DiscretePriorPEFTMo
         )
         self._build_amp_model_components(config)
 
-    def optional_full_checkpoint_state_prefixes(self) -> tuple[str, ...]:
-        """AMP discriminator state is optional for PEFT full-checkpoint loads."""
-        return super().optional_full_checkpoint_state_prefixes() + (
-            "_discriminator.",
-            "_disc_critic.",
-        )
-
     def experience_buffer_keys(self) -> list:
         base_keys = super().experience_buffer_keys()
         amp_keys = self._discriminator.out_keys + self._disc_critic.out_keys
@@ -47,3 +40,6 @@ class DiscretePriorPEFTRLFTAMPModel(AMPModelComponentsMixin, DiscretePriorPEFTMo
     def forward_rollout(self, tensordict: TensorDict) -> TensorDict:
         tensordict = super().forward_rollout(tensordict)
         return self._forward_amp_model_components(tensordict)
+
+    def materialize(self, tensordict: TensorDict) -> TensorDict:
+        return self._forward_amp_model_components(super().materialize(tensordict))

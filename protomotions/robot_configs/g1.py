@@ -6,41 +6,16 @@ from protomotions.robot_configs.base import (
     RobotAssetConfig,
     ControlConfig,
     ControlType,
-    SimulatorParams,
 )
-from protomotions.simulator.isaacgym.config import (
-    IsaacGymSimParams,
-    IsaacGymPhysXParams,
+from protomotions.robot_configs.motor_classes import (
+    G1_5020,
+    G1_7520_14,
+    G1_7520_22,
+    G1_4010,
 )
-from protomotions.simulator.isaaclab.config import (
-    IsaacLabSimParams,
-    IsaacLabPhysXParams,
-)
-from protomotions.simulator.genesis.config import GenesisSimParams
-from protomotions.simulator.newton.config import NewtonSimParams
-from protomotions.components.pose_lib import ControlInfo
-from typing import List, Dict, Tuple
+from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
 
-
-# Parameters from BeyondMimic (https://github.com/HybridRobotics/whole_body_tracking/blob/main/source/whole_body_tracking/whole_body_tracking/robots/g1.py)
-ARMATURE_5020 = 0.003609725
-ARMATURE_7520_14 = 0.010177520
-ARMATURE_7520_22 = 0.025101925
-ARMATURE_4010 = 0.00425
-
-NATURAL_FREQ = 10 * 2.0 * 3.1415926535  # 10Hz
-DAMPING_RATIO = 2.0
-
-STIFFNESS_5020 = ARMATURE_5020 * NATURAL_FREQ**2
-STIFFNESS_7520_14 = ARMATURE_7520_14 * NATURAL_FREQ**2
-STIFFNESS_7520_22 = ARMATURE_7520_22 * NATURAL_FREQ**2
-STIFFNESS_4010 = ARMATURE_4010 * NATURAL_FREQ**2
-
-DAMPING_5020 = 2.0 * DAMPING_RATIO * ARMATURE_5020 * NATURAL_FREQ
-DAMPING_7520_14 = 2.0 * DAMPING_RATIO * ARMATURE_7520_14 * NATURAL_FREQ
-DAMPING_7520_22 = 2.0 * DAMPING_RATIO * ARMATURE_7520_22 * NATURAL_FREQ
-DAMPING_4010 = 2.0 * DAMPING_RATIO * ARMATURE_4010 * NATURAL_FREQ
 
 # Default standing pose (radians), from BeyondMimic.
 # Regex patterns resolved against DOF names in RobotConfig.__post_init__.
@@ -84,7 +59,9 @@ class G1RobotConfig(RobotConfig):
 
     default_root_height: float = 0.8
     default_dof_pos: Dict[str, float] = field(default_factory=lambda: DEFAULT_JOINT_POS)
-    anchor_body_name: str = "torso_link"
+    anchor_body_name: Optional[str] = "torso_link"
+    # Torso orientation is reconstructed through the waist from the pelvis IMU.
+    imu_body_name: str = "pelvis"
 
     asset: RobotAssetConfig = field(
         default_factory=lambda: RobotAssetConfig(
@@ -103,109 +80,25 @@ class G1RobotConfig(RobotConfig):
         default_factory=lambda: ControlConfig(
             control_type=ControlType.BUILT_IN_PD,
             override_control_info={
-                ".*_hip_(pitch|yaw)_joint": ControlInfo(
-                    stiffness=STIFFNESS_7520_14,
-                    damping=DAMPING_7520_14,
-                    effort_limit=88,
-                    velocity_limit=32,
-                    armature=ARMATURE_7520_14,
+                # A joint's gains follow from its motor; scale=2 is two motors
+                # in parallel (ankle, waist roll/pitch). effort_limit overrides
+                # the motor default where the joint carries a different actuator.
+                ".*_hip_(pitch|yaw)_joint": G1_7520_14.control_info(),
+                ".*_hip_roll_joint": G1_7520_22.control_info(),
+                ".*_knee_joint": G1_7520_22.control_info(),
+                ".*_ankle_.*": G1_5020.control_info(scale=2, effort_limit=50),
+                "waist_yaw_joint": G1_7520_14.control_info(),
+                "waist_(roll|pitch)_joint": G1_5020.control_info(
+                    scale=2, effort_limit=50
                 ),
-                ".*_hip_roll_joint": ControlInfo(
-                    stiffness=STIFFNESS_7520_22,
-                    damping=DAMPING_7520_22,
-                    effort_limit=139,
-                    velocity_limit=20,
-                    armature=ARMATURE_7520_22,
-                ),
-                ".*_knee_joint": ControlInfo(
-                    stiffness=STIFFNESS_7520_22,
-                    damping=DAMPING_7520_22,
-                    effort_limit=139,
-                    velocity_limit=20,
-                    armature=ARMATURE_7520_22,
-                ),
-                ".*_ankle_.*": ControlInfo(
-                    stiffness=2 * STIFFNESS_5020,
-                    damping=2 * DAMPING_5020,
-                    effort_limit=50,
-                    velocity_limit=37,
-                    armature=2 * ARMATURE_5020,
-                ),
-                "waist_yaw_joint": ControlInfo(
-                    stiffness=STIFFNESS_7520_14,
-                    damping=DAMPING_7520_14,
-                    effort_limit=88,
-                    velocity_limit=32,
-                    armature=ARMATURE_7520_14,
-                ),
-                "waist_(roll|pitch)_joint": ControlInfo(
-                    stiffness=2.0 * STIFFNESS_5020,
-                    damping=2.0 * DAMPING_5020,
-                    effort_limit=50,
-                    velocity_limit=37,
-                    armature=2.0 * ARMATURE_5020,
-                ),
-                ".*_(shoulder|elbow)_.*": ControlInfo(
-                    stiffness=STIFFNESS_5020,
-                    damping=DAMPING_5020,
-                    effort_limit=25,
-                    velocity_limit=37,
-                    armature=ARMATURE_5020,
-                ),
-                ".*_wrist_roll_joint": ControlInfo(
-                    stiffness=STIFFNESS_5020,
-                    damping=DAMPING_5020,
-                    effort_limit=25,
-                    velocity_limit=37,
-                    armature=ARMATURE_5020,
-                ),
-                ".*_wrist_pitch_joint": ControlInfo(
-                    stiffness=STIFFNESS_4010,
-                    damping=DAMPING_4010,
-                    effort_limit=5,
-                    velocity_limit=22,
-                    armature=ARMATURE_4010,
-                ),
-                ".*_wrist_yaw_joint": ControlInfo(
-                    stiffness=STIFFNESS_4010,
-                    damping=DAMPING_4010,
-                    effort_limit=5,
-                    velocity_limit=22,
-                    armature=ARMATURE_4010,
-                ),
+                ".*_(shoulder|elbow)_.*": G1_5020.control_info(),
+                ".*_wrist_roll_joint": G1_5020.control_info(),
+                ".*_wrist_pitch_joint": G1_4010.control_info(),
+                ".*_wrist_yaw_joint": G1_4010.control_info(),
             },
         )
     )
 
-    simulation_params: SimulatorParams = field(
-        default_factory=lambda: SimulatorParams(
-            isaacgym=IsaacGymSimParams(
-                fps=100,
-                decimation=2,
-                substeps=2,
-                physx=IsaacGymPhysXParams(
-                    num_position_iterations=8,
-                    num_velocity_iterations=4,
-                    max_depenetration_velocity=1,
-                ),
-            ),
-            isaaclab=IsaacLabSimParams(
-                fps=200,
-                decimation=4,
-                physx=IsaacLabPhysXParams(
-                    num_position_iterations=8,
-                    num_velocity_iterations=4,
-                    max_depenetration_velocity=1,
-                ),
-            ),
-            genesis=GenesisSimParams(
-                fps=100,
-                decimation=2,
-                substeps=2,
-            ),
-            newton=NewtonSimParams(
-                fps=200,
-                decimation=4,
-            ),
-        )
-    )
+    # 50 Hz policy; simulation_params defaults to the humanoid physics for 50 Hz
+    # (isaacgym 100, isaaclab/newton 200, mujoco 1000 fps).
+    control_hz: int = 50

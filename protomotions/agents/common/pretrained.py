@@ -13,7 +13,8 @@ from torch import nn
 from protomotions.agents.utils.normalization import (
     materialize_lazy_running_stats_from_state_dict,
 )
-from protomotions.utils.config_utils import load_resolved_configs_from_checkpoint
+from protomotions.agents.base_agent.config import BaseAgentConfig
+from protomotions.utils.experiment_configs import load_experiment_configs_from_checkpoint
 from protomotions.utils.hydra_replacement import get_class
 
 
@@ -79,11 +80,24 @@ def load_pretrained_model_module(
     config,
     device: torch.device,
     checkpoint_path_overrides: Mapping[str, str] | None = None,
-    prefer_inference_config: bool = False,
 ) -> nn.Module:
-    """Instantiate a checkpoint-backed or embedded frozen module."""
+    """Instantiate a checkpoint-backed or embedded frozen module.
+
+    A ``checkpoint_path`` is opened for the module's config and weights: this is
+    the training path, where the teacher's trained weights are required. An
+    embedded ``module_config`` is the fallback used once ``checkpoint_path`` is
+    blank (inference blanks it when a config is embedded), so the owning bundle
+    is self-contained and no teacher bundle is opened; the module's weights then
+    load with the owning checkpoint. ``checkpoint_path`` wins when both are set,
+    so training never skips the teacher weights.
+    """
     checkpoint_path = Path(config.checkpoint_path) if config.checkpoint_path else None
-    if checkpoint_path is None or not checkpoint_path.exists():
+    if checkpoint_path is None:
+        # Only a blank path falls back to the embedded config (inference blanks
+        # it when a config is embedded). A path that is set but missing must NOT
+        # fall back -- that would silently build untrained weights from the
+        # embedded config, e.g. a mistyped or moved teacher checkpoint -- it
+        # raises below.
         module_config = getattr(config, "module_config", None)
         if module_config is not None:
             module_cls = get_class(module_config._target_)
@@ -94,13 +108,30 @@ def load_pretrained_model_module(
             return module
 
         raise FileNotFoundError(
+            "pretrained module needs a checkpoint_path or an embedded "
+            "module_config; neither is set"
+        )
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(
             f"Pretrained model checkpoint not found: {checkpoint_path}"
         )
 
-    resolved_configs = load_resolved_configs_from_checkpoint(
-        checkpoint_path,
-        prefer_inference=prefer_inference_config,
-    )
+    resolved_configs = load_experiment_configs_from_checkpoint(checkpoint_path)
+    # The teacher is a saved training bundle; apply its agent-side inference
+    # defaults before reading the module config, the same change inference makes
+    # to a loaded bundle. For a frozen GPC prior this blanks its
+    # latent_decoder.checkpoint_path (when the decoder's module_config is
+    # embedded), so the nested module load rebuilds the decoder from that config
+    # instead of reopening the prior's original tracker checkpoint -- which need
+    # not exist here. It leaves the model architecture untouched, so the prior
+    # checkpoint still supplies every weight, the decoder's included. (Only the
+    # agent view is derived, not env/sensors/simulator, which this loader never
+    # reads and which a module bundle need not carry in full.) A real bundle's
+    # agent is always a BaseAgentConfig; the isinstance guard skips the dict and
+    # namespace stand-ins some loader tests return in its place.
+    agent_config = getattr(resolved_configs, "agent", None)
+    if isinstance(agent_config, BaseAgentConfig):
+        agent_config.apply_inference_defaults(getattr(resolved_configs, "env", None))
     model_config = get_path(resolved_configs, config.config_path)
     for path, value in (checkpoint_path_overrides or {}).items():
         _set_dotted_attr(model_config, path, value)

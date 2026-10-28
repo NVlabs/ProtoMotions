@@ -3,6 +3,8 @@
 
 """Tests for generic TensorDict module containers."""
 
+from __future__ import annotations
+
 from types import SimpleNamespace
 
 import torch
@@ -25,8 +27,8 @@ class _StatefulModel(BaseModel):
         self.in_keys = ["obs"]
         self.out_keys = ["latent"]
 
-    def rollout_context_keys(self) -> list:
-        return ["latent_noise"]
+    def rollout_state_specs(self) -> dict[str, RolloutStateSpec]:
+        return {"latent_noise": RolloutStateSpec(shape=(1,))}
 
     def forward(self, tensordict: TensorDict, log_internals: bool = False):
         tensordict["latent"] = tensordict["obs"] + 1.0
@@ -51,8 +53,8 @@ class _CommonStateModule(ProtoMotionsTensorDictModule):
         self.in_keys = ["latent"]
         self.out_keys = ["common_out"]
 
-    def rollout_context_keys(self) -> list:
-        return ["common_state"]
+    def rollout_state_specs(self) -> dict[str, RolloutStateSpec]:
+        return {"common_state": RolloutStateSpec(shape=(1,))}
 
     def forward(self, tensordict: TensorDict):
         tensordict["common_out"] = tensordict["latent"] * 4.0

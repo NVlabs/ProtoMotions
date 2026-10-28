@@ -8,6 +8,8 @@ import argparse
 from protomotions.envs.base_env.config import EnvConfig
 from protomotions.robot_configs.base import RobotConfig
 from protomotions.simulator.base_simulator.config import SimulatorConfig
+from protomotions.envs.presets import tracking_playback
+from protomotions.utils.experiment_configs import ExperimentConfigs
 
 
 def terrain_config(args: argparse.Namespace):
@@ -19,7 +21,7 @@ def terrain_config(args: argparse.Namespace):
 def scene_lib_config(args: argparse.Namespace):
     from protomotions.components.scene_lib import SceneLibConfig
 
-    scene_file = args.scenes_file if hasattr(args, "scenes_file") else None
+    scene_file = args.scenes_file
     return SceneLibConfig(scene_file=scene_file)
 
 
@@ -31,17 +33,35 @@ def motion_lib_config(args: argparse.Namespace):
 
 def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
     from protomotions.envs.action import make_pd_action_config
-    from protomotions.envs.component_factories import (
-        contact_match_rew_factory,
-        max_coords_obs_factory,
-        mimic_target_poses_max_coords_factory,
-        mimic_tracking_rewards_factory,
-        pow_rew_factory,
-        tracking_error_term_factory,
+    from protomotions.envs.obs.humanoid import (
+        compute_humanoid_max_coords_observations,
     )
+    from protomotions.envs.obs.target_poses import (
+        build_max_coords_target_poses,
+    )
+    from protomotions.envs.body_selection import BodySelection
+    from protomotions.envs.mdp_component import MdpComponent
+    from protomotions.envs.rewards.meta import RewardMeta
+    from protomotions.envs.rewards.regularization import (
+        compute_pow_rew,
+        compute_terrain_foot_contact_match_rew,
+    )
+    from protomotions.envs.rewards.tracking import (
+        compute_gav_rew,
+        compute_gr_rew,
+        compute_gt_rew,
+        compute_gv_rew,
+        compute_rh_rew,
+    )
+    from protomotions.envs.terminations.tracking import max_body_pos_error
+    from protomotions.envs.terminations.rule import TerminationRule
     from protomotions.envs.control.mimic_control import MimicControlConfig
     from protomotions.envs.motion_manager.config import MimicMotionManagerConfig
 
+    foot_contact_bodies = (
+        robot_cfg.common_naming_to_robot_body_names["all_left_foot_bodies"]
+        + robot_cfg.common_naming_to_robot_body_names["all_right_foot_bodies"]
+    )
     return EnvConfig(
         ref_contact_smooth_window=7,
         max_episode_length=1000,
@@ -54,30 +74,58 @@ def env_config(robot_cfg: RobotConfig, args: argparse.Namespace) -> EnvConfig:
             )
         },
         observation_components={
-            "max_coords_obs": max_coords_obs_factory(root_height_obs=True),
-            "mimic_target_poses": mimic_target_poses_max_coords_factory(
+            "max_coords_obs": MdpComponent.from_kernel(
+                compute_humanoid_max_coords_observations, root_height_obs=True
+            ),
+            "mimic_target_poses": MdpComponent.from_kernel(
+                build_max_coords_target_poses,
                 with_velocities=True,
             ),
         },
         termination_components={
-            "tracking_error": tracking_error_term_factory(threshold=0.5),
+            "tracking_error": TerminationRule(
+                MdpComponent.from_kernel(max_body_pos_error), 0.5
+            ),
         },
         reward_components={
-            **mimic_tracking_rewards_factory(
-                gt_weight=0.5,
-                gr_weight=0.3,
-                gv_weight=0.1,
-                gav_weight=0.1,
-                rh_weight=0.2,
-                gt_coef=-100.0,
-                gr_coef=-5.0,
-                gv_coef=-0.5,
-                gav_coef=-0.1,
-                rh_coef=-100.0,
+            "gt_rew": MdpComponent.from_kernel(
+                compute_gt_rew,
+                meta=RewardMeta(weight=0.5),
+                coefficient=-100.0,
             ),
-            "pow_rew": pow_rew_factory(weight=-1e-5, min_value=-0.5),
-            "contact_match_rew": contact_match_rew_factory(
-                weight=-0.1, zero_during_grace_period=True
+            "gr_rew": MdpComponent.from_kernel(
+                compute_gr_rew,
+                meta=RewardMeta(weight=0.3),
+                coefficient=-5.0,
+            ),
+            "gv_rew": MdpComponent.from_kernel(
+                compute_gv_rew,
+                meta=RewardMeta(weight=0.1),
+                coefficient=-0.5,
+            ),
+            "gav_rew": MdpComponent.from_kernel(
+                compute_gav_rew,
+                meta=RewardMeta(weight=0.1),
+                coefficient=-0.1,
+            ),
+            "rh_rew": MdpComponent.from_kernel(
+                compute_rh_rew,
+                meta=RewardMeta(weight=0.2),
+                coefficient=-100.0,
+            ),
+            "pow_rew": MdpComponent.from_kernel(
+                compute_pow_rew,
+                meta=RewardMeta(weight=-1e-5, min_value=-0.5),
+            ),
+            "contact_match_rew": MdpComponent.from_kernel(
+                compute_terrain_foot_contact_match_rew,
+                meta=RewardMeta(weight=-0.1, zero_during_grace_period=True),
+                required_keys={
+                    "contact_body_index": foot_contact_bodies,
+                    "contact_partner_index": ["terrain"],
+                },
+                contact_body_ids=BodySelection.named(*foot_contact_bodies),
+                body_names=foot_contact_bodies,
             ),
         },
         action_config=make_pd_action_config(robot_cfg),
@@ -100,6 +148,7 @@ def agent_config(
         MLPLayerConfig,
     )
     from protomotions.agents.common.fsq_config import FSQAutoEncoderConfig
+
     from protomotions.agents.evaluators.config import (
         MimicEvaluatorConfig,
         MotionWeightsRulesConfig,
@@ -110,11 +159,13 @@ def agent_config(
         PPOAgentConfig,
         PPOModelConfig,
     )
-    from protomotions.envs.component_factories import (
-        gr_error_factory,
-        gt_error_factory,
-        max_joint_error_factory,
+    from protomotions.envs.mdp_component import MdpComponent
+    from protomotions.envs.terminations.tracking import (
+        max_body_pos_error,
+        mean_body_pos_error,
+        mean_body_rot_error,
     )
+    from protomotions.envs.terminations.rule import TerminationRule
 
     num_fsq_levels = 9
     num_fsq_scalars = 40
@@ -176,8 +227,6 @@ def agent_config(
 
     return PPOAgentConfig(
         model=PPOModelConfig(
-            in_keys=["max_coords_obs", "mimic_target_poses"],
-            out_keys=["action", "mean_action", "neglogp", "value"],
             actor=actor_config,
             critic=critic_config,
             actor_optimizer=MuonWithAuxAdamConfig(
@@ -198,11 +247,17 @@ def agent_config(
         save_inference_checkpoint=True,
         evaluator=MimicEvaluatorConfig(
             eval_metrics_every=200,
-            evaluation_components={
-                "gt_error": gt_error_factory(threshold=0.5),
-                "gr_error": gr_error_factory(),
-                "max_joint_error": max_joint_error_factory(),
+            metric_components={
+                "gt_error": MdpComponent.from_kernel(mean_body_pos_error),
+                "gr_error": MdpComponent.from_kernel(mean_body_rot_error),
+                "max_joint_error": MdpComponent.from_kernel(max_body_pos_error),
             },
+            failure_components={
+                "gt_error": TerminationRule(
+                    MdpComponent.from_kernel(mean_body_pos_error), 0.5
+                ),
+            },
+            score_key="eval/success_rate",
             motion_weights_rules=MotionWeightsRulesConfig(
                 motion_weights_update_success_discount=0.999,
                 motion_weights_update_failure_discount=0,
@@ -220,22 +275,13 @@ def configure_robot_and_simulator(
     # Match IsaacLab's implicit robot material when this policy was trained.
     simulator_cfg.default_robot_friction = 0.5
     robot_cfg.update_fields(
-        contact_bodies=["all_left_foot_bodies", "all_right_foot_bodies"]
+        contact_bodies=["all_left_foot_bodies", "all_right_foot_bodies"],
+        contact_partners=["terrain"],
     )
 
 
 def apply_inference_overrides(
-    robot_cfg: RobotConfig,
-    simulator_cfg: SimulatorConfig,
-    env_cfg,
-    agent_cfg,
-    terrain_cfg,
-    motion_lib_cfg,
-    scene_lib_cfg,
-    args: argparse.Namespace,
-):
-    if hasattr(env_cfg, "termination_components") and env_cfg.termination_components:
-        env_cfg.termination_components = {}
-    env_cfg.max_episode_length = 1000000
-    env_cfg.motion_manager.resample_on_reset = True
-    env_cfg.motion_manager.init_start_prob = 1.0
+    configs: ExperimentConfigs, args: argparse.Namespace
+) -> None:
+    """Play each clip through to its end for evaluation."""
+    tracking_playback(configs.env)

@@ -202,6 +202,15 @@ class MLPWithConcatConfig(NormObsBaseConfig):
 
 
 @dataclass
+class MaskedMeanConfig:
+    """Reduce a sequence of embeddings with a per-frame validity mask."""
+
+    _target_: str = "protomotions.agents.common.common.MaskedMean"
+    in_keys: List[str] = field(default_factory=list)
+    out_keys: List[str] = field(default_factory=list)
+
+
+@dataclass
 class ModuleContainerConfig:
     """Configuration for a container of modules that are executed sequentially.
 
@@ -297,13 +306,6 @@ class PretrainedModelConfig:
             "loaded model."
         },
     )
-    module_config_path: Optional[str] = field(
-        default=None,
-        metadata={
-            "help": "Optional dotted config path for the returned module inside "
-            "the pretrained checkpoint's resolved configs."
-        },
-    )
     module_config: Optional[Any] = field(
         default=None,
         metadata={
@@ -314,7 +316,7 @@ class PretrainedModelConfig:
     )
     config_path: str = field(
         default="agent.model",
-        metadata={"help": "Dotted config path inside resolved_configs.pt."},
+        metadata={"help": "Dotted config path inside resolved_configs.json."},
     )
     state_dict_key: str = field(
         default="model",
@@ -611,3 +613,30 @@ class DiscreteAutoregressiveTransformerConfig:
                     )
                 ],
             )
+
+
+def validate_module_order(config, _seen=None) -> None:
+    """Walk every ``ModuleContainerConfig`` under ``config`` and check module ordering.
+
+    ``models`` is execution order, so a producer appended after its consumer never
+    runs in time. That is invisible until the container is built, which on a
+    multi-rank job means one rank raising and the others deadlocking at the next
+    collective -- an hour of cluster time to learn what this costs milliseconds.
+    Run before ``fabric.launch`` on fresh, warm and resumed runs.
+    """
+    _seen = _seen if _seen is not None else set()
+    if id(config) in _seen:
+        return
+    _seen.add(id(config))
+
+    if isinstance(config, ModuleContainerConfig):
+        errors = config.find_key_flow_errors()
+        if errors:
+            raise ValueError("module ordering error:\n  " + "\n  ".join(errors))
+
+    children = config if isinstance(config, (list, tuple)) else None
+    if children is None:
+        children = list(vars(config).values()) if hasattr(config, "__dict__") else []
+    for child in children:
+        if isinstance(child, (list, tuple)) or hasattr(child, "__dict__"):
+            validate_module_order(child, _seen)

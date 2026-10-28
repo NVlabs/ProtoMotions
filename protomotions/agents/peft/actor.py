@@ -27,14 +27,23 @@ from protomotions.agents.common.latent import (
 )
 from protomotions.agents.common.pretrained import freeze_module
 from protomotions.agents.peft.utils.adapter_state import (
+    REFERENCE_STATE_PREFIXES,
     build_adapter_state_dict,
+    build_reference_state_dict,
+    reference_state_from_policy_state,
+    refuse_reference_without_conditioning,
+    validate_adapter_checkpoint,
     load_adapter_state_dict as load_adapter_state,
+    load_reference_state_dict as load_reference_state,
 )
 from protomotions.agents.peft.utils.frozen_prior_contract import (
     require_frozen_prior_attr,
     resolve_frozen_prior_input_keys,
 )
-from protomotions.agents.peft.prior_with_peft import DiscretePriorWithPEFT
+from protomotions.agents.peft.prior_with_peft import (
+    DiscretePriorWithPEFT,
+    frozen_copy,
+)
 from protomotions.utils.hydra_replacement import get_class
 
 log = logging.getLogger(__name__)
@@ -46,8 +55,9 @@ class DiscretePriorPEFTActor(nn.Module):
     The actor owns the public observation contract. Task observations flow
     through ``config.peft.model`` into ``config.peft.condition_key``; frozen
     prior context keys are discovered from the pretrained prior and appended to
-    ``in_keys`` internally. The target encoder is optional and is used only for
-    SFT batches that include ``mimic_target_poses``.
+    ``in_keys`` internally and passed to the frozen prior as they are; the PEFT
+    model may read them but must not write them. The target encoder is optional
+    and is used only for SFT batches that include ``mimic_target_poses``.
     """
 
     def __init__(
@@ -84,11 +94,27 @@ class DiscretePriorPEFTActor(nn.Module):
             )
         ActorPEFTModelClass = get_class(actor_model_config._target_)
         self.actor_peft_model = ActorPEFTModelClass(config=actor_model_config)
+        # The reference policy's frozen copy of it, built when a reference is
+        # pinned or loaded.
+        self.reference_peft_model = None
         if self.condition_key not in self.actor_peft_model.out_keys:
             raise AssertionError(
                 "DiscretePriorPEFTActor PEFT model must produce condition_key "
                 f"{self.condition_key!r} for adapter "
                 f"conditioning. out_keys={self.actor_peft_model.out_keys}"
+            )
+        # The frozen prior, and so the RLFT reference, read their context
+        # straight from the observations they were trained on.
+        rewritten_context = [
+            key
+            for key in self.actor_peft_model.out_keys
+            if key in self.frozen_prior_input_keys
+        ]
+        if rewritten_context:
+            raise AssertionError(
+                "DiscretePriorPEFTActor PEFT model must write only conditioning "
+                f"features, not the frozen prior's context keys {rewritten_context}. "
+                "The frozen prior reads those straight from the observations."
             )
         missing_actor_inputs = [
             key for key in self.actor_peft_model.in_keys if key not in config.in_keys
@@ -165,16 +191,100 @@ class DiscretePriorPEFTActor(nn.Module):
         self.kl_coeff = peft_cfg.kl_coeff
 
     def optional_full_checkpoint_state_prefixes(self) -> tuple[str, ...]:
-        """Frozen target encoder state is present only for SFT/checkpointing flows."""
-        return ("target_latent_encoder.",)
+        """Frozen target encoder state is present only for SFT/checkpointing flows.
+
+        The reference policy's networks are present only once a reference is
+        pinned or loaded. Their prefixes come from the student-to-reference
+        table in ``adapter_state``, which also drives checkpoint validation.
+        """
+        return ("target_latent_encoder.", *REFERENCE_STATE_PREFIXES)
 
     def adapter_state_dict(self) -> dict[str, torch.Tensor]:
         """Return only PEFT adapter weights, excluding the frozen prior."""
         return build_adapter_state_dict(self)
 
     def load_adapter_state_dict(self, state_dict: dict, strict: bool = True):
-        """Load adapter-only state, ignoring frozen-prior and critic entries."""
-        return load_adapter_state(self, state_dict, strict=strict)
+        """Load adapter-checkpoint state, ignoring frozen-prior and critic entries.
+
+        This loads the active adapter and task state. When the checkpoint also
+        stores the RLFT reference policy, it is restored too, and the returned
+        ``reference_loaded`` entry is True; resume and inference use it, while
+        a new training run pins its own. Otherwise any earlier reference is
+        dropped, so the new weights never run against a reference that came
+        with other weights.
+        """
+        refuse_reference_without_conditioning(state_dict)
+        validate_adapter_checkpoint(self, state_dict, strict=strict)
+        result = load_adapter_state(self, state_dict, strict=strict)
+        result["reference_loaded"] = load_reference_state(self, state_dict)
+        if not result["reference_loaded"]:
+            self.reset_reference()
+        return result
+
+    def reference_state_dict(self) -> dict[str, torch.Tensor]:
+        """Return the reference policy's state for an adapter checkpoint.
+
+        That is its adapter tensors, its FiLM input normalizer and its copy of
+        the conditioning network. Empty until a reference policy has been
+        pinned. The reference's frozen prior weights are left out because they
+        equal the configured prior.
+        """
+        if not self.reference_ready:
+            return {}
+        return build_reference_state_dict(self)
+
+    # ---- reference policy ----
+    # Change the reference through these methods, not through the matching
+    # methods of prior_with_peft: only these also handle the reference's copy
+    # of the conditioning network.
+
+    @property
+    def reference_ready(self) -> bool:
+        """True once a reference policy has been pinned or loaded."""
+        return self.prior_with_peft.reference_ready
+
+    def ensure_reference_modules(self) -> None:
+        """Build the reference's frozen networks if missing, without pinning them."""
+        self.prior_with_peft.ensure_reference_modules()
+        if self.reference_peft_model is None:
+            self.reference_peft_model = frozen_copy(self.actor_peft_model)
+
+    def capture_reference(self) -> None:
+        """Pin the reference to the current student policy, replacing any earlier one."""
+        self.ensure_reference_modules()
+        self.prior_with_peft.capture_reference()
+        self.reference_peft_model.load_state_dict(self.actor_peft_model.state_dict())
+
+    def capture_reference_from(self, model_state: dict) -> None:
+        """Pin the reference to the trained (student) policy saved in a checkpoint.
+
+        ``model_state`` comes from a full or an adapter checkpoint, and any
+        reference stored in it is ignored. The policy's adapters, FiLM input
+        normalizer and conditioning network are attached to this actor's
+        configured frozen prior, after their names and shapes are checked.
+        """
+        reference_state = reference_state_from_policy_state(model_state)
+        if not reference_state:
+            raise RuntimeError(
+                "This checkpoint holds no PEFT adapter or conditioning-network "
+                "state to use as the reference policy."
+            )
+        load_reference_state(self, reference_state)
+
+    def mark_reference_loaded(self) -> None:
+        """Mark the reference state just loaded into the networks as ready to use."""
+        self.prior_with_peft.mark_reference_loaded()
+
+    def reset_reference(self) -> None:
+        """Drop the reference policy until one is loaded or pinned again.
+
+        Every load that restores no reference calls this, so new weights never
+        keep an earlier load's reference. SFT, which never uses a reference,
+        calls it after every load, and RLFT training start calls it before a
+        new run pins its own and whenever the run reads none.
+        """
+        self.prior_with_peft.reset_reference()
+        self.reference_peft_model = None
 
     def init_peft(self, warmup_obs: dict | None = None):
         if warmup_obs is not None:
@@ -191,6 +301,8 @@ class DiscretePriorPEFTActor(nn.Module):
         self.latent_decoder.quantizer.eval()
         self.prior_with_peft.base_prior.eval()
         self.prior_with_peft.train(mode)
+        if self.reference_peft_model is not None:
+            self.reference_peft_model.eval()
         return self
 
     # ---- FSQ utilities ----
@@ -326,30 +438,24 @@ class DiscretePriorPEFTActor(nn.Module):
             device=first_tensor.device,
         )
 
-    def _run_actor_peft_model(self, d):
-        """Run the task-side conditioning network and validate its contract."""
+    def _run_actor_peft_model(self, d, network: nn.Module | None = None):
+        """Run a conditioning network and validate its contract.
+
+        ``network`` defaults to the student's ``actor_peft_model``.
+        """
+        network = self.actor_peft_model if network is None else network
         tensordict = self._to_tensordict(d)
-        missing_keys = [
-            key for key in self.actor_peft_model.in_keys if key not in tensordict
-        ]
+        missing_keys = [key for key in network.in_keys if key not in tensordict]
         if missing_keys:
             raise ValueError(
                 "DiscretePriorPEFTActor actor PEFT model in_keys must be present in "
                 f"the input TensorDict. Missing keys: {missing_keys}"
             )
-        tensordict = self.actor_peft_model(tensordict)
+        tensordict = network(tensordict)
         if self.condition_key not in tensordict:
             raise RuntimeError(
                 "DiscretePriorPEFTActor actor PEFT model did not produce required "
                 f"condition_key {self.condition_key!r}."
-            )
-        missing_context = [
-            key for key in self.frozen_prior_input_keys if key not in tensordict
-        ]
-        if missing_context:
-            raise RuntimeError(
-                "DiscretePriorPEFTActor actor PEFT model did not produce frozen prior input "
-                f"keys {missing_context}."
             )
         return tensordict
 
@@ -357,14 +463,36 @@ class DiscretePriorPEFTActor(nn.Module):
         # Public PEFT config controls the task-conditioning network. The frozen
         # prior context keys come from the loaded prior checkpoint, and both are
         # merged here into the exact dictionary consumed by DiscretePriorWithPEFT.
+        # The context is read from the input, not from the conditioning
+        # network's output. The student and the reference share these entries,
+        # so this keeps the reference's context from depending on the student's
+        # trainable network.
+        missing_context = [
+            key for key in self.frozen_prior_input_keys if key not in tensordict
+        ]
+        if missing_context:
+            raise ValueError(
+                "DiscretePriorPEFTActor input is missing the frozen prior's context "
+                f"keys {missing_context}."
+            )
         input_td = self._run_actor_peft_model(tensordict)
         token_one_hot = None
         if tokens is not None:
             token_one_hot = self.one_hot_prior_tokens(tokens)
-        prior_dict = {key: input_td[key] for key in self.frozen_prior_input_keys}
+        prior_dict = {key: tensordict[key] for key in self.frozen_prior_input_keys}
         prior_dict[self.condition_key] = input_td[self.condition_key]
         if token_one_hot is not None:
             prior_dict["tokens"] = token_one_hot
+        if self.reference_peft_model is not None:
+            # The reference reads its condition from its own frozen copy of the
+            # conditioning network, so training the student never moves it.
+            with torch.no_grad():
+                reference_td = self._run_actor_peft_model(
+                    tensordict, self.reference_peft_model
+                )
+            prior_dict[self.prior_with_peft.reference_condition_key] = reference_td[
+                self.condition_key
+            ]
         return prior_dict
 
     # ---- forward / rollout ----

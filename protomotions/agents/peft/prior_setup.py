@@ -12,7 +12,10 @@ from typing import Dict
 import torch
 from torch import nn
 
-from protomotions.agents.peft.utils.adapter_state import contains_adapter_state
+from protomotions.agents.peft.utils.adapter_state import (
+    ReferenceWithoutConditioningError,
+    contains_adapter_state,
+)
 from protomotions.agents.peft.utils.frozen_prior_checkpoint import (
     reload_frozen_base_prior_from_checkpoint,
 )
@@ -31,7 +34,7 @@ class DiscretePriorPEFTSetupMixin:
     """Load the frozen prior and build a PEFT actor around it.
 
     RLFT and SFT use different training loops, but they both need the same
-    frozen prior dependency, adapter initialization, input validation, and slim
+    frozen prior dependency, adapter initialization, input validation, and
     adapter checkpoint handling. The loading lifecycle itself comes from
     ``PretrainedModulesMixin`` directly for SFT and through ``FineTuningAgent``
     for RLFT; this mixin only defines the PEFT-specific load contract.
@@ -54,9 +57,6 @@ class DiscretePriorPEFTSetupMixin:
                 f"{type(self).__name__} requires config.pretrained_modules['prior']."
             )
         return {"prior": prior_config}
-
-    def _pretrained_module_load_kwargs(self, _name, _pretrained_config) -> dict:
-        return {"prefer_inference_config": True}
 
     def _post_create_model_hook(self):
         warmup_obs = self.add_agent_info_to_obs(self.env.get_obs())
@@ -141,7 +141,10 @@ class DiscretePriorPEFTSetupMixin:
         log.info(message)
 
     def _load_model_state_dict(self, model_state):
-        load_compatible_peft_model_state(self.model, model_state)
+        loaded = load_compatible_peft_model_state(self.model, model_state)
+        if not loaded.reference_loaded:
+            self.model._actor.reset_reference()
+        return loaded
 
     def _after_load_model_state_dict(self, state_dict) -> None:
         super()._after_load_model_state_dict(state_dict)
@@ -155,9 +158,9 @@ class DiscretePriorPEFTSetupMixin:
         Full PEFT training checkpoints can include the frozen prior weights from
         the run that produced them. The current config is the source of truth for
         which prior this adapter should attach to, so loading finishes by
-        refreshing the wrapped prior from ``pretrained_modules["prior"]``. Slim
-        adapter-only inference checkpoints do not overwrite prior weights, but
-        this restore is harmless and keeps full and slim checkpoints equivalent.
+        refreshing the wrapped prior from ``pretrained_modules["prior"]``. Adapter
+        checkpoints do not overwrite prior weights, but
+        this restore is harmless and keeps full and adapter checkpoints equivalent.
         """
         prior_config = self.config.pretrained_modules.get("prior")
         checkpoint_path = getattr(prior_config, "checkpoint_path", None)
@@ -170,13 +173,21 @@ class DiscretePriorPEFTSetupMixin:
         )
 
     def get_inference_state_dict(self, state_dict, model_state_dict=None):
-        """Emit an adapter-only inference checkpoint."""
-        adapter_state = self.model._actor.adapter_state_dict()
+        """Emit an adapter-only inference checkpoint.
+
+        Once a reference policy is pinned, the adapter checkpoint also stores its
+        adapter tensors, FiLM input normalizer and conditioning network, so
+        loading it restores the same prior-constraint and KL reference as
+        loading ``last.ckpt``.
+        """
+        actor = self.model._actor
+        adapter_checkpoint_state = actor.adapter_state_dict()
+        adapter_checkpoint_state.update(actor.reference_state_dict())
         state_dict.update(
             {
                 "model": {
                     key: value.detach().cpu().clone()
-                    for key, value in adapter_state.items()
+                    for key, value in adapter_checkpoint_state.items()
                 },
                 "epoch": self.current_epoch,
                 "step_count": self.step_count,
@@ -194,9 +205,13 @@ class DiscretePriorPEFTSetupMixin:
         )
         if not contains_adapter_state(model_state):
             raise RuntimeError(f"No PEFT adapter weights found in {checkpoint}")
-        result = self.model._actor.load_adapter_state_dict(
-            model_state,
-            strict=strict,
-        )
+        try:
+            result = self.model._actor.load_adapter_state_dict(
+                model_state,
+                strict=strict,
+            )
+        except ReferenceWithoutConditioningError as error:
+            # The loaders see only the state dict; name the file here.
+            raise ReferenceWithoutConditioningError(f"{checkpoint}: {error}") from None
         log.info("Loaded PEFT adapter checkpoint from %s", checkpoint)
         return result

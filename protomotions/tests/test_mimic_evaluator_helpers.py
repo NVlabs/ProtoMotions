@@ -8,6 +8,8 @@ from types import SimpleNamespace
 
 import pytest
 import torch
+from protomotions.envs.mdp_component import MdpComponent, eager_kernel
+from protomotions.envs.terminations.rule import TerminationRule
 from tensordict import TensorDict
 
 from protomotions.agents.base_agent.model import (
@@ -18,15 +20,18 @@ from protomotions.agents.evaluators.config import (
     MimicEvaluatorConfig,
     MotionWeightsRulesConfig,
 )
-from protomotions.agents.evaluators.base_evaluator import BaseEvaluator
+from protomotions.agents.evaluators.manager import EvaluationResult
 from protomotions.agents.evaluators.metrics import MotionMetrics
 from protomotions.agents.evaluators.mimic_evaluator import (
     MimicEpisodeContext,
     MimicEvaluator,
 )
+from protomotions.envs.motion_manager.motion_manager import MotionManager
+from protomotions.tests.support.fake_reference import fake_reference
 
 
 class _Fabric:
+    world_size = 1
     device = torch.device("cpu")
     global_rank = 0
 
@@ -43,7 +48,8 @@ class _RobotState:
 
 class _Simulator:
     def __init__(self):
-        self._push_enabled = True
+        self.contacts_enabled = True
+        self.has_complete_contact_labels = True
 
     def get_robot_state(self):
         return _RobotState()
@@ -65,10 +71,20 @@ class _MotionLib:
 
 
 class _MotionManager:
+    # The clip-assignment API is the real one, bound to this fake's tensors, so
+    # the evaluator exercises the in-place semantics production relies on.
+    fixed_motion_ids_per_env = MotionManager.fixed_motion_ids_per_env
+    get_assignment = MotionManager.get_assignment
+    set_assignment = MotionManager.set_assignment
+    assign = MotionManager.assign
+
     def __init__(self, num_envs=2):
+        self.num_envs = num_envs
         self.motion_ids = torch.arange(num_envs)
         self.motion_times = torch.arange(num_envs, dtype=torch.float)
         self.motion_weights = torch.ones(3)
+        self._eligible = torch.ones(3, dtype=torch.bool)
+        self._fixed_motion_ids_per_env = None
         self.fixed = (
             torch.empty(0, dtype=torch.long),
             torch.empty(0, dtype=torch.long),
@@ -78,18 +94,26 @@ class _MotionManager:
     def get_unique_fixed_motions(self):
         return self.fixed
 
-    def update_sampling_weights(self, weights):
+    def set_sampling_weights(self, weights, *, floor, ceiling):
+        # Records what the evaluator handed in, then applies the real writer.
         self.updated_weights = weights.clone()
+        MotionManager.set_sampling_weights(self, weights, floor=floor, ceiling=ceiling)
 
 
 class _Env:
+    # The evaluator reads the reference motion as the env's owner
+    # (``env.reference_motion.motion_manager``); ``fake_reference`` reads this
+    # fake's ``motion_manager`` directly, so the owner is the fake itself.
+    @property
+    def reference_motion(self):
+        return self
+
     def __init__(self, num_envs=2):
         self.num_envs = num_envs
         self.dt = 0.5
         self.motion_manager = _MotionManager(num_envs)
         self.simulator = _Simulator()
         self.robot_config = SimpleNamespace(
-            reset_noise="noise",
             kinematic_info=SimpleNamespace(num_dofs=2, num_bodies=1),
         )
         self.config = SimpleNamespace(
@@ -99,14 +123,29 @@ class _Env:
         self.saved_state = {"state": torch.tensor(1)}
         self.restored_state = None
         self.respawn_root_offset = torch.zeros(num_envs, 3)
+        self.device = torch.device("cpu")
+        # The evaluator reads the spawn placement through the query.
+        self.reference = fake_reference(
+            self, respawn_root_offset=self.respawn_root_offset, ref_respawn_offset=0.05
+        )
         self.reset_calls = []
         self.step_actions = []
+        # The env-side perturbation switch the evaluator flips around an
+        # evaluation. Switch writes and the state write-back share one log so
+        # the order (write back first, then re-enable) can be asserted.
+        self.perturbations_enabled = True
+        self.perturbation_events = []
+
+    def set_perturbations_enabled(self, enabled):
+        self.perturbations_enabled = bool(enabled)
+        self.perturbation_events.append(bool(enabled))
 
     def save_state(self):
         return self.saved_state
 
     def restore_state(self, state):
         self.restored_state = state
+        self.perturbation_events.append("restore")
 
     def reset(self, env_ids=None, **kwargs):
         self.reset_calls.append((None if env_ids is None else env_ids.clone(), kwargs))
@@ -164,6 +203,9 @@ class _StatefulModel(_Model):
 
 
 class _Agent:
+    def inference_step(self, obs_td):
+        return self.model(obs_td)
+
     def __init__(self, env, root_dir):
         self.env = env
         self.root_dir = Path(root_dir)
@@ -186,8 +228,15 @@ class _Agent:
         return TensorDict(obs, batch_size=obs["obs"].shape[0])
 
 
+@eager_kernel
+def _zeros(**params):
+    return torch.zeros(**params)
+
+
 def _config(**overrides):
     config = MimicEvaluatorConfig(
+        failure_components={"failure": TerminationRule(MdpComponent(_zeros, {}), 0.5)},
+        score_key="eval/success_rate",
         max_eval_steps=4,
         eval_metrics_every=2,
         save_predicted_motion_lib_every=None,
@@ -205,6 +254,7 @@ def _evaluator(tmp_path, num_envs=2, **config_overrides):
     env = _Env(num_envs=num_envs)
     agent = _Agent(env, tmp_path)
     evaluator = MimicEvaluator(agent, _Fabric(), _config(**config_overrides))
+    evaluator._init_eval_component_buffers(3)
     return evaluator
 
 
@@ -215,6 +265,14 @@ def _metric(num_motions=3, max_steps=4, features=2):
         max_motion_len=max_steps,
         num_sub_features=features,
         device=torch.device("cpu"),
+    )
+
+
+def _sampling_result(evaluator):
+    return EvaluationResult(
+        {}, None, 0,
+        failed=evaluator._evaluation.failed.clone(),
+        evaluated=evaluator._evaluation.evaluated,
     )
 
 
@@ -243,33 +301,52 @@ def test_mimic_initialize_eval_creates_metrics_and_caches_environment_state(tmp_
     assert set(metrics).issuperset({"actions", "dof_pos", "rigid_body_pos"})
     assert metrics["actions"].num_sub_features == 2
     assert torch.equal(metrics["actions"].motion_lens, torch.tensor([2, 4, 3]))
-    assert torch.equal(evaluator._cached_motion_ids, torch.tensor([0, 1]))
-    assert torch.equal(evaluator._cached_motion_times, torch.tensor([0.0, 1.0]))
-
+    # The clip assignment is part of the env snapshot (ReferenceMotion is a
+    # snapshot owner), so the evaluator keeps no second copy of it.
+    assert "_cached_assignment" not in vars(evaluator)
     evaluator.cleanup_after_evaluation()
-
     assert evaluator.env.restored_state == {"state": torch.tensor(1)}
     assert evaluator._metrics is None
 
 
 def test_mimic_motion_sampling_weights_discount_successes_and_failures(tmp_path):
     evaluator = _evaluator(tmp_path)
-    evaluator._motion_failed = torch.tensor([False, True, True])
+    evaluator._evaluation.failed = torch.tensor([False, True, True])
+    evaluator._evaluation.count = torch.ones(3, dtype=torch.long)
 
-    evaluator._update_motion_sampling_weights()
+    evaluator._update_motion_sampling_weights(_sampling_result(evaluator))
 
     # The discounted success would be 0.25, but min_motion_weight defaults to
     # "1/num_motions" = 1/3 here, so it is floored. Without that floor the success
     # discount compounds unbounded and sampling eventually collapses onto whichever
     # motions failed most recently.
     assert torch.allclose(
-        evaluator.env.motion_manager.updated_weights,
+        evaluator.env.reference_motion.motion_manager.motion_weights,
         torch.tensor([1.0 / 3.0, 4.0, 4.0]),
     )
-    failed_file = (
-        tmp_path / "failed_motions" / "failed_motions_epoch_7_rank_0.txt"
-    )
+    failed_file = tmp_path / "failed_motions" / "failed_motions_epoch_7_rank_0.txt"
     assert failed_file.read_text().splitlines() == ["1", "2"]
+
+
+def test_mimic_weights_floor_every_eligible_clip_and_skip_metrics_only_runs(tmp_path):
+    """The floor applies to every eligible clip, scored or not (an unscored clip
+    below it is raised, since one writer clamps the whole vector); a run with
+    no scored trial or no failure rule writes nothing."""
+    evaluator = _evaluator(tmp_path)
+    evaluator._evaluation.failed = torch.tensor([False, True, False])
+    evaluator._evaluation.count = torch.tensor([1, 1, 0])
+    evaluator.motion_manager.motion_weights[:] = torch.tensor([1., 1., 0.01])
+    evaluator.update_training_state(_sampling_result(evaluator))
+    assert torch.allclose(evaluator.motion_manager.motion_weights, torch.tensor([1/3, 4., 1/3]))
+    evaluator.motion_manager.updated_weights = None
+    evaluator._evaluation.count[:] = 0
+    evaluator.update_training_state(_sampling_result(evaluator))
+    assert evaluator.motion_manager.updated_weights is None
+    evaluator._evaluation.count[:] = 1
+    evaluator.config.failure_components = {}
+    evaluator.config.score_key = None
+    evaluator.update_training_state(_sampling_result(evaluator))
+    assert evaluator.motion_manager.updated_weights is None
 
 
 def test_mimic_motion_sampling_weights_respect_explicit_min_weight(tmp_path):
@@ -282,15 +359,30 @@ def test_mimic_motion_sampling_weights_respect_explicit_min_weight(tmp_path):
             min_motion_weight=0.4,
         ),
     )
-    evaluator._motion_failed = torch.tensor([False, True, False])
+    evaluator._evaluation.failed = torch.tensor([False, True, False])
+    evaluator._evaluation.count = torch.ones(3, dtype=torch.long)
 
-    evaluator._update_motion_sampling_weights()
+    evaluator._update_motion_sampling_weights(_sampling_result(evaluator))
 
     # The discounted successes land at 0.25, below the explicit 0.4 floor, so both
     # are clamped up; the failed motion is reset to 1.0 and left alone.
-    weights = evaluator.env.motion_manager.updated_weights
+    weights = evaluator.env.reference_motion.motion_manager.motion_weights
     assert torch.allclose(weights, torch.tensor([0.4, 1.0, 0.4]))
     assert float(weights.min()) >= 0.4
+
+
+def test_mimic_weights_keep_an_ineligible_clip_at_zero(tmp_path):
+    """A too-short or excluded clip that was evaluated (and failed) stays at
+    weight 0: the writer's eligibility mask outranks the curriculum."""
+    evaluator = _evaluator(tmp_path)
+    evaluator.motion_manager._eligible = torch.tensor([True, True, False])
+    evaluator.motion_manager.motion_weights[:] = torch.tensor([1.0, 1.0, 0.0])
+    evaluator._evaluation.failed = torch.tensor([False, True, True])
+    evaluator._evaluation.count = torch.ones(3, dtype=torch.long)
+    evaluator.update_training_state(_sampling_result(evaluator))
+    assert torch.allclose(
+        evaluator.motion_manager.motion_weights, torch.tensor([1 / 3, 4.0, 0.0])
+    )
 
 
 def test_mimic_motion_sampling_weights_handles_no_failures_and_zero_failure_discount(
@@ -304,21 +396,25 @@ def test_mimic_motion_sampling_weights_handles_no_failures_and_zero_failure_disc
         ),
     )
 
-    evaluator._motion_failed = None
-    evaluator._update_motion_sampling_weights()
-    assert evaluator.env.motion_manager.updated_weights is None
+    evaluator._evaluation = None
+    evaluator._update_motion_sampling_weights(EvaluationResult({}, None, 0))
+    assert evaluator.env.reference_motion.motion_manager.updated_weights is None
 
-    evaluator._motion_failed = torch.tensor([False, True, False])
-    evaluator._update_motion_sampling_weights()
+    evaluator._init_eval_component_buffers(3)
+    evaluator._evaluation.failed = torch.tensor([False, True, False])
+    evaluator._evaluation.count = torch.ones(3, dtype=torch.long)
+    evaluator._update_motion_sampling_weights(_sampling_result(evaluator))
 
     # Successes discount toward 0 but are floored at "1/num_motions" = 1/3.
     assert torch.allclose(
-        evaluator.env.motion_manager.updated_weights,
+        evaluator.env.reference_motion.motion_manager.motion_weights,
         torch.tensor([1.0 / 3.0, 1.0, 1.0 / 3.0]),
     )
 
 
-def test_mimic_build_eval_batches_prefers_fixed_motions_then_chunks_all_motions(tmp_path):
+def test_mimic_build_eval_batches_prefers_fixed_motions_then_chunks_all_motions(
+    tmp_path,
+):
     evaluator = _evaluator(tmp_path, num_envs=2)
     evaluator.motion_manager.fixed = (
         torch.tensor([2, 0]),
@@ -378,50 +474,45 @@ def test_mimic_hooks_set_motion_state_filter_active_frames_and_record_metrics(tm
         motion_ids=torch.tensor([1, 0]),
         frame_limits=torch.tensor([1, 3]),
     )
-    evaluator._metrics = {"actions": _metric(), "dof_pos": _metric(features=2)}
-    checked = []
-    evaluator._check_evaluation_failures = (
-        lambda active_env_ids, active_motion_ids: checked.append(
-            (active_env_ids.clone(), active_motion_ids.clone())
-        )
-    )
-
+    evaluator._metrics = {
+        "actions": _metric(),
+        "dof_pos": _metric(features=2),
+        "rigid_body_contacts": _metric(features=2),
+    }
     evaluator._on_episode_start(torch.tensor([0, 1]))
     assert evaluator._get_reset_kwargs() == {
         "sample_flat": True,
         "disable_motion_resample": True,
     }
-    evaluator._check_eval_components(torch.tensor([0, 1]), step_idx=1)
+    scored_envs, trial_ids = evaluator._scored_trials(torch.tensor([0, 1]), step_idx=1)
     evaluator._on_episode_step(
-        torch.tensor([0, 1]),
-        {"raw/dof_pos": torch.tensor([[10.0, 11.0], [20.0, 21.0]])},
+        scored_envs, trial_ids,
+        {
+            "raw/dof_pos": torch.tensor([[10.0, 11.0], [20.0, 21.0]]),
+            "raw/rigid_body_contacts": torch.tensor([[False, True], [True, False]]),
+        },
         torch.tensor([[1.0, 2.0], [3.0, 4.0]]),
     )
 
     assert torch.equal(evaluator.motion_manager.motion_ids, torch.tensor([1, 0]))
     assert torch.equal(evaluator.motion_manager.motion_times, torch.zeros(2))
-    assert torch.equal(checked[0][0], torch.tensor([1]))
-    assert torch.equal(checked[0][1], torch.tensor([0]))
-    assert torch.equal(evaluator._metrics["actions"].data[1, 0], torch.tensor([1.0, 2.0]))
+    assert torch.equal(scored_envs, torch.tensor([1]))
+    assert torch.equal(trial_ids, torch.tensor([0]))
+    assert evaluator._metrics["actions"].frame_counts.tolist() == [1, 0, 0]
     assert torch.equal(evaluator._metrics["dof_pos"].data[0, 0], torch.tensor([20.0, 21.0]))
+    contacts = evaluator._metrics["rigid_body_contacts"]
+    assert contacts.frame_counts.tolist() == [1, 0, 0]
+    torch.testing.assert_close(contacts.data[0, 0], torch.tensor([1.0, 0.0]))
 
 
-def test_mimic_check_eval_components_skips_when_no_clip_is_active(tmp_path):
+def test_mimic_scored_trials_empty_when_no_clip_is_active(tmp_path):
     evaluator = _evaluator(tmp_path)
     evaluator._episode_ctx = MimicEpisodeContext(
         motion_ids=torch.tensor([1, 0]),
         frame_limits=torch.tensor([1, 1]),
     )
-    checked = []
-    evaluator._check_evaluation_failures = (
-        lambda active_env_ids, active_motion_ids: checked.append(
-            (active_env_ids, active_motion_ids)
-        )
-    )
-
-    evaluator._check_eval_components(torch.tensor([0, 1]), step_idx=1)
-
-    assert checked == []
+    env_ids, trial_ids = evaluator._scored_trials(torch.tensor([0, 1]), step_idx=1)
+    assert env_ids.numel() == trial_ids.numel() == 0
 
 
 def test_mimic_evaluate_episode_steps_and_records_the_policy_actions(tmp_path):
@@ -431,7 +522,9 @@ def test_mimic_evaluate_episode_steps_and_records_the_policy_actions(tmp_path):
         frame_limits=torch.tensor([2, 2]),
     )
     evaluator._metrics = {"actions": _metric(num_motions=2, features=2)}
-    evaluator._check_evaluation_failures = lambda active_env_ids, active_motion_ids: None
+    evaluator._check_evaluation_failures = (
+        lambda active_env_ids, active_motion_ids: None
+    )
 
     evaluator.evaluate_episode(torch.tensor([0, 1]), max_steps=2)
 
@@ -477,7 +570,7 @@ def _scored_and_unscored_env_finish_on_first_step(evaluator):
 
     def step(actions):
         obs, rewards, dones, terminated, extras = base_step(actions)
-        env.motion_manager.motion_times += 0.5
+        env.reference_motion.motion_manager.motion_times += 0.5
         if len(env.step_actions) == 1:
             dones = torch.tensor([True, False, True, False])
         return obs, rewards, dones, terminated, extras
@@ -500,10 +593,9 @@ def test_mimic_evaluate_episode_restarts_only_unscored_envs_that_finish(tmp_path
     assert torch.equal(restart_ids, torch.tensor([2]))
     assert start_kwargs == restart_kwargs == evaluator._get_reset_kwargs()
     # It replays its own background clip from frame 0.
-    assert torch.equal(env.motion_manager.motion_ids, torch.tensor([0, 1, 2, 0]))
-    assert torch.equal(
-        env.motion_manager.motion_times, torch.tensor([1.0, 1.0, 0.5, 1.0])
-    )
+    manager = env.reference_motion.motion_manager
+    assert torch.equal(manager.motion_ids, torch.tensor([0, 1, 2, 0]))
+    assert torch.equal(manager.motion_times, torch.tensor([1.0, 1.0, 0.5, 1.0]))
 
 
 def test_mimic_evaluate_episode_scores_each_step_before_restarting_envs(tmp_path):
@@ -522,9 +614,9 @@ def test_mimic_evaluate_episode_scores_each_step_before_restarting_envs(tmp_path
     )
     record_step = evaluator._on_episode_step
 
-    def on_episode_step(env_ids, extras, actions):
+    def on_episode_step(env_ids, trial_ids, extras, actions):
         events.append(("record", env_ids.tolist()))
-        record_step(env_ids, extras, actions)
+        record_step(env_ids, trial_ids, extras, actions)
 
     evaluator._on_episode_step = on_episode_step
     base_reset = env.reset
@@ -548,15 +640,20 @@ def test_mimic_evaluate_episode_scores_each_step_before_restarting_envs(tmp_path
 
 
 def test_mimic_evaluation_reseeds_model_context_only_for_envs_it_resets(tmp_path):
-    evaluator = _evaluator(tmp_path, num_envs=4)
+    evaluator = _evaluator(
+        tmp_path, num_envs=4, evaluation_components={"tracking": SimpleNamespace()}
+    )
     model = evaluator.agent.model = _StatefulModel()
     model.reset_rollout_context(num_envs=4, device=torch.device("cpu"))
     training_context = model.episode_value.clone()
     env = evaluator.env
     scored_ids = _scored_and_unscored_env_finish_on_first_step(evaluator)
 
-    evaluator._metrics = evaluator.initialize_eval()
-    evaluator.evaluate_episode(scored_ids, max_steps=2)
+    # Use the public lifecycle: the base evaluator owns model restoration;
+    # MimicEvaluator owns environment restoration and per-episode resets.
+    evaluator.run_evaluation = lambda: evaluator.evaluate_episode(scored_ids, max_steps=2)
+    evaluator.process_eval_results = lambda: ({}, None, len(scored_ids))
+    evaluator.evaluate()
 
     # The episode start resets every env, so every env gets generation 2 in place
     # of training's generation 1. The fake env returns zero observations, so each
@@ -566,42 +663,45 @@ def test_mimic_evaluation_reseeds_model_context_only_for_envs_it_resets(tmp_path
     # finished but is not restarted, so its context stays as it was.
     assert torch.equal(env.step_actions[1][:, 0], torch.tensor([3.0, 3.0, 4.0, 3.0]))
 
-    evaluator.cleanup_after_evaluation()
-
-    # Training resumes with the context it had before evaluation.
     assert torch.equal(model.episode_value, training_context)
+    assert env.restored_state is env.saved_state
+    assert env.perturbation_events == [False, "restore", True]
+    assert env.perturbations_enabled is True
 
 
 def test_mimic_process_eval_results_updates_weights_and_additional_metrics(tmp_path):
     evaluator = _evaluator(tmp_path)
-    evaluator._motion_failed = torch.tensor([False, True, False])
-    evaluator._eval_mask = torch.tensor([True, True, True])
-    evaluator._per_component_failures = {}
-    evaluator._component_value_sum = {}
-    evaluator._component_step_count = {}
+    evaluator._evaluation.failure_values = {"failure": torch.tensor([0., 1., 0.])}
+    evaluator._evaluation.count = torch.ones(3, dtype=torch.long)
+    evaluator._evaluation.failed = torch.tensor([False, True, False])
+    evaluator._evaluation.count = torch.ones(3, dtype=torch.long)
     evaluator.metric_plugins = [SimpleNamespace(compute=lambda metrics: {"eval/x": 2.0})]
     evaluator._metrics = {"actions": _metric()}
 
     log_dict, score, num_items = evaluator.process_eval_results()
+    assert evaluator.env.reference_motion.motion_manager.updated_weights is None
+    result = _sampling_result(evaluator)
+    evaluator.cleanup_after_evaluation()
+    assert evaluator._evaluation is None
+    evaluator.update_training_state(result)
 
     assert log_dict["eval/success_rate"] == pytest.approx(2 / 3)
     assert log_dict["eval/x"] == 2.0
     assert score == pytest.approx(2 / 3)
     assert num_items == 3
-    assert evaluator.env.motion_manager.updated_weights is not None
+    assert evaluator.env.reference_motion.motion_manager.updated_weights is not None
 
 
 def test_mimic_process_eval_results_saves_predicted_motion_lib_on_interval(tmp_path):
     evaluator = _evaluator(tmp_path, save_predicted_motion_lib_every=1)
-    evaluator._motion_failed = torch.tensor([False, False, False])
-    evaluator._eval_mask = torch.tensor([True, True, True])
-    evaluator._per_component_failures = {}
-    evaluator._component_value_sum = {}
-    evaluator._component_step_count = {}
+    evaluator._evaluation.failure_values = {"failure": torch.zeros(3)}
+    evaluator._evaluation.count = torch.ones(3, dtype=torch.long)
+    evaluator._evaluation.failed = torch.tensor([False, False, False])
+    evaluator._evaluation.count = torch.ones(3, dtype=torch.long)
     evaluator._metrics = {"actions": _metric()}
     saved = []
-    evaluator._save_predicted_motion_lib = (
-        lambda metrics, epoch: saved.append((metrics, epoch))
+    evaluator._save_predicted_motion_lib = lambda metrics, epoch: saved.append(
+        (metrics, epoch)
     )
 
     log_dict, score, num_items = evaluator.process_eval_results()
@@ -619,31 +719,6 @@ def test_mimic_save_predicted_motion_lib_requires_all_metrics(tmp_path):
         evaluator._save_predicted_motion_lib({}, epoch=1)
 
 
-def test_mimic_plot_per_frame_metrics_prefers_available_eval_component_keys(
-    tmp_path,
-    monkeypatch,
-):
-    calls = []
-
-    def record_plot(self, metrics, **kwargs):
-        calls.append((metrics, kwargs))
-
-    monkeypatch.setattr(BaseEvaluator, "_plot_per_frame_metrics", record_plot)
-    evaluator = _evaluator(
-        tmp_path,
-        evaluation_components={
-            "height": SimpleNamespace(),
-            "speed": SimpleNamespace(),
-        },
-    )
-    metrics = {"height": _metric(num_motions=1), "other": _metric(num_motions=1)}
-
-    evaluator._plot_per_frame_metrics(metrics)
-
-    assert calls[0][0] is metrics
-    assert calls[0][1]["keys_to_plot"] == ["height"]
-    assert calls[0][1]["custom_colors"] == {}
-    assert calls[0][1]["output_filename"] == "metrics_per_frame_plot.png"
 
 
 def test_mimic_save_predicted_motion_lib_packs_fields_and_removes_replay_offset(
@@ -695,3 +770,27 @@ def test_mimic_save_predicted_motion_lib_packs_fields_and_removes_replay_offset(
     )
     assert torch.equal(saved["motion_weights"], evaluator.motion_lib.motion_weights)
     assert saved["motion_files"] == evaluator.motion_lib.motion_files
+
+    del metrics["rigid_body_contacts"]
+    with pytest.raises(ValueError, match="rigid_body_contacts"):
+        evaluator._save_predicted_motion_lib(metrics, epoch=4)
+    evaluator.env.simulator.has_complete_contact_labels = False
+    evaluator._save_predicted_motion_lib(metrics, epoch=4)
+    without_contacts = torch.load(
+        tmp_path / "results" / "predicted_motion_lib_epoch_4.pt"
+    )
+    assert without_contacts["contacts"] is None
+
+def test_predicted_motion_export_uses_shortest_written_channel(tmp_path):
+    evaluator = _evaluator(tmp_path)
+    lengths = torch.tensor([4, 3, 2])
+    metrics = {key: _packed_metric(lengths, features=size) for key, size in {
+        "dof_pos": 2, "dof_vel": 2, "rigid_body_pos": 3, "rigid_body_rot": 4,
+        "rigid_body_vel": 3, "rigid_body_ang_vel": 3, "rigid_body_contacts": 1,
+    }.items()}
+    metrics["rigid_body_contacts"].frame_counts[:] = torch.tensor([1, 0, 2])
+    evaluator._save_predicted_motion_lib(metrics, epoch=4)
+    saved = torch.load(tmp_path / "results" / "predicted_motion_lib_epoch_4.pt")
+    assert saved["motion_num_frames"].tolist() == [1, 0, 2]
+    assert saved["length_starts"].tolist() == [0, 1, 1]
+    assert saved["dps"].shape[0] == saved["contacts"].shape[0] == 3

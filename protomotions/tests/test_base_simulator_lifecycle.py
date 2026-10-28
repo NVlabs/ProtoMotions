@@ -8,6 +8,18 @@ from types import SimpleNamespace
 import pytest
 import torch
 
+from protomotions.envs.base_env.build import declare_owners
+from protomotions.envs.base_env.env import BaseEnv
+from protomotions.envs.base_env.owners import (
+    ActionStage,
+    ContactMemory,
+    EpisodeBuffers,
+)
+from protomotions.envs.base_env.reset import ReferenceMotion, SpawnPlacer
+from protomotions.envs.control.base import ControlComponent
+from protomotions.envs.control.manager import ControlManager, TeleportQueue
+from protomotions.envs.randomness import Randomness
+from protomotions.tests.support.task_inputs import make_task_inputs
 from protomotions.robot_configs.base import ControlType
 from protomotions.simulator.base_simulator.config import (
     ActionNoiseDomainRandomizationConfig,
@@ -24,6 +36,7 @@ from protomotions.simulator.base_simulator.config import (
     SimulatorConfig,
     VisualizationMarkerConfig,
 )
+from protomotions.components.pose_lib import ControlInfo
 from protomotions.simulator.base_simulator.simulator import Simulator
 from protomotions.simulator.base_simulator.simulator_state import (
     ObjectState,
@@ -40,24 +53,17 @@ def _identity_quat(*shape: int) -> torch.Tensor:
     return quat
 
 
-def _robot_config(control_type=ControlType.BUILT_IN_PD):
+def _robot_config(control_type=ControlType.BUILT_IN_PD, control_hz=30):
     dof_names = ["joint_a", "joint_b"]
     return SimpleNamespace(
         control=SimpleNamespace(
             control_type=control_type,
             control_info={
-                "joint_a": SimpleNamespace(
-                    stiffness=10.0,
-                    damping=1.0,
-                    effort_limit=5.0,
-                ),
-                "joint_b": SimpleNamespace(
-                    stiffness=20.0,
-                    damping=2.0,
-                    effort_limit=6.0,
-                ),
+                "joint_a": ControlInfo(stiffness=10.0, damping=1.0, effort_limit=5.0),
+                "joint_b": ControlInfo(stiffness=20.0, damping=2.0, effort_limit=6.0),
             },
         ),
+        control_hz=control_hz,
         kinematic_info=SimpleNamespace(
             num_bodies=2,
             num_dofs=2,
@@ -69,6 +75,8 @@ def _robot_config(control_type=ControlType.BUILT_IN_PD):
         number_of_actions=2,
         default_dof_pos=torch.tensor([0.25, -0.5]),
         default_root_height=0.9,
+        contact_bodies=None,
+        contact_partners="all",
     )
 
 
@@ -94,7 +102,7 @@ def _sim_config(**overrides):
         "w_last": True,
         "headless": True,
         "num_envs": 2,
-        "sim": SimParams(fps=60, decimation=2),
+        "sim": SimParams(fps=60),
         "experiment_name": "unit",
         "domain_randomization": domain_randomization,
         "projectile": ProjectileConfig(
@@ -129,7 +137,9 @@ class _FakeSimulator(Simulator):
         self.created = True
 
     def _apply_root_velocity_impulse(self, linear_velocity, angular_velocity, env_ids):
-        self.root_impulses.append((linear_velocity.clone(), angular_velocity.clone(), env_ids.clone()))
+        self.root_impulses.append(
+            (linear_velocity.clone(), angular_velocity.clone(), env_ids.clone())
+        )
 
     def _create_projectiles(self, config):
         self.created_projectile_config = config
@@ -157,7 +167,9 @@ class _FakeSimulator(Simulator):
     def _get_projectile_positions_rotations(self):
         return torch.ones(self.num_envs, 2, 3), _identity_quat(self.num_envs, 2)
 
-    def _set_simulator_env_state(self, new_states, new_object_states=None, env_ids=None):
+    def _set_simulator_env_state(
+        self, new_states, new_object_states=None, env_ids=None
+    ):
         self.reset_calls.append((new_states, new_object_states, env_ids.clone()))
 
     def _physics_step(self):
@@ -227,20 +239,6 @@ class _FakeSimulator(Simulator):
     def _get_simulator_dof_limits_for_verification(self):
         return torch.tensor([-2.0, -1.0]), torch.tensor([2.0, 1.0])
 
-    def _get_simulator_bodies_contact_buf(self, env_ids=None):
-        forces = torch.tensor(
-            [
-                [[0.0, 0.0, 0.0], [0.0, 0.0, 0.5]],
-                [[0.0, 0.0, 0.2], [0.0, 0.0, 0.0]],
-            ]
-        )
-        if env_ids is not None:
-            forces = forces[env_ids]
-        return RobotState(
-            rigid_body_contact_forces=forces,
-            state_conversion=StateConversion.SIMULATOR,
-        )
-
     def _get_simulator_object_root_state(self, env_ids=None):
         root_pos = torch.ones(2, 1, 3)
         root_rot = _identity_quat(2, 1)
@@ -252,12 +250,6 @@ class _FakeSimulator(Simulator):
             root_rot=root_rot,
             state_conversion=StateConversion.SIMULATOR,
         )
-
-    def _get_simulator_object_contact_buf(self, env_ids=None):
-        forces = torch.ones(2, 1, 3)
-        if env_ids is not None:
-            forces = forces[env_ids]
-        return ObjectState(contact_forces=forces, state_conversion=StateConversion.SIMULATOR)
 
     def _apply_simulator_pd_targets(self, pd_targets):
         self.pd_targets.append(pd_targets.clone())
@@ -275,10 +267,18 @@ class _FakeSimulator(Simulator):
         self.marker_updates.append(markers_state)
 
 
-def _sim(scene_objects=0, control_type=ControlType.BUILT_IN_PD, **config_overrides):
+def _sim(
+    scene_objects=0,
+    control_type=ControlType.BUILT_IN_PD,
+    contacts=False,
+    control_hz=30,
+    **config_overrides,
+):
+    robot = _robot_config(control_type, control_hz=control_hz)
+    robot.contact_bodies = "all" if contacts else None
     return _FakeSimulator(
         config=_sim_config(**config_overrides),
-        robot_config=_robot_config(control_type),
+        robot_config=robot,
         terrain=None,
         device=torch.device("cpu"),
         scene_lib=SimpleNamespace(num_objects_per_scene=scene_objects),
@@ -320,25 +320,33 @@ def test_simulator_initializes_finalize_setup_and_basic_getters():
     assert torch.equal(sim.get_previous_actions(), torch.zeros(2, 2))
     sim._previous_actions[:] = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
     sim._common_actions[:] = torch.tensor([[5.0, 6.0], [7.0, 8.0]])
-    assert torch.equal(sim.get_previous_actions(torch.tensor([1])), torch.tensor([[3.0, 4.0]]))
-    assert torch.equal(sim.get_current_actions(), torch.tensor([[5.0, 6.0], [7.0, 8.0]]))
-    assert torch.equal(sim.get_current_actions(torch.tensor([1])), torch.tensor([[7.0, 8.0]]))
+    assert torch.equal(
+        sim.get_previous_actions(torch.tensor([1])), torch.tensor([[3.0, 4.0]])
+    )
+    assert torch.equal(
+        sim.get_current_actions(), torch.tensor([[5.0, 6.0], [7.0, 8.0]])
+    )
+    assert torch.equal(
+        sim.get_current_actions(torch.tensor([1])), torch.tensor([[7.0, 8.0]])
+    )
 
     root = sim.get_root_state(torch.tensor([0]))
     bodies = sim.get_bodies_state()
     dof = sim.get_dof_state()
     forces = sim.get_dof_forces()
-    contacts = sim.get_binary_body_contacts(threshold=0.1)
     robot = sim.get_robot_state()
-    obj_contacts = sim.get_object_contact_buf(torch.tensor([1]))
 
     assert root.root_pos.shape == (1, 3)
     assert bodies.rigid_body_pos.shape == (2, 2, 3)
     assert torch.equal(dof.dof_pos[0], torch.tensor([0.5, 0.0]))
     assert torch.equal(forces.dof_forces[0], torch.tensor([2.0, 1.0]))
-    assert torch.equal(contacts.rigid_body_contacts[0], torch.tensor([1.0, 0.0]))
+    assert not hasattr(sim, "get_binary_body_contacts")
+    assert not hasattr(sim, "get_bodies_contact_buf")
+    assert not hasattr(sim, "get_object_contact_buf")
+    assert (
+        robot.rigid_body_contacts is None
+    )  # Reference labels are not simulator state.
     assert robot.dof_pos.shape == (2, 2)
-    assert obj_contacts.contact_forces.shape == (1, 1, 3)
 
     sim.close()
     assert sim.is_simulation_running() is False
@@ -377,6 +385,37 @@ def test_simulator_step_applies_control_markers_push_and_projectile_timers():
     sim._reset_projectiles(torch.tensor([1]))
     assert sim._proj_next_idx[1] == 0
     assert sim._proj_sim_time[1] == 0.0
+
+
+def test_set_push_enabled_only_flips_the_flag():
+    sim = _sim(scene_objects=0)
+    sim._initialize_with_markers(None)
+    assert sim.push_enabled is True
+    sim._push_next_time[:] = torch.tensor([0.15, 0.17])
+    schedule = sim._push_next_time.clone()
+    rng = torch.get_rng_state().clone()
+
+    sim.set_push_enabled(False)
+    assert sim.push_enabled is False and sim._push_enabled is False
+    sim.set_push_enabled(True)
+    assert sim.push_enabled is True and sim._push_enabled is True
+
+    # Switching neither reschedules pushes nor draws a random number: the
+    # pending schedule resumes as it was.
+    assert torch.equal(sim._push_next_time, schedule)
+    assert torch.equal(torch.get_rng_state(), rng)
+
+    no_push = _sim(
+        domain_randomization=DomainRandomizationConfig(
+            push=PushDomainRandomizationConfig(),
+        )
+    )
+    no_push._initialize_with_markers(None)
+    assert no_push.push_enabled is False
+    no_push.set_push_enabled(False)
+    with pytest.raises(ValueError, match="no push randomization"):
+        no_push.set_push_enabled(True)
+    assert no_push.push_enabled is False
 
 
 def test_simulator_reset_paths_with_and_without_objects():
@@ -549,10 +588,19 @@ def test_simulator_control_modes_and_domain_randomization_helpers():
     assert torch.equal(no_due._common_actions, original_actions)
 
 
+def test_simulator_refuses_fps_not_a_multiple_of_control_hz():
+    """Simulator.__init__ refuses a sim.fps that is not a whole multiple of control_hz."""
+    with pytest.raises(
+        ValueError, match="sim.fps=60 is not a multiple of robot.control_hz=7"
+    ):
+        _sim(control_hz=7)
+
+
 def test_action_latency_holds_then_blends_at_fractional_boundary():
     assert _sim()._max_action_latency_ms == 0.0
     simulator = _sim(
-        sim=SimParams(fps=200, decimation=4),
+        control_hz=50,
+        sim=SimParams(fps=200),
         domain_randomization=DomainRandomizationConfig(
             latency=LatencyDomainRandomizationConfig(max_latency_ms=20.0),
         ),
@@ -566,7 +614,7 @@ def test_action_latency_holds_then_blends_at_fractional_boundary():
     simulator._sampled_action_latency_ms[:] = torch.tensor([1.0, 7.5])
     simulator._action_latency_elapsed_ms.zero_()
     applied_fractions = []
-    for _ in range(simulator.config.sim.decimation):
+    for _ in range(simulator.decimation):
         applied_fractions.append(simulator._get_actions_for_physics_step()[:, 0])
         simulator._advance_action_latency()
     substep_ms = 1000.0 / simulator.config.sim.fps
@@ -588,9 +636,7 @@ def test_action_latency_holds_then_blends_at_fractional_boundary():
     # substep. A boundary inside the second substep blends only that substep.
     simulator._sampled_action_latency_ms[:] = torch.tensor([5.0, 7.5])
     simulator._action_latency_elapsed_ms.zero_()
-    assert torch.equal(
-        simulator._get_actions_for_physics_step(), torch.zeros(2, 2)
-    )
+    assert torch.equal(simulator._get_actions_for_physics_step(), torch.zeros(2, 2))
     simulator._advance_action_latency()
     assert torch.allclose(
         simulator._get_actions_for_physics_step(),
@@ -612,19 +658,19 @@ def test_action_latency_holds_then_blends_at_fractional_boundary():
             torch.tensor([[1.0, 1.0], [0.0, 0.0]]),
         )
     simulator._advance_action_latency()
-    assert torch.equal(
-        simulator._get_actions_for_physics_step(), torch.ones(2, 2)
-    )
+    assert torch.equal(simulator._get_actions_for_physics_step(), torch.ones(2, 2))
 
     with pytest.raises(ValueError, match="one control interval"):
         _sim(
-            sim=SimParams(fps=200, decimation=4),
+            control_hz=50,
+            sim=SimParams(fps=200),
             domain_randomization=DomainRandomizationConfig(
                 latency=LatencyDomainRandomizationConfig(max_latency_ms=20.1),
             ),
         )
     substep_latency = _sim(
-        sim=SimParams(fps=200, decimation=4),
+        control_hz=50,
+        sim=SimParams(fps=200),
         domain_randomization=DomainRandomizationConfig(
             latency=LatencyDomainRandomizationConfig(max_latency_ms=1.0),
         ),
@@ -634,7 +680,8 @@ def test_action_latency_holds_then_blends_at_fractional_boundary():
 
 def test_action_latency_does_not_leak_action_history_across_reset():
     simulator = _sim(
-        sim=SimParams(fps=200, decimation=4),
+        control_hz=50,
+        sim=SimParams(fps=200),
         domain_randomization=DomainRandomizationConfig(
             latency=LatencyDomainRandomizationConfig(max_latency_ms=5.0),
         ),
@@ -678,6 +725,296 @@ def test_base_simulator_prepares_body_mass_randomization_for_backends():
     )
 
     assert "body_mass" in simulator._domain_randomization
+
+
+def _push_and_latency_randomization():
+    return DomainRandomizationConfig(
+        push=PushDomainRandomizationConfig(
+            push_interval_range=(0.1, 0.2),
+            max_linear_velocity=(0.1, 0.0, 0.0),
+            max_angular_velocity=(0.0, 0.0, 0.2),
+        ),
+        latency=LatencyDomainRandomizationConfig(max_latency_ms=5.0),
+    )
+
+
+def test_simulator_runtime_state_round_trips_action_history_and_clocks():
+    simulator = _sim(domain_randomization=_push_and_latency_randomization())
+    simulator._initialize_with_markers(None)
+    simulator._common_actions.fill_(1.0)
+    simulator._previous_actions.fill_(2.0)
+    simulator._prev_prev_actions.fill_(3.0)
+    simulator._sampled_action_latency_ms.fill_(4.0)
+    simulator._action_latency_elapsed_ms.fill_(5.0)
+    simulator._steps_since_reset.fill_(6)
+    simulator._simulation_time.fill_(7.0)
+    simulator._push_next_time.fill_(8.0)
+    simulator._proj_sim_time.fill_(9.0)
+    snapshot = simulator.save_state()
+    assert set(snapshot) == {
+        "_common_actions",
+        "_previous_actions",
+        "_prev_prev_actions",
+        "_sampled_action_latency_ms",
+        "_action_latency_elapsed_ms",
+        "_steps_since_reset",
+        "_simulation_time",
+        "_push_next_time",
+        "_proj_next_idx",
+        "_proj_throw_time",
+        "_proj_sim_time",
+    }
+    expected = {name: value.clone() for name, value in snapshot.items()}
+
+    for name in snapshot:
+        getattr(simulator, name).zero_()
+    simulator.restore_state(snapshot)
+
+    for name, value in expected.items():
+        assert torch.equal(getattr(simulator, name), value), name
+    with pytest.raises(ValueError, match="changed contract"):
+        simulator.restore_state({"_common_actions": torch.zeros(3, 2)})
+    with pytest.raises(KeyError, match="no longer exists"):
+        simulator.restore_state({"_missing": torch.zeros(1)})
+
+
+class _TaskControl(ControlComponent):
+    """Control component with per-env task tensors, like a sampled command."""
+
+    def __init__(self, inputs):
+        super().__init__(SimpleNamespace(), inputs)
+        self.command = self.state.add("command", (2,), torch.float, 0.0)
+        self.deadline = self.state.add("deadline", (), torch.long, 0)
+        self.command[:] = torch.tensor([[0.5, -0.5], [1.5, 2.5]])
+        self.deadline[:] = torch.tensor([3, 4])
+
+    def advance(self, state):
+        return {}
+
+    def publish(self, env_ids):
+        return {}
+
+
+def _write_back_env(sim):
+    """The parts of BaseEnv that save_state/restore_state read and write.
+
+    The owners are the real ones, filled with distinct values, and the two
+    owner walks are bound by ``build.declare_owners`` exactly as on a real env.
+    """
+    from protomotions.envs.obs.state_history_buffer import (
+        HistorySample,
+        StateHistoryBuffer,
+    )
+    from protomotions.envs.state import BodyState
+
+    device = torch.device("cpu")
+    episode = EpisodeBuffers(2, device, max_episode_length=300)
+    episode.progress_buf[:] = torch.tensor([4, 9])
+    episode.reset_buf[:] = torch.tensor([False, True])
+    episode.terminate_buf[:] = torch.tensor([False, False])
+    # A real reference motion with nothing installed: it is on the snapshot
+    # walk (the clip assignment) and saves None without a manager.
+    motion = ReferenceMotion(None, None, None, 2, 0.02, device, 0, None)
+    spawn = SpawnPlacer(
+        terrain=SimpleNamespace(is_flat=lambda: True),
+        scene_lib=SimpleNamespace(num_scenes=lambda: 0),
+        motion=motion,
+        simulator=sim,
+        ref_respawn_offset=0.0,
+        skip_correct_terrain_height_on_flat=True,
+        num_envs=2,
+        device=device,
+    )
+    spawn.respawn_root_offset[:] = torch.tensor([[0.1, 0.2, 0.0], [0.3, 0.4, 0.0]])
+    action_stage = ActionStage(None, 2, 2, device)
+    action_stage.raw[:] = torch.tensor([[0.7, -0.7], [0.2, 0.1]])
+    action_stage.processed[:] = torch.tensor([[0.35, -0.35], [0.1, 0.05]])
+    contact_memory = ContactMemory(2, 2, device)
+    contact_memory.prev_contact_force_magnitudes[:] = torch.tensor(
+        [[0.0, 410.0], [380.0, 0.0]]
+    )
+    env = SimpleNamespace(
+        num_envs=2,
+        device=device,
+        simulator=sim,
+        scene_lib=SimpleNamespace(num_objects_per_scene=0),
+        # What the publish list needs at bind time: the static publisher takes
+        # the two id tensors; a flat terrain publishes no height field.
+        robot_config=SimpleNamespace(anchor_body_index=0),
+        config=SimpleNamespace(),
+        contact_body_ids=torch.tensor([0, 1]),
+        non_termination_contact_body_ids=torch.tensor([1]),
+        terrain=SimpleNamespace(),
+        sensors=None,
+        motion_manager=None,
+        _current_context=object(),
+        _episode=episode,
+        _motion=motion,
+        _spawn=spawn,
+        _action_stage=action_stage,
+        _contact_memory=contact_memory,
+        # The read-only tensor properties BaseEnv forwards to the owners (the
+        # Forwarders section of env.py), as plain aliases of the owners' tensors.
+        progress_buf=episode.progress_buf,
+        reset_buf=episode.reset_buf,
+        terminate_buf=episode.terminate_buf,
+        rew_buf=episode.rew_buf,
+        _observations=SimpleNamespace(
+            buffer={
+                "max_coords_obs": torch.arange(10, dtype=torch.float).view(2, 5),
+                "historical_max_coords_obs": torch.arange(6, dtype=torch.float).view(
+                    2, 3
+                ),
+            }
+        ),
+        randomness=Randomness(0, device),
+    )
+    truth = sim.get_robot_state()
+    state = BodyState(
+        rigid_body_rot=truth.rigid_body_rot,
+        rigid_body_ang_vel=truth.rigid_body_ang_vel,
+        dof_pos=truth.dof_pos,
+        dof_vel=truth.dof_vel,
+    )
+    env._state_history = StateHistoryBuffer(
+        1,
+        HistorySample({"privileged": state}, action_stage.raw, action_stage.processed),
+    )
+    env.control_manager = ControlManager({}, make_task_inputs(2), TeleportQueue())
+    env.control_manager.components["task"] = _TaskControl(env.control_manager.inputs)
+    declare_owners(env)
+    return env
+
+
+def _all_envs_reset_state(n):
+    return ResetState(
+        root_pos=torch.ones(n, 3),
+        root_rot=_identity_quat(n),
+        root_vel=torch.zeros(n, 3),
+        root_ang_vel=torch.zeros(n, 3),
+        dof_pos=torch.zeros(n, 2),
+        dof_vel=torch.zeros(n, 2),
+        state_conversion=StateConversion.COMMON,
+    )
+
+
+@pytest.mark.parametrize("target", ["unused.FakeSimulator", "fake.IsaacGym"])
+def test_env_write_back_restores_observations_and_action_history_exactly(target):
+    """After evaluation every env is written back to its pre-evaluation state.
+
+    The trainer then continues the interrupted episodes and recomputes
+    observations only for envs that were already done, so the next policy step
+    reads the cached observations, and the simulator's acceleration clamp and
+    latency blend read the three-step action history. All of it must come back
+    exactly, not as the evaluation's last values or as reset zeros.
+    """
+    # Both target names obey the immediate-reset contract; write-back must not
+    # advance physics or leave evaluation's action history behind.
+    sim = _sim(
+        scene_objects=0,
+        domain_randomization=_push_and_latency_randomization(),
+        _target_=target,
+    )
+    sim._initialize_with_markers(None)
+    for actions in (
+        [[0.1, -0.1], [0.2, 0.0]],
+        [[0.3, 0.1], [0.1, 0.2]],
+        [[0.2, 0.4], [0.0, 0.3]],
+    ):
+        sim.step(torch.tensor(actions))
+    env = _write_back_env(sim)
+    names = (
+        "_common_actions",
+        "_previous_actions",
+        "_prev_prev_actions",
+        "_steps_since_reset",
+        "_simulation_time",
+        "_push_next_time",
+    )
+    before = {name: getattr(sim, name).clone() for name in names}
+    # The three action-history slots differ, so a swapped or zeroed slot shows.
+    assert not torch.equal(before["_common_actions"], before["_previous_actions"])
+    assert not torch.equal(before["_previous_actions"], before["_prev_prev_actions"])
+    assert before["_prev_prev_actions"].abs().sum() > 0
+    env_tensors = {
+        "progress_buf": env.progress_buf,
+        "reset_buf": env.reset_buf,
+        "respawn_root_offset": env._spawn.respawn_root_offset,
+        "raw_action": env._action_stage.raw,
+        "processed_action": env._action_stage.processed,
+        "prev_contact_force_magnitudes": env._contact_memory.prev_contact_force_magnitudes,
+    }
+    env_before = {name: tensor.clone() for name, tensor in env_tensors.items()}
+    obs_before = {k: v.clone() for k, v in env._observations.buffer.items()}
+    task = env.control_manager.components["task"]
+    command_before = task.command.clone()
+    deadline_before = task.deadline.clone()
+
+    snapshot = BaseEnv.save_state(env)
+
+    # Evaluation: reset and step every env, and overwrite everything the env
+    # caches between steps.
+    sim.reset_envs(_all_envs_reset_state(2), env_ids=torch.arange(2))
+    sim.step(torch.tensor([[-0.9, 0.9], [0.8, -0.8]]))
+    sim.step(torch.tensor([[0.6, 0.6], [-0.6, -0.6]]))
+    for tensor in env_tensors.values():
+        tensor.zero_()
+    for tensor in env._observations.buffer.values():
+        tensor.fill_(-1.0)
+    env._observations.buffer["eval_only"] = torch.ones(2, 1)
+    task.command.fill_(-3.0)
+    task.deadline.zero_()
+    env._state_history.reset(
+        torch.arange(2),
+        env._state_history.capture().map(
+            lambda value: torch.full_like(value[:, 0], -9)
+        ),
+    )
+
+    BaseEnv.restore_state(env, snapshot)
+
+    for name, value in before.items():
+        assert torch.equal(getattr(sim, name), value), name
+    for name, value in env_before.items():
+        assert torch.equal(env_tensors[name], value), name
+    assert env._observations.buffer.keys() == obs_before.keys()
+    for name, value in obs_before.items():
+        assert torch.equal(env._observations.buffer[name], value), name
+    assert torch.equal(task.command, command_before)
+    assert torch.equal(task.deadline, deadline_before)
+    assert env._current_context is None
+    restored_history = dict(env._state_history.capture().tensors())
+    for name, value in snapshot["history"].tensors():
+        torch.testing.assert_close(restored_history[name], value, rtol=0, atol=0)
+
+
+def test_next_clamped_action_after_write_back_matches_uninterrupted_run():
+    # The acceleration clamp limits each target against the last two applied
+    # targets. If the write-back left the history zeroed, the first targets
+    # after evaluation would differ from a run that was never interrupted.
+    sim = _sim(scene_objects=0, pd_target_max_accel=0.25)
+    sim._initialize_with_markers(None)
+    for actions in ([[0.1, -0.1], [0.2, 0.0]], [[0.3, 0.1], [0.1, 0.2]]):
+        sim.step(torch.tensor(actions))
+    env = _write_back_env(sim)
+    snapshot = BaseEnv.save_state(env)
+    next_actions = (
+        torch.tensor([[0.9, 0.9], [-0.9, 0.9]]),
+        torch.tensor([[0.0, 0.5], [0.5, 0.0]]),
+    )
+
+    uninterrupted = []
+    for actions in next_actions:
+        sim.step(actions.clone())  # step keeps and clamps the caller's tensor
+        uninterrupted.append(sim._common_actions.clone())
+
+    sim.reset_envs(_all_envs_reset_state(2), env_ids=torch.arange(2))
+    sim.step(torch.tensor([[-0.9, 0.9], [0.8, -0.8]]))
+    BaseEnv.restore_state(env, snapshot)
+
+    for expected, actions in zip(uninterrupted, next_actions):
+        sim.step(actions.clone())
+        assert torch.equal(sim._common_actions, expected)
 
 
 def test_simulator_joint_limit_mismatch_raises():
@@ -753,9 +1090,8 @@ def test_simulator_base_abstract_methods_raise_when_called_directly():
         lambda: Simulator._get_simulator_dof_forces(sim),
         lambda: Simulator._get_simulator_dof_state(sim),
         lambda: Simulator._get_simulator_dof_limits_for_verification(sim),
-        lambda: Simulator._get_simulator_bodies_contact_buf(sim),
+        lambda: Simulator._get_simulator_contact_forces(sim),
         lambda: Simulator._get_simulator_object_root_state(sim),
-        lambda: Simulator._get_simulator_object_contact_buf(sim),
         lambda: Simulator._apply_simulator_pd_targets(sim, torch.zeros(1, 2)),
         lambda: Simulator._apply_simulator_torques(sim, torch.zeros(1, 2)),
         lambda: Simulator._write_viewport_to_file(sim, "frame.png"),

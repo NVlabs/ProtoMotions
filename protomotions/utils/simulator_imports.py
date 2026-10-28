@@ -62,7 +62,7 @@ def import_simulator_before_torch(simulator_name):
     Typically called right after parsing arguments.
 
     Args:
-        simulator_name: Name of the simulator ('isaacgym', 'isaaclab', 'newton', 'genesis', etc.)
+        simulator_name: Name of the simulator ('isaacgym', 'isaaclab', 'newton', 'mujoco', etc.)
 
     Returns:
         AppLauncher class if simulator is 'isaaclab', None otherwise

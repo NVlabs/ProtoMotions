@@ -60,6 +60,9 @@ class _FakeDiscretePriorWithPEFT(nn.Module):
         self.init_calls += 1
         self.init_warmup_obs = warmup_obs
 
+    def reset_reference(self):
+        pass
+
     def forward(self, input_dict):
         condition_key = self.kwargs.get("condition_key", "task_cond")
         return self._context(input_dict) + input_dict[condition_key]
@@ -101,6 +104,17 @@ class _FakePEFTInput(nn.Module):
             if key == "task_cond" or key in tensordict:
                 continue
             tensordict[key] = output
+        return tensordict
+
+
+class _ContextRewritingPEFTInput(_FakePEFTInput):
+    """Writes ``task_cond`` and also overwrites the prior context without declaring it."""
+
+    def forward(self, tensordict):
+        tensordict = super().forward(tensordict)
+        tensordict["max_coords_obs"] = torch.full_like(
+            tensordict["max_coords_obs"], 99.0
+        )
         return tensordict
 
 
@@ -361,15 +375,16 @@ def test_prior_with_peft_reference_is_frozen_complete_snapshot():
     )
     assert not torch.allclose(peft.film_input_norm.running_obs_norm.mean, before_mean)
 
-    assert peft.capture_reference() is True
-    assert peft.film_input_norm._freeze_running is True
-    assert peft.capture_reference() is False
+    peft.capture_reference()
+    assert peft.film_input_norm._freeze_running is False
+    assert peft.reference_film_input_norm._freeze_running is True
     assert peft.reference_ready is True
     assert peft.reference_prior is not peft.base_prior
     assert all(not p.requires_grad for p in peft.reference_prior.parameters())
 
     input_dict = {
         **warmup,
+        "reference_task_cond": warmup["task_cond"],
         "tokens": torch.tensor([[0, 1], [2, 3]]),
     }
     before = peft.forward_prior(input_dict)
@@ -380,6 +395,9 @@ def test_prior_with_peft_reference_is_frozen_complete_snapshot():
     after = peft.forward_prior(input_dict)
 
     assert torch.allclose(after, before)
+    # Capturing again re-pins the reference to the policy as it is now.
+    peft.capture_reference()
+    assert not torch.allclose(peft.forward_prior(input_dict), before)
 
 
 def test_prior_peft_actor_initializes_and_freezes_pretrained_components(monkeypatch):
@@ -645,6 +663,69 @@ def test_prior_peft_actor_requires_actor_peft_model_task_cond(monkeypatch):
         )
 
 
+def test_prior_peft_actor_refuses_actor_peft_model_that_writes_prior_context(
+    monkeypatch,
+):
+    _FakeDiscretePriorWithPEFT.instances.clear()
+    monkeypatch.setattr(actor_module, "DiscretePriorWithPEFT", _FakeDiscretePriorWithPEFT)
+
+    with pytest.raises(AssertionError, match=r"context keys \['max_coords_obs'\]"):
+        DiscretePriorPEFTActor(
+            config=SimpleNamespace(
+                peft=_peft_config(
+                    model=_actor_peft_model_config(
+                        in_keys=["max_coords_obs", "task_obs"],
+                        out_keys=["task_cond", "max_coords_obs"],
+                    ),
+                ),
+                in_keys=["max_coords_obs", "task_obs"],
+                out_keys=["action", "mean_action", "neglogp", "prior_tokens"],
+            ),
+            pretrained_prior_model=_PriorModel(),
+            mimic_target_poses_dim=2,
+        )
+
+
+def test_prior_peft_actor_reads_prior_context_from_input_not_peft_model_output(
+    monkeypatch,
+):
+    """A network that quietly overwrites the context changes neither policy's input.
+
+    The student and the reference share the prior input's context entries, so
+    both see the raw observation.
+    """
+    _FakeDiscretePriorWithPEFT.instances.clear()
+    monkeypatch.setattr(actor_module, "DiscretePriorWithPEFT", _FakeDiscretePriorWithPEFT)
+    actor = DiscretePriorPEFTActor(
+        config=SimpleNamespace(
+            peft=_peft_config(
+                model=_actor_peft_model_config(
+                    _target_=(
+                        "protomotions.tests.test_prior_peft_model."
+                        "_ContextRewritingPEFTInput"
+                    ),
+                    in_keys=["max_coords_obs", "task_obs"],
+                )
+            ),
+            in_keys=["max_coords_obs", "task_obs"],
+            out_keys=["action", "mean_action", "neglogp", "prior_tokens"],
+        ),
+        pretrained_prior_model=_PriorModel(),
+        mimic_target_poses_dim=2,
+    )
+    td = _td()
+    raw_obs = td["max_coords_obs"].clone()
+
+    prior_input = actor.build_prior_input(td)
+    assert torch.equal(prior_input["max_coords_obs"], raw_obs)
+    assert torch.equal(
+        prior_input["task_cond"], torch.cat([raw_obs, td["task_obs"]], dim=-1)
+    )
+
+    with pytest.raises(ValueError, match="missing the frozen prior's context keys"):
+        actor.build_prior_input(td.exclude("max_coords_obs"))
+
+
 def test_prior_peft_actor_adds_frozen_prior_inputs_to_runtime_inputs(monkeypatch):
     _FakeDiscretePriorWithPEFT.instances.clear()
     monkeypatch.setattr(actor_module, "DiscretePriorWithPEFT", _FakeDiscretePriorWithPEFT)
@@ -721,7 +802,11 @@ def test_prior_peft_actor_extracts_and_loads_adapter_only_state(monkeypatch):
 
     result = actor.load_adapter_state_dict(updated, strict=True)
 
-    assert result == {"missing_keys": [], "unexpected_keys": []}
+    assert result == {
+        "missing_keys": [],
+        "unexpected_keys": [],
+        "reference_loaded": False,
+    }
     for value in actor.adapter_state_dict().values():
         assert torch.equal(value, torch.full_like(value, 3.0))
 

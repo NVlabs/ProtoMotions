@@ -11,6 +11,8 @@ from tensordict import TensorDict
 
 from protomotions.agents.base_agent import agent as base_agent_module
 from protomotions.agents.base_agent.agent import BaseAgent
+from protomotions.agents.evaluators.manager import EvaluationResult
+from protomotions.agents.base_agent.model import ProtoMotionsTensorDictModule
 from protomotions.components.motion_lib import MotionFileSwitchMode
 from protomotions.agents.utils.metering import TensorAverageMeterDict
 
@@ -50,13 +52,13 @@ class _FitExperienceBuffer:
         }
 
 
-class _FitModel(torch.nn.Module):
+class _FitModel(ProtoMotionsTensorDictModule):
     def __init__(self):
         super().__init__()
         self.reset_calls = []
         self.call_modes = []
 
-    def forward(self, obs_td: TensorDict) -> TensorDict:
+    def forward(self, obs_td: TensorDict, log_internals: bool = False) -> TensorDict:
         self.call_modes.append(self.training)
         return TensorDict(
             {
@@ -76,7 +78,7 @@ class _FitModel(torch.nn.Module):
     def pre_process_experience_buffer(self, experience_buffer):
         pass
 
-    def reset_rollout_context(self, env_ids=None):
+    def reset_rollout_context(self, env_ids=None, num_envs: int = None, device=None):
         self.reset_calls.append(
             None if env_ids is None else env_ids.detach().clone()
         )
@@ -126,6 +128,7 @@ class _FitEnv:
 
 
 class _Fabric:
+    world_size = 1
     def __init__(self):
         self.calls = []
 
@@ -144,7 +147,10 @@ class _Evaluator:
 
     def evaluate(self):
         self.calls.append(("evaluate",))
-        return {"eval/success": torch.tensor(0.75)}, torch.tensor(3.0), 4
+        return EvaluationResult({"eval/success": torch.tensor(0.75)}, torch.tensor(3.0), 4)
+
+    def update_training_state(self, result):
+        assert result.num_items == 4
 
 
 class _MaxEpisodeLengthManager:
@@ -228,6 +234,57 @@ def test_eval_model_for_buffer_registration_restores_nested_module_modes():
         name: module.training for name, module in agent.model.named_modules()
     }
     assert after_modes == before_modes
+
+
+def test_setup_experience_buffer_registers_every_rollout_key(monkeypatch):
+    """fit()'s buffer setup as one method (the recipe build stage runs it too):
+    the env keys from the observations, the model's keys from one eval-mode
+    forward, the rewards (both when normalizing), the dones and the algorithm
+    hooks, in that order; the forward's output comes back and the model's mode
+    is left as it was."""
+    calls = []
+    buffers = []
+
+    def make_buffer(*args, **kwargs):
+        buffer = _FitExperienceBuffer(*args, **kwargs)
+        buffers.append(buffer)
+        return buffer
+
+    monkeypatch.setattr(base_agent_module, "ExperienceBuffer", make_buffer)
+    agent = _fit_agent(calls, buffer=None)
+    agent.config.normalize_rewards = True
+    agent.register_algorithm_experience_buffer_keys = lambda: calls.append(
+        ("algorithm_keys", [key for key, _, _ in buffers[0].registered])
+    )
+    agent.register_algorithm_experience_buffer_keys_from_obs = (
+        lambda obs_td: calls.append(("algorithm_keys_from_obs", list(obs_td.keys())))
+    )
+    agent.model.train()
+    obs, _ = agent.env.reset()
+
+    output_td = BaseAgent.setup_experience_buffer(agent, obs)
+
+    assert agent.experience_buffer is buffers[0]
+    assert buffers[0].registered == [
+        ("obs", torch.Size([1]), torch.float32),
+        ("action", torch.Size([2]), torch.float32),
+        ("value", (), torch.float32),
+        ("rewards", (), torch.float),
+        ("unnormalized_rewards", (), torch.float),
+        ("dones", (), torch.long),
+    ]
+    assert agent.model_output_keys == ["action", "value"]
+    assert calls == [
+        (
+            "algorithm_keys",
+            ["obs", "action", "value", "rewards", "unnormalized_rewards", "dones"],
+        ),
+        ("algorithm_keys_from_obs", ["obs"]),
+    ]
+    assert torch.equal(output_td["action"], torch.tensor([[1.0, 11.0], [1.0, 11.0]]))
+    assert torch.equal(output_td["value"], torch.tensor([1.5, 1.5]))
+    assert agent.model.call_modes == [False]
+    assert agent.model.training is True
 
 
 def test_base_agent_fit_registers_buffers_collects_rollout_evaluates_and_saves(

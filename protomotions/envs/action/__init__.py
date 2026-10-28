@@ -7,14 +7,18 @@ from protomotions.envs.action.action_functions import (
     ActionTransform,
     bm_pd_action,
     build_pd_action_offset_scale,
-    make_bm_pd_action_config,
-    make_passthrough_pd_action_config,
-    make_pd_action_config,
     normalized_pd_fixed_gains_action,
     passthrough_pd_action,
 )
+from protomotions.envs.action.config import (
+    ActionConfig,
+    make_bm_pd_action_config,
+    make_passthrough_pd_action_config,
+    make_pd_action_config,
+)
 
 __all__ = [
+    "ActionConfig",
     "ActionTransform",
     "bm_pd_action",
     "build_pd_action_offset_scale",

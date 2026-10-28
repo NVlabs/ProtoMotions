@@ -3,44 +3,38 @@
 
 """Observation compute kernel for path following tasks.
 
-Pure tensor function (kernel) for computing path following observations.
-Use MdpComponent in experiment configs to bind kernel to context paths:
+A pure tensor function whose parameter defaults are its context bindings: the
+heading comes from the anchor body, the waypoints from the path control's
+namespace. A recipe binds it in one line::
 
-    from protomotions.envs.context_views import EnvContext
     from protomotions.envs.mdp_component import MdpComponent
     from protomotions.envs.obs.path import compute_path_obs
-    
+
     observation_components = {
-        "path": MdpComponent(
-            compute_func=compute_path_obs,
-            dynamic_vars={
-                "root_rot": EnvContext.current.root_rot,
-                "head_pos": EnvContext.path.head_pos,
-                "traj_samples": EnvContext.path.traj_samples,
-                "height_conditioned": EnvContext.path.height_conditioned,
-            },
-        ),
+        "path": MdpComponent.from_kernel(compute_path_obs),
     }
 """
 
 import torch
 from torch import Tensor
 
+from protomotions.envs.context_views import EnvContext
 from protomotions.utils import rotations
 
 
 def compute_path_obs(
-    root_rot: Tensor,
-    head_pos: Tensor,
-    traj_samples: Tensor,
-    height_conditioned: bool,
+    root_rot: Tensor = EnvContext.current.anchor_rot,
+    head_pos: Tensor = EnvContext.path.head_pos,
+    traj_samples: Tensor = EnvContext.path.traj_samples,
+    height_conditioned: bool = EnvContext.path.height_conditioned,
 ) -> Tensor:
     """Compute path observations in the robot's local frame.
 
     Transforms the future waypoints from world frame to the robot's local frame.
 
     Args:
-        root_rot: Root orientation quaternions [num_envs, 4] (w-last format).
+        root_rot: Heading-giving orientation quaternions [num_envs, 4] (w-last
+            format); the anchor body's rotation by default.
         head_pos: Head positions [num_envs, 3] in ground-relative frame.
         traj_samples: Future waypoint positions [num_envs, num_samples, 3].
         height_conditioned: Whether to include height in observations.

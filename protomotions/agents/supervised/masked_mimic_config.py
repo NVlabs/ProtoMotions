@@ -3,12 +3,17 @@
 
 """MaskedMimic configs for the generic supervised agent."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from enum import Enum
+import math
+from typing import List, Optional
 from protomotions.agents.base_agent.config import BaseModelConfig, OptimizerConfig
 from protomotions.agents.common.config import ModuleContainerConfig
 from protomotions.agents.common.supervision import SupervisionLossConfig
 from protomotions.agents.supervised.config import SupervisedAgentConfig
+from protomotions.agents.evaluators.config import MaskedMimicActionSource
 
 
 @dataclass
@@ -31,6 +36,17 @@ class KLDScheduleConfig:
         default=6000,
         metadata={"help": "Epoch to end KL coefficient annealing.", "min": 0},
     )
+    cyclical: bool = field(
+        default=False,
+        metadata={
+            "help": "Repeat the inclusive start/end ramp after end_epoch, "
+            "restarting at start_epoch on end_epoch + 1."
+        },
+    )
+
+    def __post_init__(self):
+        if self.cyclical and self.end_epoch <= self.start_epoch:
+            raise ValueError("Cyclical KLD requires end_epoch > start_epoch")
 
 
 class VAENoiseType(Enum):
@@ -54,11 +70,18 @@ class VAENoiseType(Enum):
             )
 
 
+class LatentGeometry(Enum):
+    """Geometry of samples passed to the VAE decoder."""
+
+    GAUSSIAN = "gaussian"
+    SPHERE = "sphere"
+
+
 @dataclass
 class MaskedMimicVAEConfig:
     """VAE settings for the MaskedMimic learned-prior student."""
 
-    kld_schedule: KLDScheduleConfig = field(
+    kld_schedule: Optional[KLDScheduleConfig] = field(
         default_factory=KLDScheduleConfig,
         metadata={"help": "KL divergence annealing schedule."},
     )
@@ -70,6 +93,72 @@ class MaskedMimicVAEConfig:
         default=VAENoiseType.NORMAL,
         metadata={"help": "Type of latent noise: normal, uniform, or zeros."},
     )
+    latent_geometry: LatentGeometry = field(
+        default=LatentGeometry.GAUSSIAN,
+        metadata={"help": "Decoder latent geometry: gaussian or sphere."},
+    )
+    prior_mean_unit_norm_coeff: float = field(
+        default=0.0,
+        metadata={
+            "help": "Penalty on the learned prior mean's distance from unit norm."
+        },
+    )
+
+    def __post_init__(self):
+        if not isinstance(self.latent_geometry, LatentGeometry):
+            raise ValueError("latent_geometry must be a LatentGeometry enum member")
+        if self.vae_latent_dim < 1:
+            raise ValueError("vae_latent_dim must be positive")
+        if (
+            not math.isfinite(self.prior_mean_unit_norm_coeff)
+            or self.prior_mean_unit_norm_coeff < 0
+        ):
+            raise ValueError(
+                "prior_mean_unit_norm_coeff must be finite and nonnegative"
+            )
+        if self.prior_mean_unit_norm_coeff and self.latent_geometry != LatentGeometry.SPHERE:
+            raise ValueError("The unit-norm penalty requires sphere latent geometry")
+
+
+@dataclass
+class TemporalLossConfig:
+    """Stop-gradient MSE between a model output and an adjacent rollout value.
+
+    ``prediction_key`` (default ``key``) is compared against ``key`` from the
+    previous step, or from the next step when ``forward`` is set. Both keys
+    must be declared model outputs. Pairs that cross an episode reset are
+    excluded.
+    """
+
+    key: str
+    coefficient: float
+    prediction_key: Optional[str] = None
+    forward: bool = False
+
+    def __post_init__(self):
+        if self.prediction_key is None:
+            self.prediction_key = self.key
+        if (
+            not self.key
+            or not self.prediction_key
+            or not math.isfinite(self.coefficient)
+            or self.coefficient < 0
+        ):
+            raise ValueError(
+                "Temporal loss requires keys and a finite nonnegative coefficient"
+            )
+
+    @property
+    def target_key(self) -> str:
+        return f"{self.direction}_target_{self.key}"
+
+    @property
+    def valid_key(self) -> str:
+        return f"{self.direction}_target_valid"
+
+    @property
+    def direction(self) -> str:
+        return "next" if self.forward else "previous"
 
 
 @dataclass
@@ -94,10 +183,15 @@ class MaskedMimicModelConfig(BaseModelConfig):
         default_factory=MaskedMimicVAEConfig,
         metadata={"help": "MaskedMimic VAE settings."},
     )
+    temporal_losses: List[TemporalLossConfig] = field(
+        default_factory=list,
+        metadata={"help": "Stop-gradient MSE terms against adjacent rollout outputs."},
+    )
     optimizer: OptimizerConfig = field(
         default_factory=lambda: OptimizerConfig(lr=2e-5),
         metadata={"help": "Optimizer settings for supervised training."},
     )
+
 
 @dataclass
 class MaskedMimicSupervisedAgentConfig(SupervisedAgentConfig):
@@ -120,3 +214,12 @@ class MaskedMimicSupervisedAgentConfig(SupervisedAgentConfig):
         ),
         metadata={"help": "Supervision loss over MaskedMimic outputs."},
     )
+
+    def apply_inference_defaults(self, env) -> None:
+        """Student alone (the supervised cleanup), driven by the learned prior.
+
+        Training evaluates the posterior (it has the full future); inference has
+        only the masked goal, so the prior is the action path.
+        """
+        super().apply_inference_defaults(env)
+        self.evaluator.action_source = MaskedMimicActionSource.PRIOR

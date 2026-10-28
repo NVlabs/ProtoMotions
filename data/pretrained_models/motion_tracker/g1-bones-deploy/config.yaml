@@ -1,0 +1,16 @@
+{
+  "robot_name": "g1",
+  "simulator": "isaaclab",
+  "num_envs": 8192,
+  "batch_size": 16384,
+  "motion_file": "data/motion_for_trackers/g1_bones_seed_mini.pt",
+  "experiment_path": "data/pretrained_models/motion_tracker/g1-bones-deploy/experiment_config.py",
+  "experiment_name": "g1_bones_tracker",
+  "scenes_file": null,
+  "checkpoint": null,
+  "headless": true,
+  "seed": 0,
+  "torch_deterministic": false,
+  "overrides": [],
+  "create_config_only": true
+}

@@ -12,11 +12,14 @@ import torch
 from tensordict import TensorDict
 from torch import nn
 
+from protomotions.agents.ppo.config import StdMode
+
 from protomotions.agents.common.autoregressive import (
     prior_constrained_sampling_log_probs,
 )
 from protomotions.agents.common.latent import LATENT_LOGITS_KEY, TARGET_LATENT_KEY
 from protomotions.agents.base_agent import agent as base_agent_module
+from protomotions.agents.base_agent.model import ProtoMotionsTensorDictModule
 from protomotions.agents.common.config import (
     MLPWithConcatConfig,
     ModuleContainerConfig,
@@ -25,6 +28,7 @@ from protomotions.agents.common.config import (
 from protomotions.agents.fine_tuning import agent as fine_tuning_agent_module
 from protomotions.agents.fine_tuning import pretrained_modules as pretrained_modules_module
 from protomotions.agents.peft import prior_setup as prior_setup_module
+from protomotions.agents.peft.actor import DiscretePriorPEFTActor
 from protomotions.agents.peft.utils import model_state as model_state_module
 from protomotions.agents.peft.utils.adapter_state import is_adapter_state_key
 from protomotions.agents.peft.prior_amp_agent import DiscretePriorPEFTRLFTAMPAgent
@@ -39,8 +43,10 @@ from protomotions.agents.peft.prior_config import (
 )
 from protomotions.components.motion_lib import MotionFileSwitchMode
 from protomotions.agents.ppo import agent as ppo_agent_module
-from protomotions.agents.ppo.utils import discount_values
+from protomotions.agents.ppo.utils.advantages import discount_values
 from protomotions.agents.utils.metering import TensorAverageMeterDict
+from protomotions.utils.config_utils import apply_overrides, parse_cli_overrides
+from protomotions.utils.experiment_configs import ExperimentConfigs
 
 
 class _ExperienceBufferRecorder:
@@ -73,6 +79,9 @@ class _Actor(nn.Module):
     def __init__(self):
         super().__init__()
         self.weight = nn.Parameter(torch.ones(()))
+
+    def reset_reference(self):
+        pass
 
     def get_action_and_logp(self, obs_td):
         batch = obs_td.batch_size[0]
@@ -202,13 +211,14 @@ def _config(token_perturb_rate=0.0, token_perturb_mode="replace"):
         model=SimpleNamespace(
             actor=SimpleNamespace(
                 in_keys=[*_DEFAULT_CONDITIONING_KEYS],
-                learnable_std=False,
+                std_mode=StdMode.FIXED,
                 peft=SimpleNamespace(
                     model=SimpleNamespace(
                         in_keys=[*_DEFAULT_CONDITIONING_KEYS],
                         out_keys=["task_cond"],
                     ),
                     clear_peft=False,
+                    reference_checkpoint=None,
                 ),
             ),
             token_perturb_rate=token_perturb_rate,
@@ -332,72 +342,67 @@ def test_prior_peft_properties_resolve_wrapped_actor():
     assert agent.actor_module is agent.model._actor
 
 
-def test_prior_peft_captures_rl_reference_once_and_optionally_clears_student():
-    class _PEFT:
+@pytest.mark.parametrize(
+    ("sampling_mode", "kl_coeff", "resumed", "expected"),
+    [
+        # A new run drops the loaded reference, pins its start policy, then clears.
+        ("prior_constraint", 0.0, False, ["reset", "capture", "clear"]),
+        ("nucleus", 0.1, False, ["reset", "capture", "clear"]),
+        # A resume keeps the reference saved in its checkpoint, adapters included.
+        ("prior_constraint", 0.0, True, []),
+        ("nucleus", 0.1, True, []),
+        # Nothing reads a reference, so the run holds none, new or resumed.
+        ("nucleus", 0.0, False, ["reset"]),
+        ("nucleus", 0.0, True, ["reset"]),
+    ],
+)
+def test_prior_peft_fit_start_pins_new_runs_and_keeps_resumed_reference(
+    sampling_mode, kl_coeff, resumed, expected
+):
+    calls = []
+
+    class _ReferenceActor:
+        # As if the loaded checkpoint stored a reference.
+        reference_ready = True
+
         def __init__(self):
-            self.reference_ready = False
-            self.captured = 0
-            self.cleared = 0
+            self.kl_coeff = kl_coeff
+            self.prior_with_peft = SimpleNamespace(
+                sampling_mode=sampling_mode,
+                clear_peft=lambda: calls.append("clear"),
+            )
+
+        def reset_reference(self):
+            calls.append("reset")
 
         def capture_reference(self):
-            if self.reference_ready:
-                return False
-            self.captured += 1
-            self.reference_ready = True
-            return True
-
-        def clear_peft(self):
-            self.cleared += 1
+            calls.append("capture")
 
     agent = _agent(has_critic=True)
-    peft = _PEFT()
-    agent.model._actor.prior_with_peft = peft
+    agent.model._actor = _ReferenceActor()
     agent.config.model.actor.peft.clear_peft = True
+    agent._peft_resumed = resumed
 
     DiscretePriorPEFTRLFTAgent._prepare_rlft_prior_reference(agent)
-    DiscretePriorPEFTRLFTAgent._prepare_rlft_prior_reference(agent)
 
-    assert peft.captured == 1
-    assert peft.cleared == 1
+    assert calls == expected
     assert not hasattr(DiscretePriorPEFTSFTAgent, "_prepare_rlft_prior_reference")
 
 
 def test_prior_peft_requires_reference_when_loading_training_state():
-    class _PEFT:
-        def __init__(self, ready):
-            self.reference_ready = ready
-            self.required = 0
-            self.captured = 0
-
-        def require_reference(self):
-            self.required += 1
-            if not self.reference_ready:
-                raise RuntimeError("missing reference")
-
-        def capture_reference(self):
-            self.captured += 1
-            self.reference_ready = True
-            return True
-
-    agent = _agent(has_critic=True)
-    peft = _PEFT(ready=True)
-    agent.model._actor.prior_with_peft = peft
-
-    DiscretePriorPEFTRLFTAgent._prepare_rlft_prior_reference(
-        agent,
-        require_existing=True,
+    agent = object.__new__(DiscretePriorPEFTRLFTAgent)
+    agent.model = SimpleNamespace(_actor=SimpleNamespace(
+        kl_coeff=0.1, prior_with_peft=SimpleNamespace(sampling_mode="nucleus")
+    ))
+    agent._validate_checkpoint(
+        {"model": {"_actor.prior_with_peft.reference_prior.weight": torch.ones(1)}},
+        load_training_state=True, for_inference=False,
     )
-
-    assert peft.required == 1
-    assert peft.captured == 0
-
-    peft = _PEFT(ready=False)
-    agent.model._actor.prior_with_peft = peft
-    with pytest.raises(RuntimeError, match="missing reference"):
-        DiscretePriorPEFTRLFTAgent._prepare_rlft_prior_reference(
-            agent,
-            require_existing=True,
+    with pytest.raises(RuntimeError, match="no saved reference"):
+        agent._validate_checkpoint(
+            {"model": {}}, load_training_state=True, for_inference=False,
         )
+
 
 def test_prior_peft_clamps_dora_m_from_config():
     class _Layer(nn.Module):
@@ -443,24 +448,24 @@ def test_prior_peft_allows_missing_film_input_norm_checkpoint_state():
 
 
 def test_prior_peft_allows_missing_reference_checkpoint_state_for_warm_start():
-    class _PriorWithPEFT(nn.Module):
-        def optional_full_checkpoint_state_prefixes(self):
-            return ("reference_prior.", "reference_film_input_norm.")
-
     class _Actor(nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.prior_with_peft = _PriorWithPEFT()
+        # The real actor's hook, which declares every reference network.
+        optional_full_checkpoint_state_prefixes = (
+            DiscretePriorPEFTActor.optional_full_checkpoint_state_prefixes
+        )
 
     class _Model(nn.Module):
         def __init__(self):
             super().__init__()
             self._actor = _Actor()
 
-    key = "_actor.prior_with_peft.reference_prior._pos_emb"
-    assert key.startswith(
-        model_state_module.optional_full_checkpoint_state_prefixes(_Model())
-    )
+    optional = model_state_module.optional_full_checkpoint_state_prefixes(_Model())
+    for key in (
+        "_actor.prior_with_peft.reference_prior._pos_emb",
+        "_actor.prior_with_peft.reference_film_input_norm.running_obs_norm.mean",
+        "_actor.reference_peft_model.models.0.norm.running_obs_norm.mean",
+    ):
+        assert key.startswith(optional), key
 
 
 def test_prior_peft_treats_film_input_norm_as_adapter_state():
@@ -533,9 +538,27 @@ def test_prior_peft_config_requires_explicit_pretrained_modules():
     assert config.entropy_coef == 0.0
     assert config.model.actor.peft.prior_top_p == 0.99
     assert config.model.actor.peft.clear_peft is False
+    assert config.model.actor.peft.reference_checkpoint is None
     assert config.save_inference_checkpoint is True
     assert not hasattr(sft_config.model, "critic")
     assert sft_config.loss.target_key == TARGET_LATENT_KEY
+
+
+def test_prior_peft_reference_checkpoint_is_set_from_the_command_line():
+    config = DiscretePriorPEFTRLFTAgentConfig(batch_size=8, training_max_steps=16)
+    peft = config.model.actor.peft
+    # A config pickled before the option existed has no value of its own, so
+    # it reads the class default.
+    del peft.__dict__["reference_checkpoint"]
+    assert peft.reference_checkpoint is None
+
+    path = "/runs/sft/inference_last.ckpt"
+    overrides = parse_cli_overrides([f"agent.model.actor.peft.reference_checkpoint={path}"])
+    apply_overrides(
+        ExperimentConfigs(None, None, None, None, None, None, config), overrides
+    )
+
+    assert config.model.actor.peft.reference_checkpoint == path
 
 
 def test_prior_peft_load_pretrained_modules_loads_prior_only(monkeypatch):
@@ -545,14 +568,12 @@ def test_prior_peft_load_pretrained_modules_loads_prior_only(monkeypatch):
         config,
         device,
         checkpoint_path_overrides=None,
-        prefer_inference_config=False,
     ):
         calls.append(
             (
                 config.checkpoint_path,
                 device,
                 checkpoint_path_overrides,
-                prefer_inference_config,
             )
         )
         return f"loaded:{config.checkpoint_path}"
@@ -577,7 +598,6 @@ def test_prior_peft_load_pretrained_modules_loads_prior_only(monkeypatch):
         "prior.ckpt",
         torch.device("cpu"),
         None,
-        True,
     )]
 
 
@@ -636,6 +656,7 @@ def test_prior_peft_init_delegates_base_init_for_rlft(monkeypatch):
     assert agent.e_clip == 0.3
     assert agent.tau == 0.7
     assert captured["args"] == (agent, fabric, env, config, root_dir)
+
 
 def test_prior_peft_init_rejects_missing_rlft_critic_or_sft_critic(monkeypatch):
     monkeypatch.setattr(
@@ -706,9 +727,13 @@ def test_prior_peft_amp_warm_starts_from_peft_checkpoint_without_amp_state(
         def __init__(self):
             super().__init__()
             self._actor = nn.Linear(1, 1, bias=False)
+            self._actor.reset_reference = lambda: None
             self._critic = nn.Linear(1, 1, bias=False)
             self._discriminator = nn.Linear(1, 1, bias=False)
             self._disc_critic = nn.Linear(1, 1, bias=False)
+
+        def optional_checkpoint_modules(self):
+            return ("_discriminator", "_disc_critic")
 
     model = _LoadablePEFTAMPModel()
     model._actor.weight.data.fill_(1.0)
@@ -967,6 +992,7 @@ def test_prior_peft_setup_loads_models_materializes_and_initializes_optimizers(
 
     agent = object.__new__(DiscretePriorPEFTRLFTAgent)
     agent.fabric = _Fabric()
+    agent.config = _config()
     agent.device = agent.fabric.device
     agent.env = _Env(_obs())
     agent.num_envs = 2
@@ -1151,6 +1177,8 @@ def test_prior_peft_fit_runs_one_epoch_rollout_eval_and_checkpoint_branches(
     )
 
     class _Fabric:
+        world_size = 1
+
         def call(self, name, *args):
             calls.append(("fabric", name, len(args)))
 
@@ -1186,20 +1214,18 @@ def test_prior_peft_fit_runs_one_epoch_rollout_eval_and_checkpoint_branches(
 
         def evaluate(self):
             calls.append(("evaluate",))
-            return {"eval/success": 2.0}, 3.0, 4
+            return SimpleNamespace(logs={"eval/success": 2.0}, score=3.0, num_items=4)
+
+        def update_training_state(self, result):
+            assert result.num_items == 4
 
     class _LengthManager:
         def current_max_episode_length(self, epoch):
             calls.append(("length_manager", epoch))
             return 10 + epoch
 
-    class _FitModel:
-        training = True
-
-        def modules(self):
-            yield self
-
-        def __call__(self, obs_td):
+    class _FitModel(ProtoMotionsTensorDictModule):
+        def forward(self, obs_td, log_internals=False):
             calls.append(("register_outputs",))
             return TensorDict(
                 {"action": torch.zeros(2, 2)},
@@ -1335,13 +1361,8 @@ def test_prior_peft_fit_skip_update_branch_can_stop_training(monkeypatch):
         def on_epoch_end(self, epoch):
             calls.append(("epoch_end", epoch))
 
-    class _FitModel:
-        training = True
-
-        def modules(self):
-            yield self
-
-        def __call__(self, obs_td):
+    class _FitModel(ProtoMotionsTensorDictModule):
+        def forward(self, obs_td, log_internals=False):
             return TensorDict(
                 {"action": torch.zeros(2, 2)},
                 batch_size=2,
@@ -1942,6 +1963,7 @@ def test_prior_peft_load_adapter_checkpoint_loads_adapter_only_state(tmp_path):
                 if is_adapter_state_key(key)
             }
             self.loaded = (adapter_state, strict)
+            self.received = sorted(state_dict)
             return {"loaded": sorted(adapter_state)}
 
     actor = _AdapterActor()
@@ -1981,6 +2003,48 @@ def test_prior_peft_load_adapter_checkpoint_loads_adapter_only_state(tmp_path):
         torch.tensor([1.0]),
     )
     assert len(loaded_state) == 1
+    assert len(actor.received) == 3
+
+
+@pytest.mark.parametrize(
+    "agent_cls", [DiscretePriorPEFTRLFTAgent, DiscretePriorPEFTSFTAgent]
+)
+def test_prior_peft_load_adapter_checkpoint_passes_the_reference_on(
+    tmp_path, agent_cls
+):
+    """The actor gets the reference; SFT, which never uses one, then drops it."""
+
+    class _AdapterActor:
+        resets = 0
+
+        def load_adapter_state_dict(self, state_dict, strict=True):
+            self.received = sorted(state_dict)
+            return {}
+
+        def reset_reference(self):
+            self.resets += 1
+
+    actor = _AdapterActor()
+    agent = object.__new__(agent_cls)
+    agent.model = SimpleNamespace(_actor=actor)
+    agent.device = torch.device("cpu")
+    student_key = "prior_with_peft.base_prior._transformer.layers.0.m"
+    reference_key = "prior_with_peft.reference_prior._transformer.layers.0.m"
+    checkpoint_path = tmp_path / "adapter.ckpt"
+    torch.save(
+        {
+            "model": {
+                student_key: torch.tensor([1.0]),
+                reference_key: torch.tensor([2.0]),
+            }
+        },
+        checkpoint_path,
+    )
+
+    agent_cls.load_adapter_checkpoint(agent, checkpoint_path)
+
+    assert actor.received == sorted([student_key, reference_key])
+    assert actor.resets == (1 if agent_cls is DiscretePriorPEFTSFTAgent else 0)
 
 
 def test_prior_peft_load_adapter_checkpoint_rejects_without_adapter_weights(tmp_path):
@@ -2011,9 +2075,16 @@ def test_prior_peft_load_model_state_dict_accepts_adapter_only_checkpoint():
         def __init__(self):
             self.loaded = None
 
+        def reset_reference(self):
+            pass
+
         def load_adapter_state_dict(self, state_dict, strict=True):
             self.loaded = (dict(state_dict), strict)
-            return {"missing_keys": [], "unexpected_keys": []}
+            return {
+                "missing_keys": [],
+                "unexpected_keys": [],
+                "reference_loaded": False,
+            }
 
     class _Model:
         def __init__(self):
@@ -2030,14 +2101,19 @@ def test_prior_peft_load_model_state_dict_accepts_adapter_only_checkpoint():
         "prior_with_peft.film_input_norm.running_obs_norm.mean": torch.tensor([3.0]),
     }
 
-    DiscretePriorPEFTRLFTAgent._load_model_state_dict(agent, state)
+    result = DiscretePriorPEFTRLFTAgent._load_model_state_dict(agent, state)
 
     loaded_state, loaded_strict = agent.model._actor.loaded
     assert loaded_strict is True
     assert loaded_state == state
+    assert result.adapter_only is True
+    assert result.reference_loaded is False
 
 
-def test_prior_peft_get_inference_state_dict_emits_adapter_only_model():
+@pytest.mark.parametrize(
+    "agent_cls", [DiscretePriorPEFTRLFTAgent, DiscretePriorPEFTSFTAgent]
+)
+def test_prior_peft_get_inference_state_dict_emits_adapter_only_model(agent_cls):
     class _InferenceActor:
         def adapter_state_dict(self):
             return {
@@ -2046,14 +2122,21 @@ def test_prior_peft_get_inference_state_dict_emits_adapter_only_model():
                 "prior_with_peft.base_prior._transformer.layers.0.m": torch.tensor([4.0]),
             }
 
-    agent = object.__new__(DiscretePriorPEFTRLFTAgent)
+        def reference_state_dict(self):
+            return {
+                "prior_with_peft.reference_prior._transformer.layers.0.m": torch.tensor(
+                    [5.0]
+                ),
+            }
+
+    agent = object.__new__(agent_cls)
     agent.model = SimpleNamespace(_actor=_InferenceActor())
     agent.current_epoch = 17
     agent.step_count = 42_000
     agent.fit_start_time = 1700000000.0
     agent.best_evaluated_score = 0.91
 
-    state = DiscretePriorPEFTRLFTAgent.get_inference_state_dict(
+    state = agent_cls.get_inference_state_dict(
         agent,
         {},
         model_state_dict={
@@ -2070,6 +2153,7 @@ def test_prior_peft_get_inference_state_dict_emits_adapter_only_model():
         "actor_peft_model.0.weight",
         "prior_with_peft.base_prior._transformer.layers.0.lora.A",
         "prior_with_peft.base_prior._transformer.layers.0.m",
+        "prior_with_peft.reference_prior._transformer.layers.0.m",
     }
     # No critic, no frozen base prior weights.
     assert not any(key.startswith("_critic") for key in state["model"])

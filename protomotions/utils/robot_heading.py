@@ -17,16 +17,12 @@ used.
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 import torch
 from torch import Tensor
 
 from protomotions.utils.rotations import calc_heading_quat, heading_to_quat, quat_rotate
-
-_LOG = logging.getLogger(__name__)
-_LOGGED_LEGACY_FORWARD_AXIS_FALLBACK = False
 
 
 def semantic_forward_axis_tensor(
@@ -42,22 +38,18 @@ def semantic_forward_axis_tensor(
     does not encode pitch/roll or how to rotate an asset into an upright
     standing pose.
 
-    ``None`` is accepted only for legacy resolved configs pickled before the
-    field existed. It falls back to local ``+X``, preserving old behavior while
-    fresh robot configs declare the axis explicitly.
+    Every robot config declares the axis (``RobotConfig.__post_init__`` refuses
+    ``None``, and a saved robot subtree without the field fails to load), so
+    ``None`` here is a caller's mistake and is refused with the same sentence.
     """
-    global _LOGGED_LEGACY_FORWARD_AXIS_FALLBACK
     if semantic_forward_axis_xy is None:
-        if not _LOGGED_LEGACY_FORWARD_AXIS_FALLBACK:
-            _LOG.warning(
-                "Robot config has no semantic_forward_axis_xy; falling back to "
-                "legacy local +X facing semantics. Regenerate the config to "
-                "declare this field explicitly. Run `python "
-                "scripts/identify_robot_facing_axis.py --robots <robot-name> "
-                "--view` to identify and visualize it."
-            )
-            _LOGGED_LEGACY_FORWARD_AXIS_FALLBACK = True
-        semantic_forward_axis_xy = (1.0, 0.0)
+        raise ValueError(
+            "RobotConfig.semantic_forward_axis_xy must be declared explicitly "
+            "as the robot-local xy axis that points in the anatomical "
+            "forward direction, e.g. (1.0, 0.0) or (0.0, -1.0). Run `python "
+            "scripts/identify_robot_facing_axis.py --robots <robot-name> "
+            "--view` to identify and visualize it."
+        )
 
     axis = torch.as_tensor(semantic_forward_axis_xy, device=device, dtype=dtype)
     if axis.shape[-1] != 2:
@@ -68,20 +60,6 @@ def semantic_forward_axis_tensor(
         )
     norm = axis.norm(dim=-1, keepdim=True).clamp_min(1e-6)
     return axis / norm
-
-
-def robot_semantic_forward_axis_tensor(
-    robot_config: Any,
-    *,
-    device: torch.device | None = None,
-    dtype: torch.dtype | None = None,
-) -> Tensor:
-    """Read a robot config's semantic forward axis with legacy fallback."""
-    return semantic_forward_axis_tensor(
-        getattr(robot_config, "semantic_forward_axis_xy", None),
-        device=device,
-        dtype=dtype,
-    )
 
 
 def semantic_forward_xy(

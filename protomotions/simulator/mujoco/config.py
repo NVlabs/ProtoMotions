@@ -10,19 +10,19 @@ from protomotions.simulator.base_simulator.config import SimParams, SimulatorCon
 class MujocoSimParams(SimParams):
     """MuJoCo simulation parameters.
 
-    Defaults match RoboJuDo: 1000Hz physics, 20x decimation (50Hz control).
-    No solver params -- we use MuJoCo's built-in defaults for everything
-    (solver, iterations, etc.) since RoboJuDo does the same. The integrator
-    can be overridden per robot.
+    Defaults match RoboJuDo: 1000 Hz physics; at the humanoid control_hz=50 that
+    is 20 physics steps per control step (derived in Simulator.__init__). No
+    solver params -- we use MuJoCo's built-in defaults for everything (solver,
+    iterations, etc.) since RoboJuDo does the same. The integrator can be
+    overridden per robot.
     """
 
-    fps: int = field(
-        default=1000,
-        metadata={"help": "Simulation frames per second (physics timestep = 1/fps)."}
-    )
-    decimation: int = field(
-        default=20,
-        metadata={"help": "Number of physics steps per control step."}
+    fps: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "Simulation frames per second (physics timestep = 1/fps). "
+            "None derives it as control_hz * 20 (1000 Hz at the humanoid 50 Hz)."
+        },
     )
     integrator: Optional[str] = field(
         default=None,

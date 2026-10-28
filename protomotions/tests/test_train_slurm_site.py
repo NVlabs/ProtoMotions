@@ -323,38 +323,66 @@ def test_unknown_experiment_flags_are_forwarded():
     # gpc/prior.py contributes --tracker-checkpoint via
     # additional_experiment_arguments; train_agent.py parses it, so the launcher
     # must not reject it -- it must forward it verbatim.
-    args, passthrough = ts.create_parser().parse_known_args(
+    args, passthrough = ts.parse_launcher_args(
         _agent_argv() + ["--tracker-checkpoint", "/tmp/t.ckpt"]
     )
-    assert passthrough == ["--tracker-checkpoint", "/tmp/t.ckpt"]
+    assert "--tracker-checkpoint" in passthrough
     cmd = ts.build_job_command(args, "/exp", "python", passthrough)
     assert "--tracker-checkpoint /tmp/t.ckpt" in cmd
 
 
-def test_overrides_stay_after_passthrough():
-    # train_agent's --overrides is nargs="*" and greedily consumes the rest, so
-    # passthrough flags must precede it or be swallowed as override tokens.
-    args, passthrough = ts.create_parser().parse_known_args(
-        _agent_argv() + ["--tracker-checkpoint", "/tmp/t.ckpt", "--overrides", "a=1"]
-    )
+def test_the_tail_is_forwarded_verbatim_in_user_order():
+    # The launcher declares only its own flags, so the whole training command --
+    # minus --user, which is the launcher's -- is forwarded exactly as typed, with
+    # --use-slurm prepended. The launcher no longer reorders tokens: train_agent's
+    # --overrides (nargs="*") means the user puts it last, as when running directly.
+    tail = _agent_argv() + ["--tracker-checkpoint", "/tmp/t.ckpt", "--overrides", "a=1"]
+    args, passthrough = ts.parse_launcher_args(tail)
+    assert "--user=me" not in passthrough
+    assert passthrough == [t for t in tail if t != "--user=me"]
     cmd = ts.build_job_command(args, "/exp", "python", passthrough)
-    assert cmd.index("--overrides") > cmd.index("--tracker-checkpoint")
-
-
-def test_seed_is_forwarded():
-    args, passthrough = ts.create_parser().parse_known_args(
-        _agent_argv() + ["--seed", "3"]
+    assert (
+        cmd.index("--use-slurm")
+        < cmd.index("--tracker-checkpoint")
+        < cmd.index("--overrides")
     )
+
+
+def test_seed_rides_the_forwarded_tail_verbatim():
+    # --seed is train_agent's; the launcher no longer declares, defaults or
+    # re-emits it. It rides the tail in the user's own spelling (two tokens), not
+    # rebuilt as "--seed=3".
+    args, passthrough = ts.parse_launcher_args(_agent_argv() + ["--seed", "3"])
+    assert passthrough[-2:] == ["--seed", "3"]
     cmd = ts.build_job_command(args, "/exp", "python", passthrough)
-    assert "--seed=3 " in cmd
+    assert "--seed 3" in cmd
+    assert "--seed=3" not in cmd
 
 
-def test_torch_deterministic_is_forwarded():
-    args, passthrough = ts.create_parser().parse_known_args(
+def test_torch_deterministic_rides_the_forwarded_tail():
+    args, passthrough = ts.parse_launcher_args(
         _agent_argv() + ["--torch-deterministic"]
     )
+    assert "--torch-deterministic" in passthrough
     cmd = ts.build_job_command(args, "/exp", "python", passthrough)
-    assert "--torch-deterministic " in cmd
+    assert "--torch-deterministic" in cmd
+
+
+def test_use_slurm_is_prepended_not_declared():
+    # --use-slurm is no longer a launcher flag; the launcher prepends it so SLURM
+    # walltime autoresume is always on, even when the user omits it.
+    args, passthrough = ts.parse_launcher_args(_agent_argv())
+    assert "--use-slurm" not in passthrough
+    cmd = ts.build_job_command(args, "/exp", "python", passthrough)
+    assert "train_agent.py --use-slurm " in cmd
+
+
+def test_a_missing_required_training_flag_fails_on_the_submit_host():
+    # Job facts are read off the forwarded tail against the training parser, which
+    # requires the core flags; an incomplete command fails here on the submit host,
+    # not after the job has started.
+    with pytest.raises(SystemExit):
+        ts.parse_launcher_args(["--user=me", "--robot-name=g1"])  # no --simulator, ...
 
 
 def test_srun_repeat_is_an_alias_for_array_size():
@@ -372,12 +400,10 @@ def test_srun_repeat_is_an_alias_for_array_size():
 
 
 def test_headless_passes_through_not_swallowed():
-    # Not declared on the launcher any more, so it flows to train_agent (which
-    # parses the bool) instead of being silently consumed.
-    _, passthrough = ts.create_parser().parse_known_args(
-        _agent_argv() + ["--headless", "False"]
-    )
-    assert passthrough == ["--headless", "False"]
+    # Not declared on the launcher, so it (and its value) flow to train_agent,
+    # which parses the bool, instead of being silently consumed.
+    _, passthrough = ts.parse_launcher_args(_agent_argv() + ["--headless", "False"])
+    assert passthrough[-2:] == ["--headless", "False"]
 
 
 def test_rsync_excludes_the_dangerous_dirs(monkeypatch):

@@ -1,16 +1,21 @@
 Environment Context
 ===================
 
-The environment context provides typed access to all simulation state and task variables
-that observations, rewards, and terminations need. ProtoMotions uses a descriptor-based
-pattern for type-safe context paths with IDE autocomplete.
+The environment context gives observations, rewards and terminations one place
+to read simulation state and task variables from. ``env.context`` is a flat,
+read-only map from a path string (``"current.rigid_body_pos"``) to a value;
+``EnvContext`` in ``context_views.py`` is the vocabulary of those paths, so
+bindings can spell them with IDE autocomplete and the environment can check
+them at build time.
 
 Overview
 --------
 
-Each timestep, the environment builds an ``EnvContext`` instance containing:
+Each timestep, the environment builds one context: a read-only dictionary
+built once per step from the simulator state, the history buffer and the
+control components. It holds:
 
-1. **Current state** - Ground-truth and noisy robot state views
+1. **Current state** - Ground-truth and sensor-estimated robot state
 2. **Historical state** - Past states from the history buffer
 3. **Task context** - Task-specific variables from control components
 4. **Environment parameters** - dt, contact tracking, etc.
@@ -20,18 +25,19 @@ Components bind their kernels to context paths using ``MdpComponent``:
 .. code-block:: text
 
    ┌─────────────────────────────────────────────────────────────┐
-   │                      EnvContext                             │
+   │            env.context: one flat, read-only map             │
    ├─────────────────────────────────────────────────────────────┤
-   │  Current State Views   │  Historical State Views            │
+   │  Current state         │  Historical state                  │
    │  ───────────────────   │  ──────────────────────            │
-   │  current: CurrentState │  historical: HistoricalView        │
-   │  noisy: CurrentState   │  noisy_historical: NoisyHistView   │
+   │  current.*             │  historical.*                      │
+   │  clean.*               │  clean_historical.*                │
+   │  noisy.*               │  noisy_historical.*                │
    ├─────────────────────────────────────────────────────────────┤
-   │  Control Context       │  Environment Parameters            │
+   │  Control namespaces    │  Top-level names                   │
    │  ───────────────────   │  ──────────────────────            │
-   │  mimic: MimicContext      │  dt: float                         │
-   │  steering: SteeringContext│  ground_heights: Tensor            │
-   │  path: PathContext        │  contact_body_ids: Tensor          │
+   │  mimic.*  steering.*   │  dt, env_ids, progress_buf         │
+   │  masked_mimic.*        │  ground_heights, contact_body_ids  │
+   │  path.*  target.*      │  contact_forces, current_action    │
    └─────────────────────────────────────────────────────────────┘
                                      │
             ┌────────────────────────┼────────────────────────┐
@@ -50,7 +56,7 @@ Components use ``MdpComponent`` to bind pure tensor kernels to context paths:
 
    from protomotions.envs.context_views import EnvContext
    from protomotions.envs.mdp_component import MdpComponent
-   from protomotions.envs.rewards import compute_gt_rew
+   from protomotions.envs.rewards.tracking import compute_gt_rew
    
    reward_components = {
        "gt_rew": MdpComponent(
@@ -70,31 +76,55 @@ Components use ``MdpComponent`` to bind pure tensor kernels to context paths:
 - **Testable**: Kernels are pure functions that can be tested independently
 - **Exportable**: ONNX export uses ``get_bindings_dict()`` for input mapping
 
-Context Views
--------------
+Context Namespaces
+------------------
 
-EnvContext provides typed views into simulation state:
+The vocabulary groups the published names by namespace. Each namespace
+class below only declares names; the values come from the simulator state,
+the history buffer and the control components
+(``protomotions/envs/base_env/publishers.py`` and the control components'
+``publish``).
 
-CurrentStateView
-~~~~~~~~~~~~~~~~
+Current state: PrivilegedStateView and SensorStateView
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Current robot state (ground-truth for critic/rewards, noisy for actor):
+Current robot state has three explicit sources:
+
+* ``EnvContext.current`` is privileged simulator truth.
+* ``EnvContext.clean`` is reconstructed from the declared sensors with no added
+  measurement noise or drift. It is not unrestricted simulator truth.
+* ``EnvContext.noisy`` uses the same sensor suite and reconstruction after
+  perturbing the readings.
+
+Clean and noisy exist only when a sensor suite is configured. Both omit names
+that the suite cannot estimate; for example, neither exposes world body positions
+without localization. The names below are the declared vocabulary, not a promise
+that every source provides every one: a name that needs something says so in
+``context_views.py`` (``FieldPath(requires="localization")`` for the sensor
+sources' body positions, ``requires="contacts"`` for the privileged contact
+flags). A binding to a missing name fails before anything runs, with the
+reason it is missing.
+
+Privileged state is useful for rewards and critics. Clean/noisy pairs isolate
+sensor corruption for consistency losses such as L2C2 without giving the clean
+side additional simulator information. See :ref:`sensor-observation-sources`
+for the construction, uses and limits of each source.
 
 .. code-block:: python
 
-   # Access via EnvContext.current or EnvContext.noisy
+   # Access via EnvContext.current, EnvContext.clean or EnvContext.noisy
    
    # Rigid body state
-   .rigid_body_pos        # [num_envs, num_bodies, 3]
+   .rigid_body_pos        # [num_envs, num_bodies, 3]     sensors: needs localization
    .rigid_body_rot        # [num_envs, num_bodies, 4] quaternion (w-last)
-   .rigid_body_vel        # [num_envs, num_bodies, 3]
+   .rigid_body_vel        # [num_envs, num_bodies, 3]     sensors: needs base velocity
    .rigid_body_ang_vel    # [num_envs, num_bodies, 3]
-   .rigid_body_contacts   # [num_envs, num_bodies] boolean
+   .rigid_body_contacts   # [num_envs, num_contact_bodies] boolean; current only, needs contact bodies
    
    # DOF state
    .dof_pos               # [num_envs, num_dofs]
    .dof_vel               # [num_envs, num_dofs]
-   .dof_forces            # [num_envs, num_dofs]
+   .dof_forces            # [num_envs, num_dofs]           current only
    
    # Root properties (precomputed)
    .root_pos              # [num_envs, 3]
@@ -111,10 +141,12 @@ Current robot state (ground-truth for critic/rewards, noisy for actor):
    .anchor_ang_vel        # [num_envs, 3]
    .anchor_local_ang_vel  # [num_envs, 3]
 
-HistoricalView
-~~~~~~~~~~~~~~
+Past state: PrivilegedHistoricalView and SensorHistoricalView
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Past states for temporal observations:
+Past states for temporal observations, present when a bound observation,
+reward or termination reads a past state (the history ring sizes itself from
+the bindings' step selections):
 
 .. code-block:: python
 
@@ -124,15 +156,16 @@ Past states for temporal observations:
    .rigid_body_rot        # [num_envs, history_steps, num_bodies, 4]
    .dof_pos               # [num_envs, history_steps, num_dofs]
    .dof_vel               # [num_envs, history_steps, num_dofs]
-   .actions               # [num_envs, history_steps, action_dim]
+   .raw_actions           # [num_envs, history_steps, action_dim]
    .processed_actions     # [num_envs, history_steps, action_dim]
    .ground_heights        # [num_envs, history_steps]
-   .body_contacts         # [num_envs, history_steps, num_contact_bodies]
+   .body_contacts         # [num_envs, history_steps, num_contact_bodies]; historical only
 
-Control Component Views
------------------------
+Control Component Namespaces
+----------------------------
 
-Control components populate task-specific views in the context.
+Each control component publishes the names of its own namespace from
+``publish(env_ids)``.
 
 MimicContext
 ~~~~~~~~~~~~
@@ -144,11 +177,10 @@ Motion tracking context for imitation learning:
    # Access via EnvContext.mimic
    
    # Reference state (at current time)
-   .ref_state             # RobotState with rigid_body_pos, dof_pos, etc.
-   .ref_root_height       # [num_envs] precomputed
+   .ref_state             # .ref_state.rigid_body_pos, .ref_state.dof_pos, ...
    .ref_anchor_pos        # [num_envs, 3] precomputed
-   .ref_anchor_rot        # [num_envs, 4] precomputed
-   
+   .anchor_idx            # int - index of the anchor body
+
    # Future target poses (multi-step)
    .future_pos            # [num_envs, future_steps, num_bodies, 3]
    .future_rot            # [num_envs, future_steps, num_bodies, 4]
@@ -199,15 +231,18 @@ Direct fields on EnvContext:
 .. code-block:: python
 
    .dt                                # float - simulation timestep
-   .ground_heights                    # [num_envs] terrain height
-   .noisy_ground_heights              # [num_envs] noisy terrain height
-   .body_contacts                     # [num_envs, num_contact_bodies]
+   .env_ids                           # rows this context covers (None = every env)
+   .progress_buf                      # [num_envs] steps since the episode began
+   .ground_heights                    # [num_envs] terrain height under the anchor
+   .contact_forces                    # [num_envs, robot_body, partner, 3], world N
+   .contact_body_index                # body name -> matrix row (static)
+   .contact_partner_index             # partner name -> matrix column (static)
    .contact_body_ids                  # [num_contact_bodies] tracked body indices
+   .current_action                    # [num_envs, action_dim]
    .current_processed_action          # [num_envs, action_dim]
    .previous_action                   # [num_envs, action_dim]
    .previous_processed_action         # [num_envs, action_dim]
-   .current_contact_force_magnitudes  # [num_envs, num_bodies]
-   .prev_contact_force_magnitudes     # [num_envs, num_bodies]
+   .prev_contact_force_magnitudes     # [num_envs, num_contact_bodies]
 
 Using Context in MdpComponent
 -------------------------------
@@ -221,14 +256,15 @@ Using Context in MdpComponent
    EnvContext.mimic.future_pos                 # FieldPath("mimic.future_pos")
    EnvContext.ground_heights                   # FieldPath("ground_heights")
 
-**Instance access** (at runtime):
+**Runtime access** (the flat map):
 
 .. code-block:: python
 
-   # Returns actual tensor values
-   ctx = env.context                           # EnvContext instance
-   ctx.current.rigid_body_pos                  # Tensor [num_envs, num_bodies, 3]
-   ctx.mimic.future_pos                        # Tensor [num_envs, future_steps, ...]
+   # The context is a read-only mapping keyed by the same path strings
+   ctx = env.context                           # a FrozenContext, built once per step
+   ctx["current.rigid_body_pos"]               # Tensor [num_envs, num_bodies, 3]
+   ctx["mimic.future_pos"]                     # Tensor [num_envs, future_steps, ...]
+   "noisy.dof_pos" in ctx                      # False without a sensor suite
 
 **In experiment configs**:
 
@@ -236,7 +272,7 @@ Using Context in MdpComponent
 
    from protomotions.envs.context_views import EnvContext
    from protomotions.envs.mdp_component import MdpComponent
-   from protomotions.envs.obs import compute_humanoid_max_coords_observations
+   from protomotions.envs.obs.humanoid import compute_humanoid_max_coords_observations
    
    observation_components = {
        "max_coords_obs": MdpComponent(
@@ -247,40 +283,80 @@ Using Context in MdpComponent
                "body_vel": EnvContext.current.rigid_body_vel,
                "body_ang_vel": EnvContext.current.rigid_body_ang_vel,
                "ground_height": EnvContext.ground_heights,
-               "body_contacts": EnvContext.body_contacts,
+               "body_contacts": EnvContext.current.rigid_body_contacts,
            },
            static_params={"local_obs": True, "root_height_obs": True, "w_last": True},
        ),
    }
 
-Adding Custom Context Views
+Checking bindings before anything is built
+------------------------------------------
+
+``train_agent.py`` and ``inference_agent.py`` check your bindings against
+the config before the simulator starts
+(``protomotions.envs.context_check.run_config_binding_check``). A binding
+your configuration can never satisfy fails in seconds with the reason: a
+sensor name without a sensor suite ("this config has no sensor suite"), a
+body position from a suite without localization ("the sensor suite has no
+localization body"), a history name bound without a step selection,
+a contact name for a robot without contact bodies, a task namespace with no
+control component for it, or a masked-mimic modality whose config switch is
+off. Names that depend on the motion file (the reference motion's contact
+labels and local rotations) are checked when the environment is built, and
+the entry points log them as such. What each name needs is the
+``requires=`` tag on its declaration in ``context_views.py``; how a
+configuration satisfies a tag is the table in
+``protomotions/envs/context_requirements.py``. Every example experiment that
+builds offline is run through the check in the test suite.
+
+Adding Custom Context Names
 ----------------------------
 
-To add custom variables to the context, create a control component that
-populates the EnvContext with a custom view:
+To add custom variables to the context, declare their names in the
+vocabulary and publish them from a control component, which lists the
+namespaces it publishes in ``namespaces``. A name that only some
+configurations of your component publish carries ``requires="<switch>"``,
+where the switch is a field of your config; the checks read
+``config.<switch>`` to decide whether the name is expected, and refuse a
+binding to it when the switch is off, naming the switch. The environment
+checks the declarations against each other when it is built. A namespace a
+component publishes without declaring it (or declares without publishing)
+is an error naming the component. A published name nobody declared, and a
+tagged name published while its switch is off, are errors naming the
+publisher or control component that published the name and, for the tagged
+name, every tag that applies and the fact that is missing. A declared name
+without a tag that nobody published is listed by namespace.
 
 .. code-block:: python
 
-   from protomotions.envs.context_paths import FieldPath, NestedField
-   
-   class MyCustomView:
-       """Custom view for my task."""
-       
-       # Define fields as FieldPath descriptors
+   # In protomotions/envs/context_views.py
+   from protomotions.envs.context_paths import FieldPath
+
+   class MyCustomContext:
+       """Names of my task."""
+
        target_pos: Tensor = FieldPath()
        target_vel: Tensor = FieldPath()
-       
-       def __init__(self, target_pos, target_vel):
-           self.target_pos = target_pos
-           self.target_vel = target_vel
-   
+       # Only when MyControlConfig.track_heading is on.
+       target_heading: Tensor = FieldPath(requires="track_heading")
+
+   class EnvContext:
+       ...
+       my_custom: MyCustomContext = control_namespace(MyCustomContext)
+
+   # In the control component
    class MyControlComponent(ControlComponent):
-       def populate_context(self, ctx: EnvContext) -> None:
-           # Add your custom view to the context
-           ctx.my_custom = MyCustomView(
-               target_pos=self._compute_target_pos(),
-               target_vel=self._compute_target_vel(),
-           )
+       namespaces = ("my_custom",)
+
+       def publish(self, env_ids: Optional[Tensor]) -> Dict[str, Any]:
+           rows = slice(None) if env_ids is None else env_ids
+           names = {
+               "my_custom.target_pos": self._target_pos[rows],
+               "my_custom.target_vel": self._target_vel[rows],
+           }
+           if self.config.track_heading:
+               names["my_custom.target_heading"] = self._target_heading[rows]
+           return names
 
 Then use it in MdpComponent bindings:
 
@@ -295,8 +371,32 @@ Then use it in MdpComponent bindings:
        ),
    }
 
+Deployable G1 observation layout
+-------------------------------------
+
+``deployable_proprioception_observations`` packs encoder/IMU-derived FK tokens,
+reduced sensor state and incoming raw actions. History lags are 8, 4, 3, 2, 1;
+each token carries its own incoming action and age. It consumes the shared
+sensor history and does not sample noise or maintain another sensor cache.
+Privileged teacher/posterior observations remain separate.
+
+The G1 composition helper lives in
+``examples.experiments.masked_mimic.deployable_g1_observations``. Select the
+five-body subset before building goals, declare a physical sensor suite and
+noise levels in the experiment, then add these observations. Global goals read
+``noisy.rigid_body_pos`` and rotations reconstructed by the sensor runtime;
+binding validation rejects suites without localization. There is no second FK
+reconstruction for global goals.
+
+Height-free goals ground current and reference body origins independently at
+their own minimum Z. XY localization error remains. This is a flat-ground
+observation contract, not terrain-relative foot height. At inference retain
+the same bindings and use ``SensorNoise.exact("inference")`` when desired.
+Regenerate resolved configs after changing the observation layout; existing
+policy weights cannot adopt different input widths.
+
 Next Steps
 ----------
 
 * :doc:`abstractions` - Component system details
-* :doc:`simulator_state` - SimulatorState representation
+* :doc:`simulator_state` - ``RobotState``, ``ResetState`` and ``ObjectState``

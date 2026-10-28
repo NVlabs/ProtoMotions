@@ -11,7 +11,9 @@ def test_mujoco_installation_uses_shipped_g1_example():
     installation = (
         REPO_ROOT / "docs/source/getting_started/installation.rst"
     ).read_text()
-    checkpoint = Path("data/pretrained_models/motion_tracker/g1-bones-deploy/last.ckpt")
+    checkpoint = Path(
+        "data/pretrained_models/motion_tracker/g1-bones-deploy/inference_last.ckpt"
+    )
     motion = Path("data/motion_for_trackers/g1_bones_seed_mini.pt")
 
     assert "results/experiment/last.ckpt" not in installation
@@ -20,5 +22,7 @@ def test_mujoco_installation_uses_shipped_g1_example():
     assert "--simulator mujoco" in installation
     assert "--num-envs 1" in installation
     assert (REPO_ROOT / checkpoint).is_file()
-    assert (REPO_ROOT / checkpoint.parent / "resolved_configs_inference.pt").is_file()
+    # v2 ships one self-contained bundle; inference derives its view at load, so
+    # there is no separate resolved_configs_inference.pt.
+    assert (REPO_ROOT / checkpoint.parent / "resolved_configs.json").is_file()
     assert (REPO_ROOT / motion).is_file()

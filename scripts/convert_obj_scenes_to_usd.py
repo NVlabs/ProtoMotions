@@ -237,6 +237,9 @@ def main():
                 max_convex_hulls=args.max_convex_hulls,
                 hull_vertex_limit=args.hull_vertex_limit,
                 voxel_resolution=args.voxel_resolution,
+                # This script ships baked files with the dataset, so a
+                # read-only dataset should fail here, not bake into ~/.cache.
+                cache_fallback=False,
             )
         log.info("Collision baking complete.")
 

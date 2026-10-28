@@ -16,6 +16,8 @@ Key Classes:
 
 from typing import Dict, List, Optional
 from dataclasses import dataclass, field
+from enum import Enum
+import math
 from protomotions.agents.common.config import (
     ModuleContainerConfig,
 )
@@ -26,11 +28,21 @@ from protomotions.agents.base_agent.config import (
 )
 
 
+class StdMode(str, Enum):
+    FIXED = "fixed"
+    GLOBAL = "global"
+    PER_MOTION = "per_motion"
+
+
 @dataclass
 class PPOActorConfig:
     """Configuration for PPO Actor network."""
 
     mu_key: str = field(metadata={"help": "The key of the output of the mu model."})
+    # The recipe lists the actor's observation keys once, here. A plain mean
+    # network (mu_model) that does not declare its own in_keys inherits them in
+    # __post_init__; a composite mean network (e.g. an autoencoder) that reads its
+    # obs through its own sub-models declares them there and is left untouched.
     in_keys: List[str] = field(
         default_factory=list, metadata={"help": "Input observation keys."}
     )
@@ -49,21 +61,42 @@ class PPOActorConfig:
     actor_logstd: float = field(
         default=-2.9, metadata={"help": "Initial log std for action distribution."}
     )
-    learnable_std: bool = field(
-        default=False,
-        metadata={"help": "Make action log std learnable (requires_grad=True)."},
+    std_mode: StdMode = StdMode.FIXED
+    min_logstd: float = math.log(0.001)
+    max_logstd: float = math.log(0.5)
+    # Filled by training setup before constructing the actor. Not an observation.
+    num_motions: Optional[int] = None
+
+    def __post_init__(self):
+        # A plain mean network inherits the actor's obs keys; a composite one that
+        # already declares them through its sub-models keeps its own.
+        if not self.mu_model.in_keys:
+            self.mu_model.in_keys = list(self.in_keys)
+
+
+def _union_keys(configs, attr: str) -> List[str]:
+    """Ordered, de-duplicated union of ``attr`` over component configs."""
+    return list(
+        dict.fromkeys(
+            key for config in configs for key in (getattr(config, attr, None) or [])
+        )
     )
 
 
 @dataclass
 class PPOModelConfig(BaseModelConfig):
-    """Configuration for PPO Model (Actor-Critic)."""
+    """Configuration for PPO Model (Actor-Critic).
+
+    ``in_keys`` and ``out_keys`` are NOT passed: the recipe lists its observation
+    keys once on the actor's mean network and once on the critic, and the model
+    derives the unions from its component configs. They are ``init=False``, so
+    passing a list is a construction error (and the saved form skips them and
+    recomputes on load).
+    """
 
     _target_: str = "protomotions.agents.ppo.model.PPOModel"
-    out_keys: List[str] = field(
-        default_factory=lambda: ["action", "mean_action", "neglogp", "value"],
-        metadata={"help": "Output keys including actions and value estimate."},
-    )
+    in_keys: List[str] = field(init=False, default_factory=list)
+    out_keys: List[str] = field(init=False, default_factory=list)
     actor: PPOActorConfig = field(
         default_factory=PPOActorConfig,
         metadata={"help": "Actor (policy) network configuration."},
@@ -80,6 +113,15 @@ class PPOModelConfig(BaseModelConfig):
         default_factory=lambda: OptimizerConfig(lr=1e-4),
         metadata={"help": "Optimizer settings for critic network."},
     )
+
+    def _key_source_configs(self) -> List:
+        """Component configs whose in_keys/out_keys union into the model's."""
+        return [self.actor, self.critic]
+
+    def __post_init__(self):
+        sources = self._key_source_configs()
+        self.in_keys = _union_keys(sources, "in_keys")
+        self.out_keys = _union_keys(sources, "out_keys")
 
 
 @dataclass
@@ -148,7 +190,6 @@ class L2C2Config:
     )
 
 
-
 @dataclass
 class PPOAgentConfig(BaseAgentConfig):
     """Main configuration class for PPO Agent."""
@@ -177,7 +218,7 @@ class PPOAgentConfig(BaseAgentConfig):
         metadata={"help": "Skip actor update if clip_frac > threshold (e.g., 0.5)."},
     )
 
-    # Entropy regularization (used when actor has learnable_std)
+    # Entropy regularization for learned exploration.
     entropy_coef: float = field(
         default=0.005,
         metadata={"help": "Entropy bonus coefficient for learnable std exploration."},

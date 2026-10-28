@@ -104,22 +104,19 @@ class Transformer(ProtoMotionsTensorDictModule):
             TensorDict with transformer output added at self.out_keys[0].
         """
         all_tokens = []
-        for in_key in self._token_input_keys:
-            if tensordict[in_key].dim() == 2:
-                all_tokens.append(tensordict[in_key].unsqueeze(1))
-            else:
-                all_tokens.append(tensordict[in_key])
-        all_tokens = torch.cat(all_tokens, dim=1)
-
         all_masks = []
         for in_key in self._token_input_keys:
+            token = tensordict[in_key]
+            if token.dim() == 2:
+                token = token.unsqueeze(1)
+            all_tokens.append(token)
+
             if (
                 self.config.input_and_mask_mapping
                 and in_key in self.config.input_and_mask_mapping
             ):
                 mask_key = self.config.input_and_mask_mapping[in_key]
-                token = tensordict[in_key]
-                token_seq_len = 1 if token.dim() == 2 else token.shape[1]
+                token_seq_len = token.shape[1]
 
                 # Our mask is 1 for valid and 0 for invalid
                 # The transformer expects the mask to be 0 for valid and 1 for invalid
@@ -141,24 +138,12 @@ class Transformer(ProtoMotionsTensorDictModule):
 
                 all_masks.append(mask)
             else:
-                if tensordict[in_key].dim() == 2:
-                    all_masks.append(
-                        torch.zeros(
-                            tensordict.batch_size[0],
-                            1,
-                            dtype=torch.bool,
-                            device=tensordict[in_key].device,
-                        )
+                all_masks.append(
+                    torch.zeros(
+                        token.shape[:2], dtype=torch.bool, device=token.device
                     )
-                else:
-                    all_masks.append(
-                        torch.zeros(
-                            tensordict.batch_size[0],
-                            tensordict[in_key].shape[1],
-                            dtype=torch.bool,
-                            device=tensordict[in_key].device,
-                        )
-                    )
+                )
+        all_tokens = torch.cat(all_tokens, dim=1)
         all_masks = torch.cat(all_masks, dim=1)
 
         output = self.seqTransEncoder(

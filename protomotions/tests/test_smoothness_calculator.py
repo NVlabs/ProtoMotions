@@ -4,9 +4,6 @@
 """Tests for smoothness metric tensor calculations."""
 
 import logging
-import re
-import runpy
-import sys
 
 import pytest
 import torch
@@ -51,7 +48,10 @@ def test_smoothness_calculator_finite_differences_and_empty_windows():
     )
     values = torch.tensor([[0.0], [1.0], [3.0]])
 
-    assert torch.equal(calculator._diff(values, dt=0.5), torch.tensor([[2.0], [4.0]]))
+    assert torch.equal(
+        calculator._diff_batch(values.reshape(1, 3, 1, 1), dt=0.5),
+        torch.tensor([[[[2.0]], [[4.0]]]]),
+    )
     assert calculator._compute_windowed_normalized_jerk(
         torch.zeros(3, 2, 3),
         window_frames=4,
@@ -213,25 +213,3 @@ def test_compute_smoothness_metrics_logs_and_suppresses_shape_errors(caplog):
 
     assert result == {}
     assert "Failed to compute normalized jerk" in caplog.text
-
-
-def test_smoothness_calculator_main_reports_demo_metric_values(capsys, monkeypatch):
-    monkeypatch.delitem(
-        sys.modules,
-        "protomotions.agents.evaluators.smoothness_calculator",
-        raising=False,
-    )
-
-    runpy.run_module(
-        "protomotions.agents.evaluators.smoothness_calculator",
-        run_name="__main__",
-    )
-
-    output = capsys.readouterr().out
-
-    assert "Window size: 0.4s" in output
-    assert "High jerk threshold: 6500.0" in output
-    assert "Time step: 0.0333s (30.0 FPS)" in output
-    assert re.search(r"normalized_jerk_mean\s+:\s+100519\.46", output)
-    assert "high_jerk_frame_percentage_mean:        52.78%" in output
-    assert "normalized_jerk_max" not in output

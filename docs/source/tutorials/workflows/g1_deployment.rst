@@ -38,9 +38,9 @@ Pipeline Overview
    ProtoMotions .motion files (30 fps)
         |
         v  protomotions/train_agent.py (IsaacGym/IsaacLab, multi-GPU)
-   Trained checkpoint (last.ckpt + resolved_configs_inference.pt)
+   Trained checkpoint (last.ckpt + resolved_configs.json + experiment_config.py)
         |
-        v  deployment/export_bm_tracker_onnx.py (CPU, no simulator)
+        v  deployment/export_to_onnx.py (CPU, no simulator)
    Unified ONNX model + YAML metadata
         |
         +---> deployment/test_tracker_mujoco.py  (reference MuJoCo test)
@@ -52,11 +52,13 @@ Design Notes
 
 **Unified ONNX model**.  The exported ONNX bundles observation computation,
 the actor network, and action processing (tanh + PD offset/scale) into a
-single model.  Deployment frameworks provide raw sensor signals -- joint
-positions/velocities, torso IMU orientation, pelvis angular velocity, and
-future motion reference frames -- without having to rewrite observation
-functions.  This minimises the chance of discrepancy between training and
-deployment.
+single model.  Deployment frameworks provide joint positions/velocities, the
+torso orientation, the pelvis angular velocity, and future motion reference
+frames -- without having to rewrite observation functions.  The torso
+orientation is not an IMU reading: the default deploy path reads only the
+pelvis IMU, and computes the torso orientation from it and the joint encoders
+by forward kinematics (see `Sensor Requirements`_).  This minimises the chance
+of discrepancy between training and deployment.
 
 **MuJoCo-first validation**.  Before touching real hardware, we validate the
 ONNX model in a standalone MuJoCo script (``deployment/test_tracker_mujoco.py``)
@@ -139,8 +141,8 @@ the ProtoMotions package -- no simulator or GPU needed.
 
 .. code-block:: bash
 
-   python deployment/export_bm_tracker_onnx.py \
-       --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/last.ckpt
+   python deployment/export_to_onnx.py \
+       --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/inference_last.ckpt
 
 This produces:
 
@@ -230,15 +232,41 @@ The upstream RoboJuDo integration provides:
 * CLI enhancements: ``--onnx-path``, ``--motion-path``, ``--motion-index``,
   ``--simulate-deploy``, ``--hold-seconds``.
 
+.. note::
+
+   At the time of writing, the RoboJuDo tracker policy feeds only the older
+   ``historical.processed_actions`` input, with the previous call's joint
+   targets recorded after its acceleration clamp and EMA. The released G1
+   tracker was trained on the targets from two calls back, recorded before
+   either (see step 2 below), so expect its joint targets to be somewhat
+   jumpier than ``deployment/test_tracker_mujoco.py``'s; tracking itself is
+   barely affected. Trackers trained on current code read
+   ``processed_action_history`` or ``raw_action_history`` instead. Until the
+   integration supplies those, run them with
+   ``deployment/test_tracker_mujoco.py``.
+
 **Bringing your own deployment framework**: The key contract is:
 
 1. Provide the ONNX inputs documented in the YAML sidecar (joint
    positions/velocities, torso orientation, pelvis local angular velocity,
    previous processed actions, future motion references).
-2. Apply the ONNX outputs (PD position targets) to your robot's actuators.
-3. Apply action post-processing (acceleration clamp + EMA) as documented
+2. Feed each action-history input the graph's own output from earlier calls,
+   recorded as returned, before any clamp or smoothing: ``joint_pos_targets``
+   for ``processed_action_history`` (or the older
+   ``historical.processed_actions``), ``actions`` for ``raw_action_history``.
+   The YAML entry names that output (``output_key``), says how far back each
+   slot reaches (``steps_back``: ``[1]`` is the previous call, ``[2]`` the one
+   before) and what to feed until that many calls have run since a reset
+   (``fill_before_available``). YAMLs exported before these fields existed,
+   including the bundled G1 model, say ``output_key: robot_action``, which
+   means ``joint_pos_targets``. Without ``steps_back``, use ``[1]`` for the two
+   current inputs and ``[2]`` for ``historical.processed_actions``, with a zero
+   fill. ``ActionFeedback`` in ``deployment/tracker_inputs.py`` does all of
+   this.
+3. Apply the ONNX outputs (PD position targets) to your robot's actuators.
+4. Apply action post-processing (acceleration clamp + EMA) as documented
    in the YAML ``control`` section.
-4. Verify that MuJoCo behaviour matches between your framework and
+5. Verify that MuJoCo behaviour matches between your framework and
    ``deployment/test_tracker_mujoco.py``.
 
 

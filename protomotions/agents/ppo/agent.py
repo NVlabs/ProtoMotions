@@ -20,6 +20,7 @@ from torch import Tensor
 from tensordict import TensorDict
 
 import logging
+import weakref
 
 from pathlib import Path
 from typing import Optional, Tuple, Dict
@@ -28,8 +29,10 @@ from lightning.fabric import Fabric
 
 from protomotions.utils.hydra_replacement import get_class
 
-from protomotions.agents.ppo.model import PPOModel
+from protomotions.agents.ppo.model import PPOActor, PPOModel
 from protomotions.agents.common.common import MODULE_INTERNALS_KEY, weight_init_trainable
+from protomotions.agents.ppo.utils.motion_index import MotionIndex
+from protomotions.agents.ppo.utils import per_motion_exploration
 from protomotions.agents.optimizer.factory import (
     instantiate_optimizer,
     optimizer_learning_rate,
@@ -37,10 +40,15 @@ from protomotions.agents.optimizer.factory import (
 )
 from protomotions.envs.base_env.env import BaseEnv
 from protomotions.agents.utils.normalization import combine_moments
-from protomotions.agents.ppo.utils import discount_values
-from protomotions.agents.ppo.config import PPOAgentConfig
+from protomotions.agents.ppo.utils.advantages import discount_values
+from protomotions.agents.ppo.config import (
+    PPOAgentConfig,
+    PPOModelConfig,
+    StdMode,
+)
 from protomotions.agents.base_agent.agent import BaseAgent
 from protomotions.agents.utils.training import bounds_loss
+from protomotions.agents.utils.distributed import raise_if_any_rank_failed
 
 log = logging.getLogger(__name__)
 
@@ -81,6 +89,7 @@ class PPO(BaseAgent):
     # Initialization and Setup
     # -----------------------------
     config: PPOAgentConfig
+    motion_index: Optional[MotionIndex] = None
 
     def __init__(
         self,
@@ -122,6 +131,45 @@ class PPO(BaseAgent):
         model: PPOModel = PPOModelClass(config=self.config.model)
         model.apply(weight_init_trainable)
         return model
+
+    def _before_create_model(self):
+        super()._before_create_model()
+        self.motion_index = None
+        self._indexed_motion_lib = None
+        if (
+            self.training_setup
+            and isinstance(self.config.model, PPOModelConfig)
+            and self.config.model.actor.std_mode == StdMode.PER_MOTION
+        ):
+            self.motion_index = MotionIndex.build(self.motion_lib)
+            self.config.model.actor.num_motions = self.motion_index.num_motions
+
+    def add_agent_info_to_obs(self, obs):
+        obs = super().add_agent_info_to_obs(obs)
+        if self.motion_index is not None:
+            # Validate once per library installation, not once per physics step.
+            if (
+                self._indexed_motion_lib is None
+                or self._indexed_motion_lib() is not self.motion_lib
+            ):
+                self._motion_offset = self.motion_index.offset_for(self.motion_lib)
+                self._indexed_motion_lib = weakref.ref(self.motion_lib)
+            obs["global_motion_id"] = (
+                self.motion_manager.motion_ids + self._motion_offset
+            )
+        return obs
+
+    def _materialize_lazy_modules(self, dummy_obs_td):
+        if (
+            not self.training_setup
+            and self.config.model.actor.std_mode == StdMode.PER_MOTION
+        ):
+            # Setup only: materialize without opening the training dataset.
+            # Deployment uses inference_step and never indexes the table.
+            dummy_obs_td["global_motion_id"] = torch.zeros(
+                self.num_envs, dtype=torch.long, device=self.device
+            )
+        super()._materialize_lazy_modules(dummy_obs_td)
 
     def create_optimizers(self, model: PPOModel):
         """Create separate optimizers for actor and critic.
@@ -171,9 +219,9 @@ class PPO(BaseAgent):
         # Save current logstd value to preserve config overrides.
         # Only override the checkpoint's logstd when std is NOT learnable
         # (i.e., a fixed hyperparameter that may have been changed via CLI).
-        # When learnable_std=True, the checkpoint contains the trained value
+        # For learned std, the checkpoint contains the trained value
         # and must not be overwritten.
-        has_fixed_logstd = not self.config.model.actor.learnable_std
+        has_fixed_logstd = self.config.model.actor.std_mode == StdMode.FIXED
         if has_fixed_logstd:
             current_logstd = self.actor_module.logstd.data.clone()
             current_actor_logstd_config = self.config.model.actor.actor_logstd
@@ -194,6 +242,13 @@ class PPO(BaseAgent):
         """Restore PPO optimizer and advantage-normalization state."""
         super()._load_training_state(state_dict)
         self._load_ppo_training_state(state_dict, require_optimizers=True)
+
+    def load_parameters(self, state_dict, load_training_state=True):
+        if self.motion_index is not None:
+            state_dict = per_motion_exploration.prepare_checkpoint(
+                state_dict, self.motion_index, self.actor_module, load_training_state
+            )
+        super().load_parameters(state_dict, load_training_state=load_training_state)
 
     def _load_ppo_training_state(self, state_dict, require_optimizers: bool):
         if require_optimizers or "actor_optimizer" in state_dict:
@@ -247,6 +302,8 @@ class PPO(BaseAgent):
     # -----------------------------
     def get_state_dict(self, state_dict):
         extra_state_dict = super().get_state_dict(state_dict)
+        if self.motion_index is not None:
+            extra_state_dict["motion_index"] = self.motion_index.state_dict()
         extra_state_dict.update(
             {
                 "actor_optimizer": self.actor_optimizer.state_dict(),
@@ -275,6 +332,23 @@ class PPO(BaseAgent):
     # -----------------------------
     # Experience Buffer and Training Loop
     # -----------------------------
+    def save(self, checkpoint_name="last.ckpt", new_high_score=False):
+        super().save(checkpoint_name, new_high_score)
+        if self.motion_index is not None:
+            error = None
+            try:
+                if self.fabric.global_rank == 0:
+                    per_motion_exploration.save_snapshot(
+                        self.root_dir / "motion_logstd.pt",
+                        self.motion_index,
+                        self.actor_module.logstd,
+                        self.current_epoch,
+                        self.step_count,
+                    )
+            except Exception as caught:
+                error = caught
+            raise_if_any_rank_failed(error, "Motion logstd sidecar", self.device)
+
     def register_algorithm_experience_buffer_keys(self):
         super().register_algorithm_experience_buffer_keys()
         # PPO-specific keys that are computed after rollout (not from model forward)
@@ -411,6 +485,8 @@ class PPO(BaseAgent):
             model_name="actor",
         )
         iter_log_dict.update(actor_grad_clip_dict)
+        if isinstance(self.actor_module, PPOActor):
+            self.actor_module.project_logstd()
         iter_log_dict["actor/update_skipped"] = torch.tensor(0.0, device=self.device)
 
         critic_loss, critic_loss_dict = self.critic_step(batch_dict)
@@ -448,7 +524,7 @@ class PPO(BaseAgent):
         # Recompute neglogp for the actions that were actually taken (from experience buffer)
         # We need the current policy's evaluation, not the sampled action's neglogp
         mu = mean_action  # Already tanh-bounded
-        std = torch.exp(self.actor_module.logstd)
+        std = batch_td["action_std"]
         dist = torch.distributions.Normal(mu, mu * 0 + std)
         current_neglogp = -dist.log_prob(batch_dict["action"]).sum(dim=-1)
 
@@ -481,7 +557,7 @@ class PPO(BaseAgent):
         actor_loss = actor_ppo_loss + b_loss + extra_loss + model_loss
 
         # Entropy bonus for learnable std exploration noise
-        if self.config.model.actor.learnable_std:
+        if self.config.model.actor.std_mode != StdMode.FIXED:
             entropy_loss = dist.entropy().sum(dim=-1).mean()
             actor_loss = actor_loss - self.config.entropy_coef * entropy_loss
         else:
@@ -503,7 +579,7 @@ class PPO(BaseAgent):
             "actor/ratio_max": ratio.max().detach(),
             "losses/actor_loss": actor_loss.detach(),
         }
-        if self.config.model.actor.learnable_std:
+        if self.config.model.actor.std_mode != StdMode.FIXED:
             log_dict["actor/std_mean"] = std.mean().detach()
         module_internals = batch_td.get(MODULE_INTERNALS_KEY, None)
         if module_internals is not None:
@@ -520,16 +596,10 @@ class PPO(BaseAgent):
             kl_mean = self._compute_kl(
                 batch_dict["mean_action"].detach(),
                 mu.detach(),
+                batch_dict["action_std"].detach(),
                 std.detach(),
             )
             log_dict["actor/kl"] = kl_mean
-
-        # Memory optimization: Detach intermediate tensors that won't be used for gradients
-        # This prevents unnecessary gradient graph retention
-        ratio = ratio.detach()
-        surr1 = surr1.detach()
-        surr2 = surr2.detach()
-        ppo_loss = ppo_loss.detach()
 
         return actor_loss, log_dict
 
@@ -614,11 +684,6 @@ class PPO(BaseAgent):
             critic_loss_max = torch.max(critic_loss_unclipped, critic_loss_clipped)
             critic_loss = critic_loss_max.mean()
 
-            # Memory optimization: Detach intermediate tensors
-            critic_loss_unclipped = critic_loss_unclipped.detach()
-            v_clipped = v_clipped.detach()
-            critic_loss_clipped = critic_loss_clipped.detach()
-            critic_loss_max = critic_loss_max.detach()
         else:
             critic_loss = (batch_dict["returns"].unsqueeze(-1) - values).pow(2).mean()
 
@@ -651,9 +716,6 @@ class PPO(BaseAgent):
         }
         log_dict.update(model_log_dict)
 
-        # Memory optimization: Detach values tensor if not needed for gradients
-        values = values.detach()
-
         return critic_loss, log_dict
 
     # -----------------------------
@@ -673,22 +735,22 @@ class PPO(BaseAgent):
     # Helper Functions
     # -----------------------------
     @torch.no_grad()
-    def _compute_kl(self, old_mu, new_mu, std):
+    def _compute_kl(self, old_mu, new_mu, old_std, new_std):
         """Compute mean KL divergence between old and new policy distributions.
 
-        Uses the current std for both distributions (exact when learnable_std=False,
-        close approximation when learnable_std=True since std changes slowly).
+        Use rollout std for the old distribution, including std-only policy changes.
 
         Args:
             old_mu: Mean actions from rollout (experience buffer).
             new_mu: Mean actions from current policy.
-            std: Current policy standard deviation.
+            old_std: Standard deviation saved at rollout collection.
+            new_std: Current policy standard deviation.
 
         Returns:
             Scalar tensor with mean KL divergence (summed over action dims, averaged over batch).
         """
-        old_dist = torch.distributions.Normal(old_mu, std)
-        new_dist = torch.distributions.Normal(new_mu, std)
+        old_dist = torch.distributions.Normal(old_mu, old_std)
+        new_dist = torch.distributions.Normal(new_mu, new_std)
         kl = torch.distributions.kl_divergence(old_dist, new_dist).sum(-1)
         kl_sum = kl.sum()
         kl_count = torch.tensor(kl.numel(), dtype=kl_sum.dtype, device=kl_sum.device)

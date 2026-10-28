@@ -172,6 +172,36 @@ def aggregate_scalar_metrics(log_dict: Dict, fabric: Fabric, weight: int = 1) ->
     return aggregated_dict
 
 
+def aggregate_evaluation_results(logs, score, num_items, fabric):
+    """Trial-weighted evaluation, including empty and metrics-only ranks.
+
+    Evaluation is infrequent and produces small scalar dictionaries. Gather
+    those dictionaries once rather than issuing a different collective per key:
+    different tasks (or empty ranks) need not report identical metric keys.
+    """
+    local = ({key: float(value) for key, value in logs.items()},
+             None if score is None else float(score), num_items)
+    records = [local]
+    if fabric.world_size > 1:
+        records = [None] * fabric.world_size
+        torch.distributed.all_gather_object(records, local)
+
+    result = {}
+    keys = sorted({key for values, _, _ in records for key in values})
+    for key in keys:
+        entries = [(values[key], count) for values, _, count in records
+                   if count > 0 and key in values]
+        if entries:
+            result[key] = sum(value * count for value, count in entries) / sum(count for _, count in entries)
+    # Counts are counts, not a mean of rank-local counts.
+    if "eval/num_evaluated" in keys:
+        result["eval/num_evaluated"] = sum(count for _, _, count in records)
+    scored = [(value, count) for _, value, count in records if value is not None and count > 0]
+    score = (sum(value * count for value, count in scored) / sum(count for _, count in scored)
+             if scored else None)
+    return result, score
+
+
 def get_activation_func(activation_name, return_type="nn"):
     """Get activation function by name.
 

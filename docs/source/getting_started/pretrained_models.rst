@@ -30,31 +30,49 @@ backend or version.
      - Discrete GPC prior for SOMA motion
      - IsaacLab only
      - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/gpc_prior/soma_bones/MODEL_CARD.md>`__
-   * - SMPL MaskedMimic
-     - Sparse and masked future-motion control
-     - IsaacLab only
-     - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/masked_mimic/smpl/MODEL_CARD.md>`__
    * - G1 BONES-SEED deployment tracker
      - Domain-randomized motion tracking and deployment
      - Trained in IsaacLab; expected to transfer
      - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/motion_tracker/g1-bones-deploy/MODEL_CARD.md>`__
-   * - SMPL AMASS flat tracker
-     - General SMPL motion tracking on flat ground
-     - IsaacLab only
-     - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/motion_tracker/smpl/MODEL_CARD.md>`__
-   * - SMPL AMASS terrain tracker
-     - General SMPL motion tracking on procedural terrain
-     - IsaacLab only
-     - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/motion_tracker/smpl-terrains/MODEL_CARD.md>`__
+   * - Metatron v1 G1 (MaskedMimic)
+     - Motion, recovery and scene-conditioned control
+     - Trained in IsaacLab; expected to transfer
+     - `Read card <https://huggingface.co/nvidia/Metatron-v1/blob/main/G1/MODEL_CARD.md>`__
    * - SOMA BONES-SEED tracker
      - Continuous-action SOMA motion tracking
-     - IsaacLab fine-tune only (``last_lab.ckpt``)
+     - IsaacLab fine-tune only (``inference_last_lab.ckpt``)
      - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/motion_tracker/soma-bones/MODEL_CARD.md>`__
    * - SOMA BONES-SEED FSQ tracker
      - Discrete FSQ tracker used by GPC
      - IsaacLab only
      - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/motion_tracker/soma_bones_fsq/MODEL_CARD.md>`__
-   * - SOMA BONES-SEED FSQ AMP tracker
-     - FSQ motion tracker with AMP regularization
-     - IsaacLab only
-     - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/motion_tracker/soma_bones_fsq_amp_muon/MODEL_CARD.md>`__
+
+Download Metatron v1 G1
+-----------------------
+
+The native package lives on `Hugging Face <https://huggingface.co/nvidia/Metatron-v1/tree/main/G1>`__,
+not in Git LFS. From the repository root, after installing ProtoMotions and the
+MuJoCo requirements:
+
+.. code-block:: bash
+
+   python scripts/download_metatron.py
+   python protomotions/inference_agent.py --simulator mujoco --num-envs 1 \
+       --checkpoint data/pretrained_models/metatron/G1/inference_last.ckpt \
+       --inference-config examples/inference/metatron.py
+
+The standard-library helper downloads about 460 MB, pins an immutable Hub
+revision, verifies sizes and SHA256 digests, and includes the model card,
+license, notice and all configuration sidecars. No account or token is required.
+Verified files are reused; an existing mismatched file is refused, not overwritten.
+Use ``--output-dir`` for another location and adjust ``--checkpoint`` accordingly.
+``--configs-only`` fetches the small sidecars for configuration tests, without
+weights; it is not sufficient for inference. Keep the package files together.
+
+The playback config starts the robot idle; pressing ``X`` in the viewer cycles
+four goal modes (idle, walk to a target location, follow a velocity command,
+reach with the right hand), and scene inputs are fed empty. Its generic ONNX
+re-export does not reproduce the scene-capable
+browser graph. The separate ``demo/model.onnx`` and ``racer/network.onnx``
+interfaces remain available in the same Hub repository; use each with its paired
+application. No pretrained Metatron SOMA policy is included.

@@ -49,6 +49,7 @@ def test_viewport_capture_uses_live_viewer_camera(monkeypatch, tmp_path, viewpor
     simulator = object.__new__(MujocoSimulator)
     simulator.model = mujoco.MjModel.from_xml_string("<mujoco/>")
     simulator.data = data
+    simulator.dt = 1.0 / 30  # recording stamps use round(1/dt)
     simulator._user_recording_frame = 0
     debug_scene = mujoco.MjvScene(simulator.model, maxgeom=4)
     mujoco.mjv_initGeom(
@@ -97,6 +98,7 @@ def test_viewport_capture_falls_back_without_viewer(monkeypatch, tmp_path):
     simulator = object.__new__(MujocoSimulator)
     simulator.model = mujoco.MjModel.from_xml_string("<mujoco/>")
     simulator.data = data
+    simulator.dt = 1.0 / 30  # recording stamps use round(1/dt)
     simulator._user_recording_frame = 0
     simulator.viewer = None
     simulator._viewer_initialized = False

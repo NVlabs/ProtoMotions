@@ -31,7 +31,7 @@ parser.add_argument(
     "--simulator",
     type=str,
     required=True,
-    help="Simulator to use (e.g., 'isaacgym', 'isaaclab', 'newton', 'genesis')",
+    help="Simulator to use (e.g., 'isaacgym', 'isaaclab', 'newton', 'mujoco')",
 )
 parser.add_argument(
     "--cpu-only",
@@ -57,7 +57,8 @@ AppLauncher = import_simulator_before_torch(args.simulator)
 from protomotions.simulator.base_simulator.config import SimulatorConfig  # noqa: E402
 from protomotions.envs.base_env.env import BaseEnv  # noqa: E402
 from protomotions.envs.base_env.config import EnvConfig  # noqa: E402
-from protomotions.envs.component_factories import max_coords_obs_factory  # noqa: E402
+from protomotions.envs.mdp_component import MdpComponent  # noqa: E402
+from protomotions.envs.obs.humanoid import compute_humanoid_max_coords_observations  # noqa: E402
 from protomotions.envs.control.kinematic_replay_control import KinematicReplayControlConfig  # noqa: E402
 from protomotions.components.motion_lib import MotionLibConfig  # noqa: E402
 from protomotions.components.terrains.config import TerrainConfig  # noqa: E402
@@ -257,9 +258,11 @@ env_config = EnvConfig(
     control_components={
         "kinematic_replay": KinematicReplayControlConfig(),
     },
-    # Modular observation components (using factory functions)
+    # Modular observation components (kernels bound with MdpComponent.from_kernel)
     observation_components={
-        "max_coords_obs": max_coords_obs_factory(),
+        "max_coords_obs": MdpComponent.from_kernel(
+            compute_humanoid_max_coords_observations
+        ),
     },
     # No terminations needed for kinematic playback
     termination_components={},
@@ -334,20 +337,20 @@ env = BaseEnv(
 
 print("\n=== Environment Initialization ===")
 print("Environment created successfully")
-print(f"Motion library loaded: {env.motion_lib is not None}")
+print(f"Motion library loaded: {env.reference_motion.motion_lib is not None}")
 
 # Now we can analyze the motion library that the environment created
-if env.motion_lib is not None:
+if env.reference_motion.motion_lib is not None:
     print("\n=== Motion Library Analysis (Created by Environment) ===")
     print("Motion library details:")
-    print(f"  - Number of motions: {env.motion_lib.num_motions()}")
-    print(f"  - Motion file path: {env.motion_lib.motion_file}")
-    print(f"  - Device: {env.motion_lib.device}")
+    print(f"  - Number of motions: {env.reference_motion.motion_lib.num_motions()}")
+    print(f"  - Motion file path: {env.reference_motion.motion_lib.motion_file}")
+    print(f"  - Device: {env.reference_motion.motion_lib.device}")
 
     # Analyze each motion in detail
-    for motion_id in range(env.motion_lib.num_motions()):
-        motion_length = env.motion_lib.get_motion_length(motion_id)
-        motion_dt = env.motion_lib.motion_dt[motion_id]
+    for motion_id in range(env.reference_motion.motion_lib.num_motions()):
+        motion_length = env.reference_motion.motion_lib.get_motion_length(motion_id)
+        motion_dt = env.reference_motion.motion_lib.motion_dt[motion_id]
         num_frames = int(motion_length.item() / motion_dt.item())
 
         print(f"\n  Motion {motion_id}:")
@@ -360,7 +363,7 @@ if env.motion_lib is not None:
         sample_times = torch.tensor(
             [0.0, motion_length.item() * 0.5, motion_length.item() * 0.9], device=device
         )
-        sample_states = env.motion_lib.get_motion_state(
+        sample_states = env.reference_motion.motion_lib.get_motion_state(
             torch.tensor([motion_id] * len(sample_times), device=device), sample_times
         )
 
@@ -372,16 +375,16 @@ if env.motion_lib is not None:
         print(f"    - Body positions shape: {sample_states.rigid_body_pos.shape}")
 
 print(f"Scene library created: {env.scene_lib is not None}")
-print(f"Motion manager created: {env.motion_manager is not None}")
-print(f"Motion manager type: {type(env.motion_manager).__name__}")
+print(f"Motion manager created: {env.reference_motion.motion_manager is not None}")
+print(f"Motion manager type: {type(env.reference_motion.motion_manager).__name__}")
 
 # Reset the environment to initialize motion manager
 print("\n=== Resetting Environment ===")
 env.reset()
 
 print("Environment reset - motion manager initialized")
-print(f"Motion IDs: {env.motion_manager.motion_ids}")
-print(f"Motion times: {env.motion_manager.motion_times}")
+print(f"Motion IDs: {env.reference_motion.motion_manager.motion_ids}")
+print(f"Motion times: {env.reference_motion.motion_manager.motion_times}")
 
 # Run simulation with random actions
 print("\n=== Starting Simulation ===")
@@ -403,8 +406,8 @@ try:
 
         # Print information every 100 steps
         if step_count % 100 == 0:
-            motion_times = env.motion_manager.motion_times
-            motion_ids = env.motion_manager.motion_ids
+            motion_times = env.reference_motion.motion_manager.motion_times
+            motion_ids = env.reference_motion.motion_manager.motion_ids
 
             print(f"Step {step_count}:")
             print(f"  Motion IDs: {motion_ids}")

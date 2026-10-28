@@ -1,0 +1,11 @@
+// SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+// Generated from assets/styles/crawling.json; do not edit generated output.
+#pragma once
+#include "protomotions/deployment/steering_style.hpp"
+namespace protomotions::deployment {
+inline constexpr CrawlingStylePreset kCrawlingStylePreset{
+  {@CRAWLING_POSE_VALUES@},
+  {@CRAWLING_VELOCITY_VALUES@}
+};
+}

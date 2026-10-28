@@ -5,7 +5,6 @@
 
 from types import SimpleNamespace
 
-import pytest
 import torch
 from tensordict import TensorDict
 from torch import nn
@@ -94,18 +93,8 @@ def _actor_config():
     )
 
 
-def _amp_config(out_keys=None, in_keys=None):
+def _amp_config():
     return AMPModelConfig(
-        in_keys=in_keys or ["obs", "disc_obs"],
-        out_keys=out_keys
-        or [
-            "action",
-            "mean_action",
-            "neglogp",
-            "value",
-            "disc_logits",
-            "disc_value",
-        ],
         actor=_actor_config(),
         critic=ModuleContainerConfig(
             in_keys=["obs"],
@@ -150,20 +139,8 @@ def _ase_discriminator_config():
     )
 
 
-def _ase_config(out_keys=None, in_keys=None):
+def _ase_config():
     return ASEModelConfig(
-        in_keys=in_keys or ["obs", "disc_obs", "latents"],
-        out_keys=out_keys
-        or [
-            "action",
-            "mean_action",
-            "neglogp",
-            "value",
-            "disc_logits",
-            "mi_enc_output",
-            "disc_value",
-            "mi_value",
-        ],
         actor=_actor_config(),
         critic=ModuleContainerConfig(
             in_keys=["obs"],
@@ -269,16 +246,19 @@ def test_amp_model_forwards_actor_critic_discriminator_and_disc_critic():
     assert out["disc_value"].shape == (2, 1)
 
 
-def test_amp_model_validates_discriminator_keys_against_model_contract():
-    with pytest.raises(AssertionError, match="Discriminator output key"):
-        AMPModel(
-            _amp_config(
-                out_keys=["action", "mean_action", "neglogp", "value", "disc_value"]
-            )
-        )
-
-    with pytest.raises(AssertionError, match="Discriminator input key"):
-        AMPModel(_amp_config(in_keys=["obs"]))
+def test_amp_model_derives_its_key_unions_from_components():
+    # The model derives in_keys/out_keys from actor, critic, discriminator and
+    # disc_critic -- the discriminator's keys are in the union by construction.
+    model = AMPModel(_amp_config())
+    assert model.in_keys == ["obs", "disc_obs"]
+    assert model.out_keys == [
+        "action",
+        "mean_action",
+        "neglogp",
+        "value",
+        "disc_logits",
+        "disc_value",
+    ]
 
 
 def test_ase_discriminator_encoder_initializes_encoder_and_partitions_weights():
@@ -363,21 +343,17 @@ def test_ase_model_forwards_with_internal_logging_enabled():
     assert out["mi_value"].shape == (2, 1)
 
 
-def test_ase_model_validates_mi_critic_keys_against_model_contract():
-    with pytest.raises(AssertionError, match="MI critic output key"):
-        ASEModel(
-            _ase_config(
-                out_keys=[
-                    "action",
-                    "mean_action",
-                    "neglogp",
-                    "value",
-                    "disc_logits",
-                    "mi_enc_output",
-                    "disc_value",
-                ]
-            )
-        )
-
-    with pytest.raises(AssertionError, match="MI critic input key"):
-        ASEModel(_ase_config(in_keys=["obs", "disc_obs"]))
+def test_ase_model_derives_its_key_unions_including_the_mi_critic():
+    # The MI critic's keys are in the derived union by construction.
+    model = ASEModel(_ase_config())
+    assert model.in_keys == ["obs", "disc_obs", "latents"]
+    assert model.out_keys == [
+        "action",
+        "mean_action",
+        "neglogp",
+        "value",
+        "disc_logits",
+        "mi_enc_output",
+        "disc_value",
+        "mi_value",
+    ]

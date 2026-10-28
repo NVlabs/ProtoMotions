@@ -37,12 +37,6 @@ class DiscretePriorPEFTSFTAgent(
     def has_critic(self):
         return False
 
-    def create_model(self):
-        # SupervisedAgent's external-expert slot is unused here. PEFT SFT gets
-        # labels from the frozen target encoder inside DiscretePriorPEFTSFTModel.
-        self.expert_model = None
-        return super().create_model()
-
     def _should_build_target_encoder(self, mimic_target_poses_dim: int) -> bool:
         if mimic_target_poses_dim <= 0:
             raise ValueError(
@@ -63,8 +57,22 @@ class DiscretePriorPEFTSFTAgent(
             optimizer,
         )
 
+    # SFT never samples against a reference, so it keeps none, whichever way
+    # its weights are loaded; an RLFT run started from this SFT run pins its own.
+    def _load_model_state_dict(self, model_state):
+        loaded = super()._load_model_state_dict(model_state)
+        self.model._actor.reset_reference()
+        return loaded
+
+    def load_adapter_checkpoint(self, checkpoint, strict: bool = True):
+        result = super().load_adapter_checkpoint(checkpoint, strict=strict)
+        self.model._actor.reset_reference()
+        return result
+
     def get_state_dict(self, state_dict):
         state_dict = super().get_state_dict(state_dict)
-        # RLFT warm-start reads the actor optimizer state from SFT checkpoints.
+        # RLFT restores this optimizer state only when it loads an SFT
+        # last.ckpt with load_training_state=True. A warm start from the
+        # command line loads weights only, so its optimizer starts fresh.
         state_dict["actor_optimizer"] = self.supervised_optimizer.state_dict()
         return state_dict

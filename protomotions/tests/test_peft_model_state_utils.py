@@ -3,8 +3,6 @@
 
 """Tests for discrete-prior PEFT model state loading helpers."""
 
-from types import SimpleNamespace
-
 import pytest
 import torch
 from torch import nn
@@ -13,7 +11,11 @@ from protomotions.agents.peft.utils import model_state as model_state_module
 from protomotions.agents.peft.prior_agent import DiscretePriorPEFTRLFTAgent
 from protomotions.agents.peft.prior_setup import DiscretePriorPEFTSetupMixin
 from protomotions.agents.peft.sft_agent import DiscretePriorPEFTSFTAgent
+from protomotions.agents.peft.utils.adapter_state import (
+    reference_state_from_policy_state,
+)
 from protomotions.agents.peft.utils.model_state import (
+    PEFTModelStateLoad,
     load_compatible_peft_model_state,
 )
 
@@ -24,7 +26,11 @@ class _AdapterActor:
 
     def load_adapter_state_dict(self, state_dict, strict=True):
         self.loaded = (dict(state_dict), strict)
-        return {"missing_keys": [], "unexpected_keys": []}
+        return {
+            "missing_keys": [],
+            "unexpected_keys": [],
+            "reference_loaded": any(".reference_" in key for key in state_dict),
+        }
 
 
 class _OptimizerRecorder:
@@ -38,20 +44,21 @@ class _OptimizerRecorder:
 def test_optional_full_checkpoint_state_prefixes_are_module_owned_and_qualified():
     class _PriorWithPEFT(nn.Module):
         def optional_full_checkpoint_state_prefixes(self):
-            return (
-                "_anchor_",
-                "film_input_norm.",
-                "reference_prior.",
-                "reference_film_input_norm.",
-            )
+            return ("_anchor_", "film_input_norm.")
 
     class _Actor(nn.Module):
         def __init__(self):
             super().__init__()
             self.prior_with_peft = _PriorWithPEFT()
+            self.weight = nn.Parameter(torch.ones(1))
 
         def optional_full_checkpoint_state_prefixes(self):
-            return ("target_latent_encoder.",)
+            return (
+                "target_latent_encoder.",
+                "prior_with_peft.reference_prior.",
+                "prior_with_peft.reference_film_input_norm.",
+                "reference_peft_model.",
+            )
 
     class _PEFTModel(nn.Module):
         def __init__(self):
@@ -79,10 +86,11 @@ def test_optional_full_checkpoint_state_prefixes_are_module_owned_and_qualified(
     assert non_amp_prefixes == (
         "_critic.",
         "_actor.target_latent_encoder.",
-        "_actor.prior_with_peft._anchor_",
-        "_actor.prior_with_peft.film_input_norm.",
         "_actor.prior_with_peft.reference_prior.",
         "_actor.prior_with_peft.reference_film_input_norm.",
+        "_actor.reference_peft_model.",
+        "_actor.prior_with_peft._anchor_",
+        "_actor.prior_with_peft.film_input_norm.",
     )
 
     assert set(
@@ -92,6 +100,55 @@ def test_optional_full_checkpoint_state_prefixes_are_module_owned_and_qualified(
         "_discriminator.",
         "_disc_critic.",
     }
+
+
+@pytest.mark.parametrize("actor_prefix", ["", "_actor."])
+def test_has_reference_state_recognizes_every_reference_network(actor_prefix):
+    for network in (
+        "prior_with_peft.reference_prior.",
+        "prior_with_peft.reference_film_input_norm.",
+        "reference_peft_model.",
+    ):
+        state = {f"{actor_prefix}{network}weight": torch.ones(1)}
+        assert model_state_module.has_reference_state(state), network
+    student = {
+        f"{actor_prefix}{network}weight": torch.ones(1)
+        for network in (
+            "prior_with_peft.base_prior.",
+            "prior_with_peft.film_input_norm.",
+            "actor_peft_model.",
+        )
+    }
+    assert not model_state_module.has_reference_state(student)
+
+
+@pytest.mark.parametrize("actor_prefix", ["", "_actor."])
+def test_reference_state_from_policy_state_takes_only_the_trained_policy(actor_prefix):
+    trained = {
+        "prior_with_peft.base_prior.layer.lora.A": torch.ones(1),
+        "prior_with_peft.film_input_norm.running_obs_norm.mean": torch.ones(1),
+        "actor_peft_model.models.0.norm.running_obs_norm.mean": torch.ones(1),
+    }
+    left_out = {
+        # The frozen prior weights, and the reference the file itself stores.
+        "prior_with_peft.base_prior.layer.weight": torch.zeros(1),
+        "prior_with_peft.reference_prior.layer.lora.A": torch.zeros(1),
+        "prior_with_peft.reference_film_input_norm.running_obs_norm.mean": torch.zeros(1),
+        "reference_peft_model.models.0.norm.running_obs_norm.mean": torch.zeros(1),
+    }
+    state = {actor_prefix + key: value for key, value in {**trained, **left_out}.items()}
+    state["_critic.models.0.weight"] = torch.zeros(1)
+    state["_discriminator.models.0.weight"] = torch.zeros(1)
+
+    reference_state = reference_state_from_policy_state(state)
+
+    assert reference_state.keys() == {
+        "prior_with_peft.reference_prior.layer.lora.A",
+        "prior_with_peft.reference_film_input_norm.running_obs_norm.mean",
+        "reference_peft_model.models.0.norm.running_obs_norm.mean",
+    }
+    # Every value comes from the trained policy, none from the stored reference.
+    assert all(torch.equal(value, torch.ones(1)) for value in reference_state.values())
 
 
 def test_load_compatible_peft_model_state_uses_strict_adapter_loader_for_adapter_only_state():
@@ -109,9 +166,33 @@ def test_load_compatible_peft_model_state_uses_strict_adapter_loader_for_adapter
         "prior_with_peft.film_input_norm.running_obs_norm.mean": torch.tensor([3.0]),
     }
 
-    load_compatible_peft_model_state(_Model(), state)
+    result = load_compatible_peft_model_state(_Model(), state)
 
     assert actor.loaded == (state, True)
+    assert result == PEFTModelStateLoad(adapter_only=True, reference_loaded=False)
+
+
+def test_load_compatible_peft_model_state_treats_reference_keys_as_adapter_checkpoint_state():
+    actor = _AdapterActor()
+
+    class _Model:
+        _actor = actor
+
+        def load_state_dict(self, state_dict, strict=True):
+            raise AssertionError("adapter state should not load the full model")
+
+    state = {
+        "prior_with_peft.base_prior._transformer.layers.0.m": torch.tensor([1.0]),
+        "prior_with_peft.reference_prior._transformer.layers.0.m": torch.tensor([2.0]),
+        "prior_with_peft.reference_film_input_norm.running_obs_norm.mean": (
+            torch.tensor([3.0])
+        ),
+    }
+
+    result = load_compatible_peft_model_state(_Model(), state)
+
+    assert actor.loaded == (state, True)
+    assert result == PEFTModelStateLoad(adapter_only=True, reference_loaded=True)
 
 
 def test_load_compatible_peft_model_state_allows_peft_warm_start_differences(monkeypatch):
@@ -119,20 +200,21 @@ def test_load_compatible_peft_model_state_allows_peft_warm_start_differences(mon
 
     class _PriorWithPEFT(nn.Module):
         def optional_full_checkpoint_state_prefixes(self):
-            return (
-                "_anchor_",
-                "film_input_norm.",
-                "reference_prior.",
-                "reference_film_input_norm.",
-            )
+            return ("_anchor_", "film_input_norm.")
 
     class _Actor(nn.Module):
         def __init__(self):
             super().__init__()
             self.prior_with_peft = _PriorWithPEFT()
+            self.weight = nn.Parameter(torch.ones(1))
 
         def optional_full_checkpoint_state_prefixes(self):
-            return ("target_latent_encoder.",)
+            return (
+                "target_latent_encoder.",
+                "prior_with_peft.reference_prior.",
+                "prior_with_peft.reference_film_input_norm.",
+                "reference_peft_model.",
+            )
 
     class _Model(nn.Module):
         def __init__(self):
@@ -182,7 +264,12 @@ def test_load_compatible_peft_model_state_requires_complete_reference_when_prese
 ):
     calls = []
 
-    class _PEFT:
+    class _PEFT(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.base_prior = nn.Module()
+            self.base_prior.required = nn.Linear(1, 1, bias=False)
+
         def ensure_reference_modules(self):
             calls.append("ensure_reference")
 
@@ -192,7 +279,8 @@ def test_load_compatible_peft_model_state_requires_complete_reference_when_prese
     class _Model(nn.Module):
         def __init__(self):
             super().__init__()
-            self._actor = SimpleNamespace(prior_with_peft=_PEFT())
+            self._actor = nn.Module()
+            self._actor.prior_with_peft = _PEFT()
 
         def load_state_dict(self, state_dict, strict=True):
             calls.append(("load", strict, dict(state_dict)))
@@ -214,49 +302,26 @@ def test_load_compatible_peft_model_state_requires_complete_reference_when_prese
     with pytest.raises(RuntimeError, match="reference_prior.required.weight"):
         load_compatible_peft_model_state(model, state)
 
-    assert calls == [
-        "ensure_reference",
-        ("materialize", model),
-        ("load", False, state),
-    ]
+    assert calls == []  # Validation fails before materialization or weight writes.
 
 
-def test_load_compatible_peft_model_state_allows_amp_component_differences(monkeypatch):
-    calls = []
-
+def test_load_compatible_peft_model_state_retains_absent_amp_networks():
     class _Model(nn.Module):
         def __init__(self):
             super().__init__()
-            self._actor = nn.Module()
-            self._discriminator = nn.Module()
-            self._disc_critic = nn.Module()
+            self._actor = nn.Linear(1, 1, bias=False)
+            self._discriminator = nn.Linear(1, 1)
+            self._disc_critic = nn.Linear(1, 1)
 
-        def optional_full_checkpoint_state_prefixes(self):
-            return ("_discriminator.", "_disc_critic.")
-
-        def load_state_dict(self, state_dict, strict=True):
-            calls.append(("load", strict, dict(state_dict)))
-            return (
-                ["_discriminator.weight", "_disc_critic.value.weight"],
-                ["_discriminator.old_weight", "_disc_critic.old_value.weight"],
-            )
+        def optional_checkpoint_modules(self):
+            return ("_discriminator", "_disc_critic")
 
     model = _Model()
-    state = {"_actor.weight": torch.tensor([1.0])}
-    monkeypatch.setattr(
-        model_state_module,
-        "materialize_lazy_running_stats_from_state_dict",
-        lambda module, model_state: calls.append(
-            ("materialize", module, dict(model_state))
-        ),
-    )
-
+    before = {key: value.clone() for key, value in model.state_dict().items()}
+    state = {"_actor.weight": torch.tensor([[1.0]])}
     load_compatible_peft_model_state(model, state)
-
-    assert calls == [
-        ("materialize", model, state),
-        ("load", False, state),
-    ]
+    for key, value in model.state_dict().items():
+        assert torch.equal(value, state[key] if key in state else before[key])
 
 
 def test_load_compatible_peft_model_state_rejects_unexpected_full_state_keys(monkeypatch):
@@ -277,7 +342,7 @@ def test_load_compatible_peft_model_state_rejects_unexpected_full_state_keys(mon
         lambda module, model_state: None,
     )
 
-    with pytest.raises(RuntimeError, match="Unexpected PEFT model state_dict mismatch"):
+    with pytest.raises(RuntimeError, match="unexpected_keys=.*_actor.weight"):
         load_compatible_peft_model_state(
             _Model(),
             {"_actor.weight": torch.tensor([1.0])},

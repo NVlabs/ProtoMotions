@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from protomotions.robot_configs.base import RobotConfig
-from protomotions.simulator.base_simulator.config import SimulatorConfig
 from protomotions.envs.base_env.config import EnvConfig
 from protomotions.agents.amp.config import AMPAgentConfig
+from protomotions.utils.experiment_configs import ExperimentConfigs
 import argparse
 
 
@@ -29,7 +29,7 @@ def scene_lib_config(args: argparse.Namespace):
     """Build scene library configuration."""
     from protomotions.components.scene_lib import SceneLibConfig
 
-    scene_file = args.scenes_file if hasattr(args, "scenes_file") else None
+    scene_file = args.scenes_file
     return SceneLibConfig(scene_file=scene_file)
 
 
@@ -52,14 +52,17 @@ def env_config(
     from protomotions.envs.control.path_follower_control import PathFollowerControlConfig
     from protomotions.envs.context_views import EnvContext
     from protomotions.envs.mdp_component import MdpComponent
-    from protomotions.envs.component_factories import (
-        max_coords_obs_factory,
-        historical_max_coords_obs_factory,
+    from protomotions.envs.obs.humanoid import (
+        compute_humanoid_max_coords_observations,
     )
-    
+    from protomotions.envs.obs.humanoid_historical import (
+        compute_historical_max_coords_from_state,
+    )
+
     # Import compute kernels for path-specific components
-    from protomotions.envs.obs import compute_path_obs
-    from protomotions.envs.rewards import compute_path_following_rew
+    from protomotions.envs.obs.path import compute_path_obs
+    from protomotions.envs.rewards.task import compute_path_following_rew
+    from protomotions.envs.rewards.meta import RewardMeta
     from protomotions.envs.action import make_pd_action_config
 
     # Control components - path follower manages path generation
@@ -78,21 +81,27 @@ def env_config(
     # Observation components configuration
     observation_components = {
         # Humanoid self-observations (current state)
-        "max_coords_obs": max_coords_obs_factory(
+        "max_coords_obs": MdpComponent.from_kernel(
+            compute_humanoid_max_coords_observations,
             local_obs=True,
             root_height_obs=True,
             observe_contacts=False,
         ),
         # Historical observations for AMP discriminator (from StateHistoryBuffer)
-        "historical_max_coords_obs": historical_max_coords_obs_factory(
+        "historical_max_coords_obs": MdpComponent.from_kernel(
+            compute_historical_max_coords_from_state,
             local_obs=True,
             root_height_obs=True,
             observe_contacts=False,
+            history_steps=8,
         ),
         # Path observation (from control component context) - path-specific, kept as MdpComponent
         "path": MdpComponent(
             compute_func=compute_path_obs,
             dynamic_vars={
+                # The root on purpose, not the kernel's default anchor_rot: the
+                # path is followed in the root heading frame (on SMPL the anchor
+                # is the root anyway, so the recorded traces do not move).
                 "root_rot": EnvContext.current.root_rot,
                 "head_pos": EnvContext.path.head_pos,
                 "traj_samples": EnvContext.path.traj_samples,
@@ -111,13 +120,13 @@ def env_config(
                 "tar_pos": EnvContext.path.tar_pos,
                 "height_conditioned": EnvContext.path.height_conditioned,
             },
-            static_params={"weight": 1.0, "pos_err_scale": 2.0, "height_err_scale": 10.0},
+            static_params={"pos_err_scale": 2.0, "height_err_scale": 10.0},
+            meta=RewardMeta(weight=1.0),
         ),
     }
 
     env_cfg = EnvConfig(
         max_episode_length=300,
-        num_state_history_steps=8,  # Historical obs for AMP discriminator
         control_components=control_components,
         observation_components=observation_components,
         reward_components=reward_components,
@@ -140,9 +149,12 @@ def agent_config(
         DiscriminatorConfig,
         AMPParametersConfig,
     )
-    from protomotions.envs.obs import compute_historical_max_coords_from_motion_lib
+    from protomotions.envs.obs.humanoid_historical import compute_historical_max_coords_from_motion_lib
     from protomotions.agents.evaluators.config import EvaluatorConfig
-    from protomotions.envs.component_factories import path_distance_error_factory
+
+    from protomotions.envs.mdp_component import MdpComponent
+    from protomotions.envs.terminations.rule import TerminationRule
+    from protomotions.envs.terminations.task import path_distance
 
     # For path following with AMP: actor/critic get path obs, discriminator uses historical body state
     actor_config = PPOActorConfig(
@@ -151,7 +163,6 @@ def agent_config(
         in_keys=["max_coords_obs", "path", "historical_max_coords_obs"],
         mu_key="actor_trunk_out",
         mu_model=MLPWithConcatConfig(
-            in_keys=["max_coords_obs", "path", "historical_max_coords_obs"],
             normalize_obs=True,
             norm_clamp_value=5,
             out_keys=["actor_trunk_out"],
@@ -221,21 +232,17 @@ def agent_config(
         "historical_max_coords_obs": MdpComponent(
             compute_func=compute_historical_max_coords_from_motion_lib,
             dynamic_vars={},  # All parameters injected by agent
-            static_params={"history_steps": 8},  # Matches num_state_history_steps
+            static_params={"history_steps": 8},  # The ring keeps what this reads.
         ),
     }
 
-    evaluation_components = {
-        "path_distance": path_distance_error_factory(
-            threshold=0.5,
-            min_progress=10,
-        ),
+    # Benchmark is stricter than the 1.0 m control termination above.
+    path_checks = {
+        "path_distance": MdpComponent.from_kernel(path_distance, min_progress=10),
     }
 
     agent_cfg = AMPAgentConfig(
         model=AMPModelConfig(
-            in_keys=["max_coords_obs", "path", "historical_max_coords_obs"],
-            out_keys=["action", "mean_action", "neglogp", "value", "disc_logits", "disc_value"],
             actor=actor_config,
             critic=critic_config,
             discriminator=discriminator_config,
@@ -257,7 +264,10 @@ def agent_config(
             discriminator_reward_w=0.5,
         ),
         evaluator=EvaluatorConfig(
-            evaluation_components=evaluation_components,
+            metric_components=path_checks,
+            failure_components={name: TerminationRule(component, 0.5)
+                                for name, component in path_checks.items()},
+            score_key="eval/success_rate",
             max_eval_steps=300,
         ),
     )
@@ -265,22 +275,7 @@ def agent_config(
 
 
 def apply_inference_overrides(
-    robot_cfg: RobotConfig,
-    simulator_cfg: SimulatorConfig,
-    env_cfg,
-    agent_cfg,
-    terrain_cfg,
-    motion_lib_cfg,
-    scene_lib_cfg,
-    args: argparse.Namespace,
-):
-    """Apply evaluation-specific overrides."""
-    # Disable AMP discriminator termination during evaluation
-    if agent_cfg is not None and hasattr(agent_cfg, "amp_parameters"):
-        agent_cfg.amp_parameters.discriminator_reward_threshold = 0.0
-
-    if env_cfg is not None:
-        env_cfg.max_episode_length = 1000000
-        # Disable path termination for longer evaluation runs
-        if hasattr(env_cfg, "control_components") and "path" in env_cfg.control_components:
-            env_cfg.control_components["path"].enable_path_termination = False
+    configs: ExperimentConfigs, args: argparse.Namespace
+) -> None:
+    """Let the path play out: no path-completion termination at evaluation."""
+    configs.env.control_components["path"].enable_path_termination = False
