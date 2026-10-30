@@ -51,6 +51,10 @@ from protomotions.envs.control.path_follower_control import (
     PathFollowerControl,
     PathFollowerControlConfig,
 )
+from protomotions.envs.control.scene_boxes_control import (
+    SceneBoxesControl,
+    SceneBoxesControlConfig,
+)
 from protomotions.envs.control.steering_control import (
     SteeringControl,
     SteeringControlConfig,
@@ -109,6 +113,7 @@ def every_in_tree_control():
     return [
         SteeringControl(SteeringControlConfig(), inputs),
         TargetControl(TargetControlConfig(), inputs),
+        SceneBoxesControl(SceneBoxesControlConfig(), inputs),
         GPCSFTReferenceTargetControl(GPCSFTReferenceTargetControlConfig(), inputs),
         MimicControl(MimicControlConfig(), inputs),
         MaskedMimicControl(MaskedMimicControlConfig(), inputs),
@@ -124,7 +129,7 @@ def every_in_tree_control():
 
 def test_every_in_tree_control_holds_no_env_simulator_or_motion_handle():
     controls = every_in_tree_control()
-    assert len(controls) == 9
+    assert len(controls) == 10
     for control in controls:
         for name, value in vars(control).items():
             assert name != "env", type(control).__name__

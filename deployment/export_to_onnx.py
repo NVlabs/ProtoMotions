@@ -33,11 +33,33 @@ Outputs
 
 ``<output>/unified_pipeline.yaml``
     Rich metadata / deployment contract.
+
+Body poses
+----------
+A deployable recipe computes the robot's current body poses inside the graph
+(a goal kernel bound to the recipe's ``BakedAnchorFK`` through ``fk=``, reading
+``dof_pos``, ``anchor_pos`` and ``anchor_rot``); in a robot export they are
+never graph inputs (a simulation host may feed them, see *Which host*), and
+the graph's outputs stay the four above. A host that needs the poses outside
+the policy call runs ``fk.onnx``, exported from the same kernel and the same
+bundle by ``deployment/export_fk_to_onnx.py``.
+
+Which host
+----------
+``--host`` names what will feed the graph. A ``robot`` host (the default) has
+raw sensor readings, the policy's own past actions and the goal streams, so a
+binding to the simulator's body state is refused, naming the kind and the host
+that could feed it. A ``simulation`` host (a game engine, a browser MuJoCo, a
+sim-to-sim check) also has the simulator's own body poses, velocities and
+ground heights under ``current.*`` (the ``simulated_*`` kinds), and the sidecar
+records ``host: simulation``. A policy meant for a robot is exported with the
+default even while it is being tested in a simulator.
 """
 
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import logging
 from pathlib import Path
 
@@ -51,7 +73,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 # ---------------------------------------------------------------------------
 
 
-def _build_samples(components, context, slot_names):
+def _build_samples(components, context, slot_names, host="robot"):
     """A tracing input per bound context path, read off the sample context.
 
     Every path an exportable observation binds must be published by the
@@ -67,14 +89,20 @@ def _build_samples(components, context, slot_names):
 
     A history-axis path needs either an action feedback rule or a measurement
     replay rule. Unknown histories are refused before tracing, not fabricated.
+
+    ``host`` is who will feed the graph: a kind outside that host's set (the
+    simulator's body state in a robot export) is refused, naming the host that
+    could feed it, so a robot export stays as strict as before ``--host``
+    existed.
     """
     import torch
 
-    from deployment.contract import ELEMENT_LABELS
+    from deployment.contract import ELEMENT_LABELS, accepting_host, kinds_for_host
     from deployment.input_history import history_specs
     from protomotions.envs.context_views import deploy_for
     from protomotions.envs.mdp_component import is_exportable
 
+    allowed = kinds_for_host(host)
     samples = {}
     for name, component in components.items():
         if not is_exportable(component.get_compute_func()):
@@ -119,10 +147,21 @@ def _build_samples(components, context, slot_names):
                     f"{sorted(ELEMENT_LABELS)}"
                 )
             if path in slot_names and history_specs(path, value.shape) == (None, None):
+                # Before the host check: past simulator truth inherits the
+                # simulated_* kinds but no host can replay it, so the remedy is
+                # not another host.
                 raise ValueError(
                     f"actor observation {name!r} binds {path!r}, which the sample "
                     "context publishes with a history axis the host cannot feed: "
                     "no action feedback or measurement replay rule is declared"
+                )
+            if kind not in allowed:
+                accepting = accepting_host(kind)
+                raise ValueError(
+                    f"actor observation {name!r} binds {path!r} with host kind "
+                    f"{kind!r}, which only a {accepting} host can feed; this export "
+                    f"is for a {host} host. Pass --host {accepting} to export for "
+                    f"one, or bind a name a {host} host can feed"
                 )
             samples[path] = value
     return samples
@@ -149,6 +188,40 @@ _SOURCE_TEXT = {
     "masked_mimic_style_frame_masks": "Per-style-frame visibility; true means conditioned.",
     "masked_mimic_average_velocity": "World-frame anchor XY velocity command in m/s.",
     "masked_mimic_velocity_command_mask": "Velocity-command visibility; true means conditioned.",
+    # Scene boxes: a fixed-capacity [object, box] set the host describes; the
+    # graph computes the corners in the root heading frame itself.
+    "scene_box_centers": (
+        "Box centres in metres in each object's own frame, [object, box, xyz], "
+        "asset scale included; any value for a padding box."
+    ),
+    "scene_box_extents": (
+        "Full box side lengths in metres in each object's own frame, "
+        "[object, box, xyz], asset scale included; any value for a padding box."
+    ),
+    "scene_box_valid": (
+        "Boolean [object, box]: the box exists; false for padding slots, whose "
+        "geometry and pose are ignored."
+    ),
+    "scene_object_visible": (
+        "Boolean [object, 1]: the object is shown to the policy; false hides "
+        "every box of the object."
+    ),
+    "scene_object_pos": (
+        "Object origin in metres in the host localization frame, [object, xyz]; "
+        "the same frame as the robot's anchor position."
+    ),
+    "scene_object_rot": (
+        "Object orientation as an xyzw unit quaternion in the host localization "
+        "frame, [object, xyzw]."
+    ),
+    "scene_position_offset": (
+        "Bias added to every observed object position, metres, xyz; a training "
+        "perturbation of the observed pose. Feed zeros."
+    ),
+    "scene_yaw_offset": (
+        "Yaw bias in radians composed onto every observed object orientation; a "
+        "training perturbation of the observed pose. Feed zero."
+    ),
     "odom_start_xy": (
         "Robot/reference anchor XY at motion start in the deployment "
         "world frame. For zero-start deploy frames this is [0, 0]."
@@ -191,6 +264,38 @@ _SOURCE_TEXT = {
         "Robot anchor position in the deployment world frame. This "
         "needs a position estimate on the robot; prefer observations "
         "that read only the anchor rotation if you do not have one."
+    ),
+    "reference_motion_body_vel": (
+        "Reference body linear velocities at each future step, m/s, in the "
+        "same frame as the reference body positions."
+    ),
+    "reference_motion_body_ang_vel": (
+        "Reference body angular velocities at each future step, rad/s, in the "
+        "same frame as the reference body positions."
+    ),
+    # Simulation-host kinds: the simulator's own body state, which no robot
+    # measures. Present only in a `host: simulation` sidecar.
+    "simulated_body_pos": (
+        "Every body's link-frame origin in metres in the simulator's world frame "
+        "(not its centre of mass), robot body order; read from the simulator, "
+        "never estimated on a robot."
+    ),
+    "simulated_body_rot": (
+        "Every body's link-frame orientation as an xyzw unit quaternion in the "
+        "simulator's world frame, robot body order."
+    ),
+    "simulated_body_vel": (
+        "Every body's linear velocity in m/s in the simulator's world frame, of "
+        "the link-frame origin, not the centre of mass (the common state "
+        "convention the training simulators enforce; a centre-of-mass velocity "
+        "differs by omega x the centre-of-mass offset)."
+    ),
+    "simulated_body_ang_vel": (
+        "Every body's angular velocity in rad/s in the simulator's world frame."
+    ),
+    "simulated_ground_heights": (
+        "Terrain height in metres under the robot's anchor body, from the "
+        "simulator's terrain."
     ),
 }
 
@@ -266,6 +371,64 @@ def _load_deployable_weights(policy, actor_cfg, model_state):
     policy.load_state_dict(model_state, strict=True)
 
 
+def sanitize_onnx_name(key: str) -> str:
+    """The ONNX input name of a host key: dots and brackets become underscores.
+
+    The one naming rule for every graph exported from a bundle; the FK exporter
+    names ``fk.onnx``'s inputs with it too (``host_input_names``), so a host
+    feeds one tensor under one name to both graphs.
+    """
+    return key.replace(".", "_").replace("[", "_").replace("]", "_")
+
+
+def host_input_names(resolved, source_paths):
+    """The ONNX input names the policy graph gives ``source_paths``.
+
+    A Metatron (MaskedMimic) export names an input after its context path; a
+    plain-actor tracker export first renames sensor paths to the tracker's wire
+    protocol (``noisy.dof_pos`` -> ``current.dof_pos``, ``tracker_input_keys``).
+    ``deployment/export_fk_to_onnx.py`` calls this so ``fk.onnx`` names its
+    inputs exactly as the policy graph names the same paths.
+    """
+    from deployment.tracker_inputs import tracker_input_keys
+
+    actor_cfg, _keys = _deployable_policy_in_keys(resolved.agent.model)
+    keys = (
+        list(source_paths)
+        if actor_cfg is None
+        else tracker_input_keys(list(source_paths))
+    )
+    return [sanitize_onnx_name(key) for key in keys]
+
+
+def deployable_observation_components(resolved):
+    """The observation components the deployable actor reads, ready to trace.
+
+    What the exported graph computes: the actor's deployable ``in_keys`` looked
+    up in the environment's observation components, with every ``BodySelection``
+    turned into concrete indices first, so the graph carries the bodies, not the
+    selection object. ``export_fk_to_onnx`` searches the same dict for the FK
+    kernel, so both exporters see one definition of the policy's observations.
+    """
+    from protomotions.envs.body_selection import resolve_body_selections
+
+    env_config, robot_config = resolved.env, resolved.robot
+    _, deployable_in_keys = _deployable_policy_in_keys(resolved.agent.model)
+    actor_obs_keys = set(deployable_in_keys)
+    components = {
+        k: v
+        for k, v in env_config.observation_components.items()
+        if k in actor_obs_keys
+    }
+    missing = actor_obs_keys - set(env_config.observation_components.keys())
+    if missing:
+        raise ValueError(
+            f"Actor requires obs keys {actor_obs_keys} but these are missing "
+            f"from env_config.observation_components: {missing}"
+        )
+    return dict(resolve_body_selections(components, robot_config))
+
+
 def _build_contract(
     *,
     actual_in_names,
@@ -284,6 +447,7 @@ def _build_contract(
     control_type,
     sensor_metadata,
     onnx_sha256,
+    host,
 ):
     """Assemble the typed DeploymentContract this export writes as the sidecar.
 
@@ -420,6 +584,7 @@ def _build_contract(
         control_type=control_type,
         onnx_sha256=onnx_sha256,
         masked_mimic=goal_canvas,
+        host=host,
     )
 
 
@@ -428,6 +593,8 @@ def export_tracker(
     output_dir: str,
     validate: bool = True,
     leapp: bool = False,
+    host: str = "robot",
+    leapp_graph_history: bool = False,
 ) -> Path:
     """Export the tracker policy to a unified ONNX model.
 
@@ -438,14 +605,23 @@ def export_tracker(
     output_dir:
         Directory where ONNX + YAML files will be written.
     validate:
-        If True, run onnxruntime validation after export.
+        If True, run the onnxruntime validation pass after export. onnxruntime
+        is imported either way, to read the exported graph's input names back.
     leapp:
         Also package the graph and its typed contract for LEAPP inference.
+    host:
+        Who feeds the graph, ``"robot"`` (raw readings, past actions and goals)
+        or ``"simulation"`` (also the simulator's own body state). A binding
+        the host cannot feed is refused.
 
     Returns
     -------
     Path to the exported ``.onnx`` file.
     """
+    from deployment.contract import kinds_for_host
+
+    kinds_for_host(host)  # an unknown host is refused before the bundle is loaded
+
     # Load the one training bundle saved beside the checkpoint, then export from
     # it. The load is the only step that needs a file on disk; everything else
     # runs off the in-memory configs in export_from_configs.
@@ -456,7 +632,13 @@ def export_tracker(
     log.info(f"Loading configs from the bundle beside {Path(checkpoint)}")
     resolved = load_experiment_configs_from_checkpoint(Path(checkpoint))
     return export_from_configs(
-        resolved, checkpoint, output_dir, validate=validate, leapp=leapp
+        resolved,
+        checkpoint,
+        output_dir,
+        validate=validate,
+        leapp=leapp,
+        leapp_graph_history=leapp_graph_history,
+        host=host,
     )
 
 
@@ -466,24 +648,40 @@ def export_from_configs(
     output_dir: str,
     validate: bool = True,
     leapp: bool = False,
+    host: str = "robot",
+    leapp_graph_history: bool = False,
 ) -> Path:
     """Export from resolved configs, without applying inference overrides."""
     import torch
     from tensordict import TensorDict
+
+    from deployment.contract import kinds_for_host
+
+    kinds_for_host(host)  # for direct callers; export_tracker checked before the load
 
     from protomotions.utils.export_utils import (
         ObservationExportModule,
         ActionExportModule,
         UnifiedPipelineModule,
     )
-    from protomotions.envs.body_selection import resolve_body_selections
     from deployment.sample_context import build_sample_context, reference_control_config
     from deployment.metatron_policy import MetatronPriorExport
     from protomotions.envs.steps import normalize_steps
 
+    # Check LEAPP requirements before the slow export, not after it.
+    if (leapp or leapp_graph_history) and importlib.util.find_spec("leapp") is None:
+        raise ImportError(
+            "LEAPP export needs the leapp package; see deployment/native/docs/leapp.md"
+        )
+    if leapp_graph_history:
+        from deployment.native.tools.leapp_graph_history import (
+            require_torchscript_disabled,
+        )
+
+        require_torchscript_disabled()
+
     checkpoint_path = Path(checkpoint)
     output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
 
     robot_config = resolved.robot
     env_config = resolved.env
@@ -508,7 +706,6 @@ def export_from_configs(
     # 2. Auto-detect actor obs keys from agent config
     # ------------------------------------------------------------------
     actor_in_keys = list(deployable_in_keys)
-    actor_obs_keys = set(actor_in_keys)
     log.info(f"Auto-detected actor obs keys: {actor_in_keys}")
     sensor_metadata = tracker_sensor_metadata(env_config, robot_config, actor_in_keys)
 
@@ -552,20 +749,7 @@ def export_from_configs(
     # ------------------------------------------------------------------
     # 4. Build the observation components and the tracing samples
     # ------------------------------------------------------------------
-    actor_obs_configs = {
-        k: v
-        for k, v in env_config.observation_components.items()
-        if k in actor_obs_keys
-    }
-    missing = actor_obs_keys - set(env_config.observation_components.keys())
-    if missing:
-        raise ValueError(
-            f"Actor requires obs keys {actor_obs_keys} but these are missing "
-            f"from env_config.observation_components: {missing}"
-        )
-    # A BodySelection in a deployable recipe becomes concrete indices before the
-    # trace, so the exported graph carries the bodies, not the selection object.
-    actor_obs_configs = dict(resolve_body_selections(actor_obs_configs, robot_config))
+    actor_obs_configs = deployable_observation_components(resolved)
 
     # Build one simulator-free context the way the environment does: a synthetic
     # robot state through the real sensor runtime, a history ring sized by the
@@ -577,7 +761,7 @@ def export_from_configs(
     sample_context, future_names, slot_names = build_sample_context(
         robot_config, env_config, actor_obs_configs, device="cpu"
     )
-    samples = _build_samples(actor_obs_configs, sample_context, slot_names)
+    samples = _build_samples(actor_obs_configs, sample_context, slot_names, host)
 
     # ------------------------------------------------------------------
     # 5. Build ObservationExportModule (actor obs only, for export)
@@ -672,10 +856,7 @@ def export_from_configs(
     # ------------------------------------------------------------------
     # 10. Export to ONNX
     # ------------------------------------------------------------------
-    def _sanitize(name: str) -> str:
-        return name.replace(".", "_").replace("[", "_").replace("]", "_")
-
-    onnx_input_names = [_sanitize(k) for k in obs_input_keys]
+    onnx_input_names = [sanitize_onnx_name(k) for k in obs_input_keys]
     onnx_output_names = [
         "actions",
         "joint_pos_targets",
@@ -683,6 +864,8 @@ def export_from_configs(
         "damping_targets",
     ]
 
+    # Created only now: every refusal above leaves nothing on disk.
+    output_path.mkdir(parents=True, exist_ok=True)
     onnx_path = output_path / "unified_pipeline.onnx"
     log.info(f"Exporting ONNX to {onnx_path} ...")
     torch.onnx.export(
@@ -711,7 +894,7 @@ def export_from_configs(
     actual_out_names = [out.name for out in session.get_outputs()]
 
     # Build onnx_name -> semantic_key mapping
-    sanitized_to_key = {_sanitize(k): k for k in obs_input_keys}
+    sanitized_to_key = {sanitize_onnx_name(k): k for k in obs_input_keys}
     onnx_name_to_key: dict[str, str] = {}
     for onnx_name in actual_in_names:
         base = onnx_name
@@ -731,7 +914,7 @@ def export_from_configs(
             raise ValueError(
                 f"Cannot map ONNX input {onnx_name!r} back to a context path. "
                 f"Sanitized candidates: {sorted(sanitized_to_key)}. A name "
-                "collision after _sanitize produced an ONNX suffix the exporter "
+                "collision after sanitize_onnx_name produced an ONNX suffix the exporter "
                 "does not strip; disambiguate the context paths or extend the "
                 "suffix list."
             )
@@ -831,6 +1014,7 @@ def export_from_configs(
         control_type=control_type,
         sensor_metadata=sensor_metadata,
         onnx_sha256=onnx_sha256,
+        host=host,
     )
 
     yaml_path = output_path / "unified_pipeline.yaml"
@@ -842,6 +1026,23 @@ def export_from_configs(
 
         bundle = export_pipeline_bundle(onnx_path, contract, output_path / "leapp")
         log.info(f"LEAPP bundle -> {bundle}")
+
+    if leapp_graph_history:
+        from deployment.native.tools.leapp_graph_history import (
+            GraphHistory,
+            export_graph_history_bundle,
+            sample_ticks,
+        )
+
+        sample = dict(zip(obs_input_keys, sample_inputs))
+        bundle = export_graph_history_bundle(
+            unified,
+            contract,
+            obs_input_keys,
+            sample_ticks(GraphHistory(contract), sample),
+            output_path / "leapp_graph_history",
+        )
+        log.info(f"LEAPP bundle with graph-owned histories -> {bundle}")
 
     return onnx_path
 
@@ -872,10 +1073,35 @@ def _parse_args():
         help="Also write a LEAPP bundle with the actual exported input contract",
     )
     p.add_argument(
+        "--host",
+        choices=("robot", "simulation"),
+        default="robot",
+        help=(
+            "Who feeds the graph. 'robot': raw sensor readings, the policy's "
+            "past actions and the goal streams; a binding to the simulator's "
+            "body state is refused. 'simulation': a game engine, browser MuJoCo "
+            "or sim-to-sim host that also feeds the simulator's own body poses, "
+            "velocities and ground heights (current.*); the sidecar records "
+            "host: simulation. Export a policy meant for a robot with the default "
+            "even while testing it in a simulator."
+        ),
+    )
+    p.add_argument(
+        "--leapp-graph-history",
+        action="store_true",
+        help="Also write a LEAPP bundle whose histories are graph feedback state; "
+        "the host reports the applied action instead of replaying histories. "
+        "Requires PYTORCH_JIT=0",
+    )
+    p.add_argument(
         "--no-validate",
         action="store_true",
         default=False,
-        help="Skip onnxruntime validation after export",
+        help=(
+            "Skip the onnxruntime validation pass after export. onnxruntime is "
+            "still imported to read the exported graph's input names back, so it "
+            "must be installed either way."
+        ),
     )
     return p.parse_args()
 
@@ -892,6 +1118,8 @@ if __name__ == "__main__":
         output_dir=out,
         validate=not args.no_validate,
         leapp=args.leapp,
+        host=args.host,
+        leapp_graph_history=args.leapp_graph_history,
     )
     log.info(f"\nDone!  Model exported to: {onnx_file}")
     log.info(f"YAML sidecar: {onnx_file.with_suffix('.yaml')}")

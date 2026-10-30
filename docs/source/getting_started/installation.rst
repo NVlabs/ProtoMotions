@@ -2,7 +2,7 @@ Installation
 ============
 
 ProtoMotions supports four simulation backends: IsaacGym, IsaacLab, Newton, and MuJoCo. 
-You can install the simulation of your choice, and the simulation backend is selected via the configuration file.
+You can install the simulator of your choice; the backend is selected with the ``--simulator`` flag when you run ``train_agent.py`` or ``inference_agent.py``.
 
 **Tested Versions:**
 

@@ -172,12 +172,17 @@ The script automatically:
 4. Converts to ProtoMotions format with contacts
 5. Reports the output ``.motion`` file path
 
-To visualize the result:
+The result is a single ``.motion`` file in
+``<output_dir>/retargeted_<robot>_proto/``; the script also leaves
+``keypoints/``, ``retargeted_<robot>/`` and ``contacts/`` beside it. It does
+not package a ``.pt`` MotionLib (``proto-<robot>.pt`` is produced only by the
+batch script above). The visualizer loads a ``.motion`` file directly, and the
+script prints the exact command, with the real file name, when it finishes:
 
 .. code-block:: bash
 
    python examples/motion_libs_visualizer.py \
-       --motion_files /path/to/output/proto-g1.pt \
+       --motion_files /path/to/output/retargeted_g1_proto/<motion_name>.motion \
        --robot g1 \
        --simulator isaacgym
 
@@ -203,7 +208,8 @@ ankles, feet, plus auxiliary points) from the packaged SMPL motions:
 
 * ``--output-path``: Directory for extracted keypoint ``.npy`` files
 * ``--skeleton-format``: Source skeleton format (``smpl`` for AMASS)
-* ``--start-idx``: Starting motion index (default: 0)
+* ``--start-idx``: Starting motion index (default: 1, so pass ``--start-idx 0``
+  to include the first motion, as the convenience script does)
 * ``--skip-freq``: Skip every N motions (use 15-35 for quick subset testing, 1 for all motions)
 
 .. tip::
@@ -237,7 +243,7 @@ Activate the PyRoki environment (separate from ProtoMotions) and run batch retar
 
    python pyroki/batch_retarget_to_h1_2_from_keypoints.py \
        --keypoints-folder-path /path/to/output/keypoints-for-retarget/ \
-       --output-dir /path/to/output/pyroki-retargeted-g1/ \
+       --output-dir /path/to/output/pyroki-retargeted-h1_2/ \
        --source-type smpl \
        --subsample-factor 1 \
        --no-visualize \
@@ -298,8 +304,15 @@ Convert retargeted motions to ProtoMotions format, incorporating the source cont
 
 .. note::
 
-   The conversion script automatically adjusts the robot height (``fix_height``) to 
-   ensure feet don't penetrate the ground, using robot-specific foot offsets.
+   The conversion script adjusts the height with two fixed constants that are
+   the same for every robot; there is no per-robot foot-offset table. First
+   ``fix_height_per_frame`` moves each frame so that its lowest rigid body
+   sits about 2 cm above the ground (lifting frames that are lower, lowering
+   frames that are higher by at most 2 cm), then ``fix_height`` shifts the
+   whole clip so that its lowest point over all frames sits at 4 cm. Both
+   measure from the lowest rigid body, not from a foot offset.
+   ``--robot-type`` only selects the MJCF and the foot bodies used for contact
+   labels.
 
 Step 5: Package into MotionLib
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -477,8 +490,12 @@ Comparing ``batch_retarget_to_g1_from_keypoints.py`` and
 
 6. **Update Conversion Script**
    
-   Add your robot type to ``convert_pyroki_retargeted_robot_motions_to_proto.py`` 
-   to handle robot-specific processing (joint ordering, height offsets, etc.).
+   ``convert_pyroki_retargeted_robot_motions_to_proto.py`` looks the robot up
+   in its ``robot_mjcf_mapping`` table and otherwise assumes the MJCF is named
+   ``<robot_type>.xml``; add an entry if your file is named differently. The
+   foot bodies for contact labels come from your robot config's
+   ``common_naming_to_robot_body_names``. There is no per-robot height offset
+   to add.
 
 Next Steps
 ----------

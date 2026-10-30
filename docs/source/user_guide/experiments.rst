@@ -3,6 +3,8 @@ Experiments
 
 ProtoMotions implements several state-of-the-art algorithms for physics-based character animation.
 This page provides a high-level overview of each approach and when to use them.
+Every ``train_agent.py`` call needs ``--num-envs`` and ``--batch-size``; the
+example commands below include them, with per-GPU sizes.
 
 Mimic
 -----
@@ -24,6 +26,10 @@ reproduce the motion while maintaining physical plausibility.
 
 * ``mlp.py`` - MLP policy for flat terrain
 * ``mlp_complex_terrain.py`` - MLP policy for complex terrains (stairs, slopes, etc.)
+* ``mlp_no_contact.py`` and ``mlp_complex_terrain_no_contact.py`` - the same two
+  recipes without contact bodies and without the contact-match reward. Use them
+  on IsaacGym, whose GPU pipeline reports one combined force per body and so
+  cannot run a recipe that declares contact bodies.
 * ``mlp_bm_l2c2.py`` - BeyondMimic policy with a torso anchor, L2C2 smoothness regularization, and a self-contact cost on non-foot/non-hand bodies, aimed at sim2real
 * ``fsq.py`` - FSQ tracker over max-coordinates proprioception and target poses
 * ``../metatron/g1_teacher.py`` - five-body hybrid FSQ/PPO tracker for G1.
@@ -47,11 +53,16 @@ configs are not rewritten. Use a new experiment name to train with this recipe.
 .. code-block:: bash
 
    python protomotions/train_agent.py \
-       --experiment-path examples/experiments/mimic/mlp.py \
+       --experiment-path examples/experiments/mimic/mlp_no_contact.py \
        --robot-name smpl \
        --simulator isaacgym \
        --motion-file <path_to_motion_file> \
+       --num-envs 4096 \
+       --batch-size 16384 \
        --experiment-name smpl_mimic
+
+The command uses ``mlp_no_contact.py`` because it runs on IsaacGym, which
+cannot run a recipe that declares contact bodies; on IsaacLab use ``mlp.py``.
 
 Metatron
 --------
@@ -93,6 +104,8 @@ how to combine tracking errors dynamically.
        --robot-name smpl \
        --simulator isaacgym \
        --motion-file <path_to_motion_file> \
+       --num-envs 4096 \
+       --batch-size 16384 \
        --experiment-name smpl_add
 
 MaskedMimic
@@ -129,6 +142,8 @@ text descriptions, or scene information).
        --simulator isaacgym \
        --motion-file <path_to_motions> \
        --expert-model-path <path_to_expert_model>/last.ckpt \
+       --num-envs 2048 \
+       --batch-size 4096 \
        --experiment-name smpl_masked_mimic
 
 GPC and PEFT
@@ -186,6 +201,8 @@ accomplishing task objectives.
        --robot-name g1 \
        --simulator isaacgym \
        --motion-file <path_to_motion> \
+       --num-envs 4096 \
+       --batch-size 16384 \
        --experiment-name g1_amp
 
 Steering
@@ -210,6 +227,8 @@ learns to walk/run in user-specified directions while maintaining natural motion
        --robot-name g1 \
        --simulator isaacgym \
        --motion-file <path_to_motion> \
+       --num-envs 4096 \
+       --batch-size 16384 \
        --experiment-name g1_steering
 
 ASE (Adversarial Skill Embeddings)
@@ -242,6 +261,8 @@ allowing a single controller to perform many different skills by varying the lat
        --robot-name smpl \
        --simulator isaacgym \
        --motion-file <path_to_motions> \
+       --num-envs 4096 \
+       --batch-size 16384 \
        --experiment-name smpl_ase
 
 See Also

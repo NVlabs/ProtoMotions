@@ -90,21 +90,26 @@ Train Your First Agent
 Motion Imitation Training With DeepMimic
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Train a motion imitation agent using an MLP policy:
+Train a motion imitation agent using an MLP policy. The command below uses one
+of the shipped G1 motion files, so it runs from a fresh checkout:
 
 .. code-block:: bash
 
    python protomotions/train_agent.py \
-       --robot-name smpl \
+       --robot-name g1 \
        --simulator isaaclab \
        --experiment-path examples/experiments/mimic/mlp.py \
-       --experiment-name smpl_mimic_example \
-       --motion-file path/to/your/motion_lib.pt \
+       --experiment-name g1_mimic_example \
+       --motion-file data/motion_for_trackers/g1_random_subset_tiny.pt \
        --num-envs 4096 \
        --batch-size 16384 \
        --ngpu 1
 
-For motion data preparation, see :doc:`amass_preparation`.
+The motion file must be one made for the robot you train. Each file in
+``data/motion_for_trackers/`` is for a single robot, and the environment refuses
+a file whose body and degree-of-freedom counts differ from the robot's. To build
+a motion library of your own, for example AMASS motions for the SMPL humanoid,
+see :doc:`amass_preparation`.
 
 Selecting Simulator and Robot
 -----------------------------
@@ -188,11 +193,11 @@ Common configuration options:
 .. code-block:: bash
 
    python protomotions/train_agent.py \
-       --robot-name smpl \
+       --robot-name g1 \
        --simulator isaaclab \
        --experiment-path examples/experiments/mimic/mlp.py \
        --experiment-name my_experiment \
-       --motion-file path/to/motions.pt \
+       --motion-file data/motion_for_trackers/g1_random_subset_tiny.pt \
        --num-envs 4096 \
        --batch-size 16384 \
        --ngpu 1 \
@@ -211,9 +216,26 @@ Use ``--overrides`` to modify config values at runtime:
 
 Supported config types: ``env``, ``simulator``, ``robot``, ``agent``, ``terrain``, ``motion_lib``, ``scene_lib``
 
-Supported value types: ``int``, ``float``, ``bool``, ``str``, ``None``
+**Values:** the right-hand side is read as a Python literal and then checked
+against the type the target field declares. Scalars (``int``, ``float``,
+``bool``, ``str``), ``None``, and list or tuple literals are accepted, and a
+dict literal fills a field whose type is a dataclass. Text that is not a valid
+literal is kept as a string. A value of the wrong type, or a field name the
+config does not declare, is refused while the configs are assembled, before any
+simulator or environment is created, with an error that names the field.
 
-**Limitations:** Overrides only support simple scalar values. Complex types like lists, nested objects, or dataclass instances cannot be overridden via CLI. For such changes, create a new experiment file - this is also good practice for managing and tracking different experiment configurations.
+.. code-block:: bash
+
+   --overrides "env.max_episode_length=500" \
+       'robot.contact_bodies=["left_ankle_roll_link","right_ankle_roll_link"]'
+
+Write a list of robot bodies with the robot's own body names, as in this G1
+example.
+
+**Limitations:** an override sets one field at a time. A change that touches
+several components at once, such as a new reward term or a different
+observation set, belongs in a new experiment file. That is also good practice
+for managing and tracking different experiment configurations.
 
 See :doc:`../user_guide/configuration` for more details on the configuration system.
 
@@ -273,7 +295,8 @@ Evaluate a trained agent:
        --motion-file data/motion_for_trackers/soma23_bones_seed_mini.pt \
        --simulator isaaclab
 
-   # Or evaluate your own trained model
+   # Or evaluate your own trained model. Pass a motion file made for the robot
+   # you trained, or omit --motion-file to reuse the training motion file.
    python protomotions/inference_agent.py \
        --checkpoint results/my_experiment/last.ckpt \
        --motion-file data/motion_for_trackers/g1_random_subset_tiny.pt \

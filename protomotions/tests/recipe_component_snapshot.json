@@ -2739,6 +2739,352 @@
       }
     }
   },
+  "mimic.mlp_complex_terrain_no_contact": {
+    "observation": {
+      "max_coords_obs": {
+        "body_contacts": null,
+        "compute_func": "compute_humanoid_max_coords_observations",
+        "dynamic_vars": {
+          "anchor_body_index": "current.anchor_idx",
+          "body_ang_vel": "current.rigid_body_ang_vel",
+          "body_pos": "current.rigid_body_pos",
+          "body_rot": "current.rigid_body_rot",
+          "body_vel": "current.rigid_body_vel",
+          "ground_height": "current.ground_heights"
+        },
+        "local_obs": true,
+        "observe_contacts": false,
+        "root_height_obs": true,
+        "w_last": true
+      },
+      "mimic_target_poses": {
+        "body_indices": null,
+        "compute_func": "build_max_coords_target_poses",
+        "dynamic_vars": {
+          "anchor_body_index": "mimic.anchor_idx",
+          "current_state_body_ang_vel": "current.rigid_body_ang_vel",
+          "current_state_body_pos": "current.rigid_body_pos",
+          "current_state_body_rot": "current.rigid_body_rot",
+          "current_state_body_vel": "current.rigid_body_vel",
+          "mimic_ref_ang_vel": "mimic.future_ang_vel",
+          "mimic_ref_pos": "mimic.future_pos",
+          "mimic_ref_rot": "mimic.future_rot",
+          "mimic_ref_vel": "mimic.future_vel"
+        },
+        "future_steps": null,
+        "w_last": true,
+        "with_relative": true,
+        "with_velocities": true
+      },
+      "previous_actions": {
+        "compute_func": "compute_historical_actions_from_state",
+        "dynamic_vars": {
+          "historical_actions": "raw_action_history"
+        },
+        "history_steps": [
+          1
+        ]
+      },
+      "terrain": {
+        "compute_func": "compute_terrain_height_map",
+        "dynamic_vars": {
+          "height_points": "terrain.height_points",
+          "height_samples": "terrain.height_samples",
+          "horizontal_scale": "terrain.horizontal_scale",
+          "root_pos": "current.root_pos",
+          "root_rot": "current.root_rot"
+        }
+      }
+    },
+    "reward": {
+      "action_smoothness": {
+        "compute_func": "compute_action_smoothness",
+        "dynamic_vars": {
+          "current_processed_action": "current_processed_action",
+          "previous_processed_action": "previous_processed_action"
+        },
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": -0.02,
+          "zero_during_grace_period": false
+        }
+      },
+      "gav_rew": {
+        "coefficient": -0.1,
+        "compute_func": "compute_gav_rew",
+        "dynamic_vars": {
+          "current_rigid_body_ang_vel": "current.rigid_body_ang_vel",
+          "ref_rigid_body_ang_vel": "mimic.ref_state.rigid_body_ang_vel"
+        },
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": 0.2,
+          "zero_during_grace_period": false
+        }
+      },
+      "gr_rew": {
+        "coefficient": -5.0,
+        "compute_func": "compute_gr_rew",
+        "dynamic_vars": {
+          "current_rigid_body_rot": "current.rigid_body_rot",
+          "ref_rigid_body_rot": "mimic.ref_state.rigid_body_rot"
+        },
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": 0.3,
+          "zero_during_grace_period": false
+        }
+      },
+      "gt_rew": {
+        "coefficient": -25.0,
+        "compute_func": "compute_gt_rew",
+        "dynamic_vars": {
+          "current_rigid_body_pos": "current.rigid_body_pos",
+          "ref_rigid_body_pos": "mimic.ref_state.rigid_body_pos"
+        },
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": 0.5,
+          "zero_during_grace_period": false
+        }
+      },
+      "gv_rew": {
+        "coefficient": -0.5,
+        "compute_func": "compute_gv_rew",
+        "dynamic_vars": {
+          "current_rigid_body_vel": "current.rigid_body_vel",
+          "ref_rigid_body_vel": "mimic.ref_state.rigid_body_vel"
+        },
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": 0.1,
+          "zero_during_grace_period": false
+        }
+      },
+      "pow_rew": {
+        "compute_func": "compute_pow_rew",
+        "dynamic_vars": {
+          "dof_forces": "current.dof_forces",
+          "dof_vel": "current.dof_vel"
+        },
+        "meta": {
+          "max_value": null,
+          "min_value": -0.5,
+          "multiplicative": false,
+          "weight": -1e-05,
+          "zero_during_grace_period": false
+        },
+        "use_torque_squared": false
+      },
+      "rh_rew": {
+        "coefficient": -100.0,
+        "compute_func": "compute_rh_rew",
+        "dynamic_vars": {
+          "anchor_pos": "current.anchor_pos",
+          "ref_anchor_pos": "mimic.ref_anchor_pos"
+        },
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": 0.2,
+          "zero_during_grace_period": false
+        }
+      }
+    },
+    "termination": {
+      "tracking_error": {
+        "component": {
+          "compute_func": "max_body_pos_error",
+          "dynamic_vars": {
+            "current_rigid_body_pos": "current.rigid_body_pos",
+            "ref_rigid_body_pos": "mimic.ref_state.rigid_body_pos"
+          }
+        },
+        "fail_above": true,
+        "threshold": 0.5,
+        "truncation": false
+      }
+    }
+  },
+  "mimic.mlp_no_contact": {
+    "observation": {
+      "max_coords_obs": {
+        "body_contacts": null,
+        "compute_func": "compute_humanoid_max_coords_observations",
+        "dynamic_vars": {
+          "anchor_body_index": "current.anchor_idx",
+          "body_ang_vel": "current.rigid_body_ang_vel",
+          "body_pos": "current.rigid_body_pos",
+          "body_rot": "current.rigid_body_rot",
+          "body_vel": "current.rigid_body_vel",
+          "ground_height": "current.ground_heights"
+        },
+        "local_obs": true,
+        "observe_contacts": false,
+        "root_height_obs": true,
+        "w_last": true
+      },
+      "mimic_target_poses": {
+        "body_indices": null,
+        "compute_func": "build_max_coords_target_poses",
+        "dynamic_vars": {
+          "anchor_body_index": "mimic.anchor_idx",
+          "current_state_body_ang_vel": "current.rigid_body_ang_vel",
+          "current_state_body_pos": "current.rigid_body_pos",
+          "current_state_body_rot": "current.rigid_body_rot",
+          "current_state_body_vel": "current.rigid_body_vel",
+          "mimic_ref_ang_vel": "mimic.future_ang_vel",
+          "mimic_ref_pos": "mimic.future_pos",
+          "mimic_ref_rot": "mimic.future_rot",
+          "mimic_ref_vel": "mimic.future_vel"
+        },
+        "future_steps": null,
+        "w_last": true,
+        "with_relative": true,
+        "with_velocities": true
+      },
+      "previous_actions": {
+        "compute_func": "compute_historical_actions_from_state",
+        "dynamic_vars": {
+          "historical_actions": "raw_action_history"
+        },
+        "history_steps": [
+          1
+        ]
+      }
+    },
+    "reward": {
+      "action_smoothness": {
+        "compute_func": "compute_action_smoothness",
+        "dynamic_vars": {
+          "current_processed_action": "current_processed_action",
+          "previous_processed_action": "previous_processed_action"
+        },
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": -0.02,
+          "zero_during_grace_period": false
+        }
+      },
+      "gav_rew": {
+        "coefficient": -0.1,
+        "compute_func": "compute_gav_rew",
+        "dynamic_vars": {
+          "current_rigid_body_ang_vel": "current.rigid_body_ang_vel",
+          "ref_rigid_body_ang_vel": "mimic.ref_state.rigid_body_ang_vel"
+        },
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": 0.2,
+          "zero_during_grace_period": false
+        }
+      },
+      "gr_rew": {
+        "coefficient": -5.0,
+        "compute_func": "compute_gr_rew",
+        "dynamic_vars": {
+          "current_rigid_body_rot": "current.rigid_body_rot",
+          "ref_rigid_body_rot": "mimic.ref_state.rigid_body_rot"
+        },
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": 0.3,
+          "zero_during_grace_period": false
+        }
+      },
+      "gt_rew": {
+        "coefficient": -25.0,
+        "compute_func": "compute_gt_rew",
+        "dynamic_vars": {
+          "current_rigid_body_pos": "current.rigid_body_pos",
+          "ref_rigid_body_pos": "mimic.ref_state.rigid_body_pos"
+        },
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": 0.5,
+          "zero_during_grace_period": false
+        }
+      },
+      "gv_rew": {
+        "coefficient": -0.5,
+        "compute_func": "compute_gv_rew",
+        "dynamic_vars": {
+          "current_rigid_body_vel": "current.rigid_body_vel",
+          "ref_rigid_body_vel": "mimic.ref_state.rigid_body_vel"
+        },
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": 0.1,
+          "zero_during_grace_period": false
+        }
+      },
+      "pow_rew": {
+        "compute_func": "compute_pow_rew",
+        "dynamic_vars": {
+          "dof_forces": "current.dof_forces",
+          "dof_vel": "current.dof_vel"
+        },
+        "meta": {
+          "max_value": null,
+          "min_value": -0.5,
+          "multiplicative": false,
+          "weight": -1e-05,
+          "zero_during_grace_period": false
+        },
+        "use_torque_squared": false
+      },
+      "rh_rew": {
+        "coefficient": -100.0,
+        "compute_func": "compute_rh_rew",
+        "dynamic_vars": {
+          "anchor_pos": "current.anchor_pos",
+          "ref_anchor_pos": "mimic.ref_anchor_pos"
+        },
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": 0.2,
+          "zero_during_grace_period": false
+        }
+      }
+    },
+    "termination": {
+      "tracking_error": {
+        "component": {
+          "compute_func": "max_body_pos_error",
+          "dynamic_vars": {
+            "current_rigid_body_pos": "current.rigid_body_pos",
+            "ref_rigid_body_pos": "mimic.ref_state.rigid_body_pos"
+          }
+        },
+        "fail_above": true,
+        "threshold": 0.5,
+        "truncation": false
+      }
+    }
+  },
   "path_follower.mlp": {
     "observation": {
       "historical_max_coords_obs": {

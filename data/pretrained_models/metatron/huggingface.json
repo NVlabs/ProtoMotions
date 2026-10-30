@@ -1,8 +1,8 @@
 {
   "repo_id": "nvidia/Metatron-v1",
-  "revision": "6fdec67cec2e008736beaa380cdd4f4b56221453",
+  "revision": "ada816723d62c194c82ffd8fab97a3d8a001f94d",
   "manifest": {
-    "size": 2035,
-    "sha256": "1636e63e1ff427c86ee3b934de218b7b114d7c778f7bb052d98db04e3f864128"
+    "size": 2347,
+    "sha256": "a144c4bd505b9bc215ce628e18a2149a11b5788479a9d2e32c2d4641b540557f"
   }
 }

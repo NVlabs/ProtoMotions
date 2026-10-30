@@ -22,6 +22,9 @@
 #   robot_type:    Target robot: 'g1' or 'h1_2'
 #   skip_freq:     (Optional) Skip every N motions for subset processing (default: 1 = all motions)
 #   --clean:       (Optional) Remove all intermediate outputs before running, ensuring a fresh pipeline
+#
+# The two optional arguments are independent: either may be given alone, and
+# together they may come in either order (`g1 --clean` and `g1 --clean 15` both work).
 
 set -e  # Exit on error
 
@@ -36,6 +39,7 @@ if [ $# -lt 4 ]; then
     echo "  robot_type     Target robot: 'g1' or 'h1_2'"
     echo "  skip_freq      (Optional) Skip every N motions (default: 1 = all motions)"
     echo "  --clean        (Optional) Remove all intermediate outputs before running"
+    echo "  The two optional arguments are independent and may come in either order."
     echo ""
     echo "Example:"
     echo "  $0 ~/miniconda3/envs/protomotions/bin/python ~/miniconda3/envs/pyroki/bin/python /data/amass.pt g1 15 --clean"
@@ -46,8 +50,31 @@ PROTO_PYTHON="$1"
 PYROKI_PYTHON="$2"
 AMASS_PT_FILE="$3"
 ROBOT_TYPE="$4"
-SKIP_FREQ="${5:-1}"
-CLEAN="${6:-}"
+shift 4
+
+# The optional arguments are recognised by shape, not by position: a positive
+# integer is skip_freq, --clean asks for a fresh run. Anything else is an error,
+# so a typo cannot be read as skip_freq and handed to Step 1.
+SKIP_FREQ=1
+CLEAN=""
+for OPTIONAL_ARG in "$@"; do
+    case "$OPTIONAL_ARG" in
+        --clean)
+            CLEAN="--clean"
+            ;;
+        ''|*[!0-9]*)
+            echo "Error: unexpected argument '$OPTIONAL_ARG' (expected a skip_freq integer or --clean)"
+            exit 1
+            ;;
+        *)
+            SKIP_FREQ="$OPTIONAL_ARG"
+            ;;
+    esac
+done
+if [ "$SKIP_FREQ" -lt 1 ]; then
+    echo "Error: skip_freq must be a positive integer, got $SKIP_FREQ"
+    exit 1
+fi
 
 # Validate robot type
 if [ "$ROBOT_TYPE" != "g1" ] && [ "$ROBOT_TYPE" != "h1_2" ]; then

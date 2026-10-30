@@ -8,16 +8,21 @@ This script allows you to visualize reference motions in kinematic playback mode
 It uses the KinematicReplayControl component to directly set robot state to reference motion poses,
 bypassing physics simulation entirely.
 
-Usage (default — first num_envs motions/scenes from the file):
+Usage (default — the first num_envs motions, or scenes, of the file):
     python examples/env_kinematic_playback.py \
-        --experiment-path=examples/experiments/mimic/mlp.py \
+        --experiment-path=examples/experiments/mimic/mlp_no_contact.py \
         --motion-file=xxx.pt \
         --robot-name=g1 \
         --simulator=isaacgym \
         --num-envs=80 \
         --scenes-file=xxx.pt
 
-Usage (random motions):
+The example pairs IsaacGym with the mimic/mlp_no_contact.py recipe because
+IsaacGym's GPU pipeline reports one combined force per body, so it cannot run a
+recipe that declares contact bodies, and mimic/mlp.py declares the feet. On
+isaaclab the original mimic/mlp.py recipe works as it is.
+
+Usage (random — num_envs motions, or scenes, picked at random from the file):
     python examples/env_kinematic_playback.py ... --motion-ids random --num-envs 80
 
 Usage (specific motion IDs — sequential range starting at 5):
@@ -26,7 +31,12 @@ Usage (specific motion IDs — sequential range starting at 5):
 Usage (specific motion IDs — explicit list, must match --num-envs):
     python examples/env_kinematic_playback.py ... --motion-ids 5,10,15,20 --num-envs 4
 
-When --scenes-file is given, matching scenes are automatically loaded alongside the motions.
+With --scenes-file the selection picks scenes, and each env plays the motion its
+scene names. Without a scenes file the selection goes to the motion manager's
+subset_method, and each env is pinned to one selected motion (env i plays the
+i-th of them, so the selection is also the playback order). If the motion file
+has fewer motions than --num-envs, the motion manager ignores the selection and
+every env draws a motion from the whole file at each reset.
 """
 
 
@@ -100,12 +110,16 @@ def create_parser():
         default=None,
         help=(
             "Which motions to visualize. Three formats: "
-            "(1) 'random' — pick num_envs scenes/motions at random from the file; "
+            "(1) 'random' — num_envs motions (or scenes) picked at random from the "
+            "file; "
             "(2) a single start index, e.g. '5', expanding to [5, 5+num_envs); "
             "(3) an explicit comma-separated list, e.g. '5,10,15,20', whose length "
             "must equal --num-envs. "
-            "When --scenes-file is provided the matching scenes are loaded automatically. "
-            "Omit this flag to use the default (first num_envs scenes)."
+            "With --scenes-file the selection picks scenes, and each env plays the "
+            "motion its scene names; without it the motions are selected directly "
+            "and env i plays the i-th selected motion. "
+            "Omit this flag to play the first num_envs motions (or scenes) of the "
+            "file."
         ),
     )
 
@@ -184,7 +198,7 @@ def main():
         suffix = "..." if len(specific_motion_ids) > 8 else ""
         print(f"Motion IDs: {preview}{suffix} ({len(specific_motion_ids)} total)")
     else:
-        print("Motion IDs: default (first num_envs scenes from the file)")
+        print("Motion IDs: default (first num_envs motions, or scenes, of the file)")
 
     # Extra simulator parameters
     extra_simulator_params = {}
@@ -265,13 +279,22 @@ def main():
     # For scenes: each scene carries humanoid_motion_id, so controlling which
     # scenes load (scene_indices / subset_method) is sufficient —
     # ReferenceMotion.create_manager() reads those IDs and pins each env
-    # to its paired motion automatically.
-    # For no-scenes: motion_manager.subset_method drives selection directly.
+    # to its paired motion automatically. The scene library's own default is
+    # the first num_envs scenes.
+    # For no-scenes: motion_manager.subset_method drives selection directly
+    # ('first', 'random' or an explicit list pins env i to the i-th selected
+    # motion). Its default, None, would let every env draw from the whole file
+    # at each reset, so the documented default, 'first', is set here.
     from protomotions.components.scene_lib import SubsetMethod
 
+    motion_manager_config = env_config.motion_manager
     if random_motions:
-        scene_lib_config.subset_method = SubsetMethod.RANDOM
-        print("Scene subset_method set to RANDOM")
+        if args.scenes_file is not None:
+            scene_lib_config.subset_method = SubsetMethod.RANDOM
+            print("Scene subset_method set to RANDOM")
+        else:
+            motion_manager_config.subset_method = "random"
+            print("Motion manager subset_method set to 'random'")
     elif specific_motion_ids:
         if args.scenes_file is not None:
             scene_lib_config.scene_indices = specific_motion_ids
@@ -280,11 +303,14 @@ def main():
                 f"{specific_motion_ids[:4]}{'...' if len(specific_motion_ids) > 4 else ''}"
             )
         else:
-            env_config.motion_manager.subset_method = specific_motion_ids
+            motion_manager_config.subset_method = specific_motion_ids
             print(
                 f"Motion manager subset_method set to "
                 f"{specific_motion_ids[:4]}{'...' if len(specific_motion_ids) > 4 else ''}"
             )
+    elif args.scenes_file is None and motion_manager_config.subset_method is None:
+        motion_manager_config.subset_method = "first"
+        print("Motion manager subset_method set to 'first'")
 
     print("\n=== Creating Environment ===")
 

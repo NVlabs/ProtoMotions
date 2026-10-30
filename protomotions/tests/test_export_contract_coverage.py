@@ -14,7 +14,10 @@ exporter writes, and the refusals the exporter makes at the export boundary:
   kernel (E),
 * the validate step refusing a graph whose output disagrees with the traced
   deterministic mean (F),
-* a configured-but-unbound sensor channel being dropped from the sidecar (G).
+* a configured-but-unbound sensor channel being dropped from the sidecar (G),
+* the host rule: a privileged recipe (the SOMA tracker) exports for a
+  simulation host and is refused for the default robot host; a robot sidecar
+  carries no ``host`` key (H).
 
 They export the DEFAULT g1 anchor (``torso_link``); the sibling file
 ``test_export_anchor_body.py`` covers the pelvis-anchor rename.
@@ -117,7 +120,30 @@ def _set_actor_keys(agent, keys):
     agent.model.actor.mu_model.in_keys = list(keys)
 
 
-def _export(robot, env, agent, out_dir, validate=True):
+def _build_soma_configs():
+    """Build robot/env/agent for the privileged SOMA tracker (``mimic/mlp.py``).
+
+    The shipped ``soma-bones`` bundle is this recipe: its observations read the
+    simulator's own body state (``current.rigid_body_*``, ``current.ground_heights``)
+    and the reference body velocities, none of which a robot can feed.
+    """
+    from examples.experiments.mimic import mlp as recipe
+    from protomotions.robot_configs.factory import robot_config
+
+    robot = robot_config("soma23")
+    args = argparse.Namespace(
+        motion_file="motions.pt",
+        scenes_file=None,
+        batch_size=32,
+        training_max_steps=1024,
+    )
+    recipe.configure_robot_and_simulator(robot, SimpleNamespace(), args)
+    env = recipe.env_config(robot, args)
+    agent = recipe.agent_config(robot, env, args)
+    return robot, env, agent
+
+
+def _export(robot, env, agent, out_dir, validate=True, host="robot"):
     """Save a config bundle + empty ckpt under ``out_dir`` and export the tracker."""
     from deployment import export_to_onnx
     from protomotions.utils.experiment_configs import (
@@ -137,7 +163,7 @@ def _export(robot, env, agent, out_dir, validate=True):
     save_experiment_configs(configs, out_dir)
     torch.save({"model": {}}, out_dir / "last.ckpt")
     return export_to_onnx.export_tracker(
-        str(out_dir / "last.ckpt"), str(out_dir / "out"), validate=validate
+        str(out_dir / "last.ckpt"), str(out_dir / "out"), validate=validate, host=host
     )
 
 
@@ -165,6 +191,9 @@ def test_g1_sidecar_policy_inputs_match_frozen_contract(tmp_path, monkeypatch):
     ]
     # Exact, ordered: guards the inputs and each one's shape, kind and provider.
     assert got == EXPECTED_G1_POLICY_INPUTS
+    # A robot export writes no host key: omitted means robot, so the sidecar is
+    # byte-for-byte what it was before --host existed.
+    assert "host" not in sidecar
     # The documented top-level layout the host reads.
     for key in (
         "schema",
@@ -177,6 +206,33 @@ def test_g1_sidecar_policy_inputs_match_frozen_contract(tmp_path, monkeypatch):
         "sensors",
     ):
         assert key in sidecar
+
+
+def test_plain_tracker_has_no_fk_graph_to_export(tmp_path, monkeypatch):
+    """A recipe without an FK kernel exports the four control outputs and no FK graph.
+
+    The policy graph never carries body-pose outputs; a host gets them from
+    ``fk.onnx``, which exists only for a recipe that binds ``BakedAnchorFK`` as a
+    goal's ``fk=``. The plain tracker binds none, so the FK exporter refuses with
+    the reason instead of writing an empty graph.
+    """
+    onnx = pytest.importorskip("onnx")
+    pytest.importorskip("onnxruntime")
+
+    _keep_initial_actor_weights(monkeypatch)
+    robot, env, agent = _build_g1_configs()
+    onnx_path = _export(robot, env, agent, tmp_path)
+
+    control_outputs = ["actions", "joint_pos_targets", "stiffness_targets", "damping_targets"]
+    sidecar = _sidecar(onnx_path)
+    assert [entry["name"] for entry in sidecar["policy_outputs"]] == control_outputs
+    assert sidecar["_runtime"]["onnx_out_names"] == control_outputs
+    from deployment.export_fk_to_onnx import export_fk
+
+    with pytest.raises(ValueError, match="binds an FK kernel .* nothing to export"):
+        export_fk(str(tmp_path / "last.ckpt"), str(tmp_path / "fk"))
+    graph = onnx.load(str(onnx_path)).graph
+    assert [output.name for output in graph.output] == control_outputs
 
 
 # ---------------------------------------------------------------------------
@@ -877,3 +933,140 @@ def test_deployable_in_keys_drops_a_prior_emitted_decoder_condition():
     model._prior.out_keys = model_config.prior.out_keys
     model._trunk.in_keys = model_config.trunk.in_keys
     assert model.deployable_in_keys == keys
+
+
+# ---------------------------------------------------------------------------
+# H. Which host: the simulator's body state exports only for a simulation host.
+# ---------------------------------------------------------------------------
+
+# The SOMA tracker's graph inputs for a simulation host, in the exporter's
+# order (sorted context path): (context key, ONNX shape, kind, provider).
+# soma23 has 66 dofs and 23 bodies; the recipe's mimic control publishes one
+# future step. Every ``current.*`` body-state input carries a ``simulated_*``
+# kind, which is why the default robot export refuses this recipe.
+EXPECTED_SOMA_SIMULATION_INPUTS = [
+    ("current.ground_heights", (1,), "simulated_ground_heights", "simulator_truth"),
+    (
+        "current.rigid_body_ang_vel",
+        (1, 23, 3),
+        "simulated_body_ang_vel",
+        "simulator_truth",
+    ),
+    ("current.rigid_body_pos", (1, 23, 3), "simulated_body_pos", "simulator_truth"),
+    ("current.rigid_body_rot", (1, 23, 4), "simulated_body_rot", "simulator_truth"),
+    ("current.rigid_body_vel", (1, 23, 3), "simulated_body_vel", "simulator_truth"),
+    (
+        "mimic.future_ang_vel",
+        (1, 1, 23, 3),
+        "reference_motion_body_ang_vel",
+        "reference_motion",
+    ),
+    (
+        "mimic.future_pos",
+        (1, 1, 23, 3),
+        "reference_motion_body_pos_future",
+        "reference_motion",
+    ),
+    ("mimic.future_rot", (1, 1, 23, 4), "reference_motion_body_rot", "reference_motion"),
+    ("mimic.future_vel", (1, 1, 23, 3), "reference_motion_body_vel", "reference_motion"),
+    ("raw_action_history", (1, 1, 66), "last_actions", "policy_history"),
+]
+
+
+def test_privileged_tracker_exports_for_a_simulation_host(tmp_path, monkeypatch):
+    pytest.importorskip("onnx")
+    pytest.importorskip("onnxruntime")
+    from deployment.contract import DeploymentContract
+
+    _keep_initial_actor_weights(monkeypatch)
+    robot, env, agent = _build_soma_configs()
+    onnx_path = _export(robot, env, agent, tmp_path, host="simulation")
+
+    sidecar = _sidecar(onnx_path)
+    # The host is recorded right after the file's type, so a reader sees what
+    # the graph expects to be fed before it reads the inputs.
+    assert list(sidecar)[:3] == ["schema", "type", "host"]
+    assert sidecar["host"] == "simulation"
+    got = [
+        (entry["key"], tuple(entry["shape"]), entry["kind"], entry["provider"])
+        for entry in sidecar["policy_inputs"]
+    ]
+    assert got == EXPECTED_SOMA_SIMULATION_INPUTS
+    # Every simulated input has a host-facing description and body labels in
+    # the robot's own body order; the ground height is a single lane.
+    by_key = {entry["key"]: entry for entry in sidecar["policy_inputs"]}
+    assert by_key["current.rigid_body_pos"]["element_names"] == [
+        list(robot.kinematic_info.body_names),
+        ["x", "y", "z"],
+    ]
+    assert by_key["current.rigid_body_rot"]["element_names"][1] == ["x", "y", "z", "w"]
+    assert "element_names" not in by_key["current.ground_heights"]
+    for key in ("current.rigid_body_pos", "current.ground_heights", "mimic.future_vel"):
+        assert by_key[key]["source"], key
+    # No sensor suite is declared and none is claimed.
+    assert sidecar["sensors"] is None
+    contract = DeploymentContract.from_yaml(onnx_path.with_suffix(".yaml"))
+    assert contract.host == "simulation"
+
+
+def test_privileged_tracker_is_refused_for_the_robot_host(tmp_path, monkeypatch):
+    pytest.importorskip("onnx")
+    pytest.importorskip("onnxruntime")
+
+    _keep_initial_actor_weights(monkeypatch)
+    robot, env, agent = _build_soma_configs()
+    with pytest.raises(ValueError) as refusal:
+        _export(robot, env, agent, tmp_path)
+    message = str(refusal.value)
+    assert "actor observation 'max_coords_obs' binds 'current.rigid_body_pos'" in message
+    assert "host kind 'simulated_body_pos', which only a simulation host can feed" in message
+    assert "this export is for a robot host" in message
+    assert "--host simulation" in message
+    # Refused before anything is written.
+    assert not (tmp_path / "out").exists()
+
+
+def test_unknown_host_is_refused_before_loading(tmp_path):
+    from deployment import export_to_onnx
+
+    with pytest.raises(ValueError, match="unknown deployment host 'browser'"):
+        export_to_onnx.export_from_configs(
+            None, str(tmp_path / "last.ckpt"), str(tmp_path / "out"), host="browser"
+        )
+    # The public entry point refuses before it opens the bundle: no checkpoint
+    # exists here, so a load attempt would raise FileNotFoundError instead.
+    with pytest.raises(ValueError, match="unknown deployment host 'browser'"):
+        export_to_onnx.export_tracker(
+            str(tmp_path / "missing" / "last.ckpt"),
+            str(tmp_path / "out"),
+            host="browser",
+        )
+    assert not (tmp_path / "out").exists()
+
+
+def test_privileged_history_is_refused_by_the_history_rule_for_every_host():
+    import torch
+
+    from deployment.export_to_onnx import _build_samples
+    from protomotions.envs.context_views import EnvContext, deploy_for
+    from protomotions.envs.mdp_component import MdpComponent
+
+    # The historical privileged view inherits the simulated_* kinds, but no host
+    # can feed past simulator truth (no replay rule is declared for it), so the
+    # refusal names the history rule instead of sending the user to a host that
+    # refuses the same binding.
+    assert deploy_for("historical.rigid_body_pos") == "simulated_body_pos"
+
+    def _reads_history(x):
+        return x
+
+    component = MdpComponent(
+        _reads_history, {"x": EnvContext.historical.rigid_body_pos}
+    )
+    context = {"historical.rigid_body_pos": torch.zeros(1, 8, 33, 3)}
+    for host in ("robot", "simulation"):
+        with pytest.raises(ValueError, match="history axis the host cannot feed"):
+            _build_samples(
+                {"past": component}, context, {"historical.rigid_body_pos"}, host=host
+            )
+

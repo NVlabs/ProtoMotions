@@ -82,6 +82,11 @@ class PlacedReference:
         """Whether a manager exists (the installed library has clips)."""
         return self._motion.motion_manager is not None
 
+    @property
+    def has_scene_objects(self) -> bool:
+        """Whether the scene library places objects (it has scenes)."""
+        return self._scene_lib.num_scenes() > 0
+
     def _manager(self):
         manager = self._motion.motion_manager
         if manager is None:

@@ -38,7 +38,11 @@ from tensordict import TensorDict
 from protomotions.utils.hydra_replacement import get_class
 
 from protomotions.agents.utils.metering import TimeReport, TensorAverageMeterDict
-from protomotions.agents.utils.data import DictDataset, ExperienceBuffer, swap_and_flatten01
+from protomotions.agents.utils.data import (
+    DictDataset,
+    ExperienceBuffer,
+    swap_and_flatten01,
+)
 from protomotions.envs.base_env.env import BaseEnv
 from protomotions.agents.utils.checkpoint import prepare_model_state_dict
 from protomotions.agents.utils.normalization import (
@@ -311,7 +315,8 @@ class BaseAgent:
                 checkpoint, map_location=self.device, weights_only=False
             )
             self._validate_checkpoint(
-                state_dict, load_training_state=load_training_state,
+                state_dict,
+                load_training_state=load_training_state,
                 for_inference=for_inference,
             )
             self.load_parameters(
@@ -393,7 +398,10 @@ class BaseAgent:
             if "evaluator" in state_dict:
                 self.evaluator.load_state_dict(state_dict["evaluator"])
 
-        if self.motion_lib.config.motion_file_switch_mode is not MotionFileSwitchMode.FIXED:
+        if (
+            self.motion_lib.config.motion_file_switch_mode
+            is not MotionFileSwitchMode.FIXED
+        ):
             self.motion_shard_cycle = state_dict["motion_shard_cycle"]
 
     # -----------------------------
@@ -427,7 +435,10 @@ class BaseAgent:
         if self.evaluator is not None:
             extra_state_dict["evaluator"] = self.evaluator.get_state_dict()
 
-        if self.motion_lib.config.motion_file_switch_mode is not MotionFileSwitchMode.FIXED:
+        if (
+            self.motion_lib.config.motion_file_switch_mode
+            is not MotionFileSwitchMode.FIXED
+        ):
             extra_state_dict["motion_shard_cycle"] = self.motion_shard_cycle
 
         state_dict.update(extra_state_dict)
@@ -610,8 +621,17 @@ class BaseAgent:
         Declared rollout state gets an extra validation step so state reset,
         rollout writes, and replay storage cannot silently drift apart.
         """
-        self.model_output_keys = self.model.experience_buffer_keys()
         rollout_state_specs = self.model._rollout_state_specs_recursive()
+        # An agent-injected input such as the per-motion ``global_motion_id``
+        # is both an observation and a declared model output. The rollout
+        # already stores it from the observations every step, so it is dropped
+        # from the model-output list: registering or writing it twice trips the
+        # buffer's duplicate and write-count checks.
+        self.model_output_keys = [
+            key
+            for key in self.model.experience_buffer_keys()
+            if key not in getattr(self, "_observation_buffer_keys", set())
+        ]
         for key in self.model_output_keys:
             value = output_td[key]
             if not isinstance(value, torch.Tensor):
@@ -680,6 +700,7 @@ class BaseAgent:
         )
         obs = self.add_agent_info_to_obs(obs)
         obs_td = self.obs_dict_to_tensordict(obs)
+        self._observation_buffer_keys = set(obs_td.keys())
         for key, env_tensor in obs_td.items():
             self.experience_buffer.register_key(
                 key, shape=env_tensor.shape[1:], dtype=env_tensor.dtype
@@ -1071,7 +1092,9 @@ class BaseAgent:
             if key in data:
                 raise ValueError(f"Model training target overwrites rollout key: {key}")
             if value.shape[:2] != (self.num_steps, self.num_envs):
-                raise ValueError(f"Model training target {key} has invalid time/env shape")
+                raise ValueError(
+                    f"Model training target {key} has invalid time/env shape"
+                )
             data[key] = swap_and_flatten01(value)
         dataset = self.process_dataset(data)
         self.train()

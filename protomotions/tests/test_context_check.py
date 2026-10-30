@@ -754,6 +754,7 @@ IN_TREE_CONTROL_CONFIGS = (
     "MaskedMimicTaskControlConfig",
     "protomotions.envs.control.steering_control.SteeringControlConfig",
     "protomotions.envs.control.path_follower_control.PathFollowerControlConfig",
+    "protomotions.envs.control.scene_boxes_control.SceneBoxesControlConfig",
     "protomotions.envs.control.target_control.TargetControlConfig",
     "protomotions.envs.control.gpc_sft_reference_target_control."
     "GPCSFTReferenceTargetControlConfig",

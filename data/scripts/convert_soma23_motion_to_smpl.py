@@ -26,6 +26,10 @@ Body correspondence (SOMA23 idx → SMPL MJCF idx):
 SOMA23 Neck1(4) is absorbed into Neck2→Neck.
 SMPL L_Hand(18)/R_Hand(23) have no SOMA23 counterpart → identity local rot.
 
+Input and output are both .motion files in the RobotState layout
+(rigid_body_pos, rigid_body_rot, ..., the keys RobotState.to_dict writes),
+which is what every convert_soma23_* script produces and MotionLib loads.
+
 Usage::
 
     # Single file
@@ -63,6 +67,10 @@ from contact_detection import compute_contact_labels_from_pos_and_vel
 from protomotions.components.pose_lib import (
     extract_kinematic_info,
     compute_angular_velocity,
+)
+from protomotions.simulator.base_simulator.simulator_state import (
+    RobotState,
+    StateConversion,
 )
 from protomotions.utils.rotations import (
     matrix_to_quaternion,
@@ -384,12 +392,19 @@ def convert_motion(
     device: torch.device,
     batch_size: int = 64,
     num_iters: int = 500,
-) -> dict:
-    """Convert a single SOMA23 .motion to SMPL .motion dict."""
+) -> RobotState:
+    """Convert a single SOMA23 .motion file to an SMPL RobotState motion."""
     data = torch.load(soma23_path, weights_only=False, map_location=device)
-    soma_gts = data["gts"].to(device)  # [T, 23, 3]
-    soma_grs = data["grs"].to(device)  # [T, 23, 4] xyzw
-    fps = data.get("fps", 30)
+    soma = RobotState.from_dict(data, state_conversion=StateConversion.COMMON)
+    if soma.rigid_body_pos is None or soma.rigid_body_rot is None:
+        raise ValueError(
+            f"{soma23_path} has no rigid_body_pos / rigid_body_rot. A SOMA23 "
+            ".motion file is a RobotState dict, as written by the "
+            "convert_soma23_* scripts."
+        )
+    soma_gts = soma.rigid_body_pos.to(device)  # [T, 23, 3]
+    soma_grs = soma.rigid_body_rot.to(device)  # [T, 23, 4] xyzw
+    fps = soma.fps if soma.fps is not None else 30
     T = soma_gts.shape[0]
 
     # Process in overlapping windows for temporal consistency.
@@ -462,7 +477,7 @@ def convert_motion(
     gvs[1:] = (global_pos[1:] - global_pos[:-1]) / dt
     gvs[0] = gvs[1]
 
-    gavs = torch.zeros(T, num_bodies, 3)
+    gavs = compute_angular_velocity(global_rot, fps=fps)
     ang_vel = compute_angular_velocity(local_rot_mats[:, 1:], fps=fps)
     dof_vel = ang_vel.reshape(T, -1)
 
@@ -474,17 +489,18 @@ def convert_motion(
         height_thresh=0.1,
     ).to(torch.bool)
 
-    return {
-        "gts": global_pos,
-        "grs": global_rot_quat,
-        "gvs": gvs,
-        "gavs": gavs,
-        "dps": dof_pos,
-        "dvs": dof_vel,
-        "lrs": local_rot_quat,
-        "contacts": contacts,
-        "fps": fps,
-    }
+    return RobotState(
+        state_conversion=StateConversion.COMMON,
+        fps=fps,
+        rigid_body_pos=global_pos,
+        rigid_body_rot=global_rot_quat,
+        rigid_body_vel=gvs,
+        rigid_body_ang_vel=gavs,
+        dof_pos=dof_pos,
+        dof_vel=dof_vel,
+        local_rigid_body_rot=local_rot_quat,
+        rigid_body_contacts=contacts,
+    )
 
 
 @app.command()
@@ -560,8 +576,8 @@ def main(
                 continue
 
             try:
-                out_dict = convert_motion(mf, smpl_ki, device, batch_size, num_iters)
-                torch.save(out_dict, out_path)
+                motion = convert_motion(mf, smpl_ki, device, batch_size, num_iters)
+                torch.save(motion.to_dict(), out_path)
                 successes += 1
                 progress.console.print(f"  [green]OK[/] {name}")
             except Exception as e:

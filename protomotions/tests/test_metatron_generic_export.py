@@ -13,6 +13,7 @@ import torch
 from tensordict import TensorDict
 
 from deployment.contract import DeploymentContract, InputSpec
+from deployment.export_fk_to_onnx import FkSidecar, export_fk, fk_binding
 from deployment.export_to_onnx import (
     _build_deployable_policy,
     _build_samples,
@@ -197,14 +198,8 @@ def test_host_history_honors_declared_command_reset_fill():
     np.testing.assert_array_equal(host.inputs()[spec.key][:, 1:], expected[:, 1:])
 
 
-@pytest.mark.parametrize("leapp", [False, True])
-def test_export_metatron_prior_onnx_roundtrip(
-    recipe_configs, tmp_path, monkeypatch, leapp
-):
-    pytest.importorskip("onnx")
-    ort = pytest.importorskip("onnxruntime")
-    if leapp:
-        pytest.importorskip("leapp")
+def _save_recipe_checkpoint(recipe_configs, directory):
+    """Save a full training checkpoint and its config bundle as last.ckpt."""
     from protomotions.utils.experiment_configs import (
         ExperimentConfigs,
         save_experiment_configs,
@@ -213,6 +208,10 @@ def test_export_metatron_prior_onnx_roundtrip(
     robot, env, agent = recipe_configs
     model = MaskedMimicModel(agent.model).eval()
     context, _, _, obs = _observations(robot, env, model)
+    fk, fk_paths = fk_binding(
+        {key: env.observation_components[key] for key in model.deployable_in_keys}
+    )
+    assert fk_paths == ("noisy.dof_pos", "noisy.anchor_pos", "noisy.anchor_rot")
     with torch.no_grad():
         values = obs(*(context[key] for key in obs.get_input_keys()))
         td = TensorDict(dict(zip(obs.get_output_keys(), values)), batch_size=[1])
@@ -230,8 +229,23 @@ def test_export_metatron_prior_onnx_roundtrip(
         env=env,
         agent=agent,
     )
-    save_experiment_configs(configs, tmp_path)
-    torch.save({"model": model.state_dict()}, tmp_path / "last.ckpt")
+    save_experiment_configs(configs, directory)
+    torch.save({"model": model.state_dict()}, directory / "last.ckpt")
+    return model, context, obs, fk, fk_paths
+
+
+@pytest.mark.parametrize("leapp", [False, True])
+def test_export_metatron_prior_onnx_roundtrip(
+    recipe_configs, tmp_path, monkeypatch, leapp
+):
+    pytest.importorskip("onnx")
+    ort = pytest.importorskip("onnxruntime")
+    if leapp:
+        pytest.importorskip("leapp")
+    robot, env, agent = recipe_configs
+    model, context, obs, fk, fk_paths = _save_recipe_checkpoint(
+        recipe_configs, tmp_path
+    )
 
     def forbid_training_forward(*args, **kwargs):
         raise AssertionError("Export must use the prior, not the privileged encoder")
@@ -248,6 +262,17 @@ def test_export_metatron_prior_onnx_roundtrip(
         contract.robot.conditionable_body_names
         == contract.masked_mimic.conditionable_bodies
     )
+    # The policy graph keeps its four control outputs: the body poses it
+    # computes stay inside it, and a host that needs them runs fk.onnx (exported
+    # below from the same kernel), whose inputs are three of the policy's.
+    assert [spec.onnx_name for spec in contract.outputs] == [
+        "actions",
+        "joint_pos_targets",
+        "stiffness_targets",
+        "damping_targets",
+    ]
+    fk_inputs = ("noisy_dof_pos", "noisy_anchor_pos", "noisy_anchor_rot")
+    assert set(fk_inputs) <= {spec.onnx_name for spec in contract.inputs}
     if leapp:
         import yaml
         from leapp import InferenceManager
@@ -268,6 +293,7 @@ def test_export_metatron_prior_onnx_roundtrip(
         assert outputs["joint_pos_targets"]["kind"] == "target/joint/position"
         assert outputs["stiffness_targets"]["kind"] == "kp"
         assert "kind" not in outputs["actions"]
+        assert {"body_pos", "body_rot"}.isdisjoint(outputs)
         manager = InferenceManager(str(bundle))
     assert contract.masked_mimic.num_masked_future_steps == 5
     assert contract.masked_mimic.style_frames == 5
@@ -291,19 +317,16 @@ def test_export_metatron_prior_onnx_roundtrip(
     )
 
     # Match the existing goal/history ABI where shared; explicitly name changes
-    # instead of disguising the new recipe as a v1 scene bundle.
-    assert set(inputs) - INPUT_SHAPES.keys() == {
-        "current_action",
-        "noisy.rigid_body_pos",
-        "noisy.rigid_body_rot",
-    }
+    # instead of disguising the new recipe as a v1 scene bundle. No body pose is
+    # an input: the goal computes them from noisy.dof_pos and the anchor pose.
+    assert set(inputs) - INPUT_SHAPES.keys() == {"current_action"}
     assert INPUT_SHAPES.keys() - set(inputs) == {
         "current.root_pos",
         "current.root_rot",
-        "noisy.anchor_pos",
         "raw_action_history",
         *(key for key in INPUT_SHAPES if key.startswith("scene_boxes.")),
     }
+    assert not any("rigid_body" in key for key in inputs)
     for key in inputs.keys() & INPUT_SHAPES.keys():
         assert inputs[key].shape == (1, *INPUT_SHAPES[key])
         assert inputs[key].dtype == ("bool" if key in BOOL_INPUTS else "float32")
@@ -342,6 +365,7 @@ def test_export_metatron_prior_onnx_roundtrip(
                 None,
                 {spec.onnx_name: feed[spec.key].numpy() for spec in contract.inputs},
             )
+            assert len(expected) == len(actual) == len(contract.outputs)
             for truth, exported in zip(expected, actual):
                 np.testing.assert_allclose(
                     exported, truth.numpy(), atol=1e-4, rtol=1e-4
@@ -360,6 +384,58 @@ def test_export_metatron_prior_onnx_roundtrip(
                         atol=1e-4,
                         rtol=1e-4,
                     )
+    # fk.onnx is the same kernel traced on its own from the same bundle: it
+    # equals the kernel to float rounding on the sample context, names its
+    # inputs as the policy names the same paths, holds no data-dependent op (a
+    # static TensorRT plan cannot), and its sidecar refuses a policy manifest
+    # whose body order differs.
+    import json
+    import onnx
+
+    fk_onnx = export_fk(str(tmp_path / "last.ckpt"), str(tmp_path / "fk"))
+    sidecar = FkSidecar.from_yaml(fk_onnx.with_suffix(".yaml"))
+    assert sidecar.input_names == fk_inputs
+    assert tuple(path for _, path, _ in sidecar.inputs) == fk_paths
+    assert sidecar.output_shapes == {"body_pos": (1, 33, 3), "body_rot": (1, 33, 4)}
+    assert sidecar.body_names == tuple(contract.robot.body_names)
+    assert sidecar.joint_names == tuple(contract.robot.joint_names)
+    assert sidecar.anchor_body_index == contract.robot.anchor_body_index
+    assert sidecar.checkpoint == "last.ckpt"
+    fk_session = ort.InferenceSession(str(fk_onnx), providers=["CPUExecutionProvider"])
+    feed = {spec.onnx_name: context[spec.key].numpy() for spec in contract.inputs}
+    from_graph = fk_session.run(None, {name: feed[name] for name in fk_inputs})
+    with torch.no_grad():
+        own_pos, own_rot = fk.world_body_poses(*(context[key] for key in fk_paths))
+    np.testing.assert_allclose(from_graph[0], own_pos.numpy(), atol=1e-5)
+    np.testing.assert_allclose(from_graph[1], own_rot.numpy(), atol=1e-5)
+    ops = {node.op_type for node in onnx.load(str(fk_onnx)).graph.node}
+    assert not ops & {"NonZero", "If", "Loop", "Scan"}
+    robot_contract = {
+        "body_names": list(contract.robot.body_names),
+        "joint_names": list(contract.robot.joint_names),
+        "anchor_body_index": contract.robot.anchor_body_index,
+    }
+    manifest = tmp_path / "manifest.json"
+    # The native manifest also lists the policy graph's inputs; the FK inputs
+    # must be among them, since the host feeds one tensor under one name to
+    # both graphs.
+    input_names = [spec.onnx_name for spec in contract.inputs]
+    manifest.write_text(
+        json.dumps({"robot_contract": robot_contract, "input_names": input_names})
+    )
+    sidecar.check_manifest(manifest)
+    renamed = [name for name in input_names if name != "noisy_anchor_pos"]
+    manifest.write_text(
+        json.dumps({"robot_contract": robot_contract, "input_names": renamed})
+    )
+    with pytest.raises(ValueError, match="not inputs of the policy manifest"):
+        sidecar.check_manifest(manifest)
+    swapped = dict(robot_contract, body_names=robot_contract["body_names"][::-1])
+    manifest.write_text(
+        json.dumps({"robot_contract": swapped, "input_names": input_names})
+    )
+    with pytest.raises(ValueError, match="body order differs"):
+        sidecar.check_manifest(manifest)
     if leapp:
         import copy
 
@@ -387,3 +463,45 @@ def test_export_metatron_prior_onnx_roundtrip(
     torch.save({"model": incomplete}, tmp_path / "broken.ckpt")
     with pytest.raises(RuntimeError, match="Missing key"):
         export_tracker(str(tmp_path / "broken.ckpt"), str(tmp_path / "broken-export"))
+
+
+def test_export_graph_history_bundle(recipe_configs, tmp_path):
+    pytest.importorskip("onnx")
+    pytest.importorskip("onnxruntime")
+    pytest.importorskip("leapp")
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    import yaml
+
+    _save_recipe_checkpoint(recipe_configs, tmp_path)
+    repo = Path(__file__).resolve().parents[2]
+
+    def export(jit):
+        env = dict(os.environ, PYTORCH_JIT=jit, PYTHONPATH=str(repo))
+        command = [
+            sys.executable,
+            str(repo / "deployment" / "export_to_onnx.py"),
+            "--checkpoint",
+            str(tmp_path / "last.ckpt"),
+            "--output",
+            str(tmp_path / f"out-jit{jit}"),
+            "--leapp-graph-history",
+        ]
+        return subprocess.run(command, env=env, capture_output=True, text=True)
+
+    scripted = export("1")
+    assert scripted.returncode != 0
+    assert "PYTORCH_JIT=0" in scripted.stderr
+
+    result = export("0")
+    assert result.returncode == 0, result.stderr
+    bundle = tmp_path / "out-jit0" / "leapp_graph_history" / "policy"
+    document = yaml.safe_load((bundle / "policy.yaml").read_text())
+    inputs = {entry["name"] for entry in document["models"]["policy"]["inputs"]}
+    assert {"applied_actions", "command_accepted"} <= inputs
+    assert not inputs & {"current_action", "noisy_historical_raw_actions"}
+    assert document["pipeline"]["feedback_flow"]
+    assert not (bundle / "deployment_contract.yaml").exists()

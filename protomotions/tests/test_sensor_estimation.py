@@ -239,3 +239,29 @@ def test_each_channel_reaches_only_its_physical_dependents(chain):
         joints.rigid_body_pos[:, HAND], base.rigid_body_pos[:, HAND]
     )
     torch.testing.assert_close(joints.dof_vel, base.dof_vel)
+
+
+def test_world_body_poses_from_the_estimated_anchor_reproduce_the_estimate(chain):
+    """The in-graph FK kernel and the sensor runtime agree to float rounding.
+
+    Deployment feeds the exported graph ``noisy.dof_pos``, ``noisy.anchor_pos``
+    and ``noisy.anchor_rot``; the graph's ``BakedAnchorFK.world_body_poses``
+    must then reproduce the body poses the training-time sensor runtime
+    published, because both are the same FK composed on the same anchor pose.
+    """
+    from protomotions.envs.state_names import body_state_names
+
+    fk, truth = chain
+    config = _config(**FULL_CONFIG)
+    mounts = _mounts(imu_body=TORSO, imu_mount_quat=MOUNT, **FULL_MOUNTS)
+    est = estimate_body_state(
+        measure(truth, config, mounts, ground_heights=torch.zeros(N)), fk, mounts
+    )
+    anchor = 0
+    names = body_state_names(est, anchor)
+    pos, rot = fk.world_body_poses(est.dof_pos, names["anchor_pos"], names["anchor_rot"])
+    torch.testing.assert_close(pos, est.rigid_body_pos, atol=1e-5, rtol=1e-5)
+    # Same rotation up to the quaternion sign (|q1 . q2| = 1); unlike a
+    # component-wise abs() this also tells a rotation from its conjugate.
+    dots = (rot * est.rigid_body_rot).sum(-1).abs()
+    torch.testing.assert_close(dots, torch.ones_like(dots), atol=1e-5, rtol=0)

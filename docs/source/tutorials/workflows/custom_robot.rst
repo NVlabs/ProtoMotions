@@ -12,7 +12,8 @@ Adding a robot requires changes in these areas:
 
 1. **MJCF file** - Robot physics definition
 2. **Robot config** - ProtoMotions configuration
-3. **Factory registration** - Make robot available by name
+3. **Registration** - Automatic: the file name under
+   ``protomotions/robot_configs/`` is the robot name
 4. **Retargeting script** (optional) - For motion transfer
 5. **Motion conversion** (optional) - For retargeted motions
 
@@ -101,59 +102,89 @@ Standing height for reset/initialization:
 
 **PD Control Parameters:**
 
-Define stiffness/damping per joint using regex patterns:
+Gains are not typed per joint. Each physical actuator is a ``MotorClass`` in
+``protomotions/robot_configs/motor_classes.py`` (its rotor armature plus
+torque and speed limits), and its ``control_info()`` derives the PD gains
+from that: a 10 Hz natural frequency with a damping ratio of 2, so the
+joints are over-damped rather than critically damped. Add one class per
+motor rating your robot uses, then map joint-name patterns to them:
 
 .. code-block:: python
 
+   # protomotions/robot_configs/motor_classes.py
+   H1_2_300 = MotorClass(armature=0.040, effort_limit=300, velocity_limit=50)
+   H1_2_200 = MotorClass(armature=0.030, effort_limit=200, velocity_limit=50)
+   H1_2_60 = MotorClass(armature=0.010, effort_limit=60, velocity_limit=50)
+   H1_2_40 = MotorClass(armature=0.005, effort_limit=40, velocity_limit=50)
+
+   # protomotions/robot_configs/h1_2.py
    control: ControlConfig = field(
        default_factory=lambda: ControlConfig(
            control_type=ControlType.BUILT_IN_PD,
            override_control_info={
-               # Hip joints - high torque
-               ".*_hip_(yaw|pitch|roll)_joint": ControlInfo(
-                   stiffness=STIFFNESS_200,
-                   damping=DAMPING_200,
-                   effort_limit=200,
-                   velocity_limit=50,
-               ),
-               # Knee joints - highest torque
-               ".*_knee_joint": ControlInfo(
-                   stiffness=STIFFNESS_300,
-                   damping=DAMPING_300,
-                   effort_limit=300,
-               ),
+               # Hip joints: the 200 N·m motor
+               ".*_hip_(yaw|pitch|roll)_joint": H1_2_200.control_info(),
+               # Knee joints: the 300 N·m motor
+               ".*_knee_joint": H1_2_300.control_info(),
+               # Two motors in parallel on one joint: scale the gains
+               ".*_ankle_pitch_joint": H1_2_60.control_info(scale=2),
+               # A joint whose actuator is weaker than its gain class
+               ".*_elbow_joint": H1_2_40.control_info(effort_limit=18),
                # ... more joints
            },
        )
    )
 
-**Simulator-Specific Parameters:**
+``ControlInfo(stiffness=..., damping=..., effort_limit=..., velocity_limit=...)``
+with literal numbers also works if you would rather not derive the gains.
+
+**Control Rate and Simulator-Specific Parameters:**
+
+The policy rate is ``control_hz``, and each backend's physics rate follows from
+it. H1_2 and G1 run at 50 Hz with the default humanoid physics (IsaacGym 100,
+IsaacLab and Newton 200, MuJoCo 1000 fps). There is no ``decimation`` field;
+the simulator derives it as ``fps // control_hz``. To tune one backend, pass
+its block to ``SimulatorParams.humanoid``. A passed block replaces that
+backend's template wholesale, so set every field you care about:
 
 .. code-block:: python
 
+   control_hz: int = 50
+
    simulation_params: SimulatorParams = field(
-       default_factory=lambda: SimulatorParams(
+       default_factory=lambda: SimulatorParams.humanoid(
+           50,
            isaacgym=IsaacGymSimParams(
-               fps=100, decimation=2, substeps=2,
+               fps=100,
+               substeps=2,
                physx=IsaacGymPhysXParams(
                    num_position_iterations=8,
                    num_velocity_iterations=4,
                ),
            ),
-           newton=NewtonSimParams(fps=200, decimation=4),
+           newton=NewtonSimParams(fps=200),
        )
    )
 
-Step 3: Register in Factory
----------------------------
+Step 3: Registration
+--------------------
 
-Add to ``protomotions/robot_configs/factory.py``:
+There is nothing to edit in ``protomotions/robot_configs/factory.py``. The
+registry is the directory: the file you created in Step 2 is registered under
+its file stem, so ``protomotions/robot_configs/your_robot.py`` is
+``--robot-name your_robot``. Two rules apply:
 
-.. code-block:: python
+* The module must define exactly one class whose direct base is
+  ``RobotConfig``; zero or several such classes make ``robot_config()`` raise
+  ``TypeError``.
+* The stem must not be one of the infrastructure modules (``base``,
+  ``factory``, ``motor_classes``).
 
-   elif robot_name == "your_robot":
-       from protomotions.robot_configs.your_robot import YourRobotConfig
-       config = YourRobotConfig()
+To confirm the robot is picked up:
+
+.. code-block:: bash
+
+   python -c "from protomotions.robot_configs.factory import registered_robot_names; print(registered_robot_names())"
 
 Step 4: Test with Random Pose Visualizer
 ----------------------------------------
@@ -166,8 +197,13 @@ Before training, verify your robot loads correctly:
        --robot your_robot \
        --simulator isaacgym
 
-This sets the robot to random poses with **zero gravity and zero torque**. 
-The robot should be able to hold its reset pose (press R key to reset).
+The viewer accepts every registered robot name. It draws a random joint pose
+with **zero gravity and zero torque**, holds it, and draws a new one every two
+seconds; there is no key to press. For a robot that is not in the viewer's own
+table of marker bodies it falls back to neutral defaults, so a new robot needs
+no edit to the script. The robot should hold each pose without drifting or
+flying apart; if it does not, check the MJCF joint limits, the body order, the
+self-collision settings and the asset itself (meshes and inertias).
 
 
 Step 5: Retargeting Script (Optional)
@@ -180,14 +216,18 @@ Refer to :doc:`retargeting_pyroki` for details.
 Multi-Simulator (IsaacLab) Considerations
 -----------------------------------------
 
-For IsaacLab, you also need a USD asset. The MJCF→USD conversion is covered in 
-a separate tutorial.
+IsaacLab needs no USD asset from you. At scene construction the backend
+converts the robot's MJCF to USD itself and caches the result under
+``~/.cache/protomotions/isaaclab_mjcf_usd/``. The cache key is a fingerprint of
+the MJCF and every mesh it references, so an edited robot is converted again on
+the next launch; there is nothing to re-export. ``RobotAssetConfig`` has no USD
+field and accepts only an ``.xml`` path. See
+:doc:`../../user_guide/isaaclab3_migration` for the converter details.
 
-After changing MJCF, ensure all simulators see the same robot:
+After changing the MJCF, check that all simulators see the same robot:
 
-1. Re-export USD from updated MJCF
-2. Test on each simulator with ``random_pose_visualizer.py``
-3. Verify joint order and limits match
+1. Test on each simulator with ``random_pose_visualizer.py``
+2. Verify joint order and limits match
 
 Next Steps
 ----------

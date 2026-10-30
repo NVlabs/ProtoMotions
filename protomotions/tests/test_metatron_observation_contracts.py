@@ -11,9 +11,15 @@ from protomotions.envs.obs.masked_mimic import compute_target_poses_only
 
 
 @pytest.mark.parametrize("source", ["clean", "noisy"])
-def test_sensor_body_pose_has_explicit_deploy_kinds(source):
-    assert deploy_for(f"{source}.rigid_body_pos") == "body_pos"
-    assert deploy_for(f"{source}.rigid_body_rot") == "body_rot"
+def test_sensor_body_poses_are_not_graph_inputs(source):
+    # A deployable goal computes the body poses in the graph from the joints and
+    # the anchor pose (compute_fk_target_poses_only); a component that still
+    # binds them is refused at export, not fed by the host.
+    assert deploy_for(f"{source}.rigid_body_pos") is None
+    assert deploy_for(f"{source}.rigid_body_rot") is None
+    assert deploy_for(f"{source}.dof_pos") == "joint_pos"
+    assert deploy_for(f"{source}.anchor_pos") == "anchor_pos"
+    assert deploy_for(f"{source}.anchor_rot") == "anchor_rot"
 
 
 class _AnchorGoals(torch.nn.Module):

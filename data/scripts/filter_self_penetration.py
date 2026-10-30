@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Filter nova23 .motion files for heavy self-penetration.
+Filter soma23 .motion files for heavy self-penetration.
 
 Uses pure sphere/capsule geometry checks (no MuJoCo) against the geoms
-defined in nova23_humanoid.xml.  For each motion file the script:
+defined in soma23_humanoid.xml.  For each motion file the script:
 
   1. Loads rigid_body_pos and rigid_body_rot from the .motion dict.
   2. Transforms every geom to world space (batched over all frames).
@@ -143,7 +143,7 @@ def segment_to_segment_dist(
 
 
 # ---------------------------------------------------------------------------
-# Geom definitions from nova23_humanoid.xml
+# Geom definitions from soma23_humanoid.xml
 # ---------------------------------------------------------------------------
 
 @dataclass

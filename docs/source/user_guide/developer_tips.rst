@@ -14,8 +14,11 @@ Use ``random_pose_visualizer.py`` to verify a robot loads correctly:
        --robot g1 \
        --simulator isaacgym
 
-This sets random joint poses with **zero gravity and zero torque**. 
-The robot should be able to hold its reset pose (press R key to reset).
+This runs the simulator with **zero gravity and zero torque**, writes a random
+joint pose within the joint limits, and writes a fresh one every two seconds;
+between re-poses the robot should hold still. ``--robot`` accepts any
+registered robot name; a robot without an entry in the script's own table is
+drawn with neutral defaults. There is no key to press.
 
 This is the first thing to test when adding a new robot or a new simulator backend.
 
@@ -174,11 +177,17 @@ Test motion + scene alignment without physics:
 .. code-block:: bash
 
    python examples/env_kinematic_playback.py \
-       --experiment-path examples/experiments/mimic/mlp.py \
+       --experiment-path examples/experiments/mimic/mlp_no_contact.py \
        --motion-file my_motions.pt \
        --robot-name g1 \
        --simulator isaacgym \
+       --num-envs 1 \
        --scenes-file my_scenes.pt
+
+``--num-envs`` is required. The command uses the ``_no_contact`` mimic recipe
+because it runs on IsaacGym, whose GPU pipeline reports one combined force per
+body and so cannot run a recipe that declares contact bodies; on IsaacLab use
+``mimic/mlp.py``.
 
 This plays motions kinematically (sets poses directly, no simulation). Use to verify:
 

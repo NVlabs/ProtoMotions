@@ -238,16 +238,17 @@ def test_unified_pipeline_passes_the_observation_batch_size_to_the_policy():
 
 def test_observation_export_module_resolves_tensor_inputs_and_context_constants():
     ctx = _make_context()
+    scaled_component = MdpComponent(
+        compute_func=_scaled_obs,
+        dynamic_vars={
+            "obs": _ExportContext.current.obs,
+            "scale": _ExportContext.current.scale,
+        },
+        static_params={"bias": 1.0},
+    )
     module = export_utils.ObservationExportModule(
         {
-            "scaled": MdpComponent(
-                compute_func=_scaled_obs,
-                dynamic_vars={
-                    "obs": _ExportContext.current.obs,
-                    "scale": _ExportContext.current.scale,
-                },
-                static_params={"bias": 1.0},
-            ),
+            "scaled": scaled_component,
             "shifted": MdpComponent(
                 compute_func=_scaled_obs,
                 dynamic_vars={"obs": _ExportContext.current.obs},
@@ -265,6 +266,15 @@ def test_observation_export_module_resolves_tensor_inputs_and_context_constants(
 
     assert torch.equal(scaled, ctx["current.obs"] * 2.5 + 1.0)
     assert torch.equal(shifted, ctx["current.obs"] - 1.0)
+    # Folding the published constant is the module's own bookkeeping: the
+    # component still binds it, its static params are untouched, and the
+    # environment's path (which passes both) still works after an export.
+    assert scaled_component.get_bindings_dict() == {
+        "obs": "current.obs",
+        "scale": "current.scale",
+    }
+    assert scaled_component.static_params == {"bias": 1.0}
+    assert torch.equal(scaled_component.compute(ctx), scaled)
 
     with pytest.raises(AssertionError, match="MdpComponent"):
         export_utils.ObservationExportModule(

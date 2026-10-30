@@ -237,8 +237,12 @@ SYNTHETIC_WIDTHS = {
 }
 
 
-def _goal_context(robot, control):
-    """Pack a steering prompt (env 0) and a hidden one (env 1) with a reach goal."""
+def _goal_context(robot, control, dofs=None):
+    """Pack a steering prompt (env 0) and a hidden one (env 1) with a reach goal.
+
+    ``dofs`` are the measured joint angles, the zero pose by default (the
+    velocity expectations below assume the heading is the IMU yaw).
+    """
     from protomotions.envs.base_env.publishers import prefix_names
     from protomotions.envs.sensors.config import (
         IMUSensor,
@@ -291,7 +295,8 @@ def _goal_context(robot, control):
         velocity=torch.tensor([[2.0, 0.0], [0.0, 0.0]]),
         velocity_mask=torch.tensor([[True], [False]]),
     )
-    dofs = torch.zeros(2, len(robot.kinematic_info.dof_names))
+    if dofs is None:
+        dofs = torch.zeros(2, len(robot.kinematic_info.dof_names))
     readings = SensorReadings(
         joint_pos=dofs, joint_vel=torch.zeros_like(dofs), imu_quat=rotation,
         imu_gyro=torch.zeros(2, 3),
@@ -325,6 +330,48 @@ def _observations(model, robot, env):
             obs[key] = env.observation_components[key].compute(ctx)
     obs["vae_noise"] = torch.zeros(2, 64)
     return TensorDict(obs, batch_size=[2])
+
+
+def test_fk_goal_reproduces_the_sensor_runtime_on_all_g1_bodies(configs):
+    """The recipe's FK kernel equals the sensor runtime on G1's 33 bodies.
+
+    ``_goal_context`` publishes what the sensor runtime estimated from exact
+    readings; the deployable goal recomputes the body poses in the graph from
+    ``noisy.dof_pos`` + the anchor pose with the same FK, and must equal the
+    privileged kernel fed the runtime's poses.
+    """
+    from protomotions.envs.obs.masked_mimic import compute_target_poses_only
+
+    robot, _, env, _, _, _ = configs
+    # Random joint angles within the limits: at the zero pose the FK would
+    # reduce to the rest offsets and prove nothing about the joint rotations.
+    ki = robot.kinematic_info
+    draw = torch.rand(2, len(ki.dof_names), generator=torch.Generator().manual_seed(59))
+    dofs = ki.dof_limits_lower + (ki.dof_limits_upper - ki.dof_limits_lower) * draw
+    ctx = _goal_context(robot, env.control_components["masked_mimic"], dofs)
+    goal = env.observation_components["fk_masked_mimic_target_poses"]
+    fk = goal.static_params["fk"]
+    assert fk.anchor_idx == robot.anchor_body_index == ctx["mimic.anchor_idx"]
+    pos, rot = fk.world_body_poses(
+        ctx["noisy.dof_pos"], ctx["noisy.anchor_pos"], ctx["noisy.anchor_rot"]
+    )
+    assert pos.shape == (2, 33, 3) and rot.shape == (2, 33, 4)
+    torch.testing.assert_close(pos, ctx["noisy.rigid_body_pos"], atol=1e-5, rtol=1e-5)
+    dots = (rot * ctx["noisy.rigid_body_rot"]).sum(-1).abs()
+    torch.testing.assert_close(dots, torch.ones_like(dots), atol=1e-5, rtol=0)
+    bound = {
+        name: ctx[path]
+        for name, path in goal.dynamic_vars.items()
+        if name not in ("dof_pos", "anchor_pos", "anchor_rot")
+    }
+    static = {name: value for name, value in goal.static_params.items() if name != "fk"}
+    privileged = compute_target_poses_only(
+        current_state_body_pos=ctx["noisy.rigid_body_pos"],
+        current_state_body_rot=ctx["noisy.rigid_body_rot"],
+        **bound,
+        **static,
+    )
+    torch.testing.assert_close(goal.compute(ctx), privileged, atol=1e-5, rtol=1e-5)
 
 
 def test_goal_observations_come_from_the_real_kernels(configs):

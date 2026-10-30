@@ -24,35 +24,13 @@ efficient training.
 Prerequisites
 -------------
 
-1. **Download AMASS**: Register and download from `AMASS website <https://amass.is.tue.mpg.de/>`_
-2. **SMPL/SMPL-X models**: Required for body model conversion (see below)
+**Download AMASS**: register and download from the `AMASS website <https://amass.is.tue.mpg.de/>`_.
 
-Downloading SMPL Body Models
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Download body models from `SMPL <https://smpl.is.tue.mpg.de/>`_ and 
-`SMPL-X <https://smpl-x.is.tue.mpg.de/>`_. Unzip them into the ``data/smpl/`` folder.
-
-**For SMPL**: Download the **v1.1.0** version (contains neutral model). Rename the files:
-
-* ``basicmodel_neutral_lbs_10_207_0_v1.1.0.pkl`` → ``SMPL_NEUTRAL.pkl``
-* ``basicmodel_m_lbs_10_207_0_v1.1.0.pkl`` → ``SMPL_MALE.pkl``
-* ``basicmodel_f_lbs_10_207_0_v1.1.0.pkl`` → ``SMPL_FEMALE.pkl``
-
-**For SMPL-X**: Download the **v1.1** version. Rename the files to ``SMPLX_NEUTRAL.pkl``, 
-``SMPLX_MALE.pkl``, ``SMPLX_FEMALE.pkl``.
-
-The file structure should look like:
-
-.. code-block:: text
-
-   data/smpl/
-     ├── SMPL_NEUTRAL.pkl
-     ├── SMPL_MALE.pkl
-     ├── SMPL_FEMALE.pkl
-     ├── SMPLX_NEUTRAL.pkl   # Only needed for --humanoid-type smplx
-     ├── SMPLX_MALE.pkl
-     └── SMPLX_FEMALE.pkl
+No SMPL or SMPL-X body-model download is needed for this pipeline. The
+converter takes the skeleton from the MJCF humanoids shipped with the
+repository, ``protomotions/data/assets/mjcf/smpl_humanoid.xml`` and
+``protomotions/data/assets/mjcf/smplx_humanoid.xml``, and never opens a
+body-model ``.pkl`` file.
 
 Quick Start: Convenience Script
 -------------------------------
@@ -67,7 +45,11 @@ conversion and packaging pipeline:
 
 **Arguments:**
 
-* ``amass_root_dir``: Root directory containing AMASS subfolders with ``.npz`` files
+* ``amass_root_dir``: Root directory containing AMASS subfolders with ``.npz`` files.
+  Give it as an absolute path: the script rewrites each YAML ``file:`` entry to
+  ``<amass_root_dir>/<file>`` and packages from a temporary YAML written in
+  ``output_dir``, and ``motion_lib.py`` resolves a relative entry against that
+  temporary YAML's directory, where the motions are not.
 * ``output_dir``: Directory for the packaged ``.pt`` MotionLib files
 * ``--motion-config``: YAML file(s) containing motion configurations. Each creates a separate ``.pt`` file. Can be specified multiple times.
 * ``--humanoid-type``: ``smpl`` (24 joints) or ``smplx`` (52 joints). Default: ``smpl``
@@ -138,8 +120,10 @@ These time ranges specify physically plausible segments within each raw AMASS re
    * ``trans``: Root translations
    * ``mocap_framerate``: Original capture FPS
 
-2. **Downsample**: Finds the largest divisor of the source FPS that is >= target FPS. 
-   For example, 120 FPS source with 30 FPS target uses every 4th frame.
+2. **Downsample**: picks the smallest divisor of the source FPS that is still
+   >= the target FPS and keeps every (source / divisor)-th frame, so the output
+   lands as close to the target as the source rate allows. For example, a 120
+   FPS source with a 30 FPS target uses every 4th frame.
 
 3. **Forward Kinematics**: Computes full rigid body state:
    
@@ -160,20 +144,31 @@ These time ranges specify physically plausible segments within each raw AMASS re
 Step 2: Package into MotionLib
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Package individual ``.motion`` files into a single ``.pt`` file. The YAML config 
-determines which motions are included in each package:
+Package individual ``.motion`` files into a single ``.pt`` file. The YAML config
+determines which motions are included in each package.
+
+``motion_lib.py`` resolves every ``file:`` entry relative to the directory that
+contains the YAML, and it stops with ``FileNotFoundError`` if the first entry
+does not exist there. The shipped split YAMLs list paths relative to the AMASS
+root, for example ``CMU/45/45_01_poses.motion``, and Step 1 writes each
+``.motion`` file next to its source ``.npz`` under that root. So copy the YAML
+into the AMASS root first and point ``--motion-path`` at the copy. The
+convenience script does the same job for you by writing a temporary YAML whose
+entries are absolute paths.
 
 .. code-block:: bash
 
    # Package training set
+   cp data/yaml_files/amass_smpl_train.yaml /path/to/amass_root/
    python protomotions/components/motion_lib.py \
-       --motion-path data/yaml_files/amass_smpl_train.yaml \
+       --motion-path /path/to/amass_root/amass_smpl_train.yaml \
        --output-file /path/to/amass_smpl_train.pt \
        --device cpu
 
    # Package test set
+   cp data/yaml_files/amass_smpl_test.yaml /path/to/amass_root/
    python protomotions/components/motion_lib.py \
-       --motion-path data/yaml_files/amass_smpl_test.yaml \
+       --motion-path /path/to/amass_root/amass_smpl_test.yaml \
        --output-file /path/to/amass_smpl_test.pt \
        --device cpu
 
@@ -183,11 +178,11 @@ determines which motions are included in each package:
 * ``--output-file``: Output path for the packaged ``.pt`` file
 * ``--device``: Device to use (``cpu`` or ``cuda``)
 
-The YAML config specifies which motions belong to each split (train/test/validation), 
+The YAML config specifies which motions belong to each split (train/test/validation),
 so you run this step once per config to create separate ``.pt`` files.
 
-**Why package?** While you can load motions directly from a YAML file, packaging 
-pre-processes the dataset once and saves it as a single ``.pt`` file. This makes 
+**Why package?** While you can load motions directly from a YAML file, packaging
+pre-processes the dataset once and saves it as a single ``.pt`` file. This makes
 subsequent loads much faster since the motions don't need to be re-processed each time.
 
 **Output:**
@@ -243,10 +238,10 @@ and sampling weights:
 
 **Fields:**
 
-* ``file``: Path to motion file (relative to amass_root_dir)
-* ``fps``: Original motion capture FPS
+* ``file``: Path to the motion file, relative to ``amass_root_dir``. ``motion_lib.py`` resolves it relative to the YAML's own directory, which is why Step 2 copies the YAML there
+* ``fps``: Original motion capture FPS. Informational only: neither script reads it; the frame rate comes from the ``.npz`` file or from ``motion_fps_amassx.yaml``
 * ``weight``: Sampling weight (higher = sampled more often during training)
-* ``sub_motions``: List of time slices to extract
+* ``sub_motions``: The time slice to extract. Only the first entry is used; further entries are ignored without a warning
 * ``timings.start``: Start time in seconds
 * ``timings.end``: End time in seconds
 
@@ -268,20 +263,25 @@ SMPL vs SMPL-X
 * **SMPL**: 24 joints (23 non-root). Simpler body model.
 * **SMPL-X**: 52 joints (51 non-root). Includes hands with fingers.
 
-For SMPL-X, FPS information is loaded from ``data/yaml_files/motion_fps_amassx.yaml`` 
-when not present in the ``.npz`` file.
+For SMPL-X, the frame rate is taken from ``data/yaml_files/motion_fps_amassx.yaml``
+when the motion has an entry there, and that entry wins over whatever the ``.npz``
+file carries; a motion with no entry falls back to the ``mocap_framerate`` stored
+in the ``.npz`` file.
 
 Training with MotionLib
 -----------------------
 
-Once packaged, use in training:
+Once packaged, use in training. The IsaacGym command uses
+``mimic/mlp_no_contact.py`` rather than ``mimic/mlp.py`` because IsaacGym's GPU
+pipeline reports one combined force per body, so it cannot run a recipe that
+declares contact bodies; on IsaacLab use ``mimic/mlp.py``.
 
 .. code-block:: bash
 
    python protomotions/train_agent.py \
        --robot-name smpl \
        --simulator isaacgym \
-       --experiment-path examples/experiments/mimic/mlp.py \
+       --experiment-path examples/experiments/mimic/mlp_no_contact.py \
        --experiment-name smpl_amass \
        --motion-file /path/to/amass_train.pt \
        --num-envs 4096 \

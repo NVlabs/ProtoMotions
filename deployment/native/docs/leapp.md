@@ -1,202 +1,177 @@
-# LEAPP export and deployment
+# Exporting policies with LEAPP
 
-[LEAPP](https://github.com/nvidia-isaac/leapp) describes an inference pipeline
-with an ONNX graph and a YAML interface: tensor names, shapes, dtypes, semantic
-roles and joint ordering. The matching ProtoMotions contract travels with the
-graph: a typed YAML sidecar for the generic exporter, or the JSON manifest for
-the fixed 39-input native Metatron v1 runtime. These are different interfaces;
-LEAPP packaging does not convert one into the other.
+ProtoMotions uses [LEAPP](https://nvidia-isaac.github.io/leapp/) to export
+policies for deployment. LEAPP (Lightweight Export Annotations for Policy
+Pipelines) exports the policy code you already run (observation processing, the
+network and action processing) as a single ONNX model plus YAML metadata that
+names every input and output: its role, joint order and timing.
 
-## Export a main-next checkpoint
+## Why LEAPP
 
-From the repository root, install `leapp==0.7.2` alongside the ONNX export
-dependencies, then run:
+For ProtoMotions users this means:
+
+- **Deploy across different runtimes.** LEAPP provides a standardized contract
+  that describes the policy, so the policy can run on different runtimes. For
+  example, ProtoMotions provides a very lightweight runtime, and
+  [Isaac ROS Deploy](https://nvidia-isaac-ros.github.io/repositories_and_packages/isaac_ros_deploy/index.html)
+  has runtimes that run LEAPP bundles as part of ROS 2 nodes or `ros2_control`.
+  [AGILE WBC](https://github.com/nvidia-isaac/WBC-AGILE/blob/main/docs/source/deploy-policies.md)
+  and [Isaac Lab](https://isaac-sim.github.io/IsaacLab/main/source/policy_deployment/05_leapp/exporting_policies_with_leapp.html)
+  export the same contract.
+- **Deploy the same computation you trained.** Observation ordering,
+  normalization, forward kinematics and action scaling are part of the exported
+  graph, so a runtime can't drift from training. With `--leapp-graph-history`,
+  the sensor and action histories run inside the graph too.
+- **Check exports before trusting them.** LEAPP compares the exported model
+  with PyTorch on recorded samples, including the state updates.
+
+To learn more, see the LEAPP docs:
+[getting started](https://nvidia-isaac.github.io/leapp/getting_started.html),
+[the generated configs](https://nvidia-isaac.github.io/leapp/generated_configs.html)
+and [running a bundle](https://nvidia-isaac.github.io/leapp/leapp_runtime.html).
+
+## Export a policy
+
+### Install LEAPP
+
+Install LEAPP from GitHub (PyPI's `leapp` is an unrelated tool). It is pinned to
+a commit until the next LEAPP release. LEAPP's repository stores documentation
+images in Git LFS, which the Python package does not need:
+
+```bash
+GIT_LFS_SKIP_SMUDGE=1 pip install onnx \
+  'leapp @ git+https://github.com/nvidia-isaac/leapp@fe7c334dcecb43224f26107f14d75b7805ebc4a7'
+```
+
+### Export a checkpoint
+
+From the repository root, download the Metatron G1 checkpoint with
+`python scripts/download_metatron.py`, then:
 
 ```bash
 python deployment/export_to_onnx.py \
-  --checkpoint results/my_metatron/last.ckpt \
-  --output results/my_metatron/export \
+  --checkpoint data/pretrained_models/metatron/G1/inference_last.ckpt \
+  --output results/metatron_export \
   --leapp
 ```
 
-This loads the saved JSON config bundle and weights, exports the deterministic
-prior/decoder (not the privileged encoder), and checks PyTorch/ONNX parity.
-Alongside the usual `unified_pipeline.onnx` and YAML contract, it writes:
+This loads the checkpoint's saved config bundle and weights, exports the
+deterministic prior/decoder, checks PyTorch/ONNX parity and writes:
 
 ```text
-leapp/
-  policy.onnx
-  policy.yaml
-  deployment_contract.yaml
+results/metatron_export/
+  unified_pipeline.onnx
+  unified_pipeline.yaml
+  leapp/
+    policy.onnx               # identical to unified_pipeline.onnx
+    policy.yaml               # LEAPP interface
+    deployment_contract.yaml  # ProtoMotions contract: robot, goals, histories
 ```
 
-The LEAPP graph is byte-identical to the ONNX export. Its inputs come from the
-actual observation bindings, not a fixed input count. The current public G1
-Metatron recipe has 30 inputs, including global/local targets, style, velocity,
-anchor submasks, sensor estimates and history. It has no scene-box inputs. The
-existing scene demo below has 39 inputs; neither count is a feature-vector width.
-Re-exporting the native `metatron/G1` checkpoint (download with
-`python scripts/download_metatron.py`) instead has 31 inputs:
-its two dummy scene tokens are always masked, with `current.dof_pos` supplying
-their batch/dtype. That graph is scene-disabled even though its source weights
-retain scene conditioning. See the [artifact distinction](metatron_generic_export.md#scene-support-released-artifacts-versus-re-export).
+Keep the `leapp/` directory together: `policy.yaml` names `policy.onnx` by
+relative path, and `deployment_contract.yaml` is the ProtoMotions contract
+written beside them. In this bundle the sensor and action histories are inputs that
+the runtime maintains, for example with `deployment/input_history.py`; see the
+[history timing](metatron_generic_export.md#history-timing).
+`load_pipeline_contract()` reads this bundle's `deployment_contract.yaml`.
 
-Each LEAPP port retains its complete ProtoMotions declaration, including
-provider, body/joint ordering and history offsets. The sidecar also retains the
-goal canvas, robot, controller and sensor contract. Goals and raw actions do not
-receive misleading physical-sensor or joint-target labels.
+Both bundles return the four commands (`actions`, `joint_pos_targets`,
+`stiffness_targets`, `damping_targets`); every output is a command, so the host
+applies them all. The robot's body poses are not inputs of either bundle. The
+policy computes them inside the graph, from the joint readings and the torso anchor pose, with
+the forward-kinematics kernel bound in the saved configuration, and does not
+return them. A host that needs those poses outside the policy call, as the
+native Metatron runtime does before each call, exports the same kernel as a
+second small graph with
+`python deployment/export_fk_to_onnx.py --checkpoint data/pretrained_models/metatron/G1/inference_last.ckpt`,
+which writes `compiled_models/fk.onnx` and its sidecar `fk.yaml` beside the
+checkpoint. Its inputs carry the policy graph's names for the same paths
+(`noisy_dof_pos`, `noisy_anchor_pos`, `noisy_anchor_rot`), so a host feeds one
+tensor under one name to both graphs; the [native guide](metatron_v1_native.md)
+covers compiling it to a TensorRT plan.
 
-Validate the bundle before binding a host to it:
+### Graph-owned histories
 
-```python
-from leapp import InferenceManager
-from deployment.input_history import InputHistory
-from deployment.native.tools.leapp_export import load_pipeline_contract
-
-contract = load_pipeline_contract(bundle_path)  # pathlib.Path to policy.yaml
-manager = InferenceManager(str(bundle_path))
-history = InputHistory(contract.inputs)
-history.reset(first_measurements)
-
-# At each control tick, measurements and task_goals are keyed by context path.
-context = {**measurements, **task_goals, **history.inputs()}
-outputs = manager.run_policy({
-    f"policy/{spec.onnx_name}": context[spec.key] for spec in contract.inputs
-})
-commands = {
-    spec.key: outputs[f"policy/{spec.onnx_name}"] for spec in contract.outputs
-}
-# The host applies commands, including safety/controller edits, and records
-# the corresponding applied raw actions and PD targets, not unmodified guesses.
-history.commit(measurements, applied_commands)
-```
-
-The four outputs are raw `actions`, `joint_pos_targets`, `stiffness_targets`
-and `damping_targets`. Only joint targets and gains get LEAPP actuation kinds.
-Histories stay host-owned: there is no automatic output feedback in the LEAPP
-graph. Use the [Metatron timing table](metatron_generic_export.md#history-timing)
-to preserve the incoming action for each measured state.
-
-`load_pipeline_contract` checks hashes, input/output shape and dtype, ordering,
-and agreement between the LEAPP ports and the typed sidecar. A dynamic batch
-axis is allowed; other dimensions must resolve from the ONNX graph. This is a
-generic host interface, not an adapter for the fixed native v1 executable.
-
-## Metatron v1: Package a Scene-capable Graph
-
-Run from `deployment/`, with that directory on `PYTHONPATH` as described in the
-[README](../README.md). Install the optional export dependencies:
+`--leapp-graph-history` writes a second bundle, `leapp_graph_history/policy/`,
+in which the graph owns the histories as LEAPP feedback state, so every LEAPP
+runtime runs the same history update. LEAPP traces the policy for this bundle,
+so it needs TorchScript disabled:
 
 ```bash
-# "leapp" here is NVIDIA's github.com/nvidia-isaac/leapp, not PyPI's unrelated
-# Red Hat tool; install version 0.7.2 from that repository.
-pip install onnx 'leapp @ git+https://github.com/nvidia-isaac/leapp@0.7.2'
+PYTORCH_JIT=0 python deployment/export_to_onnx.py \
+  --checkpoint data/pretrained_models/metatron/G1/inference_last.ckpt \
+  --output results/metatron_export \
+  --leapp-graph-history
+```
+
+LEAPP cannot see inside `@torch.jit.script` functions such as the rotation
+helpers used by forward kinematics, so their results would be frozen at the
+first traced sample; the exporter refuses to trace with TorchScript enabled.
+`PYTORCH_JIT=0` also changes the node structure of `unified_pipeline.onnx`
+(same numerics), so add `--leapp` to the same run only if that is acceptable.
+
+The history inputs disappear from the interface; per tick the runtime supplies
+the measurements and goals as before, plus:
+
+- `applied_actions`: the raw action actually applied on the previous tick,
+  after any safety or controller edits;
+- `command_accepted`: false if that command was dropped, so the history does
+  not advance.
+
+On reset, a LEAPP runtime restores the bundle's initial values. A runtime that
+never edits commands passes the previous `actions` output and `true`.
+
+This bundle has a fixed batch size of 1 and no `deployment_contract.yaml`, since
+its interface differs from the contract's. The robot, control and goal metadata
+are in `unified_pipeline.yaml`, which the exporter writes to the output
+directory one level above the bundle; copy it along with the bundle.
+LEAPP keeps only the inputs whose values reach an output, so an input the
+graph reads for its shape alone is absent from this bundle (the FK-rebind
+revision of the packaged G1 re-export had one, `current_dof_pos`, which only
+sized its dummy scene tokens; the pinned revision has none). A runtime that
+builds its input dictionary from the `leapp/` bundle's contract can leave such
+a key out; LEAPP's `run_policy` ignores keys the graph does not take.
+
+### Check the export
+
+The exporter validates both bundles against PyTorch while it runs. With
+`onnxruntime-gpu` installed, LEAPP runs its check on the GPU when one is
+visible, and the GPU's default TF32 arithmetic differs from CPU FP32 by about
+`1e-3`; for strict comparisons, export with `NVIDIA_TF32_OVERRIDE=0`. The
+tests are:
+
+```bash
+python -m pytest protomotions/tests/test_metatron_generic_export.py \
+  protomotions/tests/test_leapp_graph_history.py
+```
+
+The released checkpoint is also covered by the
+[artifact-level verification](metatron_export_verification.md).
+
+## Native Metatron v1 runtime
+
+The native runtime runs the fixed 39-input, scene-capable Metatron v1 graph.
+LEAPP packages that graph without changing its bytes, and the native preparation
+tool accepts the bundle in place of the ONNX file. Run from `deployment/native/`,
+with that directory on `PYTHONPATH` as described in the
+[deployment README](../../README.md):
+
+```bash
 python -m tools.export_metatron_v1_leapp \
   --model /path/to/model.onnx \
   --manifest /path/to/manifest.json \
   --output artifacts/metatron-v1-leapp
-```
 
-The destination must not already exist. It contains:
-
-```text
-metatron-v1-leapp/
-  policy.onnx
-  policy.yaml
-  manifest.json
-```
-
-This command accepts the reviewed Metatron v1 39-input contract only. It checks
-the source checksum and ONNX port names/order, batch-one shapes and dtypes,
-then packages the **unchanged ONNX bytes**. It rejects external tensor-data
-files. The manifest declares input shapes/dtypes and output names; the native
-action contract defines all four outputs as float32 per-joint vectors. No
-extra output metadata fields need to be added to existing policy manifests.
-Joint positions/velocities, body orientation/angular velocity, PD target
-positions and gains receive LEAPP semantic kinds. Joint names retain training
-order; raw context paths remain available as `protomotions_key` annotations.
-The serialized `masked_mimic.*` keys are unchanged wire identifiers, not an
-additional supported deployment family.
-
-This is artifact export, **not checkpoint retracing**. Produce and qualify the
-source ONNX using the source revision matching its checkpoint and saved config.
-No weights are downloaded by this command, and no model weights are committed.
-Existing qualification applies only because the graph bytes do not change;
-packaging alone is not evidence of correct task control or hardware safety.
-Use the maintainer-provided scene-capable ONNX for this path, not the generic
-scene-disabled re-export of the packaged checkpoint.
-
-## Native TensorRT hand-off
-
-Pass the bundle YAML instead of an ONNX path:
-
-```bash
 python -m tools.prepare_metatron_v1_policy \
   --model artifacts/metatron-v1-leapp/policy.yaml \
   --recovery-plan /path/to/recovery_plan.json \
   --output artifacts/metatron-v1-native
 ```
 
-Preparation checks both descriptions and their model checksums, validates the
-Metatron v1 contract and materializes the native `model.onnx`, `manifest.json`
-and recovery-plan package. Plain ONNX plus `--manifest` still works. Continue
-with the [native guide](metatron_v1_native.md) to build and qualify GPU-local
-policy and FK TensorRT engines. LEAPP does not replace TensorRT optimization,
-graph-safety qualification, the native safety layer or the robot backend.
-The native binary consumes engines/JSON, not YAML directly.
-
-For offline LEAPP replay, `leapp.InferenceManager(".../policy.yaml")` loads the
-same bundle. Supply every input as `policy/<onnx_input_name>`; outputs use the
-same prefix. YAML output order follows the ONNX graph, while native validation
-binds outputs by name. Constant gains may therefore appear after raw actions.
-
-## Exporting a new wrapper
-
-`tools.leapp_export.export_leapp_bundle(...)` retains the annotation-based
-export API from the deployment repository. Pass a PyTorch wrapper, ordered
-context keys/ONNX names, representative input samples and joint names. The
-wrapper must return `(action, stiffness, damping, raw_action)` and contain the
-complete observation/model/action-processing path. It exports one `policy`
-node and validates it against the supplied samples. The caller supplies the
-matching JSON robot/action/history manifest; the helper cannot infer those
-semantics from tensors.
-
-For this tracing path, set `PYTORCH_JIT=0` **before importing PyTorch or the
-observation kernels**. Otherwise scripted rotation helpers are opaque to LEAPP.
-Only the executed Python branches are traced: validate unseen samples spanning
-task modes, masks and reset boundaries. Do not interpret a small tracing sample
-set as full policy parity. The byte-preserving Metatron bundle command does not
-trace and does not require disabling JIT.
-
-Histories remain runtime-owned inputs. Metatron v1 has eight sensor-history
-rows and nine incoming-action rows; advance them only after command acceptance,
-including any limiting applied to the command. LEAPP does not automatically
-supply task goals, localization, scene measurements, or hardware safety.
-
-GPC's code-only tooling remains separate. Its sampling/plugin contracts are
-not automatically converted by this Metatron command. No new tracker runtime
-or checkpoint-compatibility code is introduced.
-
-## Verification
-
-```bash
-python -m pytest tests/test_leapp_bundle.py
-```
-
-The tests exercise real LEAPP tracing and unseen-input inference, unchanged
-ONNX packaging, output-order parity, plain ONNX resolution, YAML/manifest
-mismatch rejection, checksum/path validation and native preparation. They use
-small synthetic models, not published checkpoints. The generic checkpoint path
-is additionally exercised from the repository root by
-`protomotions/tests/test_metatron_generic_export.py`: real recipe construction,
-strict checkpoint loading, masks, and PyTorch/ONNX/LEAPP agreement at batch
-sizes one and three. LEAPP-dependent tests skip
-when the optional dependency is absent. Target GPU and physical-robot
-qualification remain separate requirements.
-
-The released checkpoint and pinned scene-capable ONNX are also covered by
-[artifact-level verification](metatron_export_verification.md). For strict
-FP32 comparisons on NVIDIA GPUs, launch the replay with
-`NVIDIA_TF32_OVERRIDE=0`: LEAPP 0.7.2 selects CUDA when available, and its default
-TF32 arithmetic can differ from CPU FP32 beyond `1e-4`. This is a precision
-setting, not a model or tolerance change.
+Use the maintainer-provided scene-capable ONNX here, not a re-export of the
+downloaded `metatron/G1` checkpoint: that re-export takes the same eight scene
+inputs from the host, but its host contract differs (no simulator root pose;
+the current action and the eight-slot history as separate inputs), so the
+launcher's 39-input manifest does not describe it. Continue with the
+[native guide](metatron_v1_native.md) to build the TensorRT engines;
+`python -m pytest tests/test_leapp_bundle.py` covers this packaging.

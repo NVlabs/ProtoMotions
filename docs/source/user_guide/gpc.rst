@@ -375,14 +375,14 @@ Run inference directly from the PEFT run's adapter checkpoint:
 .. code-block:: bash
 
    python protomotions/inference_agent.py \
-       --robot-name soma23 \
        --simulator isaaclab \
        --motion-file data/motion_for_trackers/crouch_soma23.pt \
        --checkpoint results/rlft_target_peft_crouch_soma/inference_last.ckpt \
        --num-envs 16
 
-At inference, the PEFT run's ``resolved_configs.json`` builds the PEFT
-agent and points it at the frozen prior checkpoint. The adapter PEFT checkpoint is
+Inference takes no ``--robot-name``. The PEFT run's ``resolved_configs.json``
+beside the checkpoint names the robot, builds the PEFT agent and points it at
+the frozen prior checkpoint. The adapter PEFT checkpoint is
 loaded onto that prior as adapter/task state. Updated prior checkpoints embed
 their own ``latent_decoder`` config (originally sourced from the tracker at
 prior-train time), so a separate tracker file is not required at PEFT inference

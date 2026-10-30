@@ -2,7 +2,34 @@
 
 The native launcher consumes the pinned `protomotions.masked_mimic.g1.v5_raw_context_scene` 39-input contract. It uses one C++ `MetatronTask`, history boundary, TensorRT policy, and TensorRT FK engine for both MuJoCo and Unitree. Only the `RobotBackend` changes. The ONNX graph already contains the actuator offset and scale: the launcher sends its applied action directly and converts it back to raw action only for accepted-command history. It does not add the offset twice.
 
-The pinned bundle is `artifacts/metatron-ep6410/{model.onnx,manifest.json,recovery_plan.json}`. Build the `model.graphsafe.fp32.plan` and `fk.fp32.plan` for the local GPU with the repository's TensorRT preparation tooling; plans are GPU/runtime-specific. These names describe the locally qualified FP32 plans, not portable artifacts. Build with the optional Metatron native, MuJoCo, Unitree SDK2, and evdev components enabled, then run `ctest --test-dir build-clang --output-on-failure`.
+The pinned launcher bundle is
+`artifacts/metatron-ep6410/{model.onnx,manifest.json,recovery_plan.json}`.
+Build `model.graphsafe.fp32.plan` and `fk.fp32.plan` for the local GPU with
+the repository's TensorRT preparation tooling; plans are GPU/runtime-specific.
+
+The G1 package fetched by `python scripts/download_metatron.py` now binds the
+FK kernel in its saved configuration. From the repository root, run
+`python deployment/export_fk_to_onnx.py --checkpoint
+data/pretrained_models/metatron/G1/inference_last.ckpt` to write
+`compiled_models/fk.onnx` and `fk.yaml` beside the checkpoint; `--output` picks
+another directory. Move an older downloaded `G1/` directory aside before
+downloading the new revision. See [export verification](metatron_export_verification.md)
+for the revision and measured agreement; the weights and launcher policy ONNX
+are unchanged.
+
+The generic policy graph computes body poses internally and keeps its four
+control outputs. The native runtime also needs those poses before each call,
+because its goal canvas starts from the measured pose. The separate `fk.onnx`
+traces the same `BakedAnchorFK` kernel from the packaged config.
+`python tools/build_metatron_fk_tensorrt.py --onnx fk.onnx --sidecar fk.yaml
+--output fk.fp32.plan --manifest manifest.json` compiles a static FP32 plan
+and checks body order, joint order, anchor and input names against the launcher
+manifest (see the [qualification guide](metatron_v1_native_qualification.md)).
+This does not make the generic 37-input policy graph interchangeable with the
+launcher's 39-input graph.
+
+Build with the optional Metatron native, MuJoCo, Unitree SDK2, and evdev
+components enabled, then run `ctest --test-dir build-clang --output-on-failure`.
 
 Prepare the simulation MJCF once; the source MJCF remains unchanged:
 

@@ -23,16 +23,18 @@ from protomotions.agents.common.config import (
     ObsProcessorConfig,
 )
 from protomotions.utils.config_builder import load_experiment_module
-from examples.inference.metatron import (
-    empty_scene_corners,
-    empty_scene_mask,
-)
 from examples.inference.metatron import apply_inference_overrides
 from protomotions.agents.evaluators.config import MaskedMimicActionSource
 from protomotions.agents.supervised.masked_mimic_config import VAENoiseType
 from protomotions.envs.context_requirements import bound_components
 from protomotions.envs.obs.state_history_buffer import history_depth
+from protomotions.envs.obs.masked_mimic import compute_fk_target_poses_only
+from protomotions.envs.obs.scene_boxes import (
+    compute_fk_scene_box_corners,
+    compute_scene_box_mask,
+)
 from protomotions.robot_configs.g1 import G1RobotConfig
+from protomotions.utils.baked_fk import BakedAnchorFK
 from protomotions.simulator.factory import simulator_config
 from protomotions.utils.experiment_configs import (
     ExperimentConfigs,
@@ -165,30 +167,61 @@ def test_demo_recipe_refuses_to_hide_real_furniture():
         recipe.scene_lib_config(SimpleNamespace(scenes_file="furniture.pt"))
 
 
-def test_absent_scene_tokens_preserve_observation_dtypes():
-    dof_pos = torch.zeros(3, 29)
-    corners = empty_scene_corners(dof_pos)
-    mask = empty_scene_mask(dof_pos)
-    assert corners.shape == (3, 2, 24)
-    assert corners.dtype == dof_pos.dtype
-    assert not corners.any()
-    assert mask.shape == (3, 2)
-    assert mask.dtype == torch.bool
-    assert not mask.any()
+def test_packaged_config_reads_the_scene_from_the_host():
+    """Guard the published bundle: the scene stream is the control's, the corners
+    come from the goal's FK kernel on the raw readings, and no body pose is bound."""
+    configs = load_experiment_configs(ARTIFACT_DIR / "resolved_configs.json")
+    scene = configs.env.control_components["scene_boxes"]
+    assert (scene.max_objects, scene.max_boxes_per_object) == (1, 2)
+    components = configs.env.observation_components
+    corners = components["scene_box_corners"]
+    assert corners.compute_func is compute_fk_scene_box_corners
+    bindings = corners.get_bindings_dict()
+    assert bindings["dof_pos"] == "noisy.dof_pos"
+    assert bindings["anchor_pos"] == "noisy.anchor_pos"
+    assert bindings["anchor_rot"] == "noisy.anchor_rot"
+    assert {bindings[k] for k in ("centers", "extents", "valid", "object_pos", "object_rot")} == {
+        "scene_boxes.centers",
+        "scene_boxes.extents",
+        "scene_boxes.valid",
+        "scene_boxes.object_pos",
+        "scene_boxes.object_rot",
+    }
+    assert not {"current_state_body_pos", "current_state_body_rot"} & bindings.keys()
+    goal = components["fk_masked_mimic_target_poses"]
+    assert corners.static_params["fk"].export_init() == goal.static_params["fk"].export_init()
+    mask = components["scene_box_mask"]
+    assert mask.compute_func is compute_scene_box_mask
+    assert mask.get_bindings_dict() == {
+        "visible": "scene_boxes.visible",
+        "valid": "scene_boxes.valid",
+    }
+    for name in ("scene_box_corners", "scene_box_mask"):
+        assert name in configs.agent.model.prior.in_keys
 
 
-def test_packaged_config_keeps_scene_weights_but_masks_native_scene_inputs():
+def test_packaged_config_binds_fk_goal_to_raw_sensor_readings():
+    """Guard the published bundle, not a separate staging copy of its config."""
     configs = load_experiment_configs(ARTIFACT_DIR / "resolved_configs.json")
     components = configs.env.observation_components
-    for name, kernel in (
-        ("scene_box_corners", empty_scene_corners),
-        ("scene_box_mask", empty_scene_mask),
-    ):
-        assert components[name].compute_func is kernel
-        assert components[name].get_bindings_dict() == {
-            "dof_pos": "current.dof_pos",
-        }
-        assert name in configs.agent.model.prior.in_keys
+    goal = components["fk_masked_mimic_target_poses"]
+    assert goal.compute_func is compute_fk_target_poses_only
+    bindings = goal.get_bindings_dict()
+    assert bindings["dof_pos"] == "noisy.dof_pos"
+    assert bindings["anchor_pos"] == "noisy.anchor_pos"
+    assert bindings["anchor_rot"] == "noisy.anchor_rot"
+    assert not {"current_state_body_pos", "current_state_body_rot"} & bindings.keys()
+    fk = goal.static_params["fk"]
+    assert isinstance(fk, BakedAnchorFK)
+    assert fk.anchor_idx == configs.robot.anchor_body_index == 16
+    assert fk.export_init() == {
+        "anchor_idx": 16,
+        "trackable_body_indices": [16, 13, 7, 24, 32],
+    }
+    assert (
+        components["historical_proprioception"].static_params["fk"].export_init()
+        == fk.export_init()
+    )
 
 
 def _check_trained_scene_response(policy_action, obs_td):
@@ -268,8 +301,9 @@ def test_portable_config_reproduces_the_metatron_reference_layout():
 )
 def test_native_playback_runs_the_packaged_checkpoint(monkeypatch):
     """Load the packaged weights and run the card's MuJoCo playback for 64 steps
-    with a reset in the middle; probe scene-capable weights separately from the
-    always-masked native preset. Every action and observation stays finite."""
+    with a reset in the middle; probe the scene response at the model boundary
+    separately from the playback, whose scene stream is the control's empty
+    scene. Every action and observation stays finite."""
     from lightning.fabric import Fabric
 
     from protomotions.simulator.factory import update_simulator_config_for_test

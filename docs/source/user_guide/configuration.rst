@@ -43,12 +43,9 @@ training configuration through a set of functions:
        """Build the model and algorithm; required when training an agent."""
        ...
 
-   def apply_inference_overrides(
-       robot_cfg, simulator_cfg, env_cfg, agent_cfg,
-       terrain_cfg, motion_lib_cfg, scene_lib_cfg, args,
-   ):
-       """Modify copies before saving the inference config bundle."""
-       simulator_cfg.domain_randomization = None
+   def apply_inference_overrides(configs: ExperimentConfigs, args) -> None:
+       """Adjust the inference view; runs when a checkpoint is loaded."""
+       configs.simulator.domain_randomization = None
 
 This shows the interface, not a complete runnable experiment. See
 ``examples/experiments/format.py`` for the hook signatures. Scene and motion
@@ -62,29 +59,42 @@ When you run ``train_agent.py``, configs are built in this order:
 1. Load robot config from factory (``--robot-name``)
 2. Load simulator config (``--simulator``)
 3. Call ``configure_robot_and_simulator()`` for customization
-4. Build ``terrain_config()``, ``scene_lib_config()``, ``motion_lib_config()``
-5. Build ``env_config()``
-6. Build ``agent_config()``
-7. Apply CLI overrides (``--overrides``)
-8. Save the training configs to ``resolved_configs.json``
+4. Apply the ``robot.*`` and ``simulator.*`` CLI overrides, so every builder
+   that follows sees the overridden robot
+5. Build ``terrain_config()``, ``scene_lib_config()``, ``motion_lib_config()``
+6. Build ``env_config()``
+7. Build ``agent_config()``
+8. Apply the remaining CLI overrides (``terrain``, ``scene_lib``,
+   ``motion_lib``, ``env`` and ``agent``)
+9. Save the training configs to ``resolved_configs.json``
+
+If a builder step changes a value that one of the early overrides set, the
+build stops and names that step.
 
 There is one saved bundle. ``inference_agent.py`` loads it and derives its
-inference view at load: framework defaults, then ``--overrides``, then the
-experiment's ``apply_inference_overrides()`` hook. It does not automatically
-re-import the training experiment. For an additional runtime hook, pass
-``--inference-config path/to/file.py`` with the same
-``apply_inference_overrides()`` signature. Runtime ``--overrides`` apply after
-that hook.
+inference view at load, in this order: framework defaults, then ``--overrides``,
+then the recipe's ``apply_inference_overrides()`` hook, then the hook from
+``--inference-config path/to/file.py`` if you pass one. The recipe hook is
+imported from the ``experiment_config.py`` saved beside the checkpoint, so that
+file has to stay next to ``resolved_configs.json``; the file you gave as
+``--experiment-path`` is not read again. An ``--inference-config`` file defines
+``apply_inference_overrides(configs, args)`` with that same two-parameter
+signature; the older eight-parameter form is refused. Because the overrides are
+applied before the hooks run, a hook cannot be overridden from the command line:
+a hook that changes a value you also gave in ``--overrides`` stops inference
+with a message naming that override.
 
-A value is taken from a fallback only when it is explicitly blank; a missing
-file or an unknown name is refused by name, never silently defaulted. Silently
-substituting a default for a missing artifact or a mistyped name has repeatedly
-turned a typo or an absent file into a run that looked correct but used the
-wrong configuration. So an empty override value or an unset optional hook takes
-its documented default, while a ``--inference-config`` path that does not exist,
-or an ``--overrides`` key naming a field the configs do not define, stops the
-run and names the file or the field instead of continuing on a substituted
-default.
+A missing file or an unknown name is refused by name, never silently defaulted.
+Silently substituting a default for a missing artifact or a mistyped name has
+repeatedly turned a typo or an absent file into a run that looked correct but
+used the wrong configuration. To keep a field's default, leave it out of
+``--overrides``: an empty value such as ``env.max_episode_length=`` does not
+reset the field, it is refused as a type mismatch (on a string field it would
+be stored as an empty string). A ``--inference-config`` path that does not
+exist, or an ``--overrides`` key naming a field the configs do not define,
+stops the run and names the file or the field instead of continuing on a
+substituted default. An experiment that defines no ``apply_inference_overrides``
+simply gets the framework's inference defaults.
 
 Evaluation rules belong in ``agent_cfg.evaluator``: ``metric_components`` name
 measurements and ``failure_components`` name threshold rules over per-trial
@@ -95,7 +105,8 @@ for examples, saved-config migration and checkpoint-score behavior.
 Robot Configurations
 --------------------
 
-Robot configs in ``protomotions/robot_configs/`` define the robot:
+Robot configs in ``protomotions/robot_configs/`` define the robot. Abridged
+from the G1 config:
 
 .. code-block:: python
 
@@ -115,26 +126,23 @@ Robot configs in ``protomotions/robot_configs/`` define the robot:
        
        # Asset configuration (IsaacLab derives USD from MJCF at scene build)
        asset: RobotAssetConfig = field(default_factory=lambda: RobotAssetConfig(
-           asset_file_name="mjcf/g1_bm_no_mesh_box_feet.xml",
+           asset_file_name="mjcf/g1_holo_compat.xml",
        ))
        
-       # PD control parameters per joint (regex patterns)
+       # PD gains and limits per joint (regex patterns), taken from the
+       # motor classes
        control: ControlConfig = field(default_factory=lambda: ControlConfig(
+           control_type=ControlType.BUILT_IN_PD,
            override_control_info={
-               ".*_hip_(pitch|yaw)_joint": ControlInfo(
-                   stiffness=40.0, damping=8.0, effort_limit=88,
-               ),
-               ".*_knee_joint": ControlInfo(
-                   stiffness=99.0, damping=19.8, effort_limit=139,
-               ),
+               ".*_hip_(pitch|yaw)_joint": G1_7520_14.control_info(),
+               ".*_knee_joint": G1_7520_22.control_info(),
            }
        ))
        
-       # Per-simulator physics settings
-       simulation_params: SimulatorParams = field(default_factory=lambda: SimulatorParams(
-           isaacgym=IsaacGymSimParams(fps=100, decimation=2),
-           newton=NewtonSimParams(fps=200, decimation=4),
-       ))
+       # 50 Hz policy. Each backend's physics rate is derived from this
+       # (isaacgym 100, isaaclab/newton 200, mujoco 1000 fps), so there is
+       # no decimation field to set.
+       control_hz: int = 50
 
 Using Configurations
 --------------------
@@ -169,11 +177,15 @@ Basic Usage
    python protomotions/train_agent.py \
        --robot-name g1 \
        --simulator isaacgym \
-       --experiment-path examples/experiments/mimic/mlp.py \
+       --experiment-path examples/experiments/mimic/mlp_no_contact.py \
        --experiment-name my_experiment \
        --motion-file path/to/motions.pt \
        --num-envs 4096 \
        --batch-size 16384
+
+On IsaacGym use the ``_no_contact`` mimic recipes: IsaacGym's GPU pipeline
+reports one combined force per body, so it cannot run a recipe that declares
+contact bodies. On IsaacLab the original ``mimic/mlp.py`` runs as is.
 
 CLI Overrides
 ~~~~~~~~~~~~~
@@ -184,8 +196,8 @@ Override nested config values with ``--overrides``:
 
    --overrides "agent.num_mini_epochs=4" "env.max_episode_length=500"
 
-   # Override reward weights
-   --overrides "env.reward_components.contact_match_rew.static_params.weight=0.0"
+   # Change a reward weight; weights live in the component's RewardMeta
+   --overrides "env.reward_components.pow_rew.meta.weight=2e-6"
 
    # Disable simulator domain randomization
    --overrides "simulator.domain_randomization=None"
@@ -194,6 +206,11 @@ Paths start with ``robot``, ``simulator``, ``terrain``, ``scene_lib``,
 ``motion_lib``, ``env``, or ``agent``. Nested dictionaries use the same dot
 notation as dataclass fields. Values use Python literals (``True``, ``False``,
 ``None``). Overrides change existing fields; define new components in Python.
+
+A reward weight cannot be set to ``0.0``: ``RewardMeta`` refuses a zero weight.
+To drop a reward term, delete its entry from ``reward_components`` in a copy of
+the experiment file, as ``mimic/mlp_no_contact.py`` does for
+``contact_match_rew``, and train under a new experiment name.
 
 Saved Configurations
 --------------------
@@ -205,7 +222,7 @@ All configurations are saved for reproducibility:
    results/<experiment_name>/
    ├── config.yaml              # CLI arguments + wandb_id
    ├── resolved_configs.json    # The config bundle (tagged JSON) - source of truth
-   └── experiment_config.py     # Copy of experiment file
+   └── experiment_config.py     # Experiment copy; inference reads its hook here
 
 **resolved_configs.json** is the source of truth. It is a tagged JSON tree with
 every value resolved -- each dataclass under its class name, enums, tensors and
@@ -214,7 +231,9 @@ parameters -- and a ``format_version`` header. Loading rebuilds every object
 through its real constructor, so ``__post_init__`` runs and validation happens by
 construction; a stale or hand-edited bundle fails naming the field, the class and
 the file with the regenerate command. There is no pickle and no YAML sidecar: the
-bundle is plain text you can read and ``git diff``.
+bundle is plain text you can read and ``git diff``. Keep ``experiment_config.py``
+beside it: inference imports the recipe's ``apply_inference_overrides`` hook
+from that copy and refuses to start without it.
 
 .. warning::
 
@@ -260,11 +279,16 @@ Generate configs without training (useful for migrating old checkpoints):
 
    python protomotions/train_agent.py \
        --robot-name g1 --simulator isaacgym \
-       --experiment-path examples/experiments/mimic/mlp.py \
+       --experiment-path examples/experiments/mimic/mlp_no_contact.py \
        --experiment-name migrated_experiment \
        --motion-file /path/to/motion.pt \
        --num-envs 4096 --batch-size 16384 \
        --create-config-only
+
+Point ``--experiment-path`` at the recipe the checkpoint was trained with. This
+example uses the ``_no_contact`` mimic recipe because it targets IsaacGym,
+whose GPU pipeline reports one combined force per body and so cannot run a
+recipe that declares contact bodies.
 
 When code or config classes change, regenerate the resolved configs for public
 artifacts instead of adding hidden inference-time migration hooks.
@@ -280,29 +304,30 @@ All components use ``MdpComponent`` to bind pure tensor kernels to context paths
 
 .. code-block:: python
 
-   from protomotions.envs.context_views import EnvContext
    from protomotions.envs.mdp_component import MdpComponent
+   from protomotions.envs.rewards.meta import RewardMeta
    from protomotions.envs.rewards.regularization import compute_action_smoothness
    from protomotions.envs.rewards.tracking import compute_gt_rew
 
    reward_components = {
-       "gt_rew": MdpComponent(
-           compute_func=compute_gt_rew,                      # Pure tensor function
-           dynamic_vars={                                  # Map params to context paths
-               "current_rigid_body_pos": EnvContext.current.rigid_body_pos,
-               "ref_rigid_body_pos": EnvContext.mimic.ref_state.rigid_body_pos,
-           },
-           static_params={"weight": 0.5, "coefficient": -100.0},  # Static parameters
+       "gt_rew": MdpComponent.from_kernel(
+           compute_gt_rew,
+           meta=RewardMeta(weight=0.5),  # how the term enters the reward sum
+           coefficient=-25.0,            # replaces the kernel's constant
        ),
-       "action_smoothness": MdpComponent(
-           compute_func=compute_action_smoothness,
-           dynamic_vars={
-               "current_processed_action": EnvContext.current_processed_action,
-               "previous_processed_action": EnvContext.previous_processed_action,
-           },
-           static_params={"weight": -0.02},
+       "action_smoothness": MdpComponent.from_kernel(
+           compute_action_smoothness,
+           meta=RewardMeta(weight=-0.02),
        ),
    }
+
+``from_kernel`` reads the kernel's signature: a parameter whose default is a
+context path (``EnvContext.current.rigid_body_pos``) becomes a binding, a plain
+default becomes a constant, and a keyword argument replaces either. A reward's
+weight is never a kernel parameter and never a ``static_params`` entry: it lives
+in ``RewardMeta``, passed as ``meta=``, together with the optional clamps and
+the grace-period switch. A reward component without a ``RewardMeta`` is refused
+when the rewards are combined.
 
 **Key features:**
 

@@ -41,8 +41,15 @@ AppLauncher = import_simulator_before_torch(args.simulator)
 # Now safe to import everything else including torch
 from protomotions.simulator.base_simulator.config import SimulatorConfig  # noqa: E402
 from protomotions.robot_configs.base import (  # noqa: E402
+    ControlConfig,
     RobotConfig,
     RobotAssetConfig,
+)
+from protomotions.robot_configs.motor_classes import (  # noqa: E402
+    G1_4010,
+    G1_5020,
+    G1_7520_14,
+    G1_7520_22,
 )
 from protomotions.utils.hydra_replacement import get_class  # noqa: E402
 import torch  # noqa: E402
@@ -65,6 +72,22 @@ robot_cfg = RobotConfig(
         "head_body_name": ["head"],
         "torso_body_name": ["torso_link"],
     },
+    # Every joint needs its PD gains and effort/velocity limits declared; the
+    # robot config refuses a joint no pattern covers. These follow the G1's motors.
+    control=ControlConfig(
+        override_control_info={
+            ".*_hip_(pitch|yaw)_joint": G1_7520_14.control_info(),
+            ".*_hip_roll_joint": G1_7520_22.control_info(),
+            ".*_knee_joint": G1_7520_22.control_info(),
+            ".*_ankle_.*": G1_5020.control_info(scale=2, effort_limit=50),
+            "waist_yaw_joint": G1_7520_14.control_info(),
+            "waist_(roll|pitch)_joint": G1_5020.control_info(scale=2, effort_limit=50),
+            ".*_(shoulder|elbow)_.*": G1_5020.control_info(),
+            ".*_wrist_roll_joint": G1_5020.control_info(),
+            ".*_wrist_pitch_joint": G1_4010.control_info(),
+            ".*_wrist_yaw_joint": G1_4010.control_info(),
+        },
+    ),
     # 50 Hz policy; simulation_params defaults to the humanoid physics for 50 Hz.
     control_hz=50,
 )

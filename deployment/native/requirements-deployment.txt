@@ -10,8 +10,9 @@ PyYAML>=6
 # Optional when using the corresponding provider/input path:
 # onnxruntime-gpu>=1.18
 # tensorrt
-# leapp 0.7.2 from github.com/nvidia-isaac/leapp (NOT PyPI's unrelated Red Hat
-# tool); optional LEAPP export/replay; see docs/leapp.md
+# leapp from github.com/nvidia-isaac/leapp, pinned by commit (fe7c334d, whose
+# version string reads 0.7.2) as docs/leapp.md shows; NOT PyPI's unrelated Red
+# Hat tool. Optional LEAPP export/replay.
 # onnx         # LEAPP graph contract validation
 
 # Pico/XRoboToolkit is an external CMake/pybind11 SDK rather than a PyPI

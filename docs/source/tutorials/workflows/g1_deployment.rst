@@ -12,8 +12,10 @@ The design philosophy:
 * **Modular and general** -- each stage is a self-contained script with clear
   inputs and outputs.
 * **Minimal and readable** -- deployment code avoids heavy frameworks.  The
-  reference MuJoCo test script (``deployment/test_tracker_mujoco.py``) runs
-  with only ``mujoco``, ``onnxruntime``, ``numpy``, ``pyyaml``, and ``torch``.
+  reference MuJoCo test script (``deployment/test_tracker_mujoco.py``) needs
+  ``mujoco``, ``onnxruntime``, ``numpy``, ``pyyaml`` and ``torch``, plus the
+  ``protomotions`` package on the import path for its sensor and context
+  helpers. It needs no simulator backend and no GPU.
 * **Reproducible** -- the pre-trained general motion tracker was trained on the full
   `BONES-SEED <https://huggingface.co/datasets/bones-studio/seed>`_ dataset (~142K retargeted G1
   motions, see :doc:`../../getting_started/seed_g1_csv_preparation`) using
@@ -23,9 +25,15 @@ The design philosophy:
 
 .. note::
 
-   Pre-trained checkpoints, ONNX models, and example motions are provided in
-   ``data/pretrained_models/motion_tracker/g1-bones-deploy/`` so you can skip straight to
-   deployment without training.
+   A pre-trained checkpoint and its exported ONNX model are provided in
+   ``data/pretrained_models/motion_tracker/g1-bones-deploy/`` so you can skip
+   straight to deployment without training. The example G1 motions live
+   elsewhere in the repository: single clips under
+   ``data/g1-kimodo-generated/proto/`` (``output_walk.motion``,
+   ``output_wave.motion``, ``output_dance.motion``, ``output_high5.motion``
+   and ``output_jumpjack.motion``) and the small library
+   ``data/motion_for_trackers/g1_bones_seed_mini.pt``, which the test script
+   indexes with ``--motion-index``.
 
 Pipeline Overview
 -----------------
@@ -62,7 +70,9 @@ of discrepancy between training and deployment.
 
 **MuJoCo-first validation**.  Before touching real hardware, we validate the
 ONNX model in a standalone MuJoCo script (``deployment/test_tracker_mujoco.py``)
-that has near-zero dependency on ProtoMotions.  This script serves as the
+that uses no simulator backend and only a few small ProtoMotions modules (the
+sensor and context vocabularies behind ``deployment/tracker_inputs.py`` and
+``deployment/contract.py``).  This script serves as the
 **deployment contract**: any framework that reproduces its behaviour will drive
 the policy correctly.
 
@@ -80,7 +90,7 @@ and real hardware (where the robot may face any direction at power-on).
 as the deployment framework for the G1 because it is clean, readable, and
 lightweight -- with a modular Policy / Environment / Controller architecture
 and no heavy dependencies.  The ProtoMotions tracker integrates as a single
-Policy class (~230 lines) with no changes to RoboJuDo core.
+Policy class with no changes to RoboJuDo core.
 
 
 Step 1: Prepare Motion Data
@@ -90,7 +100,9 @@ Follow :doc:`../../getting_started/seed_g1_csv_preparation` to convert
 BONES-SEED G1 CSVs into ProtoMotions ``.motion`` files and package them into
 a MotionLib ``.pt`` file.
 
-Alternatively, use the example motions provided with the pre-trained model.
+Alternatively, use the example G1 motions already in the repository:
+``data/g1-kimodo-generated/proto/output_walk.motion`` (and its siblings) or
+``data/motion_for_trackers/g1_bones_seed_mini.pt``.
 
 
 Step 2: Train (or use pre-trained)
@@ -136,19 +148,43 @@ BeyondMimic-style settings with our small modifications:
 Step 3: Export ONNX
 --------------------
 
-Export the policy to a unified ONNX model.  This requires only PyTorch and
-the ProtoMotions package -- no simulator or GPU needed.
+Export the policy to a unified ONNX model.  This needs PyTorch, the
+ProtoMotions package and ``onnxruntime`` -- no simulator or GPU.
+``onnxruntime`` is not optional: right after writing the graph, the script
+opens it to read back the input names for the YAML sidecar, so without it the
+run stops after the ``.onnx`` is written and no YAML is produced
+(``--no-validate`` only skips the later validation pass).
 
 .. code-block:: bash
 
    python deployment/export_to_onnx.py \
-       --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/inference_last.ckpt
+       --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/inference_last.ckpt \
+       --output /path/to/export_dir
 
-This produces:
+This produces, in the ``--output`` directory:
 
-* ``compiled_models/unified_pipeline.onnx`` -- the ONNX model
-* ``compiled_models/unified_pipeline.yaml`` -- rich metadata documenting every
+* ``unified_pipeline.onnx`` -- the ONNX model
+* ``unified_pipeline.yaml`` -- rich metadata documenting every
   input/output, timing, conventions, and frame requirements
+
+Without ``--output`` the files land next to the checkpoint, in
+``<checkpoint_dir>/compiled_models/``. For the shipped bundle that is
+``data/pretrained_models/motion_tracker/g1-bones-deploy/compiled_models/``,
+which would overwrite the pre-exported pair described below, so pass
+``--output`` to keep them.
+
+The default ``--host robot`` is right for this tracker: its observations read
+only the joint encoders, the IMU, its own past processed actions and the
+reference motion, which a robot can feed. A policy whose observations read the simulator's own body state (the
+shipped SOMA tracker, for example) is refused with the default and exports
+with ``--host simulation``, for a game engine, a browser MuJoCo or a
+sim-to-sim check; the sidecar then records ``host: simulation``.
+
+For a model you trained yourself, point ``--checkpoint`` at
+``results/<experiment>/last.ckpt``; it exports fine. The slimmer
+``inference_last.ckpt`` (weights only, no optimizer state) is written only
+when the recipe sets ``save_inference_checkpoint=True`` in its agent config,
+which the shipped deploy recipe does not.
 
 The YAML metadata acts as a machine-readable deployment contract.  It includes
 per-input documentation of expected shapes, source expressions, and -- critically
@@ -170,16 +206,16 @@ its behaviour will drive the policy correctly.
 
 .. code-block:: bash
 
-   # First run: resample motion to 50fps and cache
+   # First run: resample motion to 50fps and cache it next to the clip
    python deployment/test_tracker_mujoco.py \
        --onnx data/pretrained_models/motion_tracker/g1-bones-deploy/compiled_models/unified_pipeline.onnx \
-       --motion /path/to/walk.motion \
+       --motion data/g1-kimodo-generated/proto/output_walk.motion \
        --cache-motion --render
 
-   # Subsequent runs use the cached motion (no protomotions import needed)
+   # Subsequent runs use the cached motion (skips the SLERP resampling step)
    python deployment/test_tracker_mujoco.py \
        --onnx data/pretrained_models/motion_tracker/g1-bones-deploy/compiled_models/unified_pipeline.onnx \
-       --motion /path/to/walk.50fps.pt \
+       --motion data/g1-kimodo-generated/proto/output_walk.50fps.pt \
        --render
 
 Additional test mode:
@@ -191,7 +227,9 @@ Additional test mode:
        --onnx ... --motion ... --no-realtime
 
 The script handles: MJCF loading/patching, PD configuration, heading alignment,
-acceleration clamping, EMA action filtering, and real-time pacing.
+acceleration clamping, and real-time pacing. There is no EMA filter: the
+sidecar's ``action_ema_alpha`` is always ``1.0`` (no filtering) and the
+exporter cannot set anything else.
 
 
 Step 5: Deploy via RoboJuDo (Simulation)
@@ -212,38 +250,49 @@ required.
    pip install -e .
    git lfs pull           # download mesh assets
 
-**Run the BM tracker in MuJoCo simulation**:
+**Run the tracker in MuJoCo simulation**:
+
+The tracker has its own launcher. The generic ``scripts/run_pipeline.py``
+accepts only ``-c``; ``scripts/run_tracker_pipeline.py`` adds the ONNX and
+motion flags.
 
 .. code-block:: bash
 
-   python scripts/run_pipeline.py -c g1_protomotions_bm_tracker \
+   python scripts/run_tracker_pipeline.py -c g1_protomotions_tracker \
        --onnx-path /path/to/unified_pipeline.onnx \
        --motion-path /path/to/motion.motion
 
-The upstream RoboJuDo integration provides:
+The upstream RoboJuDo integration (``release`` branch) provides:
 
-* ``ProtoMotionsBMTrackerPolicy`` -- loads ONNX + cached 50fps motion,
+* ``ProtoMotionsTrackerPolicy`` -- loads ONNX + cached 50fps motion,
   provides PD targets with action history feedback, heading alignment,
   and motion fade-in/fade-out support.
 * Virtual gantry -- spring-damper safety harness for real-robot deployment
   transitions.
 * Blend-in/blend-out -- smooth transitions between idle pose and policy
   control.
-* CLI enhancements: ``--onnx-path``, ``--motion-path``, ``--motion-index``,
-  ``--simulate-deploy``, ``--hold-seconds``.
+* ``scripts/run_tracker_pipeline.py`` with ``-c``, ``--onnx-path``,
+  ``--motion-path`` and ``--motion-index`` (an index into a multi-motion
+  ``.pt`` library). The ``release`` branch has no other tracker flags.
 
 .. note::
 
-   At the time of writing, the RoboJuDo tracker policy feeds only the older
-   ``historical.processed_actions`` input, with the previous call's joint
-   targets recorded after its acceleration clamp and EMA. The released G1
-   tracker was trained on the targets from two calls back, recorded before
-   either (see step 2 below), so expect its joint targets to be somewhat
-   jumpier than ``deployment/test_tracker_mujoco.py``'s; tracking itself is
-   barely affected. Trackers trained on current code read
-   ``processed_action_history`` or ``raw_action_history`` instead. Until the
-   integration supplies those, run them with
-   ``deployment/test_tracker_mujoco.py``.
+   The ``release`` branch's tracker policy feeds the graph only the older
+   ``historical.processed_actions`` input and silently skips any graph input
+   it does not know. The ONNX shipped in ``g1-bones-deploy`` was re-exported
+   from the current contract and requires ``processed_action_history`` (its
+   YAML says ``output_key: joint_pos_targets``, ``steps_back: [1]`` and
+   ``fill_before_available: zeros``), so passing it with ``--onnx-path``
+   fails in onnxruntime with a missing required input. Until the integration
+   feeds that input, run the shipped model with
+   ``deployment/test_tracker_mujoco.py``, or run RoboJuDo with its own
+   bundled copy of the tracker (``assets/models/g1/protomotions_tracker/``),
+   an older export whose YAML still names ``historical.processed_actions``
+   with ``output_key: robot_action``. One known deviation there: RoboJuDo
+   records the fed-back targets after its acceleration clamp rather than as
+   returned (contract item 2 below), so expect its joint targets to be
+   somewhat jumpier than ``deployment/test_tracker_mujoco.py``'s; tracking
+   itself is barely affected.
 
 **Bringing your own deployment framework**: The key contract is:
 
@@ -257,15 +306,18 @@ The upstream RoboJuDo integration provides:
    The YAML entry names that output (``output_key``), says how far back each
    slot reaches (``steps_back``: ``[1]`` is the previous call, ``[2]`` the one
    before) and what to feed until that many calls have run since a reset
-   (``fill_before_available``). YAMLs exported before these fields existed,
-   including the bundled G1 model, say ``output_key: robot_action``, which
-   means ``joint_pos_targets``. Without ``steps_back``, use ``[1]`` for the two
+   (``fill_before_available``). The bundled G1 YAML carries all three
+   (``output_key: joint_pos_targets``, ``steps_back: [1]``,
+   ``fill_before_available: zeros``). Only older exports, such as RoboJuDo's
+   own bundled copy, say ``output_key: robot_action``, which means
+   ``joint_pos_targets``. Without ``steps_back``, use ``[1]`` for the two
    current inputs and ``[2]`` for ``historical.processed_actions``, with a zero
    fill. ``ActionFeedback`` in ``deployment/tracker_inputs.py`` does all of
    this.
 3. Apply the ONNX outputs (PD position targets) to your robot's actuators.
-4. Apply action post-processing (acceleration clamp + EMA) as documented
-   in the YAML ``control`` section.
+4. Apply the acceleration clamp documented in the YAML ``control`` section
+   (``pd_target_max_accel``; ``null`` means none). ``action_ema_alpha`` is
+   always ``1.0`` there, so there is no EMA to apply.
 5. Verify that MuJoCo behaviour matches between your framework and
    ``deployment/test_tracker_mujoco.py``.
 
@@ -288,14 +340,14 @@ Once the robot is connected, run:
 
 .. code-block:: bash
 
-   cd robojudo
-   python scripts/run_pipeline.py -c g1_protomotions_bm_tracker_real \
+   cd RoboJuDo
+   python scripts/run_tracker_pipeline.py -c g1_protomotions_tracker_real \
        --onnx-path /path/to/unified_pipeline.onnx \
        --motion-path /path/to/motion.motion
 
-The ``g1_protomotions_bm_tracker_real`` config extends the simulation config
+The ``g1_protomotions_tracker_real`` config extends the simulation config
 with the Unitree real robot environment (``UnitreeCppEnv``) and safety checks
-enabled.
+enabled; set its ``net_if`` to your network interface.
 
 Safety
 ^^^^^^

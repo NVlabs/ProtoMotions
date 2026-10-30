@@ -220,7 +220,8 @@ def test_deployment_metadata_records_placement_frames_and_optional_channels(tmp_
         "axis": "world_z",
     }
     assert meta["anchor_body_name"] == "torso"
-    assert meta["derived_state_provider"] == "host_fk"
+    # The host feeds readings only; the graph derives the body state itself.
+    assert "derived_state_provider" not in meta
     assert meta["history_initialization"] == "repeat_first_reading"
 
 

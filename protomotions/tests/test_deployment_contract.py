@@ -283,6 +283,77 @@ def test_per_input_layout_is_a_strict_superset_of_todays_keys(tmp_path):
         assert key in future, f"regular input lost today's key {key!r}"
 
 
+def test_host_is_omitted_for_the_robot_and_written_for_a_simulation(tmp_path):
+    # Omitted means robot, so a robot sidecar is byte-identical to one written
+    # before the field existed; a simulation sidecar says so right after type.
+    robot = _contract()
+    assert robot.host == "robot"
+    content = yaml.safe_load(robot.to_yaml(tmp_path / "robot.yaml").read_text())
+    assert "host" not in content
+    assert DeploymentContract.from_yaml(tmp_path / "robot.yaml").host == "robot"
+
+    simulation = _contract(
+        host="simulation",
+        inputs=(
+            _joint_input(),
+            _joint_input(
+                onnx_name="current_rigid_body_pos",
+                key="current.rigid_body_pos",
+                kind="simulated_body_pos",
+                shape=(1, 2, 3),
+                element_names=(("pelvis", "head"), ("x", "y", "z")),
+            ),
+        ),
+    )
+    path = simulation.to_yaml(tmp_path / "simulation.yaml")
+    content = yaml.safe_load(path.read_text())
+    assert list(content)[:4] == ["schema", "type", "host", "dt"]
+    assert content["host"] == "simulation"
+    assert DeploymentContract.from_yaml(path) == simulation
+
+
+def test_robot_contract_refuses_a_simulation_only_kind():
+    with pytest.raises(ValueError) as refusal:
+        _contract(
+            inputs=(
+                _joint_input(key="current.rigid_body_pos", kind="simulated_body_pos"),
+            )
+        )
+    assert str(refusal.value) == (
+        "input 'current.rigid_body_pos' has host kind 'simulated_body_pos', which "
+        "only a simulation host can feed; this contract is for a robot host"
+    )
+
+
+def test_reference_tracker_host_refuses_a_simulation_sidecar_up_front():
+    # The repository's reference host feeds robot inputs only; a simulation
+    # contract is refused where the host reads its requirements, before any
+    # step runs, instead of failing mid-loop on an input it cannot source.
+    from deployment.tracker_inputs import get_tracker_input_requirements
+
+    assert get_tracker_input_requirements(_contract()) is not None
+    simulation = _contract(
+        host="simulation",
+        inputs=(
+            _joint_input(),
+            _joint_input(
+                onnx_name="current_rigid_body_pos",
+                key="current.rigid_body_pos",
+                kind="simulated_body_pos",
+                shape=(1, 2, 3),
+                element_names=(("pelvis", "head"), ("x", "y", "z")),
+            ),
+        ),
+    )
+    with pytest.raises(ValueError, match="exported for a simulation host"):
+        get_tracker_input_requirements(simulation)
+
+
+def test_unknown_host_is_refused():
+    with pytest.raises(ValueError, match="unknown deployment host 'browser'"):
+        _contract(host="browser")
+
+
 def test_from_yaml_refuses_a_foreign_schema(tmp_path):
     path = tmp_path / "unified_pipeline.yaml"
     path.write_text(yaml.dump({"schema": "unified_pipeline/9", "policy_inputs": []}))

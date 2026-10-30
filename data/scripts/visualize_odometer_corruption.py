@@ -37,11 +37,11 @@ No hard deadzone — the transition is continuous.
 Usage::
 
     python data/scripts/visualize_odometer_corruption.py \
-        --motion-file data/motion_for_trackers/amass_smpl_train_g1_subset200.pt
+        --motion-file data/motion_for_trackers/g1_bones_seed_mini.pt
 
     # Tune corruption parameters:
     python data/scripts/visualize_odometer_corruption.py \
-        --motion-file data/motion_for_trackers/amass_smpl_train_g1_subset200.pt \
+        --motion-file data/motion_for_trackers/g1_bones_seed_mini.pt \
         --scale-range 0.6 1.4 --yaw-range-deg 15 --log-noise-std 0.10 \
         --soft-threshold 0.15
 """

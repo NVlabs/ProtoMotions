@@ -56,11 +56,24 @@ sensor is ever needed — which is why none of these callables take one.
 Expressing the result in the heading frame needs the anchor's world *rotation*
 (an IMU quantity), but never its position.  That keeps the whole stack
 ONNX-exportable and deployable from IMU plus joint encoders.
+
+World poses, when a kernel needs them
+-------------------------------------
+``BakedAnchorFK.world_body_poses`` is the one exception to "no position": given
+the joint angles and the anchor body's world pose (the sensor runtime publishes
+it as ``noisy.anchor_pos`` / ``noisy.anchor_rot``, slices of the body state it
+reconstructs from the readings), it rebuilds every body's world position and
+rotation from the anchor outwards.  That is the same quantity the sensor runtime
+publishes as ``noisy.rigid_body_pos`` / ``noisy.rigid_body_rot``, computed inside
+the observation instead of read from the context, so an exported graph takes raw
+readings and computes its own body poses.  A kernel reaches it through its
+``fk=`` static parameter (the config bundle saves the kernel object by its
+constants; it cannot save a bound method).
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import torch
 from torch import Tensor
@@ -302,6 +315,59 @@ class BakedAnchorFK:
 
     # Allow compute_func.__name__ lookup from MdpComponent.to_dict()
     __name__ = "BakedAnchorFK"
+
+    @property
+    def anchor_idx(self) -> int:
+        """The body :meth:`world_body_poses` is anchored on."""
+        return self._anchor_idx
+
+    def world_body_poses(
+        self, dof_pos: Tensor, anchor_pos: Tensor, anchor_rot: Tensor
+    ) -> Tuple[Tensor, Tensor]:
+        """World poses of every body from the joint angles and the anchor pose.
+
+        The anchor pose is the one the sensor runtime publishes for the anchor
+        body (``noisy.anchor_pos`` / ``noisy.anchor_rot``, slices of the body
+        state it reconstructs from the readings), so the result reproduces
+        ``noisy.rigid_body_pos`` / ``noisy.rigid_body_rot`` to float rounding
+        without reading them: body i sits at ``anchor_pos + R (p_i - p_a)`` with
+        rotation ``R R_i``, where ``p``, ``R_i`` are the root-frame FK and
+        ``R = quat_to_matrix(anchor_rot) R_a^T``.  Covers all bodies, not just
+        the trackable subset, because a goal kernel grounds the pose by its
+        lowest body.
+
+        Args:
+            dof_pos: [B, num_dofs] joint angles in pose_lib order.
+            anchor_pos: [B, 3] world position of the anchor body's origin.
+            anchor_rot: [B, 4] world rotation of the anchor body (w-last).
+
+        Returns:
+            positions [B, Nb, 3] and quaternions [B, Nb, 4] (w-last) of every
+            body, in kinematic order.
+        """
+        from protomotions.utils import rotations as rot_utils
+
+        if dof_pos.shape[-1] != self._num_dofs:
+            raise ValueError(
+                f"world_body_poses needs [B, {self._num_dofs}] joint angles, got "
+                f"{tuple(dof_pos.shape)}"
+            )
+        B = dof_pos.shape[0]
+        p, R_i = self._run_fk_raw(dof_pos)
+        a = self._anchor_idx
+        # World-from-root rotation: the anchor's measured world rotation times
+        # the inverse of its root-frame rotation.
+        R = rot_utils.quaternion_to_matrix(anchor_rot, w_last=True) @ R_i[
+            :, a
+        ].transpose(-1, -2)
+        body_rot = R[:, None] @ R_i
+        body_pos = anchor_pos[:, None] + (
+            R[:, None] @ (p - p[:, a, None])[..., None]
+        ).squeeze(-1)
+        quats = rot_utils.matrix_to_quaternion(
+            body_rot.reshape(-1, 3, 3), w_last=True
+        ).reshape(B, self._Nb, 4)
+        return body_pos, quats
 
     def body_kinematics(self, dof_pos: Tensor, dof_vel: Tensor):
         """Root-frame body poses and the velocities the joints alone induce.

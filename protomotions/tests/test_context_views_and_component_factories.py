@@ -244,6 +244,7 @@ def test_vocabulary_declares_namespaces_and_tags_what_each_name_requires():
         "steering",
         "path",
         "target",
+        "scene_boxes",
     }
     # What a namespace as a whole needs is on its NestedField; the names
     # inside carry their own requirements.

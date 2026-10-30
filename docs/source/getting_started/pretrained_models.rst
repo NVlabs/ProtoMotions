@@ -71,8 +71,11 @@ weights; it is not sufficient for inference. Keep the package files together.
 
 The playback config starts the robot idle; pressing ``X`` in the viewer cycles
 four goal modes (idle, walk to a target location, follow a velocity command,
-reach with the right hand), and scene inputs are fed empty. Its generic ONNX
-re-export does not reproduce the scene-capable
-browser graph. The separate ``demo/model.onnx`` and ``racer/network.onnx``
-interfaces remain available in the same Hub repository; use each with its paired
-application. No pretrained Metatron SOMA policy is included.
+reach with the right hand), and the scene stream is published empty by the saved
+configuration's ``scene_boxes`` control. Its generic ONNX re-export takes the
+same eight ``scene_boxes_*`` inputs from the host, with a host contract that
+differs from the browser graphs' (no simulator root pose; the current action and
+the eight-slot history as separate inputs). The separate ``demo/model.onnx`` and
+``racer/network.onnx`` interfaces remain available in the same Hub repository;
+use each with its paired application. No pretrained Metatron SOMA policy is
+included.

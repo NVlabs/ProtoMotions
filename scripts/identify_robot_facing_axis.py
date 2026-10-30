@@ -22,6 +22,7 @@ import mujoco
 import numpy as np
 import torch
 
+from protomotions.assets import resolve_asset_root
 from protomotions.robot_configs.factory import robot_config, registered_robot_names
 
 
@@ -204,7 +205,11 @@ def verify_robot(name: str, yaw: float, verbose_config: bool = False) -> dict:
         with contextlib.redirect_stdout(io.StringIO()):
             cfg = robot_config(name)
 
-    asset_path = Path(cfg.asset.asset_root) / cfg.asset.asset_file_name
+    # The config stores a checkout-relative asset root. Resolve it the way
+    # robot_config() does, so the script works from any working directory and
+    # honours PROTOMOTIONS_ASSET_ROOT.
+    asset_root = resolve_asset_root(cfg.asset.asset_root)
+    asset_path = asset_root / cfg.asset.asset_file_name
     model = _load_model(asset_path)
     data = mujoco.MjData(model)
 
