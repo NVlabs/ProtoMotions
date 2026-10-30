@@ -33,8 +33,15 @@ qualification. The provided Metatron v1 adapter is specific to G1.
 `metatron_v1::MetatronTask` assembles idle, steering and recovery goals.
 `MetatronController` uses the same sensor/history and accepted-command boundary
 for MuJoCo and Unitree. `Engine` executes the fixed-shape TensorRT policy;
-`FkEngine` separately computes body poses for task construction. The policy
-graph owns learned inference, observation processing and actuator mapping.
+`FkEngine` computes the body poses for task construction from the measured
+joints and the torso anchor pose, running `fk.onnx`: a second, small graph
+that `deployment/export_fk_to_onnx.py` exports from the same kernel object the
+policy traces, rebuilt from the config bundle beside the checkpoint, and that
+`build_metatron_fk_tensorrt.py` compiles to a static plan after checking the
+sidecar's body order, joint order and anchor against the manifest. The policy
+graph owns learned inference, observation processing, the same forward
+kinematics and actuator mapping, and returns only its four control outputs.
+There is one FK implementation, so the two graphs agree by construction.
 
 The manifest pins 39 named inputs, their shapes/dtypes, joint/body ordering and
 the affine action map. A processed target goes directly to command validation,
@@ -52,9 +59,10 @@ clip tracking, style selection or Pico teleoperation.
 
 ## State and backend contracts
 
-The deployment boundary uses xyzw quaternions. Unitree's torso IMU and a
-pelvis-rooted FK carrier are different frames; the sensor adapter explicitly
-accounts for waist kinematics rather than treating them interchangeably.
+The deployment boundary uses xyzw quaternions. The IMU frame and the policy's
+torso anchor are different frames; the sensor adapter derives the anchor pose
+from the IMU and the waist kinematics rather than treating them
+interchangeably.
 State samples and histories must be synchronized, not independently read from
 buffers that can change during a control cycle.
 

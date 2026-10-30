@@ -183,6 +183,35 @@ SMPLX_JOINT_NAMES = [
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+# Per-body-part vertex index lists of the SMPL-X mesh. The repository does not
+# ship this file; load_smplx_vert_segmentation() says where it comes from.
+DEFAULT_VERT_SEGMENTATION = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..",
+    "smpl",
+    "smplx_vert_segmentation.json",
+)
+VERT_SEGMENTATION_SOURCE = (
+    "https://github.com/Meshcapade/wiki/blob/main/assets/"
+    "SMPL_body_segmentation/smplx/smplx_vert_segmentation.json"
+)
+
+
+def load_smplx_vert_segmentation(path):
+    """Load the SMPL-X vertex segmentation, or explain where to get it."""
+    if not os.path.isfile(path):
+        raise FileNotFoundError(
+            f"SMPL-X vertex segmentation file not found: {path}\n"
+            "process_grab.py needs smplx_vert_segmentation.json, the per-body-part "
+            "vertex index lists of the SMPL-X mesh, to tell hand vertices from the "
+            "rest of the body. The repository does not ship it. Download it from "
+            f"the Meshcapade wiki, {VERT_SEGMENTATION_SOURCE}, and either save it "
+            "as data/smpl/smplx_vert_segmentation.json or pass its path with "
+            "--vert-segmentation."
+        )
+    with open(path, "r") as f:
+        return json.load(f)
+
 
 def process_sequences(cfg):
     grab_path = cfg.grab_path
@@ -342,13 +371,8 @@ def process_sequence(cfg, sequence, mv, sequence_idx):
         batch_size=T,
     )
 
-    this_file_path = os.path.dirname(os.path.abspath(__file__))
-    json_path = os.path.join(
-        this_file_path, "..", "smpl", "smplx_vert_segmentation.json"
-    )
     # Load the SMPL-X vertex segmentation data
-    with open(json_path, "r") as f:
-        smplx_vert_segmentation = json.load(f)
+    smplx_vert_segmentation = load_smplx_vert_segmentation(cfg.vert_segmentation)
 
     valid_contacts = np.array(
         smplx_vert_segmentation["rightHand"]
@@ -1247,7 +1271,22 @@ if __name__ == "__main__":
         help="The path to the GRAB code folder containing the 'tools' directory",
     )
 
+    parser.add_argument(
+        "--vert-segmentation",
+        type=str,
+        default=None,
+        help=(
+            "Path to smplx_vert_segmentation.json (default: "
+            "data/smpl/smplx_vert_segmentation.json). Not shipped; download it "
+            f"from the Meshcapade wiki: {VERT_SEGMENTATION_SOURCE}"
+        ),
+    )
+
     args = parser.parse_args()
+
+    # Check for the segmentation file before any sequence is processed.
+    vert_segmentation_path = args.vert_segmentation or DEFAULT_VERT_SEGMENTATION
+    load_smplx_vert_segmentation(vert_segmentation_path)
 
     # Add GRAB code path to sys.path
     sys.path.append(args.grab_code_path)
@@ -1273,6 +1312,7 @@ if __name__ == "__main__":
             "visualize": args.visualize,
             "max_seqs": args.max_seqs,
             "dataset": dataset,
+            "vert_segmentation": vert_segmentation_path,
         }
 
         cfg = Config(**cfg)

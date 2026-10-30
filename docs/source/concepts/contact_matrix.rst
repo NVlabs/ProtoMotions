@@ -192,6 +192,12 @@ Recipes without contact observations, rewards, or terminations leave contact
 reporting disabled. A task needs more rows or partners only when a component
 actually consumes them.
 
+``mimic/mlp_no_contact.py`` and ``mimic/mlp_complex_terrain_no_contact.py`` are
+the same recipes without the contact bodies and without that reward. Use them on
+IsaacGym, whose GPU pipeline reports one combined force per body and therefore
+refuses a robot that declares contact bodies; on IsaacLab the originals work as
+they are.
+
 For contact-based fall detection, name the forbidden bodies and partners:
 
 .. code-block:: python

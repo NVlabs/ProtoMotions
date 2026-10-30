@@ -14,7 +14,9 @@ its own site storage, so later visits in the same browser normally start without
 downloading again. A different browser, cleared site data, or the browser
 evicting the copy downloads it again; a stored copy is re-verified before use.
 WebGPU gives the best experience; a slower CPU/WASM path runs where WebGPU is
-absent.
+absent. On static hosts without cross-origin-isolation headers the game
+registers a service worker that adds them and reloads once, so the CPU path
+runs on several WASM threads instead of one; `?threads=1` disables that.
 
 You control **Green**, marked by an overhead arrow; the other five robots are
 AI. After a short 3-2-1-GO countdown:

@@ -36,6 +36,10 @@ RestPose make_rest_pose(FkEngine& fk) {
   state.dof_pos[16] = 0.2F;
   state.dof_pos[23] = -0.2F;
   state.dof_pos[18] = state.dof_pos[25] = 1.4F;
+  // The FK is anchored on the torso: give it the standing torso pose over a
+  // pelvis at the origin (waist joints are zero in this pose).
+  state.anchor_pos = kTorsoOffsetInPelvis;
+  state.anchor_rot = {0, 0, 0, 1};
   const RecoveryPose pose = fk.run(state);
   RestPose rest;
   rest.positions = pose.positions;

@@ -8,7 +8,6 @@ import argparse
 from pathlib import Path
 from typing import List, Optional
 from dataclasses import dataclass
-import joblib
 import numpy as np
 import torch
 
@@ -473,7 +472,13 @@ def main():
         "--occlusion_data",
         type=str,
         default="data/amass/amass_copycat_occlusion_v3.pkl",
-        help="Path to occlusion data",
+        help=(
+            "Path to the AMASS occlusion list (a joblib pickle) that PHC, "
+            "Perpetual Humanoid Control, distributes as "
+            "amass_copycat_occlusion_v3.pkl. The repository does not ship it; "
+            "get it from https://github.com/ZhengyiLuo/PHC. Not read when "
+            "--ignore_occlusions is set."
+        ),
     )
     parser.add_argument(
         "--humanoid_type",
@@ -482,7 +487,9 @@ def main():
         help="Type of humanoid (smpl, etc.)",
     )
     parser.add_argument(
-        "--ignore_occlusions", action="store_true", help="Ignore occlusion filtering"
+        "--ignore_occlusions",
+        action="store_true",
+        help="Skip occlusion filtering; the occlusion data file is then not needed.",
     )
     parser.add_argument(
         "--motion_fps", type=str, default=None, help="Motion FPS yaml file"
@@ -537,10 +544,32 @@ def main():
     # Create output directory if it doesn't exist
     os.makedirs(args.output_dir, exist_ok=True)
 
-    # Load occlusion data
-    print(f"Loading occlusion data: {args.occlusion_data}")
-    occlusion_data = joblib.load(args.occlusion_data)
+    # Load occlusion data, unless occlusion filtering is switched off.
     renamed_occlusion_data = {}
+    if args.ignore_occlusions:
+        print("Skipping occlusion data (--ignore_occlusions)")
+        occlusion_data = {}
+    else:
+        try:
+            import joblib
+        except ImportError as exc:
+            raise SystemExit(
+                "Reading the occlusion data needs the joblib package, which the "
+                "ProtoMotions requirements do not include. Install it with "
+                "`pip install joblib`, or pass --ignore_occlusions to skip "
+                "occlusion filtering."
+            ) from exc
+        if not os.path.isfile(args.occlusion_data):
+            raise SystemExit(
+                f"Occlusion data not found: {args.occlusion_data}\n"
+                "This is the AMASS occlusion list that PHC (Perpetual Humanoid "
+                "Control, https://github.com/ZhengyiLuo/PHC) distributes as "
+                "amass_copycat_occlusion_v3.pkl; the repository does not ship it. "
+                "Download it and pass its path with --occlusion_data, or pass "
+                "--ignore_occlusions to skip occlusion filtering."
+            )
+        print(f"Loading occlusion data: {args.occlusion_data}")
+        occlusion_data = joblib.load(args.occlusion_data)
     for key, value in occlusion_data.items():
         if args.humanoid_type == "smpl":
             skip = 2

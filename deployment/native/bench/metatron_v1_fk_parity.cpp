@@ -38,8 +38,8 @@ int main(int argc, char** argv) {
     if (!file) throw std::runtime_error("cannot open FK fixture");
     std::array<char, 12> magic{};
     read(file, magic);
-    if (std::string(magic.data()) != "PM_FK_V1")
-      throw std::runtime_error("invalid FK fixture magic");
+    if (std::string(magic.data()) != "PM_FK_V2")
+      throw std::runtime_error("invalid FK fixture magic (expected PM_FK_V2: joints, anchor pose)");
     std::uint32_t samples = 0;
     file.read(reinterpret_cast<char*>(&samples), sizeof(samples));
     if (!file || samples < 1 || samples > 1000)
@@ -49,9 +49,9 @@ int main(int argc, char** argv) {
     for (std::uint32_t sample = 0; sample < samples; ++sample) {
       SensorReading reading;
       RecoveryPose reference;
-      read(file, reading.root_pos);
-      read(file, reading.root_rot);
       read(file, reading.dof_pos);
+      read(file, reading.anchor_pos);
+      read(file, reading.anchor_rot);
       read(file, reference.positions);
       read(file, reference.rotations);
       const auto before = std::chrono::steady_clock::now();

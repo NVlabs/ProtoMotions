@@ -5,8 +5,11 @@ Learn ProtoMotions through 8 progressive Python tutorials in ``examples/tutorial
 
 .. warning::
 
-   **GPU Required**: These simulators (IsaacGym, IsaacLab, Newton) are designed for GPU acceleration.
+   **GPU Required**: IsaacGym, IsaacLab and Newton are designed for GPU acceleration.
    While ``--cpu-only`` is available, it is **highly experimental** and not recommended for most use cases.
+   The exception is MuJoCo, a CPU-only backend that builds a single environment: it
+   always needs ``--cpu-only``, and it only runs tutorials 0, 1 and 2 because it
+   refuses to build scenes.
 
 Overview
 --------
@@ -21,7 +24,28 @@ is a complete, runnable Python script that builds on previous concepts.
 3. Examine the code to understand implementation
 4. Modify and experiment
 
-**Prerequisites**: ProtoMotions installed with a simulator (isaacgym, isaaclab, or newton)
+**Prerequisites**: ProtoMotions installed with a simulator (isaacgym, isaaclab, newton, or mujoco)
+
+Which backend runs which tutorial
+---------------------------------
+
+Every script takes ``--simulator``, but the backends differ in what they can build,
+so not every tutorial runs on every backend:
+
+* **Tutorials 0, 1 and 2** (simulator, terrain, robot) run on all four backends.
+  On MuJoCo add ``--cpu-only``: the backend only accepts a CPU device, and the
+  scripts default the device to ``cuda:0``. The scripts build one environment on
+  MuJoCo and four everywhere else.
+* **Tutorials 3 to 7** build a scene, so MuJoCo cannot run them: its simulator
+  refuses any scene library that holds a scene. Their ``--simulator`` help text says so.
+* **Newton** does not create scene objects. Tutorial 3 crashes on it right after the
+  reset, because the object state it prints is empty. Tutorials 4 to 6 run, but the
+  chair, the teapot and the table are silently absent. Use IsaacGym or IsaacLab to
+  see the objects. Tutorial 7 is documented on IsaacGym and IsaacLab.
+* **Tutorial 5** runs on IsaacLab, not IsaacGym. Its hard-coded SMPL-X robot config
+  lists the 30 finger bodies as contact bodies by default, and IsaacGym refuses a
+  robot config with contact bodies: its GPU pipeline reports one combined force per
+  body, so it cannot tell what each body is touching.
 
 Tutorial 0: Create Simulator
 -----------------------------
@@ -40,7 +64,8 @@ Learn the foundation of ProtoMotions - creating a physics simulator with a G1 ro
 **What you'll learn**:
 
 * Import simulator before torch (required for IsaacGym/IsaacLab)
-* Configure robot with simulation parameters per backend
+* Build a ``RobotConfig`` by hand: the MJCF asset, the semantic body names, the
+  per-joint PD gains and limits from the G1 motor classes, and the control rate
 * Create terrain and simulator instances
 * Run a basic simulation loop with random actions
 
@@ -50,25 +75,52 @@ Learn the foundation of ProtoMotions - creating a physics simulator with a G1 ro
 
    python examples/tutorial/0_create_simulator.py --simulator isaacgym
 
+   # CPU only, one environment
+   python examples/tutorial/0_create_simulator.py --simulator mujoco --cpu-only
+
 **Code highlights**:
 
 .. code-block:: python
 
-   # Robot configuration with per-simulator params
+   # Robot configuration, built by hand for the G1
    robot_cfg = RobotConfig(
        semantic_forward_axis_xy=(1.0, 0.0),
-       asset=RobotAssetConfig(asset_file_name="mjcf/g1_bm.xml", ...),
-       simulation_params=SimulatorParams(
-           isaacgym=IsaacGymSimParams(fps=100, decimation=2, substeps=2),
-           isaaclab=IsaacLabSimParams(fps=200, decimation=4),
+       asset=RobotAssetConfig(asset_file_name="mjcf/g1_bm.xml"),
+       common_naming_to_robot_body_names={
+           "all_left_foot_bodies": ["left_ankle_roll_link"],
+           "all_right_foot_bodies": ["right_ankle_roll_link"],
            ...
+           "torso_body_name": ["torso_link"],
+       },
+       # Every joint needs its PD gains and effort/velocity limits declared; the
+       # robot config refuses a joint no pattern covers. These follow the G1's motors.
+       control=ControlConfig(
+           override_control_info={
+               ".*_hip_(pitch|yaw)_joint": G1_7520_14.control_info(),
+               ".*_knee_joint": G1_7520_22.control_info(),
+               ".*_ankle_.*": G1_5020.control_info(scale=2, effort_limit=50),
+               ...
+           },
        ),
+       # 50 Hz policy; simulation_params defaults to the humanoid physics for 50 Hz.
+       control_hz=50,
    )
-   
+
    # Create simulator via factory
-   simulator_cfg = simulator_config(args.simulator, robot_cfg, headless=False, num_envs=4)
+   simulator_cfg = simulator_config(
+       args.simulator,
+       robot_cfg,
+       headless=args.headless,
+       num_envs=1 if args.simulator == "mujoco" else 4,
+       experiment_name="smpl_humanoid_isaaclab_example",
+   )
    SimulatorClass = get_class(simulator_cfg._target_)
    simulator = SimulatorClass(config=simulator_cfg, robot_config=robot_cfg, ...)
+
+The per-backend physics parameters are not written out here. ``simulation_params``
+is left unset, so ``RobotConfig`` fills it with the humanoid physics for the declared
+``control_hz``, and each simulator derives how many physics steps it takes per
+control step from its own physics rate and that control rate.
 
 Tutorial 1: Add Terrain
 ------------------------
@@ -174,6 +226,13 @@ Learn to add objects and create scenes for robot interaction.
 
    python examples/tutorial/3_scene_creation.py --simulator isaacgym --robot smpl
 
+.. note::
+
+   Run this tutorial on IsaacGym or IsaacLab. On Newton the script crashes right
+   after the reset: the backend creates no scene objects and returns an empty object
+   state, so the print of the object positions fails. MuJoCo refuses to build a scene
+   at all.
+
 **Code highlights**:
 
 .. code-block:: python
@@ -195,6 +254,14 @@ Learn to add objects and create scenes for robot interaction.
    scene = Scene(objects=[elephant, table], humanoid_motion_id=0)
    scene_lib = SceneLib(config=scene_lib_config, scenes=[scene], ...)
 
+One detail to know before you reuse the script's ``SceneLibConfig``: it passes
+``replicate_method="random"`` and ``subset_method="random"`` as strings. That goes
+unnoticed only because the script builds one environment with one scene, so
+``SceneLib`` never replicates or subsets. With more environments than scenes,
+``SceneLib`` compares those fields against the enums and rejects the strings, so
+pass ``ReplicationMethod.RANDOM`` and ``SubsetMethod.RANDOM`` from
+``protomotions.components.scene_lib`` instead.
+
 Tutorial 4: Basic Environment
 ------------------------------
 
@@ -214,13 +281,18 @@ Learn to create a complete RL environment using ``BaseEnv``.
 * Configure ``BaseEnv`` with ``EnvConfig`` and observation settings
 * Use the standard RL interface: ``reset()``, ``step()``, ``get_obs()``
 * Access structured observations (humanoid state, terrain)
-* Handle episode termination and automatic resets
+* Read the done flags and reset finished environments yourself
 
 **Run it**:
 
 .. code-block:: bash
 
    python examples/tutorial/4_basic_environment.py --simulator isaacgym --robot smpl
+
+.. note::
+
+   On Newton the script runs, but the chair is not created, so the robot stands next
+   to nothing. MuJoCo refuses to build the scene.
 
 **Code highlights**:
 
@@ -232,6 +304,7 @@ Learn to create a complete RL environment using ``BaseEnv``.
            "max_coords_obs": MdpComponent.from_kernel(
                compute_humanoid_max_coords_observations
            ),
+           "terrain": MdpComponent.from_kernel(compute_terrain_height_map),
        },
    )
 
@@ -242,8 +315,28 @@ Learn to create a complete RL environment using ``BaseEnv``.
        simulator=simulator,
        terrain=terrain,
        scene_lib=scene_lib,
+       motion_lib=motion_lib,  # Always provided (empty if no motions)
    )
    obs, rewards, dones, terminated, extras = env.step(actions)
+
+``step()`` never resets an environment. It returns the done flags, and the caller
+resets the rows that are done. The script's loop does not do that: it resets every
+environment once before the loop and then only calls ``step()``. The script
+configures no termination components, so an environment is done when it reaches
+``max_episode_length``, and from then on it keeps simulating under the random actions, never
+respawned, while its done flag stays set. The "Environments reset this step" line in the script's output, and its
+closing summary about automatic resets, are therefore misleading: the number is the
+count of done flags, and nothing was respawned. To respawn finished environments,
+reset the done rows at the top of each iteration, as tutorial 6 does:
+
+.. code-block:: python
+
+   done_indices = None
+   while env.is_simulation_running():
+       env.reset(done_indices)  # None resets every environment on the first pass
+       actions.normal_()
+       obs, rewards, dones, terminated, extras = env.step(actions)
+       done_indices = dones.nonzero(as_tuple=False).squeeze(-1)
 
 Tutorial 5: Motion Manager
 ---------------------------
@@ -270,12 +363,15 @@ Learn to work with motion libraries for reference motion playback.
 
 .. code-block:: bash
 
-   python examples/tutorial/5_motion_manager.py --simulator isaacgym
+   python examples/tutorial/5_motion_manager.py --simulator isaaclab
 
 .. note::
 
-   This tutorial uses a hard-coded SMPLX robot (52 bodies with hand articulation)
-   to match the teapot pour motion data.
+   This tutorial uses a hard-coded SMPL-X robot (52 bodies with hand articulation)
+   to match the teapot pour motion data. Run it on IsaacLab: the SMPL-X config lists
+   its 30 finger bodies as contact bodies by default, and IsaacGym refuses a robot
+   config with contact bodies because its GPU pipeline reports one combined force per
+   body. On Newton the script runs, but the teapot and the table are not created.
 
 **Code highlights**:
 
@@ -284,8 +380,18 @@ Learn to work with motion libraries for reference motion playback.
    motion_lib_config = MotionLibConfig(motion_file="examples/data/grab_teapot_pour/s1_teapot_pour_1.motion")
    motion_lib = MotionLib(config=motion_lib_config, device=device)
    
-   # Motion manager controls sampling
-   motion_manager = MimicMotionManagerConfig(init_start_prob=1.0)  # Always start from t=0
+   env_config = EnvConfig(
+       max_episode_length=1000,
+       # Kinematic playback: the robot is set to the reference pose, actions are ignored
+       control_components={"kinematic_replay": KinematicReplayControlConfig()},
+       observation_components={
+           "max_coords_obs": MdpComponent.from_kernel(
+               compute_humanoid_max_coords_observations
+           ),
+       },
+       # Motion manager controls sampling
+       motion_manager=MimicMotionManagerConfig(init_start_prob=1.0),  # Always start from t=0
+   )
 
 Tutorial 6: Mimic Environment
 ------------------------------
@@ -305,8 +411,9 @@ Learn to create motion imitation environments using ``Mimic``.
 
 **What you'll learn**:
 
-* Configure mimic-specific observations (phase, time left, target poses)
-* Understand ``sync_motion`` modes: kinematic playback vs. policy training
+* Configure mimic-specific observations (target poses, previous actions)
+* Understand the two control components: ``MimicControl`` for policy training
+  (this tutorial) and ``KinematicReplayControl`` for kinematic playback (tutorial 5)
 * Set up reference state initialization (RSI) with ``init_start_prob``
 
 **Run it**:
@@ -318,6 +425,8 @@ Learn to create motion imitation environments using ``Mimic``.
 .. note::
 
    This tutorial uses a hard-coded SMPL humanoid to match the sitting on chair motion data.
+   On Newton the script runs, but the armchair is not created, so the motion plays
+   without the chair. MuJoCo refuses to build the scene.
 
 **Code highlights**:
 
@@ -367,6 +476,16 @@ Learn to create motion imitation environments using ``Mimic``.
        scene_lib=scene_lib,
    )
 
+The three observation keys above are the whole set this environment produces. The
+script's observation breakdown has print branches for ``mimic_phase`` and
+``mimic_time_left``, but no kernel produces those observations, so those branches
+never fire. Playback versus training is decided by the control component alone:
+``MimicControl`` publishes the reference state for the rewards and the target-pose
+observation while the policy's actions drive the robot, whereas
+``KinematicReplayControl`` (tutorial 5) sets the robot to the reference pose and
+ignores the actions. The simulation loop also shows the reset pattern tutorial 4
+omits: it resets the done rows at the top of each iteration.
+
 Tutorial 7: DeepMimic Agent
 ----------------------------
 
@@ -390,6 +509,7 @@ Learn to train a complete motion tracking agent with PPO.
 .. note::
 
    This tutorial uses a hard-coded SMPL humanoid to match the sitting on chair motion data.
+   Run it on IsaacGym or IsaacLab; MuJoCo refuses to build the scene.
 
 **Code highlights**:
 
@@ -413,37 +533,57 @@ Learn to train a complete motion tracking agent with PPO.
    }
 
    env_config = EnvConfig(
-       max_episode_length=200,
+       max_episode_length=300,
        control_components=control_components,
        observation_components=observation_components,
        reward_components=reward_components,
        termination_components=termination_components,
        action_config=make_pd_action_config(robot_cfg),
-       motion_manager=MimicMotionManagerConfig(init_start_prob=1.0),
+       motion_manager=MimicMotionManagerConfig(
+           init_start_prob=1.0,  # Always start from the beginning
+           resample_on_reset=False,  # Keep the current motion time on reset
+       ),
    )
 
    obs_keys = ["max_coords_obs", "mimic_target_poses"]
    actor_config = PPOActorConfig(
-       in_keys=obs_keys,
        num_out=robot_cfg.kinematic_info.num_dofs,
+       actor_logstd=-2.9,
+       in_keys=obs_keys,
+       mu_key="actor_trunk_out",  # The mean network's output key
        mu_model=MLPWithConcatConfig(
            in_keys=obs_keys,
            out_keys=["actor_trunk_out"],
            num_out=robot_cfg.number_of_actions,
+           ...
        ),
    )
    critic_config = MLPWithConcatConfig(
        in_keys=obs_keys,
        out_keys=["value"],
        num_out=1,
+       ...
    )
+   # The model derives its in_keys and out_keys from the actor and the critic;
+   # passing them is a construction error.
    agent_config = PPOAgentConfig(
-       model=PPOModelConfig(actor=actor_config, critic=critic_config),
-       batch_size=128,
+       model=PPOModelConfig(actor=actor_config, critic=critic_config, ...),
+       batch_size=128,  # 4 envs x 32 steps per rollout
+       training_max_steps=2560,  # About 20 epochs
        num_steps=32,
+       ...
    )
 
-   agent = PPO(fabric=fabric, env=env, config=agent_config)
+   output_dir = Path("./tutorial_7_output")  # Directory for saving checkpoints
+   output_dir.mkdir(parents=True, exist_ok=True)
+   agent = PPO(fabric=fabric, env=env, config=agent_config, root_dir=output_dir)
+   agent.setup()  # Builds the model and the optimizers; fit() needs it first
    agent.fit()
+
+``mu_key`` and ``training_max_steps`` have no defaults, so both must be given.
+``root_dir`` is required here because the tutorial's Fabric has no logger the agent
+could borrow a directory from, and the script creates the directory before handing
+it over. ``setup()`` is a separate step: ``fit()`` expects the model and the
+optimizers to exist already.
 
 **This is a complete training example!**

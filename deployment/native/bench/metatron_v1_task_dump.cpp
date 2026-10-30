@@ -39,12 +39,15 @@ int main(int argc, char** argv) {
     state.dof_position[18] = state.dof_position[25] = 1.4;
     state.root_position = {0.0, 0.0, 0.75};
     state.base_position = state.root_position;
+    // The standing torso over that pelvis (waist joints zero): the FK takes
+    // the anchor pose, so it is set before anything runs it.
+    for (int axis = 0; axis < 3; ++axis)
+      state.anchor_position[axis] =
+          state.root_position[axis] + static_cast<double>(kTorsoOffsetInPelvis[axis]);
     state.has_anchor_position = true;
     state.has_root_kinematics = true;
-    SensorReading reading = reading_from_robot_state(state);
-    const RecoveryPose pose = fk.run(reading);
-    for (int axis = 0; axis < 3; ++axis)
-      state.anchor_position[axis] = pose.positions[16 * 3 + axis];
+    // The measured pose the parity tool reads back, from the anchored FK.
+    const RecoveryPose pose = fk.run(reading_from_robot_state(state));
     if (std::string(argv[4]) == "steering") {
       std::string velocity(argv[6]);
       const auto comma = velocity.find(',');

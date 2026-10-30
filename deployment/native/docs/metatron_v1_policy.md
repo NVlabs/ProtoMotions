@@ -6,8 +6,14 @@ G1 contract. Its serialized identifier is
 exported tensor names are deliberately unchanged to keep existing artifacts
 loadable. They are not the product name or a separate supported policy family.
 
-The graph contains the deterministic prior and actuator mapping. Runtime task
-goals use a separate FK engine. The native launcher supports idle, steering and
+The graph contains the deterministic prior and actuator mapping, and returns
+only the four control outputs. Runtime task goals use an FK engine compiled from
+`fk.onnx`, a second small graph (joints and anchor pose in, body poses out) that
+`deployment/export_fk_to_onnx.py` exports from the same FK kernel the policy
+graph traces, rebuilt from the config bundle beside the checkpoint, so the two
+graphs agree by construction. The native runtime runs it on the current
+measurement before every policy call, since its goal canvas starts from the
+measured pose. The native launcher supports idle, steering and
 recovery. It does not currently expose tracking clips, object interaction,
 style selection or Pico task control. Python modules provide offline reference
 and contract checks, not a second live launcher.
@@ -41,10 +47,11 @@ without retracing or changing the model bytes. Native preparation accepts the
 bundle YAML through `--model` and finds its manifest automatically.
 
 The pinned ONNX keeps its scene inputs. The corresponding released PyTorch
-checkpoint also retains the scene-token weights. In contrast, generic
-ProtoMotions re-export uses the checkpoint's native preset, which always emits
-dummy scene tokens with false masks. That export is scene-disabled and has a
-different input contract; it is not a replacement for this pinned graph. See
+checkpoint also retains the scene-token weights, and the generic ProtoMotions
+re-export of the pinned package takes the same eight scene inputs from the
+host. That export still has a different input contract (no simulator root
+pose, the current action and the eight-slot history as separate inputs); it is
+not a replacement for this pinned graph. See
 [export paths](metatron_generic_export.md#scene-support-released-artifacts-versus-re-export)
 and [verification evidence](metatron_export_verification.md).
 

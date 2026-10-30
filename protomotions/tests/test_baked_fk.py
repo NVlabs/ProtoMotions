@@ -979,6 +979,63 @@ class TestONNXTrace:
             ort_out = sess.run(["fk_obs"], {"dof_pos": batch_input.numpy()})[0]
             np.testing.assert_allclose(ort_out, pt_out, atol=1e-4, rtol=1e-4)
 
+    def test_world_body_poses_trace_is_static_and_matches_torch(self, branching_ki):
+        """``world_body_poses`` exports as a plain static graph.
+
+        ``deployment/export_fk_to_onnx.py`` traces this method on its own as
+        ``fk.onnx`` and the native host compiles that to a static TensorRT
+        plan, so the trace may not contain data-dependent ops
+        (``NonZero``/``If``/``Loop``/``Scan``), and it must run for any batch.
+        """
+        onnxruntime = pytest.importorskip("onnxruntime")
+        onnx = pytest.importorskip("onnx")
+        import numpy as np
+
+        baked = BakedAnchorFK(
+            branching_ki, anchor_idx=1, trackable_body_indices=torch.tensor([2, 3, 4])
+        )
+
+        class World(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self._baked = baked
+
+            def forward(self, dof_pos, anchor_pos, anchor_rot):
+                return self._baked.world_body_poses(dof_pos, anchor_pos, anchor_rot)
+
+        def sample(batch):
+            return (
+                torch.randn(batch, branching_ki.num_dofs),
+                torch.randn(batch, 3),
+                torch.nn.functional.normalize(torch.randn(batch, 4), dim=-1),
+            )
+
+        names = ["dof_pos", "anchor_pos", "anchor_rot"]
+        outputs = ["body_pos", "body_rot"]
+        buf = io.BytesIO()
+        torch.onnx.export(
+            World(), sample(1), buf, input_names=names, output_names=outputs,
+            opset_version=17, do_constant_folding=True,
+            dynamic_axes={name: {0: "batch"} for name in names + outputs},
+            dynamo=False,
+        )
+        model = onnx.load_from_string(buf.getvalue())
+        ops = {node.op_type for node in model.graph.node}
+        assert not ops & {"NonZero", "If", "Loop", "Scan"}, sorted(ops)
+        sess = onnxruntime.InferenceSession(
+            buf.getvalue(), providers=["CPUExecutionProvider"]
+        )
+        for batch in (1, 3):
+            inputs = sample(batch)
+            pt_pos, pt_rot = baked.world_body_poses(*inputs)
+            ort_pos, ort_rot = sess.run(
+                outputs, {name: value.numpy() for name, value in zip(names, inputs)}
+            )
+            np.testing.assert_allclose(ort_pos, pt_pos.numpy(), atol=1e-5, rtol=1e-5)
+            np.testing.assert_allclose(ort_rot, pt_rot.numpy(), atol=1e-5, rtol=1e-5)
+            assert ort_pos.shape == (batch, branching_ki.num_bodies, 3)
+            assert ort_rot.shape == (batch, branching_ki.num_bodies, 4)
+
 
 class _BakedTargetFKModule(torch.nn.Module):
     """nn.Module wrapper for BakedTargetFK so torch.onnx.export can trace it."""
@@ -1148,6 +1205,14 @@ class TestExportInitRoundTrip:
         out_after = rebuilt(dof_pos, current_anchor_rot=None)
 
         torch.testing.assert_close(out_before, out_after, atol=ATOL, rtol=RTOL)
+        # The world-pose method the deployable goal kernels call survives too.
+        anchor_pos, anchor_rot = torch.randn(4, 3), torch.tensor([[0.0, 0.0, 0.0, 1.0]] * 4)
+        assert rebuilt.anchor_idx == baked.anchor_idx == 1
+        for before, after in zip(
+            baked.world_body_poses(dof_pos, anchor_pos, anchor_rot),
+            rebuilt.world_body_poses(dof_pos, anchor_pos, anchor_rot),
+        ):
+            torch.testing.assert_close(before, after, atol=0, rtol=0)
 
     def test_target_export_init_rebuilds_the_kernel(self, branching_ki):
         trackable = torch.tensor([2, 3, 4])

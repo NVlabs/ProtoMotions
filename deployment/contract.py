@@ -6,16 +6,19 @@
 The exporter builds a :class:`DeploymentContract` from a checkpoint and writes it
 to ``unified_pipeline.yaml``; a deployment host reads the same file back through
 :meth:`DeploymentContract.from_yaml`. The YAML keeps today's layout -- every
-top-level key a host already reads is unchanged -- and gains exactly one new
-top-level key, ``schema``, written first, so an old reader still finds what it
-expects and a new reader can refuse a file whose schema it does not know.
+top-level key a host already reads is unchanged -- and gains two new top-level
+keys: ``schema``, written first, so an old reader still finds what it expects
+and a new reader can refuse a file whose schema it does not know; and ``host``,
+written only for a simulation export (omitted means robot).
 
 The contract validates itself at construction: a graph input with no deployment
 kind or provider, a history input that feeds back an output the graph does not
 produce, an anchor body that is not in the body list, control vectors the wrong
 length, or a sensor input whose channel the sensors block does not carry each
 raise here, at export time, instead of silently shipping a sidecar a robot
-cannot be driven from.
+cannot be driven from. The contract also names the host it is for: an input
+whose kind only a simulation host can feed (the ``simulated_*`` body state) is
+refused in a robot contract.
 """
 
 from __future__ import annotations
@@ -38,6 +41,10 @@ POLICY_HISTORY = "policy_history"
 # Operator-supplied targets, style and velocity commands, not physical sensors
 # or the tracker's reference-motion stream.
 MASKED_MIMIC = "masked_mimic"
+# The scene boxes a scene-conditioned policy sees (object poses, box geometry,
+# visibility): a perception or scene-description stream the host supplies, not
+# a physical sensor of the robot.
+SCENE = "scene"
 
 # The sensor channels a provider can name; these are the field names of
 # SensorConfig. ``imu`` and ``joint_encoders`` are always present on a tracker;
@@ -46,6 +53,24 @@ SENSOR_KINDS = frozenset(
     {"joint_encoders", "imu", "localization", "base_velocity", "height"}
 )
 OPTIONAL_SENSOR_KINDS = frozenset({"localization", "base_velocity", "height"})
+
+# The hosts an export can target. A robot host feeds raw sensor readings, its
+# own past actions and the goal streams; a simulation host (a game engine, a
+# browser MuJoCo, a sim-to-sim check) can also feed the simulator's own body
+# state, the ``simulated_*`` kinds below. The robot set is every other kind in
+# ELEMENT_LABELS; the simulation set is all of them.
+ROBOT_HOST = "robot"
+SIMULATION_HOST = "simulation"
+HOSTS = (ROBOT_HOST, SIMULATION_HOST)
+SIMULATION_ONLY_KINDS = frozenset(
+    {
+        "simulated_body_pos",
+        "simulated_body_rot",
+        "simulated_body_vel",
+        "simulated_body_ang_vel",
+        "simulated_ground_heights",
+    }
+)
 
 # Context names whose values are the policy's own past actions, fed back from
 # the graph's outputs. The leaves ``raw_actions``/``processed_actions`` are the
@@ -77,8 +102,6 @@ ELEMENT_LABELS: Dict[str, str] = {
     "anchor_rot": "coords",
     "anchor_vel": "coords",
     "body_ang_vel": "bodies",
-    "body_pos": "bodies",
-    "body_rot": "bodies",
     "body_vel": "bodies",
     "joint_pos": "joints",
     "joint_vel": "joints",
@@ -123,7 +146,46 @@ ELEMENT_LABELS: Dict[str, str] = {
     "root_pos": "coords",
     "root_rot": "coords",
     "root_vel": "coords",
+    "scene_box_centers": "coords",
+    "scene_box_extents": "coords",
+    "scene_box_valid": "none",
+    "scene_object_visible": "none",
+    "scene_object_pos": "coords",
+    "scene_object_rot": "coords",
+    "scene_position_offset": "coords",
+    "scene_yaw_offset": "none",
+    "simulated_body_ang_vel": "bodies",
+    "simulated_body_pos": "bodies",
+    "simulated_body_rot": "bodies",
+    "simulated_body_vel": "bodies",
+    "simulated_ground_heights": "none",
 }
+
+
+def _check_host(host: str) -> None:
+    if host not in HOSTS:
+        raise ValueError(f"unknown deployment host {host!r}; expected one of {HOSTS}")
+
+
+def host_can_feed(host: str, kind: str) -> bool:
+    """Whether ``host`` can supply an input of ``kind``; an unknown host is refused.
+
+    Only the simulator's own body state is host-specific: a simulation host
+    feeds every kind, a robot host every kind but those.
+    """
+    _check_host(host)
+    return host == SIMULATION_HOST or kind not in SIMULATION_ONLY_KINDS
+
+
+def kinds_for_host(host: str) -> frozenset:
+    """The host kinds an export for ``host`` may bind; an unknown host is refused."""
+    _check_host(host)
+    return frozenset(kind for kind in ELEMENT_LABELS if host_can_feed(host, kind))
+
+
+def accepting_host(kind: str) -> str:
+    """The least capable host that can feed ``kind``."""
+    return SIMULATION_HOST if kind in SIMULATION_ONLY_KINDS else ROBOT_HOST
 
 # The column labels of a coordinate axis of a given width.
 _COORD_LABELS: Dict[int, Tuple[str, ...]] = {
@@ -183,8 +245,9 @@ def provider_of(path: str, channel: Optional[str]) -> str:
     (``sensors.measurement.derived_sensor_channel``); a ``None`` channel on a
     sensor path is a refusal, since a sensor path with no channel cannot be fed.
     ``current``/``historical`` are privileged simulator truth -- a privileged
-    policy exports with that stated, never renamed -- and ``mimic.*`` is the
-    reference motion; both ignore ``channel``. The action-history names are the
+    policy exports with that stated, never renamed -- ``mimic.*`` is the
+    reference motion and ``scene_boxes.*`` the scene stream; all ignore
+    ``channel``. The action-history names are the
     policy's own past outputs. The caller refuses a path with no host kind before
     calling this; here a path whose namespace has no provider rule is the refusal.
     """
@@ -209,6 +272,8 @@ def provider_of(path: str, channel: Optional[str]) -> str:
         return REFERENCE_MOTION
     if head == MASKED_MIMIC:
         return MASKED_MIMIC
+    if head == "scene_boxes":
+        return SCENE
     raise ValueError(f"no provider rule for deployment path {path!r}")
 
 
@@ -481,10 +546,22 @@ class DeploymentContract:
     control_type: str
     onnx_sha256: Optional[str] = None
     masked_mimic: Optional[GoalCanvas] = None
+    # The host the export targets; every input kind must be one that host can
+    # feed. Written to the sidecar only for a simulation host (omitted means
+    # robot), so a robot sidecar is byte-identical to before the field existed.
+    host: str = ROBOT_HOST
 
     def __post_init__(self) -> None:
         if self.schema != SCHEMA:
             raise ValueError(f"contract schema {self.schema!r} is not {SCHEMA!r}")
+        _check_host(self.host)
+        for spec in self.inputs:
+            if not host_can_feed(self.host, spec.kind):
+                raise ValueError(
+                    f"input {spec.key!r} has host kind {spec.kind!r}, which only a "
+                    f"{accepting_host(spec.kind)} host can feed; this contract is "
+                    f"for a {self.host} host"
+                )
 
         goal_bodies = (
             None
@@ -612,6 +689,9 @@ class DeploymentContract:
         return {
             "schema": self.schema,
             "type": "unified_pipeline",
+            # Only for a simulation host; omitted (not "robot") otherwise so the
+            # robot sidecar stays byte-identical.
+            **({} if self.host == ROBOT_HOST else {"host": self.host}),
             "dt": timing.control_dt,
             "joint_names": list(robot.joint_names),
             "body_names": list(robot.body_names),
@@ -733,6 +813,7 @@ class DeploymentContract:
             checkpoint=content["metadata"]["checkpoint"],
             control_type=content["metadata"]["control_type"],
             onnx_sha256=content["metadata"].get("onnx_sha256"),
+            host=content.get("host", ROBOT_HOST),
             masked_mimic=(
                 GoalCanvas(
                     **{
@@ -918,7 +999,6 @@ def _sensors_from_dict(entry: Optional[dict]) -> Optional[SensorDeploymentMetada
         schema=entry.get("schema", "physical-sensors/v1"),
         joint_coordinates=entry.get("joint_coordinates", "scalar_hinge"),
         w_last=entry.get("w_last", True),
-        derived_state_provider=entry.get("derived_state_provider", "host_fk"),
         history_initialization=entry.get(
             "history_initialization", "repeat_first_reading"
         ),
@@ -927,10 +1007,18 @@ def _sensors_from_dict(entry: Optional[dict]) -> Optional[SensorDeploymentMetada
 
 __all__ = [
     "SCHEMA",
+    "ROBOT_HOST",
+    "SIMULATION_HOST",
+    "HOSTS",
+    "SIMULATION_ONLY_KINDS",
+    "host_can_feed",
+    "kinds_for_host",
+    "accepting_host",
     "SIMULATOR_TRUTH",
     "REFERENCE_MOTION",
     "POLICY_HISTORY",
     "MASKED_MIMIC",
+    "SCENE",
     "SENSOR_KINDS",
     "OPTIONAL_SENSOR_KINDS",
     "ELEMENT_LABELS",

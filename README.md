@@ -5,15 +5,21 @@
 **A GPU-Accelerated Framework for Simulated Humanoids**
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE.md)
-[![Documentation](https://img.shields.io/badge/docs-online-green.svg)](https://protomotions.github.io/)
+[![Documentation](https://img.shields.io/badge/docs-online-green.svg)](https://nvlabs.github.io/ProtoMotions/)
 
 [![Newton](https://img.shields.io/badge/Newton-1.0.0-brightgreen.svg)](https://pypi.org/project/newton/1.0.0/)
 [![IsaacLab](https://img.shields.io/badge/IsaacLab-3.0-blue.svg)](https://github.com/isaac-sim/IsaacLab/commit/4ecd0b036da19ff6ad2bb4d621f886b63e9f6db8)
 [![IsaacGym](https://img.shields.io/badge/IsaacGym-Preview_4-blue.svg)](https://developer.nvidia.com/isaac-gym)
 [![MuJoCo](https://img.shields.io/badge/MuJoCo-3.0+-orange.svg)](https://github.com/google-deepmind/mujoco)
-[![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/NVlabs/ProtoMotions) (unverified AI generation)
 
 </div>
+
+---
+
+## 📰 News
+
+- **Oct 28, 2026: Metatron is released.** Metatron is our generative whole-body policy for the Unitree G1: one network that handles motion tracking, steering, path following, reaching for sparse body goals, scene interaction and getting back up after a fall. Read the [**paper**](https://research.nvidia.com/labs/par/projects/metatron/assets/metatron-paper.pdf?v=de2411a21822) and the [**project page**](https://research.nvidia.com/labs/par/projects/metatron/), try it in your browser with the [**interactive demo**](https://nvlabs.github.io/ProtoMotions/demos/metatron/), race six of them in [**G1 Racer**](https://nvlabs.github.io/ProtoMotions/demos/g1-racer/), download the weights and the native package from [**Hugging Face**](https://huggingface.co/nvidia/Metatron-v1) with `python scripts/download_metatron.py`, or train your own with the [**Metatron G1 student guide**](https://nvlabs.github.io/ProtoMotions/user_guide/metatron_student.html).
+- **Oct 28, 2026: `main` received a major refactor.** The environment is now a short list of explicit step phases over modular state owners and task control components, with checked boundaries between them, so a change in one place cannot silently break another. Experiments use a cleaner [**configuration system**](https://nvlabs.github.io/ProtoMotions/user_guide/configuration.html) and a declarative way of [**authoring observations, rewards and terminations**](https://nvlabs.github.io/ProtoMotions/concepts/environment_context.html) as pure tensor kernels bound to named context paths. Sensors are declared once per channel, each with [**measurement noise and a state-estimation stage**](https://nvlabs.github.io/ProtoMotions/tutorials/workflows/domain_randomization.html#privileged-clean-and-noisy-sources), which gives domain randomization and sim-to-real transfer a principled footing. Saved configurations from earlier versions must be regenerated, and the Genesis backend has been removed; the [**changelog**](https://nvlabs.github.io/ProtoMotions/changelog.html) has the full list.
 
 ---
 
@@ -25,22 +31,30 @@
 
 Also check out **[MimicKit](https://github.com/xbpeng/MimicKit/tree/main)**, our sibling repository for a lightweight framework for motion imitation learning.
 
-<table>
-<tr>
-<td align="center"><img src="data/static/vault.gif" height="180"/></td>
-<td align="center"><img src="data/static/g1_tracker.gif" height="180"/></td>
-<td align="center"><img src="data/static/soma_regen.gif" height="180"/></td>
-</tr>
-<tr>
-<td align="center"><img src="data/static/wineglass.gif" height="180"/></td>
-<td align="center"><img src="data/static/real_robot.gif" height="180"/></td>
-<td align="center"><img src="data/static/real_robot_3.gif" height="180"/></td>
-</tr>
-</table>
-
 ---
 
 ## What You Can Do with ProtoMotions3
+
+### 🎭 Generative Policies
+
+Train a generative policy that chooses its own "move" to finish a task instead of following one reference clip. [**MaskedMimic**](https://research.nvidia.com/labs/par/maskedmimic/) learns a single policy that completes a motion from partial goals such as a few target bodies, a path or objects in the scene. The GPC recipe trains a reusable discrete latent prior and then adapts it to new tasks with small PEFT adapters; see the [**GPC and PEFT guide**](https://nvlabs.github.io/ProtoMotions/user_guide/gpc.html). Our released Unitree G1 policy, [**Metatron**](https://research.nvidia.com/labs/par/projects/metatron/), is trained this way: a MaskedMimic-style student distilled from a motion-tracking teacher, whose learned prior turns tracking, steering, body-goal, scene and recovery goals into whole-body motion. Run it in the [**browser demo**](https://nvlabs.github.io/ProtoMotions/demos/metatron/), race it in [**G1 Racer**](https://nvlabs.github.io/ProtoMotions/demos/g1-racer/), download the weights from [**Hugging Face**](https://huggingface.co/nvidia/Metatron-v1), or follow the [**Metatron G1 student guide**](https://nvlabs.github.io/ProtoMotions/user_guide/metatron_student.html) to train your own.
+
+<table align="center">
+<tr>
+<td align="center"><img src="data/static/gpc_parkour.gif" alt="GPC human-scene interaction" height="200"/></td>
+<td align="center"><img src="data/static/racer.gif" alt="G1 Racer" height="200"/></td>
+</tr>
+<tr>
+<td align="center"><sub>GPC: human-scene interaction</sub></td>
+<td align="center"><sub><a href="https://nvlabs.github.io/ProtoMotions/demos/g1-racer/">G1 Racer</a>: six robots, one batched Metatron policy, in your browser</sub></td>
+</tr>
+<tr>
+<td align="center" colspan="2"><img src="data/static/metatron.gif" alt="Metatron on the real G1" width="640"/></td>
+</tr>
+<tr>
+<td align="center" colspan="2"><sub><a href="https://nvlabs.github.io/ProtoMotions/demos/metatron/">Metatron</a> on the real G1: sitting and standing, whole-body teleoperation, recovery from the ground</sub></td>
+</tr>
+</table>
 
 ### 🏃 Large-Scale Motion Learning
 
@@ -51,18 +65,16 @@ Train your fully physically simulated character to learn motion skills from the 
   <img src="data/static/smpl_mlp_094428.gif" alt="SMPL motion 2" height="180">
   <img src="data/static/smpl_mlp_095344.gif" alt="SMPL motion 3" height="180">
   <img src="data/static/smpl_mlp_095848.gif" alt="SMPL motion 4" height="180">
-  <img src="data/static/smpl_mlp_095746.gif" alt="SMPL motion 5" height="180">
 </p>
 
 ### 📈 Scalable Multi-GPU Training
 
-Scale training to even larger datasets with each GPU handling a subset of motions. For example, we have trained with **24 A100s** with **13K motions** on each GPU with the [**BONES**](https://huggingface.co/datasets/bones-studio/seed) dataset in [**SOMA**](https://github.com/NVlabs/SOMA-X) skeleton format. Check out [Quick Start](https://protomotions.github.io/getting_started/quickstart.html) and [SEED BVH Data Preparation](https://protomotions.github.io/getting_started/seed_bvh_preparation.html) to play around with the dataset and pre-trained models today.
+Scale training to even larger datasets with each GPU handling a subset of motions. For example, we have trained with **24 A100s** with **13K motions** on each GPU with the [**BONES**](https://huggingface.co/datasets/bones-studio/seed) dataset in [**SOMA**](https://github.com/NVlabs/SOMA-X) skeleton format. Check out [Quick Start](https://nvlabs.github.io/ProtoMotions/getting_started/quickstart.html) and [SEED BVH Data Preparation](https://nvlabs.github.io/ProtoMotions/getting_started/seed_bvh_preparation.html) to play around with the dataset and pre-trained models today.
 
 <p align="center">
   <img src="data/static/soma_regen_markers.gif" height="180">
   <img src="data/static/soma_regen_2.gif" height="180">
   <img src="data/static/soma_regen_3.gif" height="180">
-  <img src="data/static/soma_regen_4.gif" height="180">
   <img src="data/static/soma_regen_5.gif" height="180">
 </p>
 
@@ -79,7 +91,7 @@ Transfer (retarget) the entire [AMASS](https://amass.is.tue.mpg.de/) dataset to 
 ### 🤖 Train Any Robot
 
 Train your robot to perform AMASS motor skills in **12 hours**, by just changing one command argument:  
-`--robot-name=smpl` → `--robot-name=h1_2` and preparing retargeted motions (see [here](https://protomotions.github.io/tutorials/workflows/retargeting_pyroki.html))
+`--robot-name=smpl` → `--robot-name=h1_2` and preparing retargeted motions (see [here](https://nvlabs.github.io/ProtoMotions/tutorials/workflows/retargeting_pyroki.html))
 
 <p align="center">
   <img src="data/static/h1_2_gym.gif" alt="H1_2 AMASS training" height="280">
@@ -103,14 +115,16 @@ Train in simulation, deploy on real hardware. ProtoMotions trains one General Tr
   <img src="data/static/real_robot_2.gif" alt="G1 real robot" height="240">
 </p>
 
+<p align="center">
+  <img src="data/static/sit-sim2real.gif" alt="G1 sitting on furniture from scene boxes and body goals, in MuJoCo and on the real robot" width="400">
+  <img src="data/static/run-sim2real.gif" alt="Real G1 steering in different directions" width="400">
+</p>
+
 Our deployment pipeline exports a single ONNX model (with observation computation baked in), so deployment frameworks only need to provide raw sensor signals — no need to rewrite obs functions or match training internals. We tested on the Unitree G1 via the brilliant [**RoboJuDo**](https://github.com/HansZ8/RoboJuDo) framework, adding just one policy file with no mandatory changes to RoboJuDo core.
 
-📖 [**Full Deployment Tutorial**](https://protomotions.github.io/tutorials/workflows/g1_deployment.html) — from data preparation to real robot, fully reproducible.
+📖 [**Full Deployment Tutorial**](https://nvlabs.github.io/ProtoMotions/tutorials/workflows/g1_deployment.html) — from data preparation to real robot, fully reproducible.
 
-For the integrated C++ runtime, MuJoCo/Unitree backends, policy mapping and
-TensorRT build/qualification workflow, see [**Deployment runtime
-(experimental)**](deployment/README.md). That folder is prototyping reference
-code, not a supported release artifact.
+Large generative policies such as Metatron are a different deployment problem from a small tracking network: a transformer with several hundred megabytes of weights has to return a command within its policy period, every step, so latency has to be engineered end to end instead of left to a general-purpose Python stack. For that we also prototype our own deployment runtime: a standalone C++ runtime with MuJoCo and Unitree G1 backends, a safety supervisor, a policy mapping workflow, and a TensorRT build and qualification pipeline. See [**Deployment runtime (experimental)**](deployment/README.md). That folder is prototyping reference code for people building their own deployment path, not a supported release artifact.
 
 ### 🎨 High-Fidelity Rendering
 
@@ -124,7 +138,7 @@ Test your policy in [**IsaacSim 5.0+**](https://developer.nvidia.com/isaac-sim),
 
 With [**Kimodo**](https://research.nvidia.com/labs/sil/projects/kimodo/) (NVIDIA's text-to-motion generation model), generate any motion from a text prompt and use ProtoMotions to train a physics-based policy that performs the motion — for both the SOMA animation character and the Unitree G1 robot. Policies trained this way can be deployed directly on real hardware.
 
-See [Kimodo Data Preparation](https://protomotions.github.io/getting_started/kimodo_preparation.html) for how to convert Kimodo outputs to ProtoMotions format.
+See [Kimodo Data Preparation](https://nvlabs.github.io/ProtoMotions/getting_started/kimodo_preparation.html) for how to convert Kimodo outputs to ProtoMotions format.
 
 <p align="center">
   <img src="data/static/aibm-vaulting.gif" alt="Vaulting" height="240">
@@ -142,23 +156,6 @@ Procedurally generate many scenes for scalable **Synthetic Data Generation (SDG)
 <p align="center">
   <img src="data/static/augmented_combined.gif" alt="Augmented Scenes and Motions" height="280">
 </p>
-
-### 🎭 Generative Policies
-
-Train a generative policy (e.g., [**MaskedMimic**](https://research.nvidia.com/labs/par/maskedmimic/)) that can autonomously choose its "move" to finish the task. For reusable discrete latent priors and PEFT task adapters, see the [**GPC and PEFT guide**](https://protomotions.github.io/user_guide/gpc.html).
-
-<table align="center">
-<tr>
-<td align="center"><img src="data/static/maskedmimic_093152.gif" alt="MaskedMimic 1" height="180"/></td>
-<td align="center"><img src="data/static/maskedmimic_093229.gif" alt="MaskedMimic 2" height="180"/></td>
-<td align="center"><img src="data/static/maskedmimic_093313.gif" alt="MaskedMimic 3" height="180"/></td>
-</tr>
-<tr>
-<td align="center"><img src="data/static/maskedmimic_093430.gif" alt="MaskedMimic 4" height="180"/></td>
-<td align="center"><img src="data/static/maskedmimic_093406.gif" alt="MaskedMimic 5" height="180"/></td>
-<td align="center"><img src="data/static/maskedmimic_093349.gif" alt="MaskedMimic 6" height="180"/></td>
-</tr>
-</table>
 
 ### ⛰️ Terrain Navigation
 
@@ -207,8 +204,8 @@ Refer to the MuJoCo backend as the smallest reference implementation:
 Want to add your own robot? Follow these steps:
 
 1. Add your `.xml` MuJoCo spec file to [`protomotions/data/assets/mjcf/`](protomotions/data/assets/mjcf/)
-2. Fill in config fields (see examples like [`protomotions/robot_configs/g1.py`](protomotions/robot_configs/g1.py))
-3. Register in [`protomotions/robot_configs/factory.py`](protomotions/robot_configs/factory.py)
+2. Create `protomotions/robot_configs/<your_robot>.py` defining exactly one class whose direct base is `RobotConfig` (copy [`protomotions/robot_configs/g1.py`](protomotions/robot_configs/g1.py) and fill in the fields)
+3. That is the registration: [`protomotions/robot_configs/factory.py`](protomotions/robot_configs/factory.py) scans that directory, so the file's stem is the name you pass to `--robot-name`. There is nothing to edit in the factory. If the robot goes into this repository and you run the test suite, also add its name to `_ROBOTS` in [`protomotions/tests/test_robot_facts_d1.py`](protomotions/tests/test_robot_facts_d1.py), which pins the registered list.
 
 And you're good to go!
 
@@ -216,19 +213,19 @@ And you're good to go!
 
 ## Documentation
 
-📚 **[Full Documentation](https://protomotions.github.io/)**
+📚 **[Full Documentation](https://nvlabs.github.io/ProtoMotions/)**
 
-- [Installation Guide](https://protomotions.github.io/getting_started/installation.html)
-- [Quick Start](https://protomotions.github.io/getting_started/quickstart.html)
-- [GPC and PEFT](https://protomotions.github.io/user_guide/gpc.html)
-- [AMASS Data Preparation](https://protomotions.github.io/getting_started/amass_preparation.html)
-- [PHUMA Data Preparation](https://protomotions.github.io/getting_started/phuma_preparation.html)
-- [SEED BVH Data Preparation](https://protomotions.github.io/getting_started/seed_bvh_preparation.html)
-- [SEED G1 CSV Data Preparation](https://protomotions.github.io/getting_started/seed_g1_csv_preparation.html)
-- [Kimodo Data Preparation](https://protomotions.github.io/getting_started/kimodo_preparation.html)
-- [Tutorials](https://protomotions.github.io/tutorials/)
-- [API Reference](https://protomotions.github.io/api_reference/)
-- [G1 Deployment: Data to Real Robot](https://protomotions.github.io/tutorials/workflows/g1_deployment.html)
+- [Installation Guide](https://nvlabs.github.io/ProtoMotions/getting_started/installation.html)
+- [Quick Start](https://nvlabs.github.io/ProtoMotions/getting_started/quickstart.html)
+- [GPC and PEFT](https://nvlabs.github.io/ProtoMotions/user_guide/gpc.html)
+- [AMASS Data Preparation](https://nvlabs.github.io/ProtoMotions/getting_started/amass_preparation.html)
+- [PHUMA Data Preparation](https://nvlabs.github.io/ProtoMotions/getting_started/phuma_preparation.html)
+- [SEED BVH Data Preparation](https://nvlabs.github.io/ProtoMotions/getting_started/seed_bvh_preparation.html)
+- [SEED G1 CSV Data Preparation](https://nvlabs.github.io/ProtoMotions/getting_started/seed_g1_csv_preparation.html)
+- [Kimodo Data Preparation](https://nvlabs.github.io/ProtoMotions/getting_started/kimodo_preparation.html)
+- [Tutorials](https://nvlabs.github.io/ProtoMotions/tutorials/)
+- [API Reference](https://nvlabs.github.io/ProtoMotions/api_reference/)
+- [G1 Deployment: Data to Real Robot](https://nvlabs.github.io/ProtoMotions/tutorials/workflows/g1_deployment.html)
 
 ---
 

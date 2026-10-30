@@ -178,8 +178,6 @@ def _pipeline_ports(contract: DeploymentContract) -> dict[str, list[dict]]:
         "input": {
             "joint_pos": InputKindEnum.JOINT_POSITION,
             "joint_vel": InputKindEnum.JOINT_VELOCITY,
-            "body_pos": InputKindEnum.BODY_POSITION,
-            "body_rot": InputKindEnum.BODY_ROTATION,
             "anchor_rot": InputKindEnum.BODY_ROTATION,
             "root_local_ang_vel": InputKindEnum.BODY_ANGULAR_VELOCITY,
         },

@@ -20,14 +20,19 @@ Basic Training Command
    python protomotions/train_agent.py \
        --robot-name smpl \
        --simulator isaacgym \
-       --experiment-path examples/experiments/mimic/mlp.py \
+       --experiment-path examples/experiments/mimic/mlp_no_contact.py \
        --experiment-name smpl_amass_flat \
        --motion-file /path/to/amass_train.pt \
        --num-envs 8192 \
        --batch-size 8192 \
        --ngpu 4
 
-This trains an MLP policy on flat terrain.
+This trains an MLP policy on flat terrain. The command uses
+``mimic/mlp_no_contact.py`` rather than ``mimic/mlp.py`` because IsaacGym's GPU
+pipeline reports one combined force per body, so it cannot run a recipe that
+declares contact bodies. The two recipes are otherwise identical (see
+`Disable Contact Rewards`_ below). On IsaacLab, run ``mimic/mlp.py`` with
+``--simulator isaaclab`` to keep the foot-contact reward.
 
 Training on Complex Terrain
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -39,13 +44,16 @@ For robust locomotion on uneven terrain:
    python protomotions/train_agent.py \
        --robot-name smpl \
        --simulator isaacgym \
-       --experiment-path examples/experiments/mimic/mlp_complex_terrain.py \
+       --experiment-path examples/experiments/mimic/mlp_complex_terrain_no_contact.py \
        --experiment-name smpl_amass_terrain \
        --motion-file /path/to/amass_train.pt \
        --num-envs 8192 \
        --batch-size 8192 \
        --ngpu 4
 
+As above, the ``_no_contact`` recipe is the one IsaacGym can run;
+``mimic/mlp_complex_terrain.py`` is the same recipe with the foot-contact
+reward, for IsaacLab.
 
 Expected Training Time
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -84,7 +92,9 @@ With ``--use-wandb``, track these metrics:
 Experiment Configurations
 -------------------------
 
-The ``mlp.py`` experiment defines:
+The ``mlp.py`` experiment defines the following (``mlp_no_contact.py`` is the
+same recipe without the ``contact_match_rew`` reward and with no contact bodies
+declared on the robot):
 
 **Environment Config:**
 
@@ -123,13 +133,30 @@ More mini-epochs can improve sample efficiency:
 Disable Contact Rewards
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-For purely motion imitation (DeepMimic) rewards:
+For purely motion imitation (DeepMimic) rewards, run the recipe without the
+foot-contact reward. ``examples/experiments/mimic/mlp_no_contact.py`` is
+``mlp.py`` with the ``contact_match_rew`` entry deleted from
+``reward_components`` and no contact bodies declared on the robot;
+``mlp_complex_terrain_no_contact.py`` does the same for the terrain recipe. To
+do this to a recipe of your own, copy it and delete the entry. That is the
+supported route.
+
+A reward cannot be switched off from the command line. A weight of zero is
+refused (``RewardMeta.weight must be a finite nonzero float; delete the
+component instead of weighting it 0``), and the weight is not a
+``static_params`` key, so ``...static_params.weight=0.0`` is refused as an
+unknown path before the environment is built. What ``--overrides`` can do is
+re-weight a reward through its ``meta`` block with a nonzero value. This
+example raises the body-position tracking weight from 0.5 to 0.6 and works
+with every recipe on this page:
 
 .. code-block:: bash
 
-   --overrides "env.reward_components.contact_match_rew.static_params.weight=0.0" \
+   --overrides "env.reward_components.gt_rew.meta.weight=0.6"
 
-(yes, such string-based overrides will work with the factory method rewards)
+The path must name a reward the recipe actually has. ``contact_match_rew``
+exists only in ``mlp.py`` and ``mlp_complex_terrain.py``, so re-weighting it
+under a ``_no_contact`` recipe is refused as an unknown key.
 
 Visualizing Motions
 -------------------

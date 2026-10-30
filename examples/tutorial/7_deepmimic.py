@@ -25,7 +25,7 @@ parser.add_argument(
     "--simulator",
     type=str,
     required=True,
-    help="Simulator to use (e.g., 'isaacgym', 'isaaclab', 'newton', 'mujoco')",
+    help="Simulator: 'isaacgym', 'isaaclab' or 'newton'; MuJoCo cannot build scenes",
 )
 parser.add_argument(
     "--cpu-only",
@@ -396,8 +396,6 @@ print(f"  - Network layers: {len(critic_config.layers)}")
 # Create PPO agent configuration
 agent_config = PPOAgentConfig(
     model=PPOModelConfig(
-        in_keys=obs_keys,  # Observation keys for the model
-        out_keys=["action", "mean_action", "neglogp", "value"],  # Output keys
         actor=actor_config,
         critic=critic_config,
         actor_optimizer=OptimizerConfig(
@@ -468,11 +466,13 @@ print(f"Fabric precision: {fabric_config.precision}")
 # Create the agent with Fabric
 from protomotions.agents.ppo.agent import PPO  # noqa: E402
 
+output_dir = Path("./tutorial_7_output")  # Directory for saving checkpoints
+output_dir.mkdir(parents=True, exist_ok=True)
 agent = PPO(
     fabric=fabric,
     env=env,
     config=agent_config,
-    root_dir=Path("./tutorial_7_output"),  # Directory for saving checkpoints
+    root_dir=output_dir,
 )
 agent.setup()
 

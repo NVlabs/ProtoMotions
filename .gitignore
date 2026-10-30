@@ -49,3 +49,6 @@ slurm_site.yaml
 
 # Metatron native model package is fetched from a pinned Hugging Face revision.
 data/pretrained_models/metatron/G1/
+
+# Tutorial 7 writes its checkpoints here when run from the repo root.
+tutorial_7_output/

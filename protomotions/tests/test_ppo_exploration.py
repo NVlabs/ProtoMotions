@@ -460,3 +460,30 @@ def _ddp_worker(rank, rendezvous):
 
 def test_real_ddp_matches_combined_batch_with_adam_and_clipping(tmp_path):
     mp.spawn(_ddp_worker, args=(f"file://{tmp_path / 'rendezvous'}",), nprocs=2)
+
+
+def test_buffer_setup_accepts_motion_id_as_input_and_stored_output():
+    # ``global_motion_id`` reaches the buffer twice: injected into the
+    # observations and declared as a stored model output. Registration must
+    # not trip over the duplicate (it did, failing every per-motion run at
+    # the first rollout).
+    agent = make_agent(StdMode.PER_MOTION)
+    agent.num_steps = 3
+    agent.add_agent_info_to_obs = lambda obs: obs
+    obs = {"obs": torch.ones(2, 3), "global_motion_id": torch.tensor([0, 1])}
+    output = agent.setup_experience_buffer(obs)
+    assert "global_motion_id" in agent.experience_buffer.store_dict
+    assert "action_std" in agent.experience_buffer.store_dict
+    assert output["action_std"].shape == (2, 2)
+    # One write per step from the observations, none from the model outputs;
+    # otherwise make_dict's write-count check fails after the rollout.
+    assert "global_motion_id" not in agent.model_output_keys
+    with torch.no_grad():
+        for step in range(agent.num_steps):
+            obs_td = agent.obs_dict_to_tensordict(obs)
+            for key, tensor in obs_td.items():
+                agent.experience_buffer.update_data(key, step, tensor)
+            agent.collect_rollout_step(obs_td, step)
+    buffer = agent.experience_buffer
+    assert buffer.store_dict["global_motion_id"] == buffer.total_sum()
+    assert buffer.store_dict["action_std"] == buffer.total_sum()

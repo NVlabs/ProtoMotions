@@ -48,9 +48,9 @@ Headless smoke (requires IsaacLab 3 + Kit)
 
 Run in an IsaacLab 3 environment checked out at the pin above::
 
-   python protomotions/inference_agent.py \\
-     --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/inference_last.ckpt \\
-     --motion-file data/motion_for_trackers/g1_bones_seed_mini.pt \\
+   python protomotions/inference_agent.py \
+     --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/inference_last.ckpt \
+     --motion-file data/motion_for_trackers/g1_bones_seed_mini.pt \
      --simulator isaaclab --num-envs 1 --headless
 
 That path converts the robot MJCF, builds the articulation/contact sensors, and
@@ -58,8 +58,10 @@ steps physics. In the local verification, Kit reached scene setup and policy
 materialization before a ten-minute bound expired during cold Torch warm-up.
 The direct simulator tutorial (``examples/tutorial/0_create_simulator.py``)
 using the same pinned runtime initialized, reset, stepped, and read state for
-more than 3,800 action/physics cycles before its 180-second guard expired. Allow
-more time on a cold machine for the first policy compilation.
+more than 3,800 action/physics cycles before the verification run's 180-second
+time limit expired; the tutorial itself has no time limit and runs until the
+viewer is closed or you press Ctrl-C. Allow more time on a cold machine for the
+first policy compilation.
 
 .. _#5085: https://github.com/isaac-sim/IsaacLab/issues/5085
 .. _#6259: https://github.com/isaac-sim/IsaacLab/pull/6259

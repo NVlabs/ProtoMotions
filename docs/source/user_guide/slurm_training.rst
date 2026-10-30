@@ -100,9 +100,11 @@ ProtoMotions handles this automatically using two mechanisms:
 
 **1. SLURM Job Arrays**
 
-The launcher submits jobs as arrays (``--array=0-5%1``), meaning up to 5 sequential 
-jobs will run. When a job times out, the next array task starts and resumes from 
-the last checkpoint.
+The launcher submits jobs as arrays (``--array=0-5%1`` with the default
+``--array-size`` of 5), which SLURM runs as up to 6 sequential tasks: the
+initial job plus 5 auto-resumes, for a total walltime of up to 6 x
+``--slurm-time``. When a task times out, the next array task starts and resumes
+from the last checkpoint.
 
 **2. AutoResume Callback**
 
@@ -226,13 +228,17 @@ For large-scale training across multiple nodes:
        --num-envs=8192 \
        --batch-size=16384 \
        --motion-file=/cluster/path/to/amass_train.pt \
-       --experiment-path=examples/experiments/mimic/mlp.py \
+       --experiment-path=examples/experiments/mimic/mlp_no_contact.py \
        --experiment-name=smpl_motion_tracker_4node \
        --user=myusername \
        --ngpu=8 \
        --nodes=4 \
        --slurm-time=4:00:00 \
        --use-wandb
+
+This job targets IsaacGym, so it uses the ``_no_contact`` mimic recipe:
+IsaacGym's GPU pipeline reports one combined force per body and cannot run a
+recipe that declares contact bodies. On IsaacLab use ``mimic/mlp.py``.
 
 ProtoMotions uses PyTorch Fabric for distributed training. Each node runs 
 ``--ngpu`` processes, and gradients are synchronized across all nodes.

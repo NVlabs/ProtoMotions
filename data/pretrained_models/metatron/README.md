@@ -33,11 +33,15 @@ before updating the pinned revision.
 
 The playback config starts the robot idle; pressing `X` in the viewer cycles
 four goal modes (idle, walk to a target location, follow a velocity command,
-reach with the right hand), and scene inputs are fed empty. Although the weights
-retain scene conditioning, generic
-native re-export does not recreate the browser scene pipeline. The separate
-`demo/model.onnx` and `racer/network.onnx` remain on the same Hub repository and
-require their paired browser runtimes. Their paths and bytes are unchanged.
+reach with the right hand), and the scene stream is published empty by the
+saved configuration's `scene_boxes` control. A generic re-export with
+`deployment/export_to_onnx.py` takes the same eight `scene_boxes_*` inputs from
+the host, so a scene-capable host can feed its object measurements; its host
+contract still differs from the browser graphs' (no simulator root pose; the
+current action and the eight-slot history as separate inputs), so it is not a
+drop-in replacement for them. The separate `demo/model.onnx` and
+`racer/network.onnx` remain on the same Hub repository and require their paired
+browser runtimes. Their paths and bytes are unchanged.
 
 Model artifacts use the NVIDIA Open Model License; source code is Apache-2.0.
 Keep `LICENSE.pdf` and `NOTICE.txt` with redistributed model artifacts. Training

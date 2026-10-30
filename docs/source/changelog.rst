@@ -7,6 +7,137 @@ Unreleased
 Record changes for the next release in this section. Move completed entries
 into a dated release section when the release is published.
 
+October 29, 2026
+----------------
+
+The following changes are included in this release:
+
+Deployment
+~~~~~~~~~~
+
+* ``matrix_to_quaternion`` is ONNX-static: it gathers on the argmax and selects
+  with ``where`` instead of boolean-mask writes, so the FK subgraph a native host
+  compiles fits a static TensorRT plan.
+
+* Scene boxes are an exportable input stream. A scene-conditioned policy (the
+  Metatron G1 release) binds the eight ``scene_boxes.*`` names: box centres and
+  extents in the object frame, object poses, per-box validity, per-object
+  visibility and the observed-pose bias. ``SceneBoxesControl``
+  (``protomotions/envs/control/scene_boxes_control.py``) publishes them in the
+  simulator as an all-padding scene of a fixed capacity, so one saved
+  configuration both runs and exports; it reads nothing from the scene
+  library (scene-box training is not supported, and a scene library with
+  objects is refused). The exporter labels them with the new ``scene``
+  provider, and the recipe helper ``deployable_scene_box_observations``
+  (``examples/experiments/masked_mimic/deployable_g1_observations.py``) binds
+  the two observations that compute the box corners in the root heading frame
+  inside the graph, with the root pose from the recipe's FK kernel, so a
+  configuration that binds it exports the eight ``scene_boxes_*`` inputs and
+  no body pose. ``configure_observations(robot_cfg, env_cfg, scene_boxes=True)``
+  binds the pair to the recipe's one FK kernel, and the pinned Metatron
+  package does.
+* The pinned Metatron G1 package (``data/pretrained_models/metatron/
+  huggingface.json``) moves to the Hub revision whose saved configuration
+  binds the FK goal observation to the raw joint readings and the anchor pose
+  and reads the scene from the host: ``SceneBoxesControl`` publishes the empty
+  scene in the simulator and the two scene observations replace the dummy
+  ones. ``deployment/export_to_onnx.py`` exports the downloaded package with
+  37 inputs, the eight ``scene_boxes_*`` inputs among them and no body pose
+  (the dummy-sized ``current_dof_pos`` is gone), and
+  ``deployment/export_fk_to_onnx.py`` exports its ``fk.onnx``. The weights
+  are unchanged; the new graph matches the maintainer's 39-input graph on
+  scene cases to ``1.1e-5``. The dummy scene functions in
+  ``examples/inference/metatron.py`` are removed.
+  ``scripts/download_metatron.py`` does not overwrite a different local
+  package: move an older ``G1/`` directory aside before downloading.
+* Move the forward kinematics of the robot's own body into the exported
+  graph. The deployable Metatron goal observation
+  (``fk_masked_mimic_target_poses``) binds a ``BakedAnchorFK`` kernel to the
+  joint readings and the anchor pose instead of reading reconstructed body
+  poses; the policy graph keeps its four control outputs (``actions``,
+  ``joint_pos_targets``, ``stiffness_targets``, ``damping_targets``) and
+  every output is a command. The ``body_pos``/``body_rot`` host input kinds
+  and the ``derived_state_provider`` sensor metadata are removed: a robot host
+  feeds raw readings, its past actions and goals only.
+* Add ``deployment/export_fk_to_onnx.py``, which exports the same FK kernel
+  the policy traces as a second small graph, ``fk.onnx`` with an ``fk.yaml``
+  sidecar, for a host that needs the body poses outside the policy call (the
+  native Metatron runtime runs FK on the current measurement before every
+  call). Its inputs carry the policy graph's names for the same paths
+  (``noisy_dof_pos``, ``noisy_anchor_pos``, ``noisy_anchor_rot``) with the
+  batch fixed to one robot; it returns ``body_pos`` and ``body_rot`` in robot
+  body order and is checked against the kernel with ONNX Runtime at export.
+  The previous standalone FK exporter under ``deployment/native/tools``, which
+  re-ran pose_lib's forward kinematics with its own quaternion conversion, is
+  deleted, so there is one FK implementation and the two graphs agree by
+  construction. ``build_metatron_fk_tensorrt.py`` compiles ``fk.onnx`` to the
+  TensorRT plan and, given the policy manifest, checks the sidecar's body
+  order, joint order and anchor against it; the C++ engine binds joints plus
+  the torso anchor pose.
+* ``deployment/export_to_onnx.py --host robot|simulation`` names who feeds the
+  exported graph. The default robot host is the sensor definition, the
+  policy's past actions and the goal streams, as before; a simulation host (a
+  game engine, a browser MuJoCo, a sim-to-sim check) may also feed the
+  simulator's own body state, so ``current.rigid_body_pos``/``rot``/``vel``/
+  ``ang_vel`` and ``current.ground_heights`` now carry the ``simulated_*``
+  host kinds and ``mimic.future_vel``/``future_ang_vel`` the
+  ``reference_motion_body_vel``/``_ang_vel`` kinds. A robot export refuses a
+  simulation-only binding, naming the kind and the host that could feed it;
+  a simulation sidecar records ``host: simulation`` (omitted means robot, so
+  robot sidecars are unchanged). The shipped SOMA tracker, whose observations
+  read the simulator's body state, exports only with ``--host simulation``.
+* ``deployment/export_to_onnx.py --leapp-graph-history`` writes a second LEAPP
+  bundle in which the graph owns the declared sensor and action histories as
+  LEAPP feedback state, so every LEAPP runtime runs the same history update
+  instead of replaying ``InputHistory`` on the host. The history inputs leave
+  the interface; per tick the host supplies the measurements and goals as
+  before, plus ``applied_actions`` (the raw action actually applied on the
+  previous tick) and ``command_accepted`` (false when that command was
+  dropped). The export needs ``PYTORCH_JIT=0``; the bundle has batch size 1
+  and no ``deployment_contract.yaml``. The existing ``--leapp`` bundle is
+  unchanged. See ``deployment/native/docs/leapp.md``.
+
+Training and Evaluation
+~~~~~~~~~~~~~~~~~~~~~~~
+
+* Fix per-motion exploration (``std_mode=per_motion``): the agent injected
+  ``global_motion_id`` into the observations and the model also declared it as a
+  stored output, so the experience buffer registered the key twice and the first
+  rollout of every per-motion run failed. Keys already registered from the
+  observations are dropped from the model-output list.
+* ``load_experiment_module`` prefers the running tree over the project root
+  found beside a recipe copy, so a run directory saved inside another checkout
+  no longer imports that checkout's code.
+
+Examples, Tutorials and Scripts
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* Every documented command was run or checked against the tree, and the ones
+  that could not run as written now can: tutorial 0 declares the G1 joint
+  limits its hand-built robot config needs, tutorial 7 drops the PPO keys the
+  agent refuses and creates its output directory, and
+  ``random_pose_visualizer.py`` accepts every registered robot.
+* Add ``examples/experiments/mimic/mlp_no_contact.py`` and
+  ``mlp_complex_terrain_no_contact.py``: the mimic recipes without contact
+  bodies, for IsaacGym (one combined force per body) and motion files without
+  contact labels.
+* Remove the dead ``examples/benchmark`` scripts, the stale SMPL viser viewer
+  (``examples/visualize_smpl_motion.py``) and the IsaacLab 2 duplicate of the
+  MJCF-to-USD converter under ``data/scripts``.
+* Drop the unused ``openmesh`` pin: nothing imports it, and it had no wheel for
+  Python 3.10 or newer.
+
+Demos and Documentation
+~~~~~~~~~~~~~~~~~~~~~~~
+
+* G1 Racer: a service worker adds the cross-origin isolation headers on static
+  hosts so the CPU path gets its WASM threads (one bounded reload per tab;
+  ``?threads=1`` opts out). WebGPU selection is unchanged.
+* README: a News section, Generative Policies first with new clips (GPC
+  parkour, G1 Racer, Metatron on the real G1 and on furniture), the Metatron
+  paper and project links, and every documentation link pointing at the
+  published site.
+
 October 28, 2026
 ----------------
 

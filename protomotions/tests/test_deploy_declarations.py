@@ -43,6 +43,37 @@ CASES = [
     ),
     ("current.root_local_ang_vel", "local_root_ang_vel", "simulator_truth", (), (1, 3)),
     ("current.anchor_pos", "anchor_pos", "simulator_truth", (("x", "y", "z"),), (1, 3)),
+    # The simulator's own body state: simulation-host kinds, which only
+    # `--host simulation` accepts (kinds_for_host below).
+    (
+        "current.rigid_body_pos",
+        "simulated_body_pos",
+        "simulator_truth",
+        (BODIES, ("x", "y", "z")),
+        (1, 33, 3),
+    ),
+    (
+        "current.rigid_body_rot",
+        "simulated_body_rot",
+        "simulator_truth",
+        (BODIES, ("x", "y", "z", "w")),
+        (1, 33, 4),
+    ),
+    (
+        "current.rigid_body_vel",
+        "simulated_body_vel",
+        "simulator_truth",
+        (BODIES, ("x", "y", "z")),
+        (1, 33, 3),
+    ),
+    (
+        "current.rigid_body_ang_vel",
+        "simulated_body_ang_vel",
+        "simulator_truth",
+        (BODIES, ("x", "y", "z")),
+        (1, 33, 3),
+    ),
+    ("current.ground_heights", "simulated_ground_heights", "simulator_truth", (), (1,)),
     ("noisy.anchor_pos", "anchor_pos", "localization", (("x", "y", "z"),), (1, 3)),
     ("noisy.odom_start_xy", "odom_start_xy", "localization", (("x", "y"),), (1, 2)),
     ("noisy.odom_disp_start", "odom_disp_start", "localization", (("x", "y"),), (1, 2)),
@@ -108,6 +139,20 @@ CASES = [
         "reference_motion",
         (BODIES, ("x", "y", "z", "w")),
         (1, 4, 33, 4),
+    ),
+    (
+        "mimic.future_vel",
+        "reference_motion_body_vel",
+        "reference_motion",
+        (BODIES, ("x", "y", "z")),
+        (1, 4, 33, 3),
+    ),
+    (
+        "mimic.future_ang_vel",
+        "reference_motion_body_ang_vel",
+        "reference_motion",
+        (BODIES, ("x", "y", "z")),
+        (1, 4, 33, 3),
     ),
     (
         "mimic.future_dof_pos",
@@ -206,6 +251,79 @@ def test_command_history_is_policy_history_in_any_namespace():
         path = f"{namespace}.processed_actions"
         assert deploy_for(path) == "last_actions", path
         assert provider_for_path(path) == "policy_history", path
+
+
+def test_simulated_kinds_belong_to_the_simulation_host():
+    # The robot set is every kind but the simulator's body state; the simulation
+    # set is all of them, so a simulation export accepts every robot binding.
+    from deployment.contract import (
+        ELEMENT_LABELS,
+        SIMULATION_ONLY_KINDS,
+        accepting_host,
+        host_can_feed,
+        kinds_for_host,
+    )
+
+    robot, simulation = kinds_for_host("robot"), kinds_for_host("simulation")
+    # Every simulation-only kind has a label row (a kind without one is refused
+    # at export), the robot set has none of them, and the simulation set has all
+    # of them on top of every robot kind.
+    assert SIMULATION_ONLY_KINDS <= set(ELEMENT_LABELS)
+    assert robot.isdisjoint(SIMULATION_ONLY_KINDS)
+    assert SIMULATION_ONLY_KINDS <= simulation and robot <= simulation
+    assert host_can_feed("robot", "joint_pos")
+    assert not host_can_feed("robot", "simulated_body_pos")
+    assert SIMULATION_ONLY_KINDS == {
+        "simulated_body_pos",
+        "simulated_body_rot",
+        "simulated_body_vel",
+        "simulated_body_ang_vel",
+        "simulated_ground_heights",
+    }
+    assert {deploy_for(f"current.{leaf}") for leaf in (
+        "rigid_body_pos", "rigid_body_rot", "rigid_body_vel", "rigid_body_ang_vel",
+        "ground_heights",
+    )} == SIMULATION_ONLY_KINDS
+    assert accepting_host("simulated_body_pos") == "simulation"
+    assert accepting_host("joint_pos") == "robot"
+    # A robot can feed the privileged joint readings and anchor pose, so those
+    # keep their robot kinds; the sensor views' body poses stay undeclared.
+    assert deploy_for("current.dof_pos") == "joint_pos"
+    assert deploy_for("current.anchor_pos") == "anchor_pos"
+    assert deploy_for("noisy.rigid_body_pos") is None
+    with pytest.raises(ValueError, match="unknown deployment host 'browser'"):
+        kinds_for_host("browser")
+
+
+def test_simulator_body_state_is_refused_for_a_robot_host_and_fed_to_a_simulation_host():
+    import torch
+
+    from deployment.export_to_onnx import _build_samples
+    from protomotions.envs.context_views import EnvContext
+    from protomotions.envs.mdp_component import MdpComponent
+
+    def _reads(x):
+        return x
+
+    component = MdpComponent(_reads, {"x": EnvContext.current.rigid_body_pos})
+    context = {"current.rigid_body_pos": torch.zeros(1, 33, 3)}
+    with pytest.raises(ValueError) as refusal:
+        _build_samples({"body_obs": component}, context, set())
+    assert str(refusal.value) == (
+        "actor observation 'body_obs' binds 'current.rigid_body_pos' with host "
+        "kind 'simulated_body_pos', which only a simulation host can feed; this "
+        "export is for a robot host. Pass --host simulation to export for one, "
+        "or bind a name a robot host can feed"
+    )
+    samples = _build_samples({"body_obs": component}, context, set(), host="simulation")
+    assert samples["current.rigid_body_pos"] is context["current.rigid_body_pos"]
+    # The privileged joint readings a robot can feed export for either host.
+    joints = MdpComponent(_reads, {"x": EnvContext.current.dof_pos})
+    joint_context = {"current.dof_pos": torch.zeros(1, 29)}
+    for host in ("robot", "simulation"):
+        assert "current.dof_pos" in _build_samples(
+            {"j": joints}, joint_context, set(), host=host
+        )
 
 
 def test_sensor_history_exports_but_privileged_history_is_refused():

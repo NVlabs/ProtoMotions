@@ -4,7 +4,6 @@
 import math
 import torch
 from torch import Tensor
-import torch.nn.functional as F
 from typing import Tuple, List
 import unittest
 
@@ -36,11 +35,17 @@ def _sqrt_positive_part(x: Tensor) -> Tensor:
     """
     Returns torch.sqrt(torch.max(0, x))
     but with a zero subgradient where x is 0.
+
+    Written with ``where`` rather than a boolean mask assignment: the mask
+    exports to ONNX as a data-dependent NonZero, which a static TensorRT plan
+    cannot hold. The inner ``where`` feeds the square root a 1 wherever x <= 0
+    so its gradient stays finite there and the outer ``where`` zeroes it
+    (a plain clamp would give 0 * inf = NaN at x == 0). Same values and
+    gradients as the mask form.
     """
-    ret = torch.zeros_like(x)
-    positive_mask = x > 0
-    ret[positive_mask] = torch.sqrt(x[positive_mask])
-    return ret
+    positive = x > 0
+    safe = torch.where(positive, x, torch.ones_like(x))
+    return torch.where(positive, torch.sqrt(safe), torch.zeros_like(x))
 
 
 @torch.jit.script
@@ -548,9 +553,12 @@ def matrix_to_quaternion(matrix: torch.Tensor, w_last: bool) -> torch.Tensor:
     # if not for numerical problems, quat_candidates[i] should be same (up to a sign),
     # forall i; we pick the best-conditioned one (with the largest denominator)
 
-    quat_candidates = quat_candidates[
-        F.one_hot(q_abs.argmax(dim=-1), num_classes=4) > 0.5, :  # pyre-ignore[16]
-    ].reshape(batch_dim + (4,))
+    # Select with a gather on the argmax rather than a boolean mask: a mask
+    # index exports to ONNX as a data-dependent NonZero, which a static
+    # TensorRT plan cannot hold. Same values, fixed shapes.
+    best = q_abs.argmax(dim=-1, keepdim=True).unsqueeze(-1)
+    best = best.expand_as(quat_candidates[..., :1, :])
+    quat_candidates = torch.gather(quat_candidates, -2, best)[..., 0, :]
 
     if w_last:
         quat_candidates = wxyz_to_xyzw(quat_candidates)

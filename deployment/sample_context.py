@@ -46,6 +46,10 @@ from protomotions.envs.control.masked_mimic_control import (
     MaskedMimicControlConfig,
 )
 from protomotions.envs.control.masked_mimic_prompt import GoalCanvas
+from protomotions.envs.control.scene_boxes_control import (
+    SceneBoxesControl,
+    SceneBoxesControlConfig,
+)
 from protomotions.envs.control.task_inputs import TaskInputs
 from protomotions.envs.obs.state_history_buffer import (
     HistorySample,
@@ -83,6 +87,8 @@ class _SampleReference:
     the library does, so the mimic namespace publishes exactly the reference
     names the vocabulary declares and no undeclared ones.
     """
+
+    has_scene_objects = False  # the export context has no scene library
 
     def __init__(
         self,
@@ -263,6 +269,39 @@ def _publish_mimic(
     return control.publish(None)
 
 
+def _publish_scene_boxes(
+    robot_config: RobotConfig,
+    device: torch.device,
+    num_envs: int,
+    reference: _SampleReference,
+    env_config: EnvConfig,
+) -> Dict[str, Any]:
+    """Publish the scene-box stream when the configuration carries its control.
+
+    The placeholder control publishes the eight ``scene_boxes.*`` names at the
+    configured capacity (all padding), which is exactly what the environment
+    publishes in the simulator; the shapes are the graph's scene input shapes.
+    A configuration without the control publishes nothing, so a binding to a
+    scene name is refused by ``_build_samples`` as unpublished.
+    """
+    configs = [
+        config
+        for config in env_config.control_components.values()
+        if isinstance(config, SceneBoxesControlConfig)
+    ]
+    if not configs:
+        return {}
+    if len(configs) > 1:
+        raise ValueError(
+            "export requires at most one SceneBoxesControl component, found "
+            f"{len(configs)}"
+        )
+    control = SceneBoxesControl(
+        configs[0], _mimic_inputs(robot_config, device, num_envs, reference)
+    )
+    return control.publish(None)
+
+
 def reference_control_config(env_config: EnvConfig) -> MimicControlConfig:
     """The single reference publisher used by the exported policy."""
     matches = {
@@ -291,7 +330,8 @@ def build_sample_context(
     environment's own ring is sized. ``env_config`` supplies the sensor suite
     (``for_inference`` so the clean and noisy estimates coincide) and the mimic
     control's future horizon. The returned ``context`` merges the state and
-    mimic namespaces; ``future_names`` and ``slot_names`` are the names found to
+    mimic namespaces, plus the scene-box namespace when the configuration has
+    that control; ``future_names`` and ``slot_names`` are the names found to
     carry a future or a history axis by the horizon and depth probes.
     """
     device = torch.device(device)
@@ -392,6 +432,7 @@ def build_sample_context(
     context: Dict[str, Any] = {
         **published_state,
         **published_mimic,
+        **_publish_scene_boxes(robot_config, device, num_envs, reference, env_config),
         "dt": float(robot_config.control_dt),
     }
     return context, future_names, slot_names

@@ -46,7 +46,10 @@ dropping hands, finger details, face joints, and toe ends.
 
    An example Kimodo-generated SOMA ``.npz`` file is included at
    ``data/soma-kimodo-generated/`` so you can try the pipeline without
-   running Kimodo yourself.
+   running Kimodo yourself. Its converted output,
+   ``data/soma-kimodo-generated/proto/output.motion``, is shipped too, and the
+   converter skips any motion whose ``.motion`` file already exists, so pass
+   ``--force-remake`` to see the conversion run on the shipped example.
 
 **Convert a directory of NPZ files:**
 
@@ -56,7 +59,8 @@ dropping hands, finger details, face joints, and toe ends.
        --input-dir data/soma-kimodo-generated/ \
        --output-dir data/soma-kimodo-generated/proto \
        --input-fps 30 \
-       --output-fps 30
+       --output-fps 30 \
+       --force-remake
 
 **Key arguments:**
 
@@ -167,6 +171,11 @@ A typical end-to-end workflow using the G1 robot:
 4. **Train** a physics-based policy to track the generated motions
 5. **Deploy** the policy to a real robot or test in simulation
 
+Step 4 runs on IsaacGym with ``mimic/mlp_no_contact.py`` rather than
+``mimic/mlp.py``: IsaacGym's GPU pipeline reports one combined force per body,
+so it cannot run a recipe that declares contact bodies. On IsaacLab use
+``mimic/mlp.py``.
+
 .. code-block:: bash
 
    # Step 1: Generate with Kimodo or ARDY (see the respective generator docs)
@@ -191,7 +200,7 @@ A typical end-to-end workflow using the G1 robot:
    python protomotions/train_agent.py \
        --robot-name g1 \
        --simulator isaacgym \
-       --experiment-path examples/experiments/mimic/mlp.py \
+       --experiment-path examples/experiments/mimic/mlp_no_contact.py \
        --experiment-name kimodo_g1 \
        --motion-file data/g1-kimodo-generated/kimodo_g1_motions.pt \
        --num-envs 4096 \

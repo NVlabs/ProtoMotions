@@ -82,8 +82,17 @@ def main():
             assert page.evaluate("window.kartStatus.state.boxes.length") == 12
             assert page.evaluate("window.kartStatus.timings.ticks") == 0
             assert not page.locator("#countdown").is_visible()
+            runtime = page.locator("#runtime").inner_text()
             if args.webgpu:
-                assert "WebGPU" in page.locator("#runtime").inner_text()
+                assert "WebGPU" in runtime
+            else:
+                # The bootstrap's service worker makes a static host
+                # cross-origin isolated after one reload, so the CPU path gets
+                # its WASM threads instead of running on one.
+                assert page.evaluate("window.crossOriginIsolated") is True, runtime
+                cores = page.evaluate("navigator.hardwareConcurrency")
+                threads = int(runtime.split("·")[1].split()[0])
+                assert threads == min(12, cores, max(1, cores // 2)), (runtime, cores)
             page.locator("#start").click()
             page.wait_for_function(
                 f"window.kartStatus?.timings.ticks >= {args.ticks} || window.kartError",

@@ -45,9 +45,12 @@ Domain Randomization Types
 --------------------------
 
 ProtoMotions supports several randomization types via ``DomainRandomizationConfig``.
-Below are the settings used in the pre-trained G1 BeyondMimic tracker
-(``data/pretrained_models/motion_tracker/g1-bones-deploy/experiment_config.py``).  You can
-adjust ranges to suit your robot and deployment conditions.
+The action-noise, friction, center-of-mass, push and reset-noise blocks below
+are the settings the pre-trained G1 BeyondMimic tracker was trained with
+(``data/pretrained_models/motion_tracker/g1-bones-deploy/experiment_config.py``).
+The action-latency, scene-object and body-mass blocks illustrate the remaining
+types; the shipped tracker does not use them. You can adjust ranges to suit
+your robot and deployment conditions.
 
 **Action Noise:**
 
@@ -58,7 +61,7 @@ adjust ranges to suit your robot and deployment conditions.
        dof_names=[".*"],  # Apply to all joints
    )
 
-**Action Latency:**
+**Action Latency** (not used by the shipped tracker):
 
 Action latency samples a delay independently for each environment at every control
 step, uniformly between zero and ``max_latency_ms`` milliseconds. The previous
@@ -66,7 +69,8 @@ action is held until that delay expires. If the arrival time falls between two
 physics-substep boundaries, that one substep uses the time-average of the previous
 and new actions; later substeps use the new action. The first command after an
 environment reset is never delayed. The maximum delay must be no greater than one
-control interval (``1000 * sim.decimation / sim.fps`` milliseconds). A value of
+control interval, which is ``1000 / control_hz`` milliseconds (20 ms for the 50 Hz
+humanoids); the simulator refuses a larger value at construction. A value of
 ``0.0`` disables latency randomization, which is the default.
 
 .. code-block:: python
@@ -99,7 +103,7 @@ expect lower simulation throughput while it is enabled.
    values are not explicitly set.  This ensures consistent behavior across
    simulators.
 
-**Scene Object Asset Randomization:**
+**Scene Object Asset Randomization** (not used by the shipped tracker):
 
 Scene objects can define deterministic base properties through
 ``ObjectOptions``.  Mesh and primitive objects can set either ``mass`` or
@@ -134,7 +138,7 @@ default to ``0.0``.  IsaacLab and IsaacGym apply these scene object asset
 properties to both primitive and mesh objects.  Newton currently does not spawn
 scene-lib objects, so object asset randomization has no effect there.
 
-**Robot Body Mass Randomization:**
+**Robot Body Mass Randomization** (not used by the shipped tracker):
 
 Robot body mass randomization samples absolute masses and scales inertia by the
 same ratio. It is supported by IsaacGym, IsaacLab, and Newton. Body-mass domain
@@ -147,8 +151,14 @@ immediately when it is configured instead of silently ignoring it.
        num_buckets=64,
        mass_range=(0.001, 1.0),
        log_uniform=True,
-       body_names=["left_hand", "right_hand"],
+       body_names=["left_rubber_hand", "right_rubber_hand"],  # G1's hand bodies
    )
+
+``body_names`` are regular expressions matched against the whole body name, so
+they must name bodies the robot actually has. G1's hands are
+``left_rubber_hand`` and ``right_rubber_hand`` (``[".*_hand"]`` matches both).
+A pattern that matches nothing stops the build with ``body mass randomization
+matched no robot bodies``.
 
 **Center of Mass Randomization:**
 
@@ -161,27 +171,36 @@ immediately when it is configured instead of silently ignoring it.
 
 **Sensor Noise:**
 
-Declare physical sensors on ``env.sensors``. Joint encoders, IMU orientation and
-gyro are always present. Localization, base linear velocity and height are
-optional. The robot config declares the IMU body and mounting quaternion
-separately from the observation anchor.
+Declare physical sensors on ``env.sensors``, one channel at a time. Joint
+encoders and the IMU (orientation and gyro) are mandatory fields; localization,
+base linear velocity and height are optional fields that are absent when left
+``None``. Each channel carries its own noise levels. The robot config declares
+the IMU body and mounting quaternion separately from the observation anchor.
+This is the block the L2C2 recipe uses:
 
 .. code-block:: python
 
    from protomotions.envs.sensors.config import (
-       NoNoise, SensorConfig, SensorNoise, SensorSuite,
+       IMUSensor, JointEncoderSensor, SensorConfig,
    )
 
    env_cfg.sensors = SensorConfig(
-       suite=SensorSuite.from_robot(robot_cfg),
-       noise=SensorNoise(
-           joint_pos=0.01,        # Uniform half-width, radians
-           joint_vel=0.5,         # Uniform half-width, rad/s
-           imu_quat=0.05,         # Quaternion-component perturbation, then normalize
-           imu_gyro=0.2,          # Uniform half-width, rad/s in sensor axes
-           localization=NoNoise("No localization sensor in this suite"),
+       joint_encoders=JointEncoderSensor(
+           pos_noise=0.01,   # Uniform half-width, radians
+           vel_noise=0.5,    # Uniform half-width, rad/s
        ),
+       imu=IMUSensor(
+           quat_noise=0.05,  # Quaternion-component perturbation, then normalize
+           gyro_noise=0.2,   # Uniform half-width, rad/s in sensor axes
+       ),
+       # localization, base_velocity and height stay None: not on this robot.
    )
+
+A channel that is present but read exactly takes ``NoNoise("reason")`` in
+place of a half-width, for example
+``IMUSensor(quat_noise=NoNoise("calibrated mount"), gyro_noise=0.2)``. A sensor
+the robot does not have is left ``None``, not given a ``NoNoise`` entry: there
+is no suite object and no noise slot for a channel that does not exist.
 
 These are empirical robustness settings, not a hardware calibration. Each
 physical channel is sampled once per step. Body positions, rotations and
@@ -199,9 +218,9 @@ same estimator. Reset perturbations remain separate in ``RobotNoiseConfig``.
    (see :doc:`g1_deployment`).
 
    To anchor on the pelvis instead, call
-   ``robot_cfg.update_fields(anchor_body_name=None)``, which also resets
-   ``anchor_body_index`` to 0.  Training refuses to start if the two fields
-   name different bodies.
+   ``robot_cfg.update_fields(anchor_body_name=None)``. ``anchor_body_index``
+   is derived from the name (0 for ``None``) and cannot be set directly;
+   ``update_fields(anchor_body_index=...)`` is refused.
 
 Observation kernels bind the privileged names (``current.*``) by default;
 ``sensed()`` repoints a dict of components at one source and returns the
@@ -287,12 +306,34 @@ height, so it requires both localization and the height channel. A height
 reading alone does not provide world positions; the estimator never invents
 world XY coordinates to satisfy a position binding.
 
-For noise-free simulation inference, replace the noise config explicitly with
-``SensorNoise.exact("Simulation inference")``; keep the suite and source
-bindings unchanged. Exported policies do not sample noise. Their contract
+For noise-free simulation inference nothing has to be replaced:
+``inference_agent.py`` switches every declared channel to an exact read
+(``SensorConfig.for_inference()``) before any override or recipe hook runs,
+and the channels and source bindings stay as trained. The manual equivalent,
+if a script needs it, is ``exact_channel()`` in
+``protomotions/envs/sensors/config.py``. Exported policies do not sample
+noise. Their contract
 describes the physical sensor contract and their host must supply those
 measurements. ``deployment/export_to_onnx.py`` reads the sensor suite
 from the checkpoint and records the channels the actor binds in the sidecar.
+In a robot export, body poses are never graph inputs: a recipe that needs the
+current body poses binds the ``BakedAnchorFK`` kernel to the joint readings and the anchor pose,
+and the exported graph computes them inside the policy. The policy graph keeps
+its four control outputs (``actions``, ``joint_pos_targets``,
+``stiffness_targets``, ``damping_targets``); every output is a command. A host
+that needs the body poses outside the policy call runs a second, small graph,
+``fk.onnx``, which ``deployment/export_fk_to_onnx.py`` exports from the same
+kernel object the policy traces, rebuilt from the same config bundle beside
+the checkpoint. Its inputs carry the policy graph's names for the same sensor
+paths, so a host feeds one tensor under one name to both graphs, and the two
+graphs agree by construction because there is one FK implementation.
+The exporter is also told who will feed the graph: the default,
+``--host robot``, refuses a binding to the simulator's own body state, while
+``--host simulation`` (a game engine, a browser MuJoCo, a sim-to-sim check)
+accepts the privileged body poses, velocities and ground heights under
+``current.*`` and records ``host: simulation`` in the sidecar. A policy meant
+for a robot is exported with the default even while it is tested in a
+simulator.
 The current standalone tracker host requires a root-body IMU with identity
 mount. Other placements need host-side conversion before using that exporter.
 
@@ -381,32 +422,35 @@ perfect starting pose.
 Automatic Friction Combine Mode Conversion
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Different physics engines use different friction combine modes:
+Physics engines combine robot and terrain friction differently. Two backends
+have a fixed combine mode, and those are the two ProtoMotions converts for:
 
-* **IsaacGym / IsaacLab (PhysX)**: Uses ``AVERAGE`` -- effective friction is
-  the average of robot and terrain friction: ``(robot + terrain) / 2``
-* **MuJoCo**: Uses ``MAX`` -- effective friction is the maximum of the two:
-  ``max(robot, terrain)``
+* **IsaacGym**: fixed ``AVERAGE`` -- effective friction is
+  ``(robot + terrain) / 2``. Converted.
+* **Newton**: fixed ``MAX`` -- effective friction is ``max(robot, terrain)``.
+  Converted.
+* **IsaacLab**: applies the combine mode written in the terrain config, so
+  there is nothing to convert.
+* **MuJoCo**: no conversion. The backend sets the robot's own geoms to
+  ``simulator.default_robot_friction`` and does not touch the floor.
 
-ProtoMotions **automatically converts** friction settings when switching
-simulators via ``convert_friction_for_simulator()``.  You can configure friction
-using any combine mode, and the system ensures equivalent effective friction
-behavior across simulators.
+``convert_friction_for_simulator()`` runs once, when the components are built.
+For IsaacGym and Newton it rewrites the terrain friction, and the friction
+domain-randomization ranges if any, so that the configured effective friction
+is preserved under that backend's combine mode. For IsaacLab and MuJoCo it
+returns the configs unchanged.
 
-**How it works:**
-
-When a simulator uses ``MAX`` combine mode:
+**How it works** when the target backend combines with ``MAX`` (Newton):
 
 1. Character shape friction is set from ``simulator.default_robot_friction``
 2. Terrain friction is adjusted to preserve the configured effective value
 3. Domain-randomized character friction overrides the baseline for selected bodies
 
 This keeps the configured character friction explicit even when domain
-randomization is disabled.
-
-This conversion is transparent -- you don't need to change your config for
-different simulators.  The same experiment config works on IsaacGym, IsaacLab,
-and MuJoCo with equivalent friction behavior.
+randomization is disabled. Between IsaacGym, IsaacLab and Newton the same
+experiment config therefore gives the same effective friction without edits.
+MuJoCo is the exception: the floor keeps whatever friction the MJCF gives it,
+which is one of the differences a sim2sim check exercises.
 
 
 L2C2 Smoothness Regularization

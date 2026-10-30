@@ -337,6 +337,43 @@ def test_load_experiment_module_loads_file_and_rejects_missing_paths(tmp_path):
         load_experiment_module(tmp_path / "missing.py")
 
 
+def test_load_experiment_module_prefers_the_running_tree_over_the_recipe_root(
+    monkeypatch, tmp_path
+):
+    """A recipe copy inside another checkout imports the running tree's recipes.
+
+    The copy's own project root is appended after the running tree, so it only
+    serves what the running tree lacks (here a top-level helper module).
+    """
+    import protomotions
+
+    running_root = Path(protomotions.__file__).resolve().parents[1]
+    foreign = tmp_path / "other_checkout"
+    for package in ("examples", "examples/experiments", "examples/experiments/mimic"):
+        (foreign / package).mkdir(parents=True, exist_ok=True)
+        (foreign / package / "__init__.py").write_text("")
+    (foreign / "examples/experiments/mimic/mlp.py").write_text("SENTINEL = 1\n")
+    (foreign / "recipe_helpers_only_here.py").write_text("HELPER = 'recipe root'\n")
+    run_dir = foreign / "results" / "run"
+    run_dir.mkdir(parents=True)
+    copy = run_dir / "experiment_config.py"
+    copy.write_text(
+        "from examples.experiments.mimic import mlp\n"
+        "import recipe_helpers_only_here\n"
+        "MLP_FILE = mlp.__file__\n"
+        "HELPER = recipe_helpers_only_here.HELPER\n"
+    )
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    monkeypatch.delitem(sys.modules, "recipe_helpers_only_here", raising=False)
+
+    module = load_experiment_module(copy)
+
+    assert str(Path(module.MLP_FILE).resolve()).startswith(str(running_root))
+    assert module.HELPER == "recipe root"
+    assert sys.path[0] != str(foreign)
+    assert sys.path.index(str(foreign)) > sys.path.index(str(running_root))
+
+
 # ---------------------------------------------------------------------------
 # Saving the bundle
 # ---------------------------------------------------------------------------

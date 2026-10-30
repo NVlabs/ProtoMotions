@@ -38,6 +38,7 @@ Components bind their kernels to context paths using ``MdpComponent``:
    │  mimic.*  steering.*   │  dt, env_ids, progress_buf         │
    │  masked_mimic.*        │  ground_heights, contact_body_ids  │
    │  path.*  target.*      │  contact_forces, current_action    │
+   │  scene_boxes.*         │                                    │
    └─────────────────────────────────────────────────────────────┘
                                      │
             ┌────────────────────────┼────────────────────────┐
@@ -383,10 +384,30 @@ Privileged teacher/posterior observations remain separate.
 The G1 composition helper lives in
 ``examples.experiments.masked_mimic.deployable_g1_observations``. Select the
 five-body subset before building goals, declare a physical sensor suite and
-noise levels in the experiment, then add these observations. Global goals read
-``noisy.rigid_body_pos`` and rotations reconstructed by the sensor runtime;
-binding validation rejects suites without localization. There is no second FK
-reconstruction for global goals.
+noise levels in the experiment, then add these observations. Global goals
+compute the current body poses themselves: the recipe binds one
+``BakedAnchorFK`` kernel (passed as ``fk=``, as the history observation
+already takes it) to ``noisy.dof_pos``, ``noisy.anchor_pos`` and
+``noisy.anchor_rot``. Its world poses equal the ``noisy.rigid_body_pos`` and
+``noisy.rigid_body_rot`` the sensor runtime publishes, because it is the same
+FK composed on the same anchor pose. Body poses are therefore never graph
+inputs of a robot export: the policy graph takes the raw readings, computes
+the body poses inside and returns only its four control outputs (a simulation
+host may feed them; next paragraph). A host that needs
+the body poses outside the policy call exports the same kernel as a second
+small graph, ``fk.onnx``, with ``deployment/export_fk_to_onnx.py``; it is
+rebuilt from the config bundle beside the checkpoint, so there is one FK
+implementation and the two graphs agree by construction. Binding validation
+still rejects suites without localization, which the anchor position needs.
+
+A host kind belongs to a host. The sensor views carry only what a robot has
+(joint readings, IMU, localization, past actions, goals); the privileged view's
+body state (``current.rigid_body_*``, ``current.ground_heights``) carries the
+``simulated_*`` kinds, which only ``export_to_onnx.py --host simulation``
+accepts, for a game engine, a browser MuJoCo or a sim-to-sim check. A recipe
+such as the SOMA tracker, whose observations read the simulator's body state,
+exports only that way; the default robot export refuses it, naming the kind
+and the host that could feed it.
 
 Height-free goals ground current and reference body origins independently at
 their own minimum Z. XY localization error remains. This is a flat-ground

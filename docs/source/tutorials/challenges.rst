@@ -25,11 +25,13 @@ at the robot (for robustness testing).
 
 **Starting point:**
 
+The simulator base class is ``Simulator`` in
+``protomotions/simulator/base_simulator/simulator.py``; each backend subclasses it.
 Add a method like:
 
 .. code-block:: python
 
-   class BaseSimulator:
+   class Simulator:
        def spawn_projectile(self, position, velocity, mass=1.0):
            """Spawn a projectile at position with initial velocity."""
            pass
@@ -55,25 +57,35 @@ motion, forcing the character to navigate through a narrow passage.
 **Hints:**
 
 1. See ``examples/tutorial/3_scene_creation.py`` for scene creation
-2. Use ``SceneObject`` with ``object_type="box"`` for walls
-3. Test with ``env_kinematic_playback.py`` before training
+2. Use ``BoxSceneObject`` with ``ObjectOptions(fix_base_link=True)`` for walls
+3. Test with ``examples/env_kinematic_playback.py`` before training: pass your
+   recipe with ``--experiment-path`` and the saved scene file with ``--scenes-file``.
+   Scenes need IsaacGym or IsaacLab; the MuJoCo backend refuses them.
 
 **Example scene structure:**
 
 .. code-block:: python
 
-   left_wall = SceneObject(
-       object_type="box",
-       position=[-1.0, 0.0, 1.0],
-       dimensions=[0.1, 10.0, 2.0],  # thin, long, tall
-       fix_base_link=True,
+   from protomotions.components.scene_lib import (
+       BoxSceneObject, ObjectOptions, Scene, SceneLib,
    )
-   right_wall = SceneObject(
-       object_type="box",
-       position=[1.0, 0.0, 1.0],
-       dimensions=[0.1, 10.0, 2.0],
-       fix_base_link=True,
+
+   left_wall = BoxSceneObject(
+       width=0.1, depth=10.0, height=2.0,  # thin, long, tall
+       translation=(-1.0, 0.0, 1.0),
+       rotation=(0.0, 0.0, 0.0, 1.0),  # quaternion xyzw
+       options=ObjectOptions(fix_base_link=True),
    )
+   right_wall = BoxSceneObject(
+       width=0.1, depth=10.0, height=2.0,
+       translation=(1.0, 0.0, 1.0),
+       rotation=(0.0, 0.0, 0.0, 1.0),
+       options=ObjectOptions(fix_base_link=True),
+   )
+
+   # Pair the corridor with the walking clip, by its index in the motion file
+   corridor = Scene(objects=[left_wall, right_wall], humanoid_motion_id=0)
+   SceneLib.save_scenes_to_file([corridor], "corridor_scenes.pt")
 
 Challenge 3: Add T1 Robot Support
 ---------------------------------
@@ -114,25 +126,37 @@ teaching the robot to walk while staying low.
 
 **Example reward:**
 
+A reward kernel is a pure tensor function, and its signature is its binding
+contract: a parameter whose default is a context path is read from the live
+context, and every other default is a constant that a recipe may override by
+keyword. The weight goes in ``RewardMeta``, never in the kernel's arguments: the
+reward combiner refuses a reward component without one, and everything else you
+pass reaches the kernel verbatim.
+
 .. code-block:: python
+
+   from torch import Tensor
 
    from protomotions.envs.context_views import EnvContext
    from protomotions.envs.mdp_component import MdpComponent
    from protomotions.envs.rewards.base import mean_squared_error_exp
+   from protomotions.envs.rewards.meta import RewardMeta
    
-   # Add a simple crouch reward kernel
-   def compute_crouch_rew(root_height, target_height, coefficient):
+   # A simple crouch reward kernel: 1.0 at the target height, falling off
+   # as the root rises above it or sinks below it.
+   def compute_crouch_rew(
+       root_height: Tensor = EnvContext.current.root_height,
+       target_height: float = 0.6,
+       coefficient: float = -10.0,
+   ) -> Tensor:
        return mean_squared_error_exp(root_height, target_height, coefficient)
    
-   # Then in reward_components:
-   "crouch_rew": MdpComponent(
-       compute_func=compute_crouch_rew,
-       dynamic_vars={
-           "root_height": EnvContext.current.root_height,
-           "target_height": EnvContext.current.root_height,  # Will broadcast scalar
-       },
-       static_params={"weight": 1.0, "coefficient": -10.0, "target_height": 0.6},
-   )
+   # Then in reward_components, next to the steering recipe's heading_rew:
+   "crouch_rew": MdpComponent.from_kernel(
+       compute_crouch_rew,
+       meta=RewardMeta(weight=1.0),
+       target_height=0.6,  # Override a constant per experiment
+   ),
 
 Challenge 5: Agent Class Extension
 ----------------------------------
@@ -201,7 +225,7 @@ OMOMO contains human-object interaction data with:
        )
        
        obj = MeshSceneObject(
-           mesh_file=obj_mesh_path,
+           object_path=obj_mesh_path,
            translation=obj_translations,  # (N, 3) array for N frames
            rotation=obj_rotations,         # (N, 4) array, quaternion xyzw
            options=options,
@@ -222,10 +246,12 @@ OMOMO contains human-object interaction data with:
        )
        scenes.append(scene)
    
+   # Mesh paths are stored relative to asset_root (default: the file's directory)
    SceneLib.save_scenes_to_file(scenes, "omomo_scenes.pt")
 
 **Validation steps:**
 
-1. Visualize with ``env_kinematic_playback.py`` to verify alignment
+1. Visualize with ``examples/env_kinematic_playback.py --scenes-file omomo_scenes.pt``
+   to verify alignment
 2. Check object motion matches human contact timing
 3. Ensure consistent coordinate frames between human and object data

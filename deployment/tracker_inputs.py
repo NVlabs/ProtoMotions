@@ -22,6 +22,7 @@ from deployment.state_utils import (
     compute_yaw_offset_np,
     quat_rotate_np,
 )
+from deployment.contract import ROBOT_HOST
 from protomotions.envs.context_sources import (
     CURRENT_NAMESPACE,
     SENSOR_SOURCES,
@@ -401,8 +402,18 @@ def get_tracker_input_requirements(contract) -> TrackerInputRequirements:
     """Which deploy quantities a host must supply, read from the contract alone.
 
     Dispatches on each input's declared ``key``, never on a name substring; a
-    host reads this straight from the sidecar without the training config.
+    host reads this straight from the sidecar without the training config. A
+    sidecar exported for a simulation host is refused here, up front: this host
+    has no source for the simulator's body state.
     """
+    if contract.host != ROBOT_HOST:
+        raise ValueError(
+            f"this sidecar was exported for a {contract.host} host; the reference "
+            "tracker host feeds robot inputs only (joint readings, IMU, "
+            "localization, past actions, goals) and cannot source the simulator's "
+            "body state. Run the graph in the host it was exported for, or export "
+            "with --host robot"
+        )
     semantic_keys = {spec.key for spec in contract.inputs}
     return TrackerInputRequirements(
         odom_from_start="current.odom_disp_start" in semantic_keys,

@@ -28,7 +28,7 @@ python data/scripts/extract_retargeting_input_keypoints_from_packaged_motionlib.
                    '-keypoints-flat-feet-{skeleton_format}' suffixed directory alongside the input .pt file.
 - `--force-remake`: Force reprocessing of existing files (default: False).
 - `--start-idx`: Start from this motion index (default: 1).
-- `--end-idx`: End at this motion index (default: 3500).
+- `--end-idx`: End at this motion index (default: all motions).
 - `--skip-freq`: Skip every N motions (default: 35).
 
 ## Output
@@ -165,6 +165,13 @@ def main(
         f"Targeting {len(keypoint_indices_in_mjcf)} keypoints: {mjcf_target_body_names}"
     )
 
+    if motion_lib.contacts is None:
+        print(
+            "The packaged library carries no contact labels (none were stored, or "
+            "they were all zero and discarded on load). Foot contacts are written "
+            "as zeros."
+        )
+
     processed_count = 0
     start_time_total = time.time()
 
@@ -217,10 +224,19 @@ def main(
                 )
                 continue
 
-            # Get contact data for this motion
-            contacts_current_motion = motion_lib.contacts[
-                start_frame:end_frame, :
-            ]  # [T, N_bodies]
+            # Contact labels for this motion. MotionLib leaves `contacts` as
+            # None when the packaged file has none, so fall back to zeros the
+            # way extract_keypoints_from_single_motion.py does.
+            if motion_lib.contacts is not None:
+                contacts_current_motion = motion_lib.contacts[
+                    start_frame:end_frame, :
+                ]  # [T, N_bodies]
+            else:
+                contacts_current_motion = torch.zeros(
+                    all_body_positions_current_motion.shape[:2],
+                    dtype=torch.bool,
+                    device=device,
+                )
 
             keypoint_data = extract_keypoints_from_motion(
                 all_body_positions=all_body_positions_current_motion,
@@ -239,8 +255,12 @@ def main(
             keypoint_data_to_save = {
                 "positions": keypoint_data["positions"].cpu().numpy(),
                 "orientations": keypoint_data["orientations"].cpu().numpy(),
-                "left_foot_contacts": keypoint_data["left_foot_contacts"],
-                "right_foot_contacts": keypoint_data["right_foot_contacts"],
+                "left_foot_contacts": keypoint_data.get(
+                    "left_foot_contacts", np.zeros((num_frames, 2), dtype=int)
+                ),
+                "right_foot_contacts": keypoint_data.get(
+                    "right_foot_contacts", np.zeros((num_frames, 2), dtype=int)
+                ),
                 "fps": motion_fps,
             }
             print(

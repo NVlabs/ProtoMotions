@@ -26,7 +26,7 @@ parser.add_argument(
     "--simulator",
     type=str,
     required=True,
-    help="Simulator to use (e.g., 'isaacgym', 'isaaclab', 'newton', 'mujoco')",
+    help="Simulator: 'isaacgym', 'isaaclab' or 'newton'; MuJoCo cannot build scenes",
 )
 parser.add_argument(
     "--cpu-only",

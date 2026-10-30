@@ -80,9 +80,10 @@ def configure_robot_and_simulator(
 
 def terrain_config(args: argparse.Namespace):
     """
-    Build terrain configuration (optional).
+    Build terrain configuration.
 
-    Returns terrain config or None. If None, train_agent will create a default TerrainConfig.
+    Must return a TerrainConfig; TerrainConfig() is flat ground. The config
+    builder refuses None with a TypeError instead of substituting a default.
     """
     from protomotions.components.terrains.config import TerrainConfig
 

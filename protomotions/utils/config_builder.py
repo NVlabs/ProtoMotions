@@ -46,20 +46,20 @@ def load_experiment_module(experiment_path):
 
     log.info(f"Loading experiment module from: {experiment_path}")
 
-    # Ensure the experiment file's own project root is on sys.path so that
-    # experiment configs can import sibling packages (e.g.
-    # `from examples.experiments.mimic... import ...`).
-    #
-    # For an installed (non-editable) distribution, the package parent is
-    # site-packages and contains no `examples/`, so anchoring only there breaks
-    # every downstream user who keeps experiments outside the ProtoMotions
-    # source tree. Walk up from the experiment file to find the directory that
-    # actually owns it, and fall back to the package parent + cwd.
-    # Only the owning project root goes on sys.path (examples/ and
-    # examples/experiments/ are regular packages with __init__.py, so the
-    # intermediate directories are unnecessary and putting them ahead of the
-    # stdlib would let an experiment file shadow a real module).
-    project_root = next(
+    # A recipe imports shared recipe modules (``from examples.experiments.mimic
+    # import mlp``). Those must come from the tree whose ``protomotions`` is
+    # running, never from whichever checkout happens to hold the recipe file:
+    # a run directory saved inside another checkout would otherwise import that
+    # checkout's recipes against this tree's code. The running tree's root goes
+    # first; the recipe's own project root (the first ancestor holding
+    # ``examples/`` or a ``pyproject.toml``) and the working directory are
+    # appended after it, so they only serve what the running tree cannot: an
+    # installed distribution has no ``examples/``, and a recipe folder may
+    # carry helper modules of its own. Only project roots are added
+    # (``examples/`` and ``examples/experiments/`` are regular packages), and
+    # nothing is placed ahead of entries already on ``sys.path``.
+    running_root = Path(__file__).resolve().parent.parent.parent
+    recipe_root = next(
         (
             ancestor
             for ancestor in experiment_path.resolve().parents
@@ -68,13 +68,9 @@ def load_experiment_module(experiment_path):
         ),
         None,
     )
-    if project_root is not None and str(project_root) not in sys.path:
-        sys.path.insert(0, str(project_root))
-
-    # Fallbacks, appended so they cannot shadow anything already importable.
-    for fallback in (Path(__file__).resolve().parent.parent.parent, Path.cwd()):
-        if str(fallback) not in sys.path:
-            sys.path.append(str(fallback))
+    for root in (running_root, recipe_root, Path.cwd()):
+        if root is not None and str(root) not in sys.path:
+            sys.path.append(str(root))
 
     spec = importlib.util.spec_from_file_location("experiment_module", experiment_path)
     experiment_module = importlib.util.module_from_spec(spec)

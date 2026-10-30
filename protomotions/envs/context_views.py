@@ -29,6 +29,18 @@ the host's name for the quantity and must have a row in ``ELEMENT_LABELS``
 history axes, the column labels, the sensor channel) is derived at export. Only
 the names a shipped recipe or an in-repo test binds carry a string today; a bare
 name a deployable observation binds is refused at export, naming the line to add.
+A kind belongs to a host. A robot host has joint readings, an IMU, localization,
+its own past actions and the goals it packs; the sensor views carry only those
+kinds, and the robot's body poses have none on purpose: a deployable recipe
+derives them from the readings with its FK kernel inside the graph, and a host
+that needs them outside the policy call runs the separately exported
+``fk.onnx`` (``deployment/export_fk_to_onnx.py``). A simulation host (a game
+engine, a browser MuJoCo, a sim-to-sim check) also has the simulator's own body
+state, so the privileged view carries the ``simulated_*`` kinds on it. The
+exporter takes the target host (``--host robot|simulation``, default ``robot``)
+and refuses a binding whose kind the chosen host cannot feed, so a policy meant
+for a robot stays as strict as before even while it is tested in a simulator
+(``deployment/contract.py``, ``kinds_for_host``).
 
 The requirement names used below, and what each means:
 
@@ -87,7 +99,11 @@ class BodyStateView:
     derived from them. Positions and linear velocities are not here because a
     sensor suite may not measure them."""
 
-    rigid_body_rot: Tensor = FieldPath(deploy="body_rot")
+    # Body poses are never graph inputs of a robot export: a deployable kernel
+    # computes them from the joints and the anchor pose
+    # (BakedAnchorFK.world_body_poses). A simulation host feeds them under
+    # current.* (PrivilegedStateView's simulated_* kinds).
+    rigid_body_rot: Tensor = FieldPath()
     rigid_body_ang_vel: Tensor = FieldPath()
     dof_pos: Tensor = FieldPath(deploy="joint_pos")
     dof_vel: Tensor = FieldPath(deploy="joint_vel")
@@ -106,7 +122,7 @@ class SensorStateView(BodyStateView):
     base-velocity sensor, the ground height under the root both localization
     and the height sensor. Sensors never report contacts or joint forces."""
 
-    rigid_body_pos: Tensor = FieldPath(requires="localization", deploy="body_pos")
+    rigid_body_pos: Tensor = FieldPath(requires="localization")
     root_pos: Tensor = FieldPath(requires="localization")
     anchor_pos: Tensor = FieldPath(requires="localization", deploy="anchor_pos")
     root_height: Tensor = FieldPath(requires="localization")
@@ -128,11 +144,17 @@ class SensorStateView(BodyStateView):
 class PrivilegedStateView(BodyStateView):
     """Simulator truth at the current step (``current``): every body quantity,
     the ground height under the anchor and the joint forces, always; the
-    contact flags when the robot declares contact bodies."""
+    contact flags when the robot declares contact bodies.
 
-    rigid_body_pos: Tensor = FieldPath()
-    rigid_body_vel: Tensor = FieldPath()
-    ground_heights: Tensor = FieldPath()
+    The body state and the ground height carry the ``simulated_*`` host kinds:
+    only a simulation host can feed them (``--host simulation``), since no
+    robot measures every body's pose and velocity."""
+
+    rigid_body_pos: Tensor = FieldPath(deploy="simulated_body_pos")
+    rigid_body_rot: Tensor = FieldPath(deploy="simulated_body_rot")
+    rigid_body_vel: Tensor = FieldPath(deploy="simulated_body_vel")
+    rigid_body_ang_vel: Tensor = FieldPath(deploy="simulated_body_ang_vel")
+    ground_heights: Tensor = FieldPath(deploy="simulated_ground_heights")
     dof_forces: Tensor = FieldPath()
     root_pos: Tensor = FieldPath()
     root_vel: Tensor = FieldPath()
@@ -152,7 +174,10 @@ class CommandHistoryView:
 class PrivilegedHistoricalView(PrivilegedStateView, CommandHistoryView):
     """Past simulator truth (``historical``) with the command history.
     ``body_contacts`` is the past contact flags under the name the historical
-    observation kernels bind."""
+    observation kernels bind. The host kinds inherited from the current view do
+    not make past simulator truth exportable: the exporter refuses a privileged
+    history binding for every host, since no replay rule is declared for it
+    (``deployment/input_history.py``)."""
 
     body_contacts: Tensor = FieldPath(requires="contacts")
 
@@ -182,8 +207,8 @@ class MimicContext:
     ref_state: RobotStateView = NestedField(RobotStateView)
     future_pos: Tensor = FieldPath(deploy="reference_motion_body_pos_future")
     future_rot: Tensor = FieldPath(deploy="reference_motion_body_rot")
-    future_vel: Tensor = FieldPath()
-    future_ang_vel: Tensor = FieldPath()
+    future_vel: Tensor = FieldPath(deploy="reference_motion_body_vel")
+    future_ang_vel: Tensor = FieldPath(deploy="reference_motion_body_ang_vel")
     future_dof_pos: Tensor = FieldPath(deploy="reference_motion_joint_pos")
     future_dof_vel: Tensor = FieldPath(deploy="reference_motion_joint_vel")
     anchor_idx: int = FieldPath()
@@ -348,6 +373,31 @@ class SceneSurfaceContext:
     object_valid_mask: Tensor = FieldPath(requires="objects")
 
 
+class SceneBoxesContext:
+    """The scene boxes a scene-conditioned policy sees: a fixed-capacity, padded
+    set of ``O`` objects with ``B`` boxes each, published by the control
+    component that owns the namespace (``SceneBoxesControl`` publishes it as
+    all padding; a host supplies real values at deployment). The kinds are a
+    perception or scene-description stream of the robot host, not a sensor of
+    the robot, and the exporter labels them with the ``scene`` provider."""
+
+    # [E, O, B, 3]: box centres and full side lengths in the object's frame,
+    # asset scale included.
+    centers: Tensor = FieldPath(deploy="scene_box_centers")
+    extents: Tensor = FieldPath(deploy="scene_box_extents")
+    # [E, O, B] bool: the box exists (padding is false).
+    valid: Tensor = FieldPath(deploy="scene_box_valid")
+    # [E, O, 1] bool: the object is shown to the policy this episode.
+    visible: Tensor = FieldPath(deploy="scene_object_visible")
+    # [E, O, 3] / [E, O, 4] xyzw: object world poses.
+    object_pos: Tensor = FieldPath(deploy="scene_object_pos")
+    object_rot: Tensor = FieldPath(deploy="scene_object_rot")
+    # [E, 3] / [E]: the per-episode bias of the observed object pose (a position
+    # offset and a yaw in radians) the corners kernel applies; zero on a robot.
+    position_offset: Tensor = FieldPath(deploy="scene_position_offset")
+    yaw_offset: Tensor = FieldPath(deploy="scene_yaw_offset")
+
+
 class EnvContext:
     """Every name in the context map, by namespace; see the module docstring."""
 
@@ -381,7 +431,9 @@ class EnvContext:
     # The rows this context covers: None when it covers every env, the row
     # tensor when it was built for a reset's subset.
     env_ids: Optional[Tensor] = FieldPath()
-    ground_heights: Tensor = FieldPath()  # the same object as current.ground_heights
+    # The same object as current.ground_heights; exports bind that name, which
+    # carries the host kind, while the env's own kernels (terminations) bind this.
+    ground_heights: Tensor = FieldPath()
     dt: float = FieldPath()
     progress_buf: Tensor = FieldPath()
     contact_body_ids: Tensor = FieldPath()
@@ -406,6 +458,7 @@ class EnvContext:
     steering: SteeringContext = control_namespace(SteeringContext)
     path: PathContext = control_namespace(PathContext)
     target: TargetContext = control_namespace(TargetContext)
+    scene_boxes: SceneBoxesContext = control_namespace(SceneBoxesContext)
 
 
 # The top-level names (dt, progress_buf, current_action ...) form the namespace "".

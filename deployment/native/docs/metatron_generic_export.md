@@ -15,10 +15,18 @@ python deployment/export_to_onnx.py \
 ```
 
 The output is `unified_pipeline.onnx` plus `unified_pipeline.yaml`. The exporter
-loads weights strictly and checks all four outputs against PyTorch using ONNX
+loads weights strictly and checks every graph output against PyTorch using ONNX
 Runtime. The graph includes observations, the prior/decoder and action
-processing. Outputs are raw `actions`, `joint_pos_targets`, `stiffness_targets`
-and `damping_targets`.
+processing. Its outputs are exactly the four control outputs: raw `actions`,
+`joint_pos_targets`, `stiffness_targets` and `damping_targets`. Every output is
+a command; nothing has to be skipped. When the recipe binds an FK kernel, as the
+public `g1_student.py` does, the graph computes the robot's current body poses
+inside the goal observation from the joint angles and the anchor pose; the poses
+are neither graph inputs nor graph outputs. A host that needs the body poses
+outside the policy call runs a second, small graph, `fk.onnx`, which
+`deployment/export_fk_to_onnx.py` exports from the same kernel object the policy
+traces (described below). A plain tracker binds no FK kernel, so it has no FK
+graph to export.
 
 Add `--leapp` to also write a LEAPP bundle with the same graph and complete typed
 contract under `export/leapp/`. See [LEAPP export](leapp.md) for loading it and
@@ -30,6 +38,15 @@ binding the host-owned histories. This does not convert the graph to the fixed
 The YAML lists the actual graph inputs, their shapes, dtypes and providers.
 Noisy sensor names are preserved: `noisy.*` does not become `current.*`.
 `current.*` means simulator truth, not an on-robot sensor estimate.
+
+The exporter is told who will feed the graph. The default, `--host robot`, is
+the sensor definition plus the goal streams and the policy's own past actions;
+a binding to the simulator's body state is refused, naming the kind and the
+host that could feed it. `--host simulation` is for a game engine, a browser
+MuJoCo or a sim-to-sim check: it also accepts the simulator's own body poses,
+velocities and ground heights under `current.*` (the `simulated_*` kinds), and
+the YAML records `host: simulation`. The deployable Metatron recipe is a robot
+export; export it with the default even while testing it in a simulator.
 
 The `masked_mimic` block is the trained control's `GoalCanvas`: body order,
 anchor, future slots, style frame count and enabled modalities. A binding to a
@@ -67,9 +84,11 @@ these operations in `protomotions/envs/obs/masked_mimic.py`.
 
 The sensor-only recipe compares global target and current pose heights relative
 to their respective lowest body origins. That is not terrain height. The host
-supplies reconstructed `noisy.rigid_body_pos` and `noisy.rigid_body_rot` from its
-joint/IMU/localization readings; grounding and goal conversion happen inside
-the graph.
+supplies only its raw readings: the joint positions, the IMU orientation and
+the anchor position from localization (`noisy.dof_pos`, `noisy.anchor_rot`,
+`noisy.anchor_pos`). The graph computes the current body poses from them with
+the recipe's FK kernel; grounding and goal conversion happen inside the graph
+too. Body poses are not graph inputs of this robot export.
 
 ## History Timing
 
@@ -110,9 +129,54 @@ Do not record a rejected action or update history at the faster physics rate.
 ## Separate From the Existing Demo Bundle
 
 This is **not** the fixed 39-input Metatron v1 manifest. It has different input
-and output names and uses full sensor-reconstructed body poses. The existing
-native v1 runtime, policy preparation, FK graph and demo assets are unchanged.
-Do not put this graph into that launcher without a matching host implementation.
+and output names and computes the body poses inside the graph from the raw
+readings. The existing native v1 runtime, policy preparation and demo assets are
+unchanged. That runtime runs FK on the current measurement before every policy
+call: its goal canvas starts from the measured pose, and steering and recovery
+edit it. It gets those poses from `fk.onnx`, the policy's own FK kernel traced
+on its own, rebuilt from the same config bundle beside the checkpoint:
+
+```bash
+python deployment/export_fk_to_onnx.py \
+  --checkpoint results/my_metatron/inference_last.ckpt
+```
+
+This writes `compiled_models/fk.onnx` and `fk.yaml` beside the checkpoint;
+`--output` picks another directory. The inputs are `noisy_dof_pos` `[1,29]`
+(one value per G1 joint), `noisy_anchor_pos` `[1,3]` and `noisy_anchor_rot`
+`[1,4]` (xyzw). They are the policy graph's names for the same paths, so a host
+feeds one tensor under one name to both graphs. The batch is fixed to 1 because
+the plan serves one robot. The outputs are `body_pos` `[1,N,3]` and `body_rot`
+`[1,N,4]` (xyzw) in `robot.body_names` order. The exporter checks ONNX Runtime
+against the kernel on random joint angles within the limits and random anchor
+poses, refuses data-dependent ops (`NonZero`, `If`, `Loop`, `Scan`), refuses a
+bundle whose actor observations bind no FK kernel ("nothing to export") and
+refuses two observations whose kernels or paths differ. The sidecar `fk.yaml`
+records the body names, the joint names, the anchor body (name and index), the
+input and output names with their shapes and the checkpoint file name.
+
+Because `fk.onnx` is the policy's kernel, there is one FK implementation and the
+two graphs agree by construction. The previous standalone FK exporter re-ran
+pose_lib's forward kinematics on the MJCF with its own quaternion conversion, a
+second FK implementation that could drift from the policy's kernel. The policy's
+output list stays homogeneous.
+
+```bash
+python deployment/native/tools/build_metatron_fk_tensorrt.py \
+  --onnx fk.onnx --sidecar fk.yaml --output fk.plan --manifest manifest.json
+python deployment/native/tools/make_metatron_fk_fixture.py \
+  --onnx fk.onnx --sidecar fk.yaml --output fixture.bin --samples 20
+```
+
+The first command compiles `fk.onnx` to a static FP32 TensorRT plan and, with
+`--manifest`, checks the sidecar's body order, joint order and anchor against
+the policy manifest's `robot_contract` (a mismatch is refused with "the FK
+graph's body order differs from the manifest"). The second writes the parity
+fixture. `body_rot` comes from a matrix-to-quaternion conversion, so `q` and
+`-q` are the same rotation; a comparison must allow the sign. See the
+[native qualification guide](metatron_v1_native_qualification.md). Do not put
+the generic policy graph into that launcher without a matching host
+implementation.
 
 ### Scene Support: Released Artifacts Versus Re-export
 
@@ -120,31 +184,45 @@ Do not put this graph into that launcher without a matching host implementation.
 | --- | --- |
 | Released PyTorch weights | Keep the trained scene-token modules; a host can supply visible scene features at the model boundary. |
 | Maintainer-provided 39-input ONNX | Keeps original scene preprocessing and scene inputs. LEAPP packaging preserves those exact bytes. |
-| Generic re-export of the packaged checkpoint | Uses the saved dummy scene observations: zero corner tokens and masks always false. No scene inputs are exported. |
+| Generic re-export of the packaged checkpoint, or of any configuration that binds the `scene_boxes` stream (`SceneBoxesControl` in `control_components`, `deployable_scene_box_observations` in the recipe) | Exports the eight `scene_boxes_*` inputs of the maintainer-provided graph (centres, extents, object pose, validity, visibility, the two pose-bias offsets) with the `scene` provider; the corners are computed inside the graph in the root heading frame, the root pose from the FK kernel, so no body pose is an input. A host with no scene feeds the empty scene (every box invalid and hidden). The pinned package revision binds it. |
 | Fresh public `g1_student.py` recipe | Does not include a scene-token stream. |
 
-For a **scene-disabled** re-export of the packaged policy:
+To re-export the packaged policy:
 
 ```bash
 python deployment/export_to_onnx.py \
   --checkpoint data/pretrained_models/metatron/G1/inference_last.ckpt \
-  --output results/metatron-scene-disabled/export --leapp
+  --output results/metatron-generic/export --leapp
 ```
 
-This does not remove scene weights from the PyTorch checkpoint or modify the
-separately released ONNX. It does not implement a scene provider or SAMP training.
-Use the maintainer-provided scene-capable artifact with a matching host for
-object interaction; do not replace it with this re-export.
+This does not modify the separately released ONNX, whose host contract differs
+(the simulator's root pose and a nine-slot action history instead of
+`current_action` and the eight-slot history). It does not implement SAMP
+training; the `scene_boxes` stream above is the exporter's scene provider, fed
+by the host. The maintainer-provided scene-capable artifact stays the one for
+its paired browser and native hosts.
 
-The packaged checkpoint re-exports with 31 inputs, including `current.dof_pos`
-as the dummy-scene functions' batch/dtype source. The fresh public recipe has
-30 inputs. Neither count is a feature-vector width. The additional tensor does
-not supply object geometry or change the sensor-estimated proprioception.
+The fresh public recipe has 29 inputs and four outputs. The packaged checkpoint
+re-exports with 37: those 29 plus the eight scene inputs. The package pinned in
+`data/pretrained_models/metatron/huggingface.json` binds the FK goal observation
+(`fk_masked_mimic_target_poses`) to raw joint readings and the torso anchor pose.
+Run `python scripts/download_metatron.py` to fetch that revision. If an older
+download is present, move its `G1/` directory aside first: the downloader
+deliberately refuses to overwrite different local files. Older saved bundles
+binding `noisy.rigid_body_pos`/`noisy.rigid_body_rot` remain refused at export;
+the weights did not change. Neither count is a feature-vector width. The
+eight additional inputs are the host-supplied object geometry described above;
+they do not change the sensor-estimated proprioception.
 
 Tests cover JSON config reconstruction, strict checkpoint loading, disabled
-modalities, boolean masks, history/reset parity against `StatePublisher`, and
-PyTorch/ONNX agreement at batch sizes one and three. This validates the export
-contract, not real-robot safety or recovery performance.
+modalities, boolean masks, history/reset parity against `StatePublisher`,
+PyTorch/ONNX agreement at batch sizes one and three, the in-graph FK kernel's
+world poses against the sensor runtime's poses, the policy graph's output list
+being the four control outputs, and `fk.onnx` against the kernel the policy
+traces (equal to float rounding, inputs named as the policy names the same
+paths, no data-dependent ops, a sidecar that refuses a manifest whose body
+order differs, and a plain tracker refused with nothing to export). This
+validates the export contract, not real-robot safety or recovery performance.
 
 See [released-policy verification](metatron_export_verification.md) for the
 actual checkpoint and pre-exported ONNX comparison, including scene inputs.

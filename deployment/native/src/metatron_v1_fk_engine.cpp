@@ -61,10 +61,14 @@ struct TensorSpec {
   int rank;
   std::size_t count;
 };
+// The names are the policy graph's names for the sensor source's dof_pos and
+// anchor pose. The plan builder checks the plan against the sidecar and, given
+// the policy manifest, the sidecar's inputs against the policy's; validate()
+// below is the last check, against this table, when the engine loads.
 constexpr std::array<TensorSpec, 3> kFkInputs = {{
-    {"root_pos", {1, 3}, 2, 3},
-    {"root_rot", {1, 4}, 2, 4},
-    {"dof_pos", {1, 29}, 2, 29},
+    {"noisy_dof_pos", {1, 29}, 2, 29},
+    {"noisy_anchor_pos", {1, 3}, 2, 3},
+    {"noisy_anchor_rot", {1, 4}, 2, 4},
 }};
 constexpr std::array<TensorSpec, 2> kFkOutputs = {{
     {"body_pos", {1, 33, 3}, 3, 33 * 3},
@@ -113,9 +117,9 @@ class FkEngine::Impl {
   ~Impl() { cleanup(); }
 
   RecoveryPose run(const SensorReading& reading) {
-    std::memcpy(input_[0].host, reading.root_pos.data(), input_[0].bytes);
-    std::memcpy(input_[1].host, reading.root_rot.data(), input_[1].bytes);
-    std::memcpy(input_[2].host, reading.dof_pos.data(), input_[2].bytes);
+    std::memcpy(input_[0].host, reading.dof_pos.data(), input_[0].bytes);
+    std::memcpy(input_[1].host, reading.anchor_pos.data(), input_[1].bytes);
+    std::memcpy(input_[2].host, reading.anchor_rot.data(), input_[2].bytes);
     for (const auto& buffer : input_)
       check(cudaMemcpyAsync(buffer.device, buffer.host, buffer.bytes,
                             cudaMemcpyHostToDevice, stream_), "FK input upload");
@@ -146,7 +150,8 @@ class FkEngine::Impl {
  private:
   void validate() const {
     if (engine_->getNbIOTensors() != 5)
-      throw std::runtime_error("FK plan must have exactly three inputs and two outputs");
+      throw std::runtime_error(
+          "FK plan must have exactly three inputs (joints, anchor pose) and two outputs");
     const auto validate_spec = [this](const TensorSpec& spec,
                                       nvinfer1::TensorIOMode mode) {
       if (engine_->getTensorIOMode(spec.name) != mode ||
@@ -165,8 +170,8 @@ class FkEngine::Impl {
 
   void capture() {
     SensorReading reading;
-    reading.root_pos[2] = 0.75F;
-    reading.root_rot = {0, 0, 0, 1};
+    reading.anchor_pos = {-0.0039635F, 0.0F, 0.794F};
+    reading.anchor_rot = {0, 0, 0, 1};
     for (int pass = 0; pass < 10; ++pass) (void)run(reading);
     check(cudaStreamBeginCapture(stream_, cudaStreamCaptureModeGlobal),
           "FK graph capture begin");

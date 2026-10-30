@@ -107,6 +107,8 @@ def test_release_docs_do_not_reference_removed_public_surfaces():
         "RewardComponentConfig",
         "TerminationComponentConfig",
         "env.reward_config",
+        "export_metatron_fk",
+        "host_fk",
     ]
     missing = [fragment for fragment in stale_fragments if fragment in public_text]
     assert missing == []
@@ -116,6 +118,8 @@ def test_release_docs_do_not_reference_removed_public_surfaces():
         / "data/pretrained_models/motion_tracker/g1-bones-deploy/compiled_models/unified_pipeline.yaml"
     ).read_text()
     assert "exps/exp-" not in deploy_yaml
+    # The shipped sidecar must not advertise a field the contract no longer has.
+    assert "derived_state_provider" not in deploy_yaml
 
 
 def test_quickstart_pretrained_table_matches_shipped_release_artifacts():

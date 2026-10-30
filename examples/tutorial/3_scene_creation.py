@@ -16,7 +16,7 @@ parser.add_argument(
     "--simulator",
     type=str,
     required=True,
-    help="Simulator to use (e.g., 'isaacgym', 'isaaclab', 'newton', 'mujoco')",
+    help="Simulator: 'isaacgym', 'isaaclab' or 'newton'; MuJoCo cannot build scenes",
 )
 parser.add_argument(
     "--robot", type=str, required=True, help="Robot to use (e.g., 'g1', 'smpl')"

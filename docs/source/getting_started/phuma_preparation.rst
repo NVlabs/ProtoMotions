@@ -58,6 +58,10 @@ conversion and packaging pipeline:
 **Arguments:**
 
 * ``phuma_root_dir``: Root directory containing PHUMA subfolders with ``g1`` and ``h1_2`` folders.
+  Give it as an absolute path: the script rewrites each YAML ``file:`` entry to
+  ``<phuma_root_dir>/<file>`` and packages from a temporary YAML written in
+  ``output_dir``, and ``motion_lib.py`` resolves a relative entry against that
+  temporary YAML's directory, where the motions are not.
 * ``output_dir``: Directory for the packaged ``.pt`` MotionLib files
 * ``--motion-config``: YAML file(s) containing motion configurations. Each creates a separate ``.pt`` file. Can be specified multiple times.
 * ``--humanoid-type``: ``g1`` or ``h1_2``. Default: ``g1``
@@ -120,7 +124,7 @@ Convert PHUMA ``.npy`` files to ProtoMotions ``.motion`` format:
 **Arguments:**
 
 * ``phuma_root_dir``: Root directory containing PHUMA subfolders with ``g1`` and ``h1_2`` folders.
-* ``--output-dir``: Directory for the ``.motion`` files. Default: ``phuma_root_dir/data/humanoid_type``.
+* ``--output-dir``: Directory for the ``.motion`` files; they are written under ``<output_dir>/<humanoid_type>/``, mirroring the ``.npy`` layout. Default: next to each ``.npy`` file, under ``phuma_root_dir/<humanoid_type>/``.
 * ``--humanoid-type``: ``g1`` or ``h1_2``. Default: ``g1``
 * ``--force-remake``: Overwrite existing ``.motion`` files
 
@@ -247,21 +251,24 @@ Fields:
 G1 vs H1-2
 ----------
 
-* **G1**: 29 joints (28 non-root).
-* **H1-2**: 27 joints (26 non-root).
+* **G1**: 29 actuated joints, plus the floating root joint.
+* **H1-2**: 27 actuated joints, plus the floating root joint.
 
 
 Training with MotionLib
 -----------------------
 
-Once packaged, use in training:
+Once packaged, use in training. The IsaacGym command uses
+``mimic/mlp_no_contact.py`` rather than ``mimic/mlp.py`` because IsaacGym's GPU
+pipeline reports one combined force per body, so it cannot run a recipe that
+declares contact bodies; on IsaacLab use ``mimic/mlp.py``.
 
 .. code-block:: bash
 
    python protomotions/train_agent.py \
        --robot-name g1 \
        --simulator isaacgym \
-       --experiment-path examples/experiments/mimic/mlp.py \
+       --experiment-path examples/experiments/mimic/mlp_no_contact.py \
        --experiment-name g1_phuma \
        --motion-file /path/to/g1_phuma_train.pt \
        --num-envs 4096 \

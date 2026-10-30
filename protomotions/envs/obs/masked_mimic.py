@@ -32,6 +32,7 @@ from protomotions.envs.obs.cast import to_float
 from protomotions.envs.obs.target_poses import build_sparse_target_poses
 from protomotions.envs.steps import StepSelection, select_steps
 from protomotions.utils import rotations
+from protomotions.utils.baked_fk import BakedAnchorFK
 
 if TYPE_CHECKING:
     from protomotions.envs.control.masked_mimic_prompt import GoalCanvas
@@ -228,6 +229,62 @@ def compute_target_poses_only(
     masked_obs = obs * mask
 
     return masked_obs.flatten(1)
+
+
+def compute_fk_target_poses_only(
+    conditionable_body_ids: Tensor,
+    dof_pos: Tensor = EnvContext.current.dof_pos,
+    anchor_pos: Tensor = EnvContext.current.anchor_pos,
+    anchor_rot: Tensor = EnvContext.current.anchor_rot,
+    masked_mimic_ref_pos: Tensor = EnvContext.masked_mimic.ref_pos,
+    masked_mimic_ref_rot: Tensor = EnvContext.masked_mimic.ref_rot,
+    masked_mimic_target_bodies_masks: Tensor = (
+        EnvContext.masked_mimic.target_bodies_masks
+    ),
+    anchor_body_index: int = EnvContext.mimic.anchor_idx,
+    future_steps: Optional[StepSelection] = None,
+    include_root_relative: bool = True,
+    anchor_translation_mask: Optional[Tensor] = None,
+    anchor_rotation_mask: Optional[Tensor] = None,
+    ground_independently: bool = False,
+    *,
+    fk: BakedAnchorFK,
+) -> Tensor:
+    """Masked target poses with the current body poses computed by ``fk``.
+
+    The deployable form of :func:`compute_target_poses_only`. Instead of
+    reading the current body positions and rotations from a state source, it
+    rebuilds them from the joint angles and the anchor pose with the recipe's
+    ``BakedAnchorFK`` (the kinematics the sensor runtime itself uses), so an
+    exported graph takes raw readings and computes its own body poses.
+    ``sensed(...)`` moves the three state bindings to the sensor source.
+
+    Args:
+        fk: The recipe's ``BakedAnchorFK``, anchored on the body
+            ``anchor_body_index`` names. Everything else as in
+            :func:`compute_target_poses_only`.
+    """
+    if fk.anchor_idx != anchor_body_index:
+        raise ValueError(
+            f"the FK kernel is anchored on body {fk.anchor_idx} but the goal uses "
+            f"anchor body {anchor_body_index}; build the BakedAnchorFK with the "
+            "goal's anchor"
+        )
+    body_pos, body_rot = fk.world_body_poses(dof_pos, anchor_pos, anchor_rot)
+    return compute_target_poses_only(
+        conditionable_body_ids,
+        body_pos,
+        body_rot,
+        masked_mimic_ref_pos,
+        masked_mimic_ref_rot,
+        masked_mimic_target_bodies_masks,
+        anchor_body_index,
+        future_steps,
+        include_root_relative,
+        anchor_translation_mask,
+        anchor_rotation_mask,
+        ground_independently,
+    )
 
 
 def compute_target_masks_only(
@@ -570,6 +627,7 @@ __all__ = [
     "compute_local_pose_samples",
     "compute_local_target_poses",
     "compute_target_poses_only",
+    "compute_fk_target_poses_only",
     "compute_target_masks_only",
     "compute_target_time_offsets",
     "masked_mimic_goal_observations",

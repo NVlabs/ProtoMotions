@@ -4,6 +4,12 @@
 """
 Viser-based visualizer for SOMA23 packaged motions + scene objects.
 
+The script runs on the CPU and needs no simulator. It needs the viser package,
+which no ProtoMotions requirements file installs, so install it into the
+environment first:
+
+    pip install viser
+
 Usage:
     python examples/visualize_soma_scenes.py \
         --motion-file /path/to/motions.pt \
@@ -20,7 +26,14 @@ import torch
 import trimesh
 import trimesh.creation
 import trimesh.transformations as tf
-import viser
+
+try:
+    import viser
+except ImportError as exc:
+    raise SystemExit(
+        "examples/visualize_soma_scenes.py needs the viser package, which no "
+        "ProtoMotions requirements file installs: pip install viser"
+    ) from exc
 
 # -- SOMA23 skeleton definition (from soma23_humanoid.xml) --
 BODY_NAMES = [

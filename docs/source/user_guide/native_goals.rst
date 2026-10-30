@@ -5,28 +5,55 @@ The native adapter supplies the same timed world-pose and velocity modalities
 used in training. It does not change actions, PD gains, simulator state or the
 checkpoint's network. It requires a checkpoint trained with anchor submode
 observations; steering additionally requires the velocity modality.
-The example preset enables recovery and requires local get-up conditioning.
-For checkpoints not trained with that modality, add
-``env.control_components.masked_mimic.getup=None`` to the overrides.
+
+The task is chosen inside an inference config, not on the command line. The
+shipped preset ``examples/inference/masked_mimic.py`` starts in ``idle`` with
+get-up recovery enabled, which needs a student trained with local get-up
+conditioning:
 
 .. code-block:: bash
 
    python protomotions/inference_agent.py --simulator mujoco \
      --checkpoint results/student/last.ckpt --motion-file data/motions.pt \
-     --num-envs 1 --inference-config examples/inference/masked_mimic.py \
-     --overrides env.control_components.masked_mimic.task=steering \
-     env.control_components.masked_mimic.command_source=keyboard
+     --num-envs 1 --inference-config examples/inference/masked_mimic.py
 
-``--inference-config`` loads an explicit Python file defining
-``apply_inference_overrides(robot_config, simulator_config, env_config,
-agent_config, terrain_config, motion_lib_config, scene_lib_config, args)``.
-The hook edits the saved configs in place after simulator selection and before
-CLI overrides. It does not rebuild the network or reload the training experiment.
-Only load trusted Python files. Errors in the hook stop startup.
+``--inference-config`` loads a Python file defining
+``apply_inference_overrides(configs, args)``, where ``configs`` is the
+``ExperimentConfigs`` view (``configs.env``, ``configs.robot``, ...). The hook
+edits the derived inference view in place, after the framework defaults, the
+CLI ``--overrides`` and the recipe's own hook have been applied. It does not
+rebuild the network or reload the training experiment. Only load trusted
+Python files. Errors in the hook stop startup.
+
+Task parameters cannot be set with ``--overrides``. The overrides are applied
+to the saved training config before the hook runs, and the training-time
+``MaskedMimicControlConfig`` has no ``task``, ``command_source``, ``getup`` or
+``reach_body_name`` field, so such an override is refused as an undeclared
+field; a hook that changes a value given in ``--overrides`` is refused as well.
+To pick a task, copy the preset and edit its ``configure_masked_mimic_task``
+call. The controller config that call installs is the one with those fields,
+so anything else is set on it right after the call:
+
+.. code-block:: python
+
+   from protomotions.envs.control.masked_mimic_tasks.controller import (
+       GetupRecoveryConfig,
+       configure_masked_mimic_task,
+   )
+
+
+   def apply_inference_overrides(configs, args):
+       if args.full_eval:
+           raise ValueError("Interactive goals cannot run full evaluation")
+       # Steering from the keyboard, for a student trained with get-up goals.
+       # Pass getup=None for a student without get-up conditioning.
+       configure_masked_mimic_task(
+           configs.env, configs.robot, "steering", getup=GetupRecoveryConfig()
+       )
+       configs.env.control_components["masked_mimic"].command_source = "keyboard"
 
 New policy demos belong in their own inference config, not in the shared
-runner's argument parser. Ordinary ``--overrides`` set task parameters; this
-example defaults to ``idle``. The example, rather than the runner, rejects
+runner's argument parser. The example, rather than the runner, rejects
 tracking evaluation for these interactive goals.
 
 The motion file still supplies initialization and the ordinary reference
@@ -41,8 +68,10 @@ Tasks
 * ``location`` asks for a world XY target and facing heading at a fixed deadline.
   The default target is two meters along world +X from the starting anchor.
 * ``reaching`` holds the anchor XY/heading and targets one conditionable body's
-  world XYZ position. Specify its exact robot name with
-  ``env.control_components.masked_mimic.reach_body_name=<body_name>``.
+  world XYZ position. Name the body in the inference config, after
+  ``configure_masked_mimic_task(configs.env, configs.robot, "reaching")``, with
+  ``configs.env.control_components["masked_mimic"].reach_body_name = "<body_name>"``
+  using its exact robot body name.
 * ``steering`` supplies world XY velocity in m/s (``heading`` and ``speed``), a
   heading-only facing goal in the first frame (``facing``, default the movement
   heading) and anchor-height goals above the terrain at the robot's default root
@@ -131,7 +160,9 @@ time offsets and explicitly empty unused modalities.
 
 The controller's ``getup`` field defaults to ``None``; the example inference
 preset explicitly enables ``GetupRecoveryConfig()``. Use recovery only for
-checkpoints trained with it. Every control mode latches into recovery when
+checkpoints trained with it: for a student without get-up conditioning, call
+``configure_masked_mimic_task`` with ``getup=None`` in your copy of the preset.
+Every control mode latches into recovery when
 its torso is below ``enter_height_fraction`` of the default standing height
 above its lowest body and leaves above ``exit_height_fraction``. While latched,
 all task goals and velocity commands are hidden and only local torso-height

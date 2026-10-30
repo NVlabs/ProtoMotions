@@ -10,9 +10,13 @@
 
 namespace protomotions::deployment::metatron_v1 {
 
-// Compiled ProtoMotions FK; identical for MuJoCo and Unitree SensorReading.
-// This small graph is used to construct recovery/goal geometry, never as a
-// simulator-only privileged state source.
+// The policy's own FK kernel, exported on its own as fk.onnx
+// (deployment/export_fk_to_onnx.py) and compiled to a TensorRT plan: joint
+// angles plus the torso anchor pose in, world-frame body positions and xyzw
+// rotations out.
+// Identical for MuJoCo and Unitree SensorReading. It constructs recovery/goal
+// geometry, never a simulator-only privileged state source, and it is the very
+// FK the policy runs, so the host's body poses and the policy's agree.
 class FkEngine final {
  public:
   FkEngine(const std::string& plan_path, bool cuda_graph);

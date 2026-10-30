@@ -10,7 +10,7 @@ provided artifacts; none of these tools should send hardware commands.
 | `mailbox_benchmark` | Latest-only mailbox overhead |
 | `metatron_v1_inference_benchmark` | Native TensorRT policy inference |
 | `metatron_v1_parity` | Native outputs against recorded reference feeds |
-| `metatron_v1_fk_parity` | FK positions/rotations against reference poses |
+| `metatron_v1_fk_parity` | FK engine (joints + anchor pose in) against ONNX Runtime reference poses |
 | `metatron_v1_rest_dump`, `metatron_v1_task_dump` | Native rest/task fixtures for Python parity tools |
 | `gpc_tensorrt_benchmark.py` | Python TensorRT sampling-mode benchmark |
 | `gpc_tensorrt_native_benchmark` | Native sampling inference, transfers and validation |

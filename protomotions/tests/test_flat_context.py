@@ -961,7 +961,14 @@ def test_context_sources_agree_with_the_factories_and_the_exporters():
 
 
 def test_control_namespaces_are_the_ones_tagged_owner_control():
-    assert CONTROL_NAMESPACES == ("mimic", "masked_mimic", "steering", "path", "target")
+    assert CONTROL_NAMESPACES == (
+        "mimic",
+        "masked_mimic",
+        "steering",
+        "path",
+        "target",
+        "scene_boxes",
+    )
     fields = vars(EnvContext)
     for namespace in CONTROL_NAMESPACES:
         # A control namespace carries no requires=: it exists exactly when a

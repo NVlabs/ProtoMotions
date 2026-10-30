@@ -213,7 +213,6 @@ sensors:
   schema: physical-sensors/v1
   joint_coordinates: scalar_hinge
   w_last: true
-  derived_state_provider: host_fk
   history_initialization: repeat_first_reading
 robot:
   mjcf_path: mjcf/g1_holo_compat.xml

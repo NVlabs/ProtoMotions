@@ -3,11 +3,15 @@
 
 """Standalone MuJoCo inference test for tracker ONNX policies.
 
-This script is the **deployment contract** — it demonstrates exactly how to
-drive a ProtoMotions whole-body tracker policy using only raw MuJoCo state
-and an ONNX runtime, with near-zero dependency on the ProtoMotions training
-framework.  It is intended as a reference implementation for anyone
-integrating the tracker into a different deployment framework.
+This script is the reference host for an exported tracker: it shows how to
+drive a ProtoMotions whole-body tracker policy from raw MuJoCo state and an
+ONNX runtime, with no simulator backend, environment or agent from the
+training stack in the loop.  It is intended as a reference implementation for
+anyone integrating the tracker into a different deployment framework.  The
+authoritative input list is the ``policy_inputs`` block of the exported
+``unified_pipeline.yaml`` sidecar, which this script reads through
+``deployment.contract.DeploymentContract``; the table below copies it for the
+shipped G1 tracker.
 
 Pipeline overview
 -----------------
@@ -16,7 +20,8 @@ Each control step (50 Hz by default):
 1. **Read robot state** from MuJoCo (``qpos``, ``qvel``, ``xquat``, ``cvel``).
 2. **Derive** ``anchor_rot`` (torso IMU) and ``root_local_ang_vel`` (pelvis)
    via helpers in ``deployment.state_utils``.
-3. **Query future motion** frames from ``MotionPlayer`` (25 steps ahead).
+3. **Query future motion** frames from ``MotionPlayer`` at the contract's
+   ``future_step_indices`` (``[1, 2, 4, 8]`` for the shipped G1 tracker).
 4. **Run ONNX inference** → PD position targets.
 5. **Apply action post-processing** (acceleration clamp — matches the
    ProtoMotions MuJoCo simulator).
@@ -34,19 +39,30 @@ Important conventions
   ``anchor_rot`` uses **torso_link** (body 16 on G1).  These are different
   bodies — mixing them up silently produces wrong observations.
 
-ONNX inputs (for this tracker config)
---------------------------------------
-======================================  ================  ==========================================
-Name                                    Shape             Source
-======================================  ================  ==========================================
-``current_state_dof_pos``               ``[1, 29]``       ``data.qpos[7:]`` (skip free joint)
-``current_state_dof_vel``               ``[1, 29]``       ``data.qvel[6:]`` (skip free joint)
-``current_state_anchor_rot``            ``[1, 4]``        anchor body quat (from YAML metadata)
-``current_state_root_local_ang_vel``    ``[1, 3]``        ``quat_rot_inv(pelvis_rot, pelvis_ω)``
-``mimic_future_rot``                    ``[1, 25, 33, 4]``  ``MotionPlayer.get_future_references()``
-``mimic_future_dof_pos``                ``[1, 25, 29]``   ``MotionPlayer.get_future_references()``
-``mimic_future_dof_vel``                ``[1, 25, 29]``   ``MotionPlayer.get_future_references()``
-======================================  ================  ==========================================
+ONNX inputs (the shipped G1 tracker, ``g1-bones-deploy``)
+---------------------------------------------------------
+The names, shapes and order below are the sidecar's ``policy_inputs`` block
+for that bundle, in the order the file lists them.  The script and the ONNX
+session bind inputs by name, so the order is for reading alongside the file,
+not a contract.  Another checkpoint can export a different set, so a host
+reads its own sidecar rather than this table.
+
+==============================  ==============  ========================================
+Name                            Shape           Source
+==============================  ==============  ========================================
+``mimic_future_anchor_rot``     ``[1, 4, 4]``   anchor rotation of each future frame
+``mimic_future_dof_pos``        ``[1, 4, 29]``  ``MotionPlayer.get_future_references()``
+``mimic_future_dof_vel``        ``[1, 4, 29]``  ``MotionPlayer.get_future_references()``
+``current_anchor_rot``          ``[1, 4]``      anchor body quat, xyzw (see YAML)
+``current_dof_pos``             ``[1, 29]``     ``data.qpos[7:]`` (skip free joint)
+``current_dof_vel``             ``[1, 29]``     ``data.qvel[6:]`` (skip free joint)
+``current_root_local_ang_vel``  ``[1, 3]``      pelvis angular velocity, pelvis frame
+``processed_action_history``    ``[1, 1, 29]``  own ``joint_pos_targets`` one call ago
+==============================  ==============  ========================================
+
+For this bundle ``processed_action_history`` holds zeros until one policy call
+has run since a reset; the anchor body (``torso_link`` on G1) and the pelvis
+are named in the sidecar's ``robot`` block.
 
 ONNX outputs
 -------------
@@ -101,13 +117,22 @@ simulator's physics configuration:
 Dependencies
 ------------
 Always required:
-    mujoco, onnxruntime, numpy, pyyaml, torch (``torch.load`` only)
+    mujoco, onnxruntime, numpy, pyyaml, torch, and the ``protomotions`` package
+    itself.  ``deployment.tracker_inputs`` imports the context-source names and
+    the sensor configuration from ``protomotions.envs`` when it is imported, and
+    ``deployment.contract`` imports the sensor metadata and goal-canvas types,
+    so this runner does not start without ``protomotions`` on the path (and
+    those modules bring torch with them).  A host for a real robot should take
+    the sidecar's ``policy_inputs`` block as its contract and reimplement the
+    input assembly on its own side, rather than copy ``deployment/`` without
+    ``protomotions/``.
 
-First run only (interpolation mode — if loading a raw ``.motion`` file):
-    protomotions (motion interpolation utils: SLERP + lerp)
+First run only (when loading a raw ProtoMotions motion file):
+    ``protomotions.utils.motion_interpolation_utils`` (SLERP + lerp), to
+    resample the clip to the control rate.
 
-After ``--cache-motion``, subsequent runs need only the "always required"
-packages — zero protomotions imports execute.
+After ``--cache-motion``, subsequent runs skip that resampling step; the
+imports listed under "always required" still execute.
 
 Usage
 -----
@@ -119,7 +144,7 @@ Usage
         --motion data/motions/walk.motion \\
         --cache-motion --render
 
-    # Subsequent runs: cached motion, no protomotions import
+    # Subsequent runs: cached motion, no resampling step
     python deployment/test_tracker_mujoco.py \\
         --onnx  path/to/unified_pipeline.onnx \\
         --motion data/motions/walk.50fps.pt \\
