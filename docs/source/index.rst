@@ -126,6 +126,7 @@ Quick Links
 
    user_guide/browser_demo
    user_guide/g1_racer
+   user_guide/g1_football
 
 .. toctree::
    :maxdepth: 2

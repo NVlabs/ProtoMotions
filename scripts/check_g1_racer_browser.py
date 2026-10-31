@@ -6,14 +6,106 @@
 import argparse
 import json
 import threading
+import time
+from contextlib import ExitStack
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from playwright.sync_api import sync_playwright
+# Stream a bounded snapshot while the page is responsive. Failure reporting
+# must not make another evaluate() call into a potentially stalled renderer.
+OBSERVE_DIAGNOSTICS = """(() => {
+    let lastFrame = null, workerError = null, lastPublish = -Infinity;
+    const deliveries = [], longTasks = [];
+    const append = (rows, value) => { rows.push(value); if (rows.length > 16) rows.shift(); };
+    const publish = () => {
+        const at = performance.now();
+        if (at - lastPublish < 1000) return;
+        lastPublish = at;
+        window.__racerReport({at, lastFrame, workerError,
+            error: window.kartError ?? null, deliveries, longTasks,
+            visibility: document.visibilityState, focused: document.hasFocus(),
+            active: document.activeElement?.tagName + ':' + document.activeElement?.id
+        }).catch(() => {});
+    };
+    const NativeWorker = window.Worker;
+    window.Worker = class extends NativeWorker {
+        constructor(...args) {
+            super(...args);
+            this.addEventListener('message', ({data: m}) => {
+                if (m.type === 'frame' && m.state) {
+                    const s = m.state, receivedAt = performance.now();
+                    lastFrame = structuredClone({receivedAt, timings: m.timings,
+                        state: {time: s.time, race_time: s.race_time,
+                            controlled: s.controlled, positions: s.positions,
+                            respawn_countdown: s.respawn_countdown}});
+                    append(deliveries, {receivedAt, ticks: m.timings.ticks, wall: m.timings.wall});
+                }
+                if (m.type === 'error') workerError = String(m.message).slice(0, 2000);
+                publish();
+            });
+        }
+    };
+    if (globalThis.PerformanceObserver) {
+        new PerformanceObserver(list => {
+            for (const e of list.getEntries()) append(longTasks, {start: e.startTime, duration: e.duration});
+        }).observe({type: 'longtask', buffered: true});
+    }
+    setInterval(publish, 1000);
+})()"""
+
+# Observe the existing frame publication, not the pause button (which changes
+# before the worker has finished its current inference). Keep only adjacent
+# atomic state/tick samples; no runtime or worker protocol changes are needed.
+OBSERVE_PAUSE_FRAMES = """() => {
+    let status = window.kartStatus;
+    let sequence = 0;
+    const sample = () => ({sequence: sequence++,
+        ticks: status.timings.ticks, state: structuredClone(status.state)});
+    const frames = [sample()];
+    window.__racerPauseFrames = frames;
+    Object.defineProperty(window, 'kartStatus', {
+        configurable: true, enumerable: true,
+        get: () => status,
+        set: value => {
+            status = value;
+            frames.push(sample());
+            if (frames.length > 3) frames.shift();
+        }
+    });
+}"""
+
+WAIT_FOR_RESPAWN = """requestSequence => {
+    if (window.kartError) return {error: window.kartError};
+    const frames = window.__racerPauseFrames;
+    const after = frames.at(-1), before = frames.at(-2);
+    // A completed tick increments ticks. The queued respawn publishes a new
+    // snapshot WITHOUT incrementing ticks, after the paused loop drains.
+    if (!before || after.sequence <= requestSequence ||
+        after.ticks !== before.ticks || after.state.respawn_countdown !== -3)
+        return false;
+    return {before, after};
+}"""
+
+
+def assert_paused_respawn(request, before, after):
+    """Separate the allowed final live tick from the stationary reset itself."""
+    samples = {"request": request, "before": before, "after": after}
+    assert after["sequence"] > request["sequence"], samples
+    assert 0 <= after["ticks"] - request["ticks"] <= 1, samples
+    assert after["state"]["race_time"] >= request["state"]["race_time"], samples
+    assert before["ticks"] == after["ticks"], samples
+    assert before["state"]["race_time"] == after["state"]["race_time"], samples
+    assert after["state"]["respawn_countdown"] == -3, samples
+    for old, new in zip(
+        before["state"]["positions"][2][:2], after["state"]["positions"][2][:2]
+    ):
+        assert abs(old - new) < 1e-6, samples
 
 
 def main():
+    from playwright.sync_api import sync_playwright
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("site", type=Path, help="Contains demos/g1-racer/index.html")
     parser.add_argument("--executable", help="Optional Chromium executable")
@@ -24,13 +116,20 @@ def main():
     )
     parser.add_argument("--ticks", type=int, default=20)
     args = parser.parse_args()
+    model_url = json.loads(
+        (args.site / "demos/g1-racer/policy/network.json").read_text()
+    )["url"]
     handler = partial(SimpleHTTPRequestHandler, directory=str(args.site.resolve()))
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     errors, missing, messages, requests = [], [], [], []
-    model_url = json.loads(
-        (args.site / "demos/g1-racer/policy/network.json").read_text()
-    )["url"]
+    diagnostic = {}
+
+    def remember_diagnostic(_source, value):
+        diagnostic.clear()
+        diagnostic.update(value)
+        diagnostic["received_at_monotonic"] = time.monotonic()
+
     flags = ["--no-sandbox"]
     if args.webgpu:
         flags += [
@@ -40,11 +139,14 @@ def main():
             "--disable-vulkan-surface",
         ]
     try:
-        with sync_playwright() as playwright:
+        with sync_playwright() as playwright, ExitStack() as cleanup:
             browser = playwright.chromium.launch(
                 headless=True, executable_path=args.executable, args=flags
             )
+            cleanup.callback(browser.close)
             page = browser.new_page(viewport={"width": 1280, "height": 720})
+            page.expose_binding("__racerReport", remember_diagnostic)
+            page.add_init_script(OBSERVE_DIAGNOSTICS)
             page.on("pageerror", lambda e: errors.append(str(e)))
             page.on("console", lambda m: messages.append(m.text))
             page.on("request", lambda request: requests.append(request.url))
@@ -97,6 +199,7 @@ def main():
             page.wait_for_function(
                 f"window.kartStatus?.timings.ticks >= {args.ticks} || window.kartError",
                 timeout=180_000,
+                polling=100,
             )
             assert not page.evaluate("window.kartError"), page.evaluate(
                 "window.kartError"
@@ -122,35 +225,35 @@ def main():
             before_tab = page.evaluate("window.kartStatus.timings.ticks")
             page.keyboard.press("Tab")
             page.wait_for_function(
-                f"window.kartStatus.timings.ticks > {before_tab}", timeout=30_000
+                f"window.kartStatus.timings.ticks > {before_tab} || window.kartError",
+                timeout=30_000,
+                polling=100,
+            )
+            assert not page.evaluate("window.kartError"), page.evaluate(
+                "window.kartError"
             )
             assert page.evaluate("window.kartStatus.state.controlled") == 2
             # Exercise the supported keyboard control. Software WebGL on CPU
             # runners can delay the two animation frames that locator.click()
             # waits for stability, despite the page accepting input.
+            page.evaluate(OBSERVE_PAUSE_FRAMES)
             page.keyboard.press("p")
             page.wait_for_function(
-                "document.querySelector('#pause').textContent === 'Resume'"
+                "document.querySelector('#pause').textContent === 'Resume'",
+                polling=100,
             )
-            # Let the in-flight control tick drain before sampling the paused
-            # position. Manual reset must not rewind the robot or race clock.
-            page.wait_for_timeout(500)
-            before_respawn = page.evaluate("window.kartStatus.state")
-            before_ticks = page.evaluate("window.kartStatus.timings.ticks")
+            request = page.evaluate("window.__racerPauseFrames.at(-1)")
             page.keyboard.press("r")
-            page.wait_for_function("window.kartStatus.state.respawn_countdown === -3")
-            after_respawn = page.evaluate("window.kartStatus.state")
-            after_ticks = page.evaluate("window.kartStatus.timings.ticks")
-            # A paused reset must not rewind the race clock. On a slow CPU/WASM
-            # runner one in-flight control tick (50 Hz) can still retire between
-            # the two samples, so allow the clock to advance by at most that one
-            # tick but never to rewind.
-            assert after_respawn["race_time"] >= before_respawn["race_time"]
-            assert 0 <= after_ticks - before_ticks <= 1
-            for before, after in zip(
-                before_respawn["positions"][2][:2], after_respawn["positions"][2][:2]
-            ):
-                assert abs(before - after) < 1e-6
+            acknowledgement = page.wait_for_function(
+                WAIT_FOR_RESPAWN,
+                arg=request["sequence"],
+                timeout=30_000,
+                polling=100,
+            )
+            result = acknowledgement.json_value()
+            acknowledgement.dispose()
+            assert "error" not in result, result
+            assert_paused_respawn(request, result["before"], result["after"])
             assert page.locator("#countdown-number").inner_text() == "3"
             assert page.locator("#countdown-label").inner_text() == "RESPAWN PENALTY"
             assert any("policy parity PASS" in m for m in messages)
@@ -167,7 +270,24 @@ def main():
                 "simulation, Green control and item boxes"
             )
             print(page.evaluate("JSON.stringify(window.kartStatus.timings)"))
-            browser.close()
+    except Exception:
+        received = diagnostic.get("received_at_monotonic")
+        print(
+            "RACER FAILURE DIAGNOSTICS "
+            + json.dumps(
+                {
+                    "snapshot_age_seconds": time.monotonic() - received
+                    if received is not None
+                    else None,
+                    "last_snapshot": diagnostic,
+                    "page_errors": [str(e)[:2000] for e in errors[-20:]],
+                    "console": [m[:2000] for m in messages[-20:]],
+                    "missing": missing[-20:],
+                }
+            ),
+            flush=True,
+        )
+        raise
     finally:
         server.shutdown()
         server.server_close()
