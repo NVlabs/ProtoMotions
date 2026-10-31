@@ -132,9 +132,11 @@ def update_simulator_config_for_test(
     # which "regenerate the bundle" is the wrong guidance -- rather than letting build
     # raise a bare AttributeError later. The launcher imported this backend in the
     # right order (before torch), so the import is safe here; config_schema's load
-    # skips simulator targets for exactly that reason.
+    # skips simulator targets for exactly that reason. Isaac Lab is the exception:
+    # importing it loads pxr, which must wait until the SimulationApp is running.
     try:
-        get_class(new_target)
+        if new_simulator != "isaaclab":
+            get_class(new_target)
     except (ImportError, AttributeError) as error:
         raise ValueError(
             f"simulator {new_simulator!r}: {new_target} is not importable "
