@@ -15,6 +15,7 @@
 *.ckpt filter=lfs diff=lfs merge=lfs -text
 *.onnx filter=lfs diff=lfs merge=lfs -text
 demos/g1-racer/game.zip filter=lfs diff=lfs merge=lfs -text
+demos/g1-football/game.zip filter=lfs diff=lfs merge=lfs -text
 
 # Prebuilt browser application, not its development sources.
 demos/metatron/demo.zip filter=lfs diff=lfs merge=lfs -text

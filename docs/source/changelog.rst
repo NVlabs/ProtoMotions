@@ -7,6 +7,44 @@ Unreleased
 Record changes for the next release in this section. Move completed entries
 into a dated release section when the release is published.
 
+October 31, 2026
+----------------
+
+The following changes are included in this release:
+
+Demos and Documentation
+~~~~~~~~~~~~~~~~~~~~~~~
+
+* **G1 Football** is released: five penalty shots against a simulated Unitree
+  G1 goalkeeper driven by Metatron, with MuJoCo physics, the keeper's rendered
+  RGB-D camera and the supplied ball detector, tracker and commit running in
+  the browser (``demos/g1-football/``, installed beside the documentation by
+  ``scripts/install_g1_football.py``; user guide page ``user_guide/g1_football``).
+  The keeper sees only its camera. Wide low or mid shots (a camera-derived
+  crossing at least 1.2 m to the side) trigger a goalkeeper dive that shuffles
+  and drops toward the ball line as early as the body allows, holds there until
+  the ball arrives and hands over to the native recovery; nearer shots keep the
+  timed save. The dive follows a reference clip derived from one BONES-SEED
+  motion, credited inside ``keeper-dive-clip.json`` and in ``NOTICE.txt``.
+  Over 24 paired kicks (8 kick types, 3 camera-noise seeds, identical seeds
+  for both keepers) the dive saved 21 where the timed save made 16. High
+  corners are not dived at (no jumping reference); getting up after a dive is
+  slower than after the timed save.
+* The football page keeps the sensor's head mount and pose for the replay but
+  opens the lens to 100 degrees so the keeper's own arms are visible; the
+  keeper-vision panel keeps the calibrated projection the detector saw. After a
+  decided shot, camera frames past the replayable window are not analysed
+  (the supplied detector took seconds per frame with the ball hidden behind
+  the keeper's body), and a request-scoped watchdog reports a camera frame
+  that never returns instead of freezing.
+* Phone layout: the portrait canvas margins, the start panel and the keeper
+  panel no longer overlap the pitch or the thumb controls; a charge pressed
+  while the keeper camera is still preparing the next shot is accepted and its
+  release is queued until the game is ready. Chromium touch emulation passes in
+  both orientations; physical iPhone/Safari devices are not qualified.
+* The Racer browser check records bounded failure diagnostics and waits for
+  acknowledged respawn frames before judging a run.
+
 October 29, 2026
 ----------------
 
