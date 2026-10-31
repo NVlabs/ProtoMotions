@@ -165,6 +165,28 @@ def test_update_simulator_config_for_test_refuses_an_unimportable_backend(monkey
         )
 
 
+def test_update_simulator_config_for_test_does_not_import_isaaclab(monkeypatch):
+    monkeypatch.setattr(
+        simulator_factory,
+        "get_simulator_config_class",
+        lambda simulator_name: _FakeSimulatorConfig,
+    )
+
+    def _must_not_import(path):
+        raise AssertionError(f"imported {path}")
+
+    monkeypatch.setattr(simulator_factory, "get_class", _must_not_import)
+    current = SimpleNamespace(_target_="old.Target", w_last=True, sim=_FakeSimParams())
+    robot_config = SimpleNamespace(
+        simulation_params=SimpleNamespace(isaaclab=_FakeSimParams())
+    )
+
+    updated = simulator_factory.update_simulator_config_for_test(
+        current, "isaaclab", robot_config
+    )
+    assert updated._target_ == "fake.Target"
+
+
 def test_build_motion_data_maps_recorded_fields_and_fills_missing_values():
     recorded_motion = {
         "gts": [torch.ones(2, 3), torch.ones(2, 3) * 2.0],
