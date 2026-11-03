@@ -1674,6 +1674,398 @@
       }
     }
   },
+  "mimic.anatomical_soma_fsq_mimic": {
+    "observation": {
+      "max_coords_obs": {
+        "body_contacts": null,
+        "compute_func": "compute_humanoid_max_coords_observations",
+        "dynamic_vars": {
+          "anchor_body_index": "current.anchor_idx",
+          "body_ang_vel": "current.rigid_body_ang_vel",
+          "body_pos": "current.rigid_body_pos",
+          "body_rot": "current.rigid_body_rot",
+          "body_vel": "current.rigid_body_vel",
+          "ground_height": "current.ground_heights"
+        },
+        "local_obs": true,
+        "observe_contacts": false,
+        "root_height_obs": true,
+        "w_last": true
+      },
+      "mimic_target_poses": {
+        "body_indices": null,
+        "compute_func": "build_max_coords_target_poses",
+        "dynamic_vars": {
+          "anchor_body_index": "mimic.anchor_idx",
+          "current_state_body_ang_vel": "current.rigid_body_ang_vel",
+          "current_state_body_pos": "current.rigid_body_pos",
+          "current_state_body_rot": "current.rigid_body_rot",
+          "current_state_body_vel": "current.rigid_body_vel",
+          "mimic_ref_ang_vel": "mimic.future_ang_vel",
+          "mimic_ref_pos": "mimic.future_pos",
+          "mimic_ref_rot": "mimic.future_rot",
+          "mimic_ref_vel": "mimic.future_vel"
+        },
+        "future_steps": null,
+        "w_last": true,
+        "with_relative": true,
+        "with_velocities": true
+      }
+    },
+    "reward": {
+      "action_smoothness": {
+        "compute_func": "compute_action_rate_l2",
+        "dynamic_vars": {
+          "previous_raw_action": "previous_action",
+          "raw_action": "current_action"
+        },
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": -0.1,
+          "zero_during_grace_period": false
+        }
+      },
+      "contact_match_rew": {
+        "body_names": [
+          "LeftFoot",
+          "LeftToeBase",
+          "RightFoot",
+          "RightToeBase"
+        ],
+        "compute_func": "compute_terrain_foot_contact_match_rew",
+        "contact_body_ids": {
+          "groups": [],
+          "names": [
+            "LeftFoot",
+            "LeftToeBase",
+            "RightFoot",
+            "RightToeBase"
+          ],
+          "pattern": null
+        },
+        "dynamic_vars": {
+          "contact_body_index": "contact_body_index",
+          "contact_forces": "contact_forces",
+          "contact_partner_index": "contact_partner_index",
+          "ref_contacts": "mimic.ref_state.rigid_body_contacts"
+        },
+        "force_threshold": 0.01,
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": -0.1,
+          "zero_during_grace_period": true
+        },
+        "required_keys": {
+          "contact_body_index": [
+            "LeftFoot",
+            "LeftToeBase",
+            "RightFoot",
+            "RightToeBase"
+          ],
+          "contact_partner_index": [
+            "terrain"
+          ]
+        }
+      },
+      "gav_rew": {
+        "body_indices": null,
+        "compute_func": "compute_global_body_ang_vel_rew",
+        "dynamic_vars": {
+          "current_rigid_body_ang_vel": "current.rigid_body_ang_vel",
+          "ref_rigid_body_ang_vel": "mimic.ref_state.rigid_body_ang_vel"
+        },
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": 1.0,
+          "zero_during_grace_period": false
+        },
+        "sigma": 3.14
+      },
+      "gr_rew": {
+        "compute_func": "compute_global_orientation_error_exp",
+        "dynamic_vars": {
+          "q": "current.rigid_body_rot",
+          "ref_q": "mimic.ref_state.rigid_body_rot"
+        },
+        "indices": [
+          9,
+          36,
+          26,
+          51,
+          52,
+          43,
+          44
+        ],
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": 1.0,
+          "zero_during_grace_period": false
+        },
+        "sigma": 0.4
+      },
+      "gt_rew": {
+        "compute_func": "compute_global_position_error_exp",
+        "dynamic_vars": {
+          "ref_x": "mimic.ref_state.rigid_body_pos",
+          "x": "current.rigid_body_pos"
+        },
+        "indices": [
+          9,
+          36,
+          26,
+          51,
+          52,
+          43,
+          44
+        ],
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": 1.0,
+          "zero_during_grace_period": false
+        },
+        "sigma": 0.3
+      },
+      "gv_rew": {
+        "body_indices": null,
+        "compute_func": "compute_global_body_lin_vel_rew",
+        "dynamic_vars": {
+          "current_rigid_body_vel": "current.rigid_body_vel",
+          "ref_rigid_body_vel": "mimic.ref_state.rigid_body_vel"
+        },
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": 1.0,
+          "zero_during_grace_period": false
+        },
+        "sigma": 1.0
+      },
+      "hand_torso_pos": {
+        "compute_func": "compute_global_position_error_exp",
+        "dynamic_vars": {
+          "ref_x": "mimic.ref_state.rigid_body_pos",
+          "x": "current.rigid_body_pos"
+        },
+        "indices": [
+          9,
+          36,
+          26
+        ],
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": 2.0,
+          "zero_during_grace_period": false
+        },
+        "sigma": 0.1
+      },
+      "hand_torso_rot": {
+        "compute_func": "compute_global_orientation_error_exp",
+        "dynamic_vars": {
+          "q": "current.rigid_body_rot",
+          "ref_q": "mimic.ref_state.rigid_body_rot"
+        },
+        "indices": [
+          9,
+          36,
+          26
+        ],
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": 0.4,
+          "zero_during_grace_period": false
+        },
+        "sigma": 0.1
+      },
+      "limits_dof_pos": {
+        "compute_func": "compute_soft_pos_limit_rew",
+        "dof_limits_lower": [
+          -0.39269906282424927,
+          -0.44178643822669983,
+          -0.471238911151886,
+          -0.44178643822669983,
+          -0.29452431201934814,
+          -0.18849556148052216,
+          -0.7363107800483704,
+          -0.39269906282424927,
+          -0.39269906282424927,
+          -1.0308350324630737,
+          -0.8835728764533997,
+          -0.942477822303772,
+          -0.471238911151886,
+          -1.1780972480773926,
+          -0.7696901559829712,
+          -0.9896016120910645,
+          -0.6305356025695801,
+          -0.7249770164489746,
+          -0.6801542639732361,
+          -2.5484938621520996,
+          -1.7278759479522705,
+          -2.12046217918396,
+          0.0,
+          -1.4137201309204102,
+          -1.4137201309204102,
+          -0.471238911151886,
+          -0.6305356025695801,
+          -0.5820659399032593,
+          -0.6801542639732361,
+          -2.5484938621520996,
+          -2.5132739543914795,
+          -1.8701928853988647,
+          -2.5132498741149902,
+          -1.4137201309204102,
+          -1.4137201309204102,
+          -0.471238911151886,
+          -2.204683542251587,
+          -1.2035244703292847,
+          -1.0995573997497559,
+          0.0,
+          -1.0210176706314087,
+          -0.7068584561347961,
+          -0.39269906282424927,
+          -0.9424799680709839,
+          -2.204683542251587,
+          -1.413718819618225,
+          -1.0995573997497559,
+          -2.5132739543914795,
+          -1.0210176706314087,
+          -0.7068584561347961,
+          -0.39269906282424927,
+          -0.9424799680709839
+        ],
+        "dof_limits_upper": [
+          0.39269906282424927,
+          0.44178643822669983,
+          1.0308350324630737,
+          0.44178643822669983,
+          0.29452431201934814,
+          0.44178643822669983,
+          0.7363107800483704,
+          0.39269906282424927,
+          0.7068583369255066,
+          1.0308350324630737,
+          0.8835728764533997,
+          1.0308350324630737,
+          0.471238911151886,
+          1.1780972480773926,
+          0.7696901559829712,
+          0.45553091168403625,
+          0.6305354237556458,
+          0.5820656418800354,
+          0.6801544427871704,
+          2.5447301864624023,
+          2.5132739543914795,
+          1.8701928853988647,
+          2.5132498741149902,
+          1.4137201309204102,
+          1.4137201309204102,
+          0.471238911151886,
+          0.6305354237556458,
+          0.7249771952629089,
+          0.6801544427871704,
+          2.5447301864624023,
+          1.7278759479522705,
+          2.12046217918396,
+          0.0,
+          1.4137201309204102,
+          1.4137201309204102,
+          0.471238911151886,
+          2.1826767921447754,
+          1.4137189388275146,
+          1.0995573997497559,
+          2.5132739543914795,
+          1.0210176706314087,
+          0.7068584561347961,
+          0.39269906282424927,
+          0.9424799680709839,
+          2.1826767921447754,
+          1.2035245895385742,
+          1.0995573997497559,
+          0.0,
+          1.0210176706314087,
+          0.7068584561347961,
+          0.39269906282424927,
+          0.9424799680709839
+        ],
+        "dynamic_vars": {
+          "dof_pos": "current.dof_pos"
+        },
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": -10.0,
+          "zero_during_grace_period": false
+        }
+      },
+      "relative_body_ori": {
+        "body_indices": null,
+        "compute_func": "compute_relative_body_ori_rew",
+        "dynamic_vars": {
+          "current_anchor_rot": "current.anchor_rot",
+          "current_rigid_body_rot": "current.rigid_body_rot",
+          "ref_anchor_rot": "mimic.ref_anchor_rot",
+          "ref_rigid_body_rot": "mimic.ref_state.rigid_body_rot"
+        },
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": 1.0,
+          "zero_during_grace_period": false
+        },
+        "sigma": 0.4
+      },
+      "relative_body_pos": {
+        "body_indices": null,
+        "compute_func": "compute_relative_body_pos_rew",
+        "dynamic_vars": {
+          "current_anchor_pos": "current.anchor_pos",
+          "current_anchor_rot": "current.anchor_rot",
+          "current_rigid_body_pos": "current.rigid_body_pos",
+          "ref_anchor_pos": "mimic.ref_anchor_pos",
+          "ref_anchor_rot": "mimic.ref_anchor_rot",
+          "ref_rigid_body_pos": "mimic.ref_state.rigid_body_pos"
+        },
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": 1.0,
+          "zero_during_grace_period": false
+        },
+        "sigma": 0.3
+      }
+    },
+    "termination": {
+      "tracking_error": {
+        "component": {
+          "compute_func": "max_body_pos_error",
+          "dynamic_vars": {
+            "current_rigid_body_pos": "current.rigid_body_pos",
+            "ref_rigid_body_pos": "mimic.ref_state.rigid_body_pos"
+          }
+        },
+        "fail_above": true,
+        "threshold": 0.5,
+        "truncation": false
+      }
+    }
+  },
   "mimic.fsq": {
     "observation": {
       "max_coords_obs": {

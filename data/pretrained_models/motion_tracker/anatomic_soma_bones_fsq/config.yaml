@@ -1,0 +1,16 @@
+{
+  "robot_name": "anatomic_soma",
+  "simulator": "isaaclab",
+  "num_envs": 4096,
+  "batch_size": 4096,
+  "motion_file": "data/motion_for_trackers/anatomic_soma_bones_seed_mini.pt",
+  "experiment_path": "data/pretrained_models/motion_tracker/anatomic_soma_bones_fsq/experiment_config.py",
+  "experiment_name": "anatomic_soma_fsq_tracker",
+  "scenes_file": null,
+  "checkpoint": null,
+  "headless": true,
+  "seed": 0,
+  "torch_deterministic": false,
+  "overrides": [],
+  "create_config_only": true
+}

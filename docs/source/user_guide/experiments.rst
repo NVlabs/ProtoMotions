@@ -32,6 +32,10 @@ reproduce the motion while maintaining physical plausibility.
   cannot run a recipe that declares contact bodies.
 * ``mlp_bm_l2c2.py`` - BeyondMimic policy with a torso anchor, L2C2 smoothness regularization, and a self-contact cost on non-foot/non-hand bodies, aimed at sim2real
 * ``fsq.py`` - FSQ tracker over max-coordinates proprioception and target poses
+* ``anatomical_soma_fsq_mimic.py`` - the FSQ tracker on the anatomical SOMA
+  humanoid with G1-class actuators (BeyondMimic actions, raw Gaussian tracking
+  rewards, physical randomization); see
+  :doc:`../robots/anatomic_soma`
 * ``../metatron/g1_teacher.py`` - five-body hybrid FSQ/PPO tracker for G1.
   See the Metatron section below for training entry points.
 

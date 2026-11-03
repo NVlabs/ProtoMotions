@@ -69,6 +69,7 @@ from typing import Dict, Iterable, List, Optional
 import torch
 
 import protomotions
+from protomotions.agents.ppo.config import StdMode
 import protomotions.envs.component_manager as component_manager
 import protomotions.simulator.base_simulator.config as sim_config
 from protomotions.envs.context_check import (
@@ -83,6 +84,8 @@ REPO_ROOT = Path(protomotions.__file__).resolve().parents[1]
 MOTION_FILES = {
     "g1": REPO_ROOT / "data/motion_for_trackers/g1_bones_seed_mini.pt",
     "soma23": REPO_ROOT / "data/motion_for_trackers/soma23_bones_seed_mini.pt",
+    "anatomic_soma": REPO_ROOT
+    / "data/motion_for_trackers/anatomic_soma_bones_seed_mini.pt",
 }
 MOTION_FILE = MOTION_FILES["g1"]
 LFS_POINTER_PREFIX = b"version https://git-lfs"
@@ -407,6 +410,21 @@ def registration_forward(agent, obs: Dict[str, torch.Tensor]):
     shape and dtype checked against its spec), then the rewards, the dones and
     the algorithm's own key registrations. The model must declare a key of its
     own and every output tensor must be finite. Returns the output."""
+    actor = getattr(agent.config.model, "actor", None)
+    if (
+        getattr(actor, "std_mode", None) == StdMode.PER_MOTION
+        and not agent.training_setup
+    ):
+        # A per-clip std indexes the table by motion id, which training setup
+        # injects from its motion index. Only an inference-mode agent gets zero
+        # ids here (as its lazy materialization does); a training agent that
+        # failed to inject them must fail, that is the contract under test.
+        obs = {
+            **obs,
+            "global_motion_id": torch.zeros(
+                agent.num_envs, dtype=torch.long, device=agent.device
+            ),
+        }
     output = agent.setup_experience_buffer(obs)
     assert agent.model_output_keys, "the model declares no key of its own"
     for key, value in output.items(True, True):

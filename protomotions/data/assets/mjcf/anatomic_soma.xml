@@ -1,0 +1,355 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mujoco model="anatomic_soma">
+  <!-- SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+  <!-- SPDX-License-Identifier: Apache-2.0 -->
+  <compiler coordinate="local" />
+  <worldbody>
+    <body name="Hips" pos="0 0 0">
+      <body name="Spine1_x_link" pos="-0.0005 0 0.05">
+        <joint name="Spine1_z" type="hinge" pos="0 0 0" axis="0 0 1" stiffness="1000" damping="100" armature="0.02" range="-25 25" actuatorfrcrange="-300 300" limited="true" />
+        <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+        <body name="Spine1_y_link" pos="0 0 0">
+          <joint name="Spine1_y" type="hinge" pos="0 0 0" axis="-1 0 0" stiffness="1000" damping="100" armature="0.02" range="-28.125 28.125" actuatorfrcrange="-300 300" limited="true" />
+          <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+          <body name="Spine1" pos="0 0 0">
+            <joint name="Spine1_x" type="hinge" pos="0 0 0" axis="0 1 0" stiffness="1000" damping="100" armature="0.02" range="-30 65.625" actuatorfrcrange="-300 300" limited="true" />
+            <body name="Spine2_x_link" pos="-0.0003 0 0.0713">
+              <joint name="Spine2_z" type="hinge" pos="0 0 0" axis="0 0 1" stiffness="1000" damping="100" armature="0.02" range="-28.125 28.125" actuatorfrcrange="-200 200" limited="true" />
+              <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+              <body name="Spine2_y_link" pos="0 0 0">
+                <joint name="Spine2_y" type="hinge" pos="0 0 0" axis="-1 0 0" stiffness="1000" damping="100" armature="0.02" range="-18.75 18.75" actuatorfrcrange="-200 200" limited="true" />
+                <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+                <body name="Spine2" pos="0 0 0">
+                  <joint name="Spine2_x" type="hinge" pos="0 0 0" axis="0 1 0" stiffness="1000" damping="100" armature="0.02" range="-12 28.125" actuatorfrcrange="-200 200" limited="true" />
+                  <body name="Chest_x_link" pos="-0.0082 0 0.0755">
+                    <joint name="Chest_z" type="hinge" pos="0 0 0" axis="0 0 1" stiffness="1000" damping="100" armature="0.02" range="-46.875 46.875" actuatorfrcrange="-150 150" limited="true" />
+                    <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+                    <body name="Chest_y_link" pos="0 0 0">
+                      <joint name="Chest_y" type="hinge" pos="0 0 0" axis="-1 0 0" stiffness="1000" damping="100" armature="0.02" range="-25 25" actuatorfrcrange="-150 150" limited="true" />
+                      <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+                      <body name="Chest" pos="0 0 0">
+                        <joint name="Chest_x" type="hinge" pos="0 0 0" axis="0 1 0" stiffness="1000" damping="100" armature="0.02" range="-25 45" actuatorfrcrange="-150 150" limited="true" />
+                        <body name="Neck1_x_link" pos="-0.0055 -0.0018 0.2631">
+                          <joint name="Neck1_z" type="hinge" pos="0 0 0" axis="0 0 1" stiffness="500" damping="50" armature="0.02" range="-65.625 65.625" actuatorfrcrange="-75 75" limited="true" />
+                          <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+                          <body name="Neck1_y_link" pos="0 0 0">
+                            <joint name="Neck1_y" type="hinge" pos="0 0 0" axis="-1 0 0" stiffness="500" damping="50" armature="0.02" range="-56.25 56.25" actuatorfrcrange="-75 75" limited="true" />
+                            <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+                            <body name="Neck1" pos="0 0 0">
+                              <joint name="Neck1_x" type="hinge" pos="0 0 0" axis="0 1 0" stiffness="500" damping="50" armature="0.02" range="-60 65.625" actuatorfrcrange="-75 75" limited="true" />
+                              <body name="Neck2" pos="0.023 0 0.0771">
+                                <joint name="Neck2_yaw" type="hinge" pos="0 0 0" axis="0.303139490824 0 0.952946194233" stiffness="200" damping="20" armature="0.02" range="-30 30" actuatorfrcrange="-25 25" limited="true" />
+                                <body name="Head_x_link" pos="0.0195 0 0.0613">
+                                  <joint name="Head_z" type="hinge" pos="0 0 0" axis="0 0 1" stiffness="200" damping="20" armature="0.02" range="-75 75" actuatorfrcrange="-25 25" limited="true" />
+                                  <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+                                  <body name="Head_y_link" pos="0 0 0">
+                                    <joint name="Head_y" type="hinge" pos="0 0 0" axis="-1 0 0" stiffness="200" damping="20" armature="0.02" range="-49 49" actuatorfrcrange="-25 25" limited="true" />
+                                    <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+                                    <body name="Head" pos="0 0 0">
+                                      <joint name="Head_x" type="hinge" pos="0 0 0" axis="0 1 0" stiffness="200" damping="20" armature="0.02" range="-63 29" actuatorfrcrange="-25 25" limited="true" />
+                                      <inertial pos="-0.02 0 0.07" quat="0.70710678118655 0 0 0.70710678118655" mass="4.723" diaginertia="0.02621265 0.02621265 0.01771125" />
+                                      <geom name="Head" type="box" size="0.075 0.075 0.105" pos="-0.02 0 0.07" quat="0.70710678118655 1.1775693440144e-16 1.1775693440144e-16 0.70710678118655" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                                    </body>
+                                  </body>
+                                </body>
+                                <inertial pos="0.005 0 0.025" quat="-0.069676617866157 0.70366552347172 0.70366552347172 -0.069676617866157" mass="0.524387249017" diaginertia="0.000708924810181 0.000708924810181 0.000376616587517" />
+                                <geom name="Neck2" type="capsule" size="0.04 0.025495097568" pos="0.005 0 0.025" quat="-0.069676617866157 0.70366552347172 0.70366552347172 -0.069676617866157" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                              </body>
+                              <inertial pos="0.03 0 0.035" quat="4.3297802811798e-17 0.70710678118655 0.70710678118655 4.3297802811798e-17" mass="0.617940950308" diaginertia="0.00106244090686 0.00106244090686 0.000451597926928" />
+                              <geom name="Neck1" type="capsule" size="0.029 0.035" pos="0.03 0 0.035" quat="7.8504622934531e-17 0.70710678118655 0.70710678118655 7.8504622934531e-17" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                            </body>
+                          </body>
+                        </body>
+                        <body name="RightShoulder_x_link" pos="0.0521 -0.0138 0.2318">
+                          <joint name="RightShoulder_x" type="hinge" pos="0 0 0" axis="0 1 0" stiffness="500" damping="50" armature="0.02" range="-40.141143799 40.141132355" actuatorfrcrange="-200 200" limited="true" />
+                          <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+                          <body name="RightShoulder_y_link" pos="0 0 0">
+                            <joint name="RightShoulder_y" type="hinge" pos="0 0 0" axis="-1 0 0" stiffness="500" damping="50" armature="0.02" range="-46.153472900 37.055450439" actuatorfrcrange="-200 200" limited="true" />
+                            <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+                            <body name="RightShoulder" pos="0 0 0">
+                              <joint name="RightShoulder_z" type="hinge" pos="0 0 0" axis="0 0 1" stiffness="500" damping="50" armature="0.02" range="-43.299968719 43.299976349" actuatorfrcrange="-200 200" limited="true" />
+                              <body name="RightArm_x_link" pos="-0.0555 -0.1504 0">
+                                <joint name="RightArm_x" type="hinge" pos="0 0 0" axis="0 1 0" stiffness="400" damping="40" armature="0.02" range="-162.242172241 162.002563477" actuatorfrcrange="-150 150" limited="true" />
+                                <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+                                <body name="RightArm_y_link" pos="0 0 0">
+                                  <joint name="RightArm_z" type="hinge" pos="0 0 0" axis="0 0 1" stiffness="400" damping="40" armature="0.02" range="-110 160" actuatorfrcrange="-150 150" limited="true" />
+                                  <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+                                  <body name="RightArm" pos="0 0 0">
+                                    <joint name="RightArm_y" type="hinge" pos="0 0 0" axis="-1 0 0" stiffness="400" damping="40" armature="0.02" range="-134.992813110 119.060180664" actuatorfrcrange="-150 150" limited="true" />
+                                    <body name="RightForeArm" pos="0 -0.2874 0">
+                                      <joint name="RightForeArm_z" type="hinge" pos="0 0 0" axis="0 0 1" stiffness="300" damping="30" armature="0.02" range="0.00000000 159.99846429" actuatorfrcrange="-100 100" limited="true" />
+                                      <body name="RightHand_x_link" pos="0 -0.2713 0">
+                                        <joint name="RightHand_y" type="hinge" pos="0 0 0" axis="-1 0 0" stiffness="200" damping="20" armature="0.02" range="-90.000221252 90.000221252" actuatorfrcrange="-75 75" limited="true" />
+                                        <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+                                        <body name="RightHand_y_link" pos="0 0 0">
+                                          <joint name="RightHand_x" type="hinge" pos="0 0 0" axis="0 1 0" stiffness="200" damping="20" armature="0.02" range="-90.000221252 90.000221252" actuatorfrcrange="-75 75" limited="true" />
+                                          <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+                                          <body name="RightHand" pos="0 0 0">
+                                            <joint name="RightHand_z" type="hinge" pos="0 0 0" axis="0 0 1" stiffness="200" damping="20" armature="0.02" range="-30 30" actuatorfrcrange="-75 75" limited="true" />
+                                            <inertial pos="0.0055 -0.035 -0.004" quat="-0.55742055404493 0.55824651129288 -0.25869960279409 -0.55742055404493" mass="0.780303732731" diaginertia="0.00117108636127 0.00117108636127 0.000844814623859" />
+                                            <geom name="RightHand" type="capsule" size="0.05 0.016469669092" pos="0.0055 -0.035 -0.004" quat="-0.55742055404493 0.55824651129288 -0.25869960279409 -0.55742055404493" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                                          </body>
+                                        </body>
+                                      </body>
+                                      <inertial pos="0 -0.135 0" quat="-0.5 0.5 -0.5 -0.5" mass="0.910800070153" diaginertia="0.00458034620491 0.00458034620491 0.000535864731415" />
+                                      <geom name="RightForeArm" type="capsule" size="0.035 0.095" pos="0 -0.135 0" quat="0.5 -0.5 0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                                    </body>
+                                    <inertial pos="0 -0.1425 0" quat="-0.5 0.5 -0.5 -0.5" mass="1.6202399065" diaginertia="0.00974073935552 0.00974073935552 0.0015632932392" />
+                                    <geom name="RightArm" type="capsule" size="0.045 0.0975" pos="0 -0.1425 0" quat="0.5 -0.5 0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                                  </body>
+                                </body>
+                              </body>
+                              <inertial pos="-0.03 -0.0775 0" quat="-0.5 0.5 -0.5 -0.5" mass="0.79321564044" diaginertia="0.00148222918625 0.00148222918625 0.000726030275695" />
+                              <geom name="RightShoulder" type="capsule" size="0.033 0.0325" pos="-0.03 -0.0775 0" quat="0.5 -0.5 0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                            </body>
+                          </body>
+                        </body>
+                        <body name="LeftShoulder_x_link" pos="0.0511 0.0162 0.2324">
+                          <joint name="LeftShoulder_x" type="hinge" pos="0 0 0" axis="0 -1 0" stiffness="500" damping="50" armature="0.02" range="-40.141143799 40.141132355" actuatorfrcrange="-200 200" limited="true" />
+                          <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+                          <body name="LeftShoulder_y_link" pos="0 0 0">
+                            <joint name="LeftShoulder_y" type="hinge" pos="0 0 0" axis="-1 0 0" stiffness="500" damping="50" armature="0.02" range="-37.055469513 46.153484344" actuatorfrcrange="-200 200" limited="true" />
+                            <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+                            <body name="LeftShoulder" pos="0 0 0">
+                              <joint name="LeftShoulder_z" type="hinge" pos="0 0 0" axis="0 0 1" stiffness="500" damping="50" armature="0.02" range="-43.299968719 43.299976349" actuatorfrcrange="-200 200" limited="true" />
+                              <body name="LeftArm_x_link" pos="-0.055 0.1492 0">
+                                <joint name="LeftArm_x" type="hinge" pos="0 0 0" axis="0 -1 0" stiffness="400" damping="40" armature="0.02" range="-162.242172241 162.002563477" actuatorfrcrange="-150 150" limited="true" />
+                                <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+                                <body name="LeftArm_y_link" pos="0 0 0">
+                                  <joint name="LeftArm_z" type="hinge" pos="0 0 0" axis="0 0 1" stiffness="400" damping="40" armature="0.02" range="-160 110" actuatorfrcrange="-150 150" limited="true" />
+                                  <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+                                  <body name="LeftArm" pos="0 0 0">
+                                    <joint name="LeftArm_y" type="hinge" pos="0 0 0" axis="-1 0 0" stiffness="400" damping="40" armature="0.02" range="-119.060180664 134.992813110" actuatorfrcrange="-150 150" limited="true" />
+                                    <body name="LeftForeArm" pos="0 0.2874 0">
+                                      <joint name="LeftForeArm_z" type="hinge" pos="0 0 0" axis="0 0 1" stiffness="300" damping="30" armature="0.02" range="-159.99846429 0.00000000" actuatorfrcrange="-100 100" limited="true" />
+                                      <body name="LeftHand_x_link" pos="0 0.2709 0">
+                                        <joint name="LeftHand_y" type="hinge" pos="0 0 0" axis="-1 0 0" stiffness="200" damping="20" armature="0.02" range="-90.000221252 90.000221252" actuatorfrcrange="-75 75" limited="true" />
+                                        <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+                                        <body name="LeftHand_y_link" pos="0 0 0">
+                                          <joint name="LeftHand_x" type="hinge" pos="0 0 0" axis="0 1 0" stiffness="200" damping="20" armature="0.02" range="-90.000221252 90.000221252" actuatorfrcrange="-75 75" limited="true" />
+                                          <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+                                          <body name="LeftHand" pos="0 0 0">
+                                            <joint name="LeftHand_z" type="hinge" pos="0 0 0" axis="0 0 1" stiffness="200" damping="20" armature="0.02" range="-30 30" actuatorfrcrange="-75 75" limited="true" />
+                                            <inertial pos="0.0055 0.035 -0.004" quat="-0.55742055404493 -0.25869960279409 0.55824651129288 -0.55742055404493" mass="0.780303732731" diaginertia="0.00117108636127 0.00117108636127 0.000844814623859" />
+                                            <geom name="LeftHand" type="capsule" size="0.05 0.016469669092" pos="0.0055 0.035 -0.004" quat="-0.55742055404493 -0.25869960279409 0.55824651129288 -0.55742055404493" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                                          </body>
+                                        </body>
+                                      </body>
+                                      <inertial pos="0 0.135 0" quat="0.5 0.5 -0.5 0.5" mass="0.910800070153" diaginertia="0.00458034620491 0.00458034620491 0.000535864731415" />
+                                      <geom name="LeftForeArm" type="capsule" size="0.035 0.095" pos="0 0.135 0" quat="0.5 0.5 -0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                                    </body>
+                                    <inertial pos="0 0.1425 0" quat="0.5 0.5 -0.5 0.5" mass="1.6202399065" diaginertia="0.00974073935552 0.00974073935552 0.0015632932392" />
+                                    <geom name="LeftArm" type="capsule" size="0.045 0.0975" pos="0 0.1425 0" quat="0.5 0.5 -0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                                  </body>
+                                </body>
+                              </body>
+                              <inertial pos="-0.03 0.0775 0" quat="0.5 0.5 -0.5 0.5" mass="0.79321564044" diaginertia="0.00148222918625 0.00148222918625 0.000726030275695" />
+                              <geom name="LeftShoulder" type="capsule" size="0.033 0.0325" pos="-0.03 0.0775 0" quat="0.5 0.5 -0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                            </body>
+                          </body>
+                        </body>
+                        <inertial pos="0.04 0 0.12" quat="0.70710678118655 0 0 0.70710678118655" mass="5.57327976257" diaginertia="0.0269746740508 0.0269746740508 0.0269746740508" />
+                        <geom name="Chest" type="capsule" size="0.11 0.0275" pos="0.04 0 0.12" quat="0 0 0.70710678118655 0.70710678118655" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                      </body>
+                    </body>
+                  </body>
+                  <inertial pos="0.04 0 0.06" quat="0.70710678118655 0 0 0.70710678118655" mass="1.43475504024" diaginertia="0.00281211987887 0.00281211987887 0.00281211987887" />
+                  <geom name="Spine2" type="capsule" size="0.07 0.0175" pos="0.04 0 0.06" quat="0 0 0.70710678118655 0.70710678118655" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                </body>
+              </body>
+            </body>
+            <inertial pos="0.03 0 0.05" quat="0.70710678118655 0 0 0.70710678118655" mass="0.902778684234" diaginertia="0.0013000013053 0.0013000013053 0.0013000013053" />
+            <geom name="Spine1" type="capsule" size="0.06 0.015" pos="0.03 0 0.05" quat="0 0 0.70710678118655 0.70710678118655" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+          </body>
+        </body>
+      </body>
+      <body name="RightLeg_x_link" pos="0.0262 -0.1005 -0.083">
+        <joint name="RightLeg_x" type="hinge" pos="0 0 0" axis="0 1 0" stiffness="500" damping="50" armature="0.02" range="-140.354507446 138.953521729" actuatorfrcrange="-300 300" limited="true" />
+        <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+        <body name="RightLeg_y_link" pos="0 0 0">
+          <joint name="RightLeg_y" type="hinge" pos="0 0 0" axis="-1 0 0" stiffness="500" damping="50" armature="0.02" range="-76.618743896 90.000144958" actuatorfrcrange="-300 300" limited="true" />
+          <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+          <body name="RightLeg" pos="0 0 0">
+            <joint name="RightLeg_z" type="hinge" pos="0 0 0" axis="0 0 1" stiffness="500" damping="50" armature="0.02" range="-70 70" actuatorfrcrange="-300 300" limited="true" />
+            <body name="RightShin" pos="-0.0081 0 -0.4336">
+              <joint name="RightShin_x" type="hinge" pos="0 0 0" axis="0 1 0" stiffness="500" damping="50" armature="0.02" range="0.00000000 159.99999982" actuatorfrcrange="-200 200" limited="true" />
+              <body name="RightFoot_x_link" pos="-0.0348 0 -0.4212">
+                <joint name="RightFoot_x" type="hinge" pos="0 0 0" axis="0 1 0" stiffness="400" damping="40" armature="0.02" range="-65.000007629 65.000007629" actuatorfrcrange="-100 100" limited="true" />
+                <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+                <body name="RightFoot_y_link" pos="0 0 0">
+                  <joint name="RightFoot_y" type="hinge" pos="0 0 0" axis="-1 0 0" stiffness="400" damping="40" armature="0.02" range="-45.000007629 45.000007629" actuatorfrcrange="-100 100" limited="true" />
+                  <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+                  <body name="RightFoot" pos="0 0 0">
+                    <joint name="RightFoot_z" type="hinge" pos="0 0 0" axis="0 0 1" stiffness="400" damping="40" armature="0.02" range="-25 25" actuatorfrcrange="-100 100" limited="true" />
+                    <body name="RightToeBase" pos="0.1328 0 -0.0508">
+                      <joint name="RightToeBase_x" type="hinge" pos="0 0 0" axis="0 1 0" stiffness="200" damping="20" armature="0.02" range="-60.00014031 60.00014031" actuatorfrcrange="-75 75" limited="true" />
+                      <inertial pos="0.012 0 0.027" quat="0.70710678118655 0 0 0.70710678118655" mass="0.2752" diaginertia="0.000136338666667 0.000271737066667 0.000323268266667" />
+                      <geom name="RightToeBase_0" type="capsule" size="0.02 0.012" pos="0.012 -0.03 0.0285" quat="0.5 0.5 0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                      <geom name="RightToeBase_1" type="capsule" size="0.02 0.012" pos="0.012 -0.015 0.02625" quat="0.5 0.5 0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                      <geom name="RightToeBase_2" type="capsule" size="0.02 0.012" pos="0.012 0 0.0255" quat="0.5 0.5 0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                      <geom name="RightToeBase_3" type="capsule" size="0.02 0.012" pos="0.012 0.015 0.02625" quat="0.5 0.5 0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                      <geom name="RightToeBase_4" type="capsule" size="0.02 0.012" pos="0.012 0.03 0.0285" quat="0.5 0.5 0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                    </body>
+                    <inertial pos="0.045 0 -0.017" quat="0 0 0 1" mass="0.754" diaginertia="0.000705995333333 0.00161079533333 0.0019227" />
+                    <geom name="RightFoot_0" type="capsule" size="0.0260465116279 0.0489534883721" pos="0.045 -0.0189534883721 -0.0150465116279" quat="0.5 0.5 0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                    <geom name="RightFoot_1" type="capsule" size="0.0260465116279 0.0489534883721" pos="0.045 -0.00947674418605 -0.017976744186" quat="0.5 0.5 0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                    <geom name="RightFoot_2" type="capsule" size="0.0260465116279 0.0489534883721" pos="0.045 -4.33761553807e-19 -0.0189534883721" quat="0.5 0.5 0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                    <geom name="RightFoot_3" type="capsule" size="0.0260465116279 0.0489534883721" pos="0.045 0.00947674418605 -0.017976744186" quat="0.5 0.5 0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                    <geom name="RightFoot_4" type="capsule" size="0.0260465116279 0.0489534883721" pos="0.045 0.0189534883721 -0.0150465116279" quat="0.5 0.5 0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                  </body>
+                </body>
+              </body>
+              <inertial pos="0 0 -0.21" quat="0.70710678118655 0 0 0.70710678118655" mass="3.03687289847" diaginertia="0.0400867222598 0.0400867222598 0.00366519142919" />
+              <geom name="RightShin" type="capsule" size="0.05 0.16" pos="0 0 -0.21" quat="0.70710678118655 1.1775693440144e-16 1.1775693440144e-16 0.70710678118655" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+            </body>
+            <inertial pos="0 0 -0.185" quat="0.70710678118655 0 0 0.70710678118655" mass="5.08738009882" diaginertia="0.091270802138 0.091270802138 0.00883169185154" />
+            <geom name="RightLeg" type="capsule" size="0.06 0.185" pos="0 0 -0.185" quat="0.70710678118655 1.1775693440144e-16 1.1775693440144e-16 0.70710678118655" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+          </body>
+        </body>
+      </body>
+      <body name="LeftLeg_x_link" pos="0.026 0.1004 -0.0843">
+        <joint name="LeftLeg_x" type="hinge" pos="0 0 0" axis="0 -1 0" stiffness="500" damping="50" armature="0.02" range="-140.354507446 138.953521729" actuatorfrcrange="-300 300" limited="true" />
+        <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+        <body name="LeftLeg_y_link" pos="0 0 0">
+          <joint name="LeftLeg_y" type="hinge" pos="0 0 0" axis="-1 0 0" stiffness="500" damping="50" armature="0.02" range="-90.000137329 76.618751526" actuatorfrcrange="-300 300" limited="true" />
+          <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+          <body name="LeftLeg" pos="0 0 0">
+            <joint name="LeftLeg_z" type="hinge" pos="0 0 0" axis="0 0 1" stiffness="500" damping="50" armature="0.02" range="-70 70" actuatorfrcrange="-300 300" limited="true" />
+            <body name="LeftShin" pos="-0.008 0 -0.4322">
+              <joint name="LeftShin_x" type="hinge" pos="0 0 0" axis="0 -1 0" stiffness="500" damping="50" armature="0.02" range="-159.99999982 0.00000000" actuatorfrcrange="-200 200" limited="true" />
+              <body name="LeftFoot_x_link" pos="-0.0348 0 -0.4216">
+                <joint name="LeftFoot_x" type="hinge" pos="0 0 0" axis="0 1 0" stiffness="400" damping="40" armature="0.02" range="-65.000007629 65.000007629" actuatorfrcrange="-100 100" limited="true" />
+                <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+                <body name="LeftFoot_y_link" pos="0 0 0">
+                  <joint name="LeftFoot_y" type="hinge" pos="0 0 0" axis="-1 0 0" stiffness="400" damping="40" armature="0.02" range="-45.000007629 45.000007629" actuatorfrcrange="-100 100" limited="true" />
+                  <inertial pos="0 0 0" mass="0.001" diaginertia="1e-7 1e-7 1e-7" quat="0.70710678118655 0 0 0.70710678118655" />
+                  <body name="LeftFoot" pos="0 0 0">
+                    <joint name="LeftFoot_z" type="hinge" pos="0 0 0" axis="0 0 1" stiffness="400" damping="40" armature="0.02" range="-25 25" actuatorfrcrange="-100 100" limited="true" />
+                    <body name="LeftToeBase" pos="0.1323 0 -0.0506">
+                      <joint name="LeftToeBase_x" type="hinge" pos="0 0 0" axis="0 -1 0" stiffness="200" damping="20" armature="0.02" range="-60.00014031 60.00014031" actuatorfrcrange="-75 75" limited="true" />
+                      <inertial pos="0.012 0 0.027" quat="0.70710678118655 0 0 0.70710678118655" mass="0.2752" diaginertia="0.000136338666667 0.000271737066667 0.000323268266667" />
+                      <geom name="LeftToeBase_0" type="capsule" size="0.02 0.012" pos="0.012 -0.03 0.0285" quat="0.5 0.5 0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                      <geom name="LeftToeBase_1" type="capsule" size="0.02 0.012" pos="0.012 -0.015 0.02625" quat="0.5 0.5 0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                      <geom name="LeftToeBase_2" type="capsule" size="0.02 0.012" pos="0.012 0 0.0255" quat="0.5 0.5 0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                      <geom name="LeftToeBase_3" type="capsule" size="0.02 0.012" pos="0.012 0.015 0.02625" quat="0.5 0.5 0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                      <geom name="LeftToeBase_4" type="capsule" size="0.02 0.012" pos="0.012 0.03 0.0285" quat="0.5 0.5 0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                    </body>
+                    <inertial pos="0.045 0 -0.017" quat="0 0 0 1" mass="0.754" diaginertia="0.000705995333333 0.00161079533333 0.0019227" />
+                    <geom name="LeftFoot_0" type="capsule" size="0.0260465116279 0.0489534883721" pos="0.045 -0.0189534883721 -0.0150465116279" quat="0.5 0.5 0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                    <geom name="LeftFoot_1" type="capsule" size="0.0260465116279 0.0489534883721" pos="0.045 -0.00947674418605 -0.017976744186" quat="0.5 0.5 0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                    <geom name="LeftFoot_2" type="capsule" size="0.0260465116279 0.0489534883721" pos="0.045 -4.33761553807e-19 -0.0189534883721" quat="0.5 0.5 0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                    <geom name="LeftFoot_3" type="capsule" size="0.0260465116279 0.0489534883721" pos="0.045 0.00947674418605 -0.017976744186" quat="0.5 0.5 0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                    <geom name="LeftFoot_4" type="capsule" size="0.0260465116279 0.0489534883721" pos="0.045 0.0189534883721 -0.0150465116279" quat="0.5 0.5 0.5 0.5" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+                  </body>
+                </body>
+              </body>
+              <inertial pos="0 0 -0.21" quat="0.70710678118655 0 0 0.70710678118655" mass="3.03687289847" diaginertia="0.0400867222598 0.0400867222598 0.00366519142919" />
+              <geom name="LeftShin" type="capsule" size="0.05 0.16" pos="0 0 -0.21" quat="0.70710678118655 1.1775693440144e-16 1.1775693440144e-16 0.70710678118655" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+            </body>
+            <inertial pos="0 0 -0.185" quat="0.70710678118655 0 0 0.70710678118655" mass="5.08738009882" diaginertia="0.091270802138 0.091270802138 0.00883169185154" />
+            <geom name="LeftLeg" type="capsule" size="0.06 0.185" pos="0 0 -0.185" quat="0.70710678118655 1.1775693440144e-16 1.1775693440144e-16 0.70710678118655" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+          </body>
+        </body>
+      </body>
+      <joint type="free" name="Hips" limited="false" actuatorfrclimited="false" />
+      <inertial pos="0.03 0 0" quat="0.70710678118655 0 0 0.70710678118655" mass="2.14466058485" diaginertia="0.00549033109722 0.00549033109722 0.00549033109722" />
+      <geom name="Hips" type="capsule" size="0.08 0.02" pos="0.03 0 0" quat="0 0 0.70710678118655 0.70710678118655" contype="1" conaffinity="1" condim="3" friction="0.8 0.005 0.0001" rgba="0.38 0.58 0.78 1" />
+    </body>
+  </worldbody>
+  <actuator>
+    <motor name="Spine1_z" joint="Spine1_z" gear="300" />
+    <motor name="Spine1_y" joint="Spine1_y" gear="300" />
+    <motor name="Spine1_x" joint="Spine1_x" gear="300" />
+    <motor name="Spine2_z" joint="Spine2_z" gear="200" />
+    <motor name="Spine2_y" joint="Spine2_y" gear="200" />
+    <motor name="Spine2_x" joint="Spine2_x" gear="200" />
+    <motor name="Chest_z" joint="Chest_z" gear="150" />
+    <motor name="Chest_y" joint="Chest_y" gear="150" />
+    <motor name="Chest_x" joint="Chest_x" gear="150" />
+    <motor name="Neck1_z" joint="Neck1_z" gear="75" />
+    <motor name="Neck1_y" joint="Neck1_y" gear="75" />
+    <motor name="Neck1_x" joint="Neck1_x" gear="75" />
+    <motor name="Neck2_yaw" joint="Neck2_yaw" gear="25" />
+    <motor name="Head_z" joint="Head_z" gear="25" />
+    <motor name="Head_y" joint="Head_y" gear="25" />
+    <motor name="Head_x" joint="Head_x" gear="25" />
+    <motor name="RightShoulder_x" joint="RightShoulder_x" gear="200" />
+    <motor name="RightShoulder_y" joint="RightShoulder_y" gear="200" />
+    <motor name="RightShoulder_z" joint="RightShoulder_z" gear="200" />
+    <motor name="RightArm_x" joint="RightArm_x" gear="150" />
+    <motor name="RightArm_z" joint="RightArm_z" gear="150" />
+    <motor name="RightArm_y" joint="RightArm_y" gear="150" />
+    <motor name="RightForeArm_z" joint="RightForeArm_z" gear="100" />
+    <motor name="RightHand_y" joint="RightHand_y" gear="75" />
+    <motor name="RightHand_x" joint="RightHand_x" gear="75" />
+    <motor name="RightHand_z" joint="RightHand_z" gear="75" />
+    <motor name="LeftShoulder_x" joint="LeftShoulder_x" gear="200" />
+    <motor name="LeftShoulder_y" joint="LeftShoulder_y" gear="200" />
+    <motor name="LeftShoulder_z" joint="LeftShoulder_z" gear="200" />
+    <motor name="LeftArm_x" joint="LeftArm_x" gear="150" />
+    <motor name="LeftArm_z" joint="LeftArm_z" gear="150" />
+    <motor name="LeftArm_y" joint="LeftArm_y" gear="150" />
+    <motor name="LeftForeArm_z" joint="LeftForeArm_z" gear="100" />
+    <motor name="LeftHand_y" joint="LeftHand_y" gear="75" />
+    <motor name="LeftHand_x" joint="LeftHand_x" gear="75" />
+    <motor name="LeftHand_z" joint="LeftHand_z" gear="75" />
+    <motor name="RightLeg_x" joint="RightLeg_x" gear="300" />
+    <motor name="RightLeg_y" joint="RightLeg_y" gear="300" />
+    <motor name="RightLeg_z" joint="RightLeg_z" gear="300" />
+    <motor name="RightShin_x" joint="RightShin_x" gear="200" />
+    <motor name="RightFoot_x" joint="RightFoot_x" gear="100" />
+    <motor name="RightFoot_y" joint="RightFoot_y" gear="100" />
+    <motor name="RightFoot_z" joint="RightFoot_z" gear="100" />
+    <motor name="RightToeBase_x" joint="RightToeBase_x" gear="75" />
+    <motor name="LeftLeg_x" joint="LeftLeg_x" gear="300" />
+    <motor name="LeftLeg_y" joint="LeftLeg_y" gear="300" />
+    <motor name="LeftLeg_z" joint="LeftLeg_z" gear="300" />
+    <motor name="LeftShin_x" joint="LeftShin_x" gear="200" />
+    <motor name="LeftFoot_x" joint="LeftFoot_x" gear="100" />
+    <motor name="LeftFoot_y" joint="LeftFoot_y" gear="100" />
+    <motor name="LeftFoot_z" joint="LeftFoot_z" gear="100" />
+    <motor name="LeftToeBase_x" joint="LeftToeBase_x" gear="75" />
+  </actuator>
+  <contact>
+    <exclude body1="Hips" body2="Spine2" />
+    <exclude body1="Spine1" body2="Chest" />
+    <exclude body1="Spine2" body2="Neck1" />
+    <exclude body1="Chest" body2="Neck2" />
+    <exclude body1="Neck1" body2="Head" />
+    <exclude body1="Spine1" body2="Neck1" />
+    <exclude body1="Spine2" body2="Neck2" />
+    <exclude body1="Chest" body2="Head" />
+    <exclude body1="RightArm" body2="Chest" />
+    <exclude body1="LeftArm" body2="Chest" />
+    <exclude body1="RightArm" body2="Spine2" />
+    <exclude body1="LeftArm" body2="Spine2" />
+    <exclude body1="Hips" body2="Spine1" />
+    <exclude body1="Hips" body2="RightLeg" />
+    <exclude body1="Hips" body2="LeftLeg" />
+    <exclude body1="Spine1" body2="Spine2" />
+    <exclude body1="Spine2" body2="Chest" />
+    <exclude body1="Chest" body2="Neck1" />
+    <exclude body1="Chest" body2="RightShoulder" />
+    <exclude body1="Chest" body2="LeftShoulder" />
+    <exclude body1="Neck1" body2="Neck2" />
+    <exclude body1="Neck2" body2="Head" />
+    <exclude body1="RightShoulder" body2="RightArm" />
+    <exclude body1="RightArm" body2="RightForeArm" />
+    <exclude body1="RightForeArm" body2="RightHand" />
+    <exclude body1="LeftShoulder" body2="LeftArm" />
+    <exclude body1="LeftArm" body2="LeftForeArm" />
+    <exclude body1="LeftForeArm" body2="LeftHand" />
+    <exclude body1="RightLeg" body2="RightShin" />
+    <exclude body1="RightShin" body2="RightFoot" />
+    <exclude body1="RightFoot" body2="RightToeBase" />
+    <exclude body1="LeftLeg" body2="LeftShin" />
+    <exclude body1="LeftShin" body2="LeftFoot" />
+    <exclude body1="LeftFoot" body2="LeftToeBase" />
+  </contact>
+  <sensor />
+  <size njmax="700" nconmax="700" />
+  <custom>
+    <text name="semantic_body_names" data="Hips Spine1 Spine2 Chest Neck1 Neck2 Head RightShoulder RightArm RightForeArm RightHand LeftShoulder LeftArm LeftForeArm LeftHand RightLeg RightShin RightFoot RightToeBase LeftLeg LeftShin LeftFoot LeftToeBase" />
+    <text name="coordinate_system" data="+X-forward,+Y-left,+Z-up" />
+  </custom>
+</mujoco>

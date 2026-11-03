@@ -7,6 +7,61 @@ Unreleased
 Record changes for the next release in this section. Move completed entries
 into a dated release section when the release is published.
 
+November 2, 2026
+----------------
+
+The following changes are included in this release:
+
+Robots
+~~~~~~
+
+* **Anatomical SOMA** (``--robot-name anatomic_soma``) is a new simulated
+  humanoid: the SOMA23 skeleton with each joint expanded into serial hinges
+  with engineering joint limits (15 joints get three hinges, the knees, elbows
+  and toes one, Neck2 a single yaw: 52 hinges on 53 bodies, 30 of them carrier
+  links) and G1-class motor limits. Asset
+  ``protomotions/data/assets/mjcf/anatomic_soma.xml``, config
+  ``protomotions/robot_configs/anatomic_soma.py``; the guide is
+  :doc:`robots/anatomic_soma`.
+* Conversion tools take SOMA23 motion to the anatomical skeleton:
+  ``data/scripts/from_soma_to_anatomical_soma/`` (the driver, with a resumable
+  run directory and a failure report) and
+  ``pyroki/from_soma_to_anatomical_soma/`` (the PyRoki trajectory solver and
+  its tests). The guide states the coordinate conventions and the retargeting
+  guarantees and limitations.
+* ``data/motion_for_trackers/anatomic_soma_bones_seed_mini.pt`` ships ten
+  BONES-SEED clips retargeted to the anatomical skeleton, for the quickstart
+  and the tests.
+
+Training and Pretrained Models
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* ``examples/experiments/mimic/anatomical_soma_fsq_mimic.py`` trains an FSQ
+  motion tracker on the anatomical SOMA: BeyondMimic-style actions (a unit
+  action moves the joint target far enough that the PD spring alone would push
+  with a quarter of the joint's effort limit), raw Gaussian tracking rewards
+  summed without running normalization, physical domain randomization, and a
+  fixed exploration std.
+* ``data/pretrained_models/motion_tracker/anatomic_soma_bones_fsq`` ships the
+  trained tracker (NVIDIA Open Model License) with its model card, saved
+  configuration and provenance. Its checkpoint strict-loads into the recipe's
+  model, tracks the shipped mini pack in MuJoCo (10 of 10 clips), and the
+  inference override plays back without randomization. Body-level tracking
+  terms run over all 53 bodies, carriers included, so its error numbers are not
+  comparable to SOMA23 trackers; see the card's limitations.
+* ``scripts/regenerate_pretrained_bundles.py`` can collapse a learned per-clip
+  exploration std table to its mean row when slimming a run into a shipped
+  inference checkpoint, so a bundle does not carry the training corpus size.
+
+Documentation
+~~~~~~~~~~~~~
+
+* A **Robots** section with one page per registered robot (G1, H1-2, SOMA23,
+  anatomical SOMA, SMPL, SMPL-X, AMP humanoid), a default-model table and the
+  anatomical SOMA guide; the configuration and robot-config API pages link to it.
+* The quickstart lists the anatomical mini pack and the tracker command; the
+  pretrained-model catalog gains the tracker's row.
+
 October 31, 2026
 ----------------
 

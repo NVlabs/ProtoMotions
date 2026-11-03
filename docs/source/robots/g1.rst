@@ -1,0 +1,33 @@
+Unitree G1
+==========
+
+Select ``--robot-name g1`` for the 29-DOF G1 model. The default asset is
+``mjcf/g1_holo_compat.xml``; do not assume another G1 asset has the same body
+frames, hands or inertias merely because it has 29 actuators.
+
+Default Contract
+----------------
+
+* Config: ``protomotions/robot_configs/g1.py`` (``G1RobotConfig``).
+* Structure: 33 bodies, 29 joint DOFs; +X forward, Z up.
+* Observation anchor: ``torso_link``; physical root: ``pelvis``.
+* Target bodies: ``torso_link``, ``head``, ``right_ankle_roll_link``,
+  ``left_ankle_roll_link``, ``left_rubber_hand``, ``right_rubber_hand``.
+
+The config declares a bent standing pose and per-actuator-family PD gains,
+armatures, velocity limits and effort limits. Gain formulas use a 10 Hz natural
+frequency and damping ratio of 2, with joint-specific multipliers. These are
+simulation controller defaults, not a claim about the settings of every G1
+hardware variant. Experiments define the action mapping separately.
+
+Motion And Deployment
+---------------------
+
+Use G1-retargeted motion, not source human joint coordinates. Keep the
+checkpoint's saved asset and sensor/observation contract when exporting or
+switching simulators. Changing the selected hand body changes target geometry.
+
+* :doc:`../getting_started/seed_g1_csv_preparation`: convert G1 CSV motion.
+* :doc:`../tutorials/workflows/retargeting_pyroki`: retarget human motion to G1.
+* :doc:`../tutorials/workflows/g1_deployment`: export and deployment workflow.
+* :doc:`../getting_started/pretrained_models`: G1 policies and example motions.

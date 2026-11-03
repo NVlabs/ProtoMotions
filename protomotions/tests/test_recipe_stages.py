@@ -115,6 +115,7 @@ CONFIGS_NEED_CHECKPOINT = {
 ROBOT = {
     "metatron.soma_teacher": "soma23",
     "metatron.soma_student": "soma23",
+    "mimic.anatomical_soma_fsq_mimic": "anatomic_soma",
 }
 # Recipes whose configs the bundle saver refuses today (the exception and a
 # fragment of its message; the entry goes when the saver takes the value).

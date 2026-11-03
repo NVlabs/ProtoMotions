@@ -22,13 +22,16 @@ from dataclasses import dataclass, field
 @dataclass
 class Soma23RobotConfig(RobotConfig):
     """
-    23-body humanoid derived from SOMASkeleton30 by dropping 7 leaf end-effector
-    bodies that have no actuators:
+    23-body humanoid derived from SOMASkeleton30.
+
+    Drops seven unactuated leaf end-effectors::
+
         Jaw, LeftEye, RightEye,
         LeftHandThumbEnd, LeftHandMiddleEnd,
         RightHandThumbEnd, RightHandMiddleEnd
 
-    Remaining 23 bodies (22 joints × 3-DOF hinge = 66 DOFs):
+    Remaining 23 bodies (22 joints × 3-DOF hinge = 66 DOFs)::
+
         Hips (root), Spine1, Spine2, Chest,
         Neck1, Neck2, Head,
         RightShoulder, RightArm, RightForeArm, RightHand,

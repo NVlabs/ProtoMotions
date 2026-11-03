@@ -43,7 +43,9 @@ METATRON_DIR = PRETRAINED_ROOT / "metatron/G1"
 METATRON_CARD_URL = (
     "https://huggingface.co/nvidia/Metatron-v1/blob/main/G1/MODEL_CARD.md"
 )
-TRANSFER_EXPECTED_DIRS = {G1_DEPLOY_DIR, METATRON_DIR}
+ANATOMIC_SOMA_FSQ_DIR = PRETRAINED_ROOT / "motion_tracker/anatomic_soma_bones_fsq"
+# Trackers trained with physical randomization and checked in a second simulator.
+TRANSFER_EXPECTED_DIRS = {G1_DEPLOY_DIR, METATRON_DIR, ANATOMIC_SOMA_FSQ_DIR}
 SOMA_CONTINUOUS_DIR = PRETRAINED_ROOT / "motion_tracker/soma-bones"
 SOMA_FSQ_DIR = PRETRAINED_ROOT / "motion_tracker/soma_bones_fsq"
 SOMA_GPC_PRIOR_DIR = PRETRAINED_ROOT / "gpc_prior/soma_bones"
