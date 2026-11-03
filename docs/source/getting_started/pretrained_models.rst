@@ -46,6 +46,10 @@ backend or version.
      - Discrete FSQ tracker used by GPC
      - IsaacLab only
      - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/motion_tracker/soma_bones_fsq/MODEL_CARD.md>`__
+   * - Anatomical SOMA BONES-SEED FSQ tracker
+     - Domain-randomized FSQ tracker for the anatomical SOMA humanoid
+     - Trained in IsaacLab; verified in MuJoCo
+     - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/motion_tracker/anatomic_soma_bones_fsq/MODEL_CARD.md>`__
 
 Download Metatron v1 G1
 -----------------------

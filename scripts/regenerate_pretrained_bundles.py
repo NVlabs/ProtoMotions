@@ -88,6 +88,9 @@ class BundleSpec:
     provenance_name: str
     overrides: List[str] = field(default_factory=list)
     drop_discriminator: bool = False  # AMP model slimmed into a PPO recipe
+    # A per-clip exploration std is a table with one row per training clip, read
+    # only while training. Collapsing it to its mean row fits a fixed-std actor.
+    collapse_per_motion_std: bool = False
     secondary_checkpoints: List[SecondaryCheckpoint] = field(default_factory=list)
     # (find, replace) edits applied to the copied recipe before the build, for a
     # shipped checkpoint whose training diverged from the current public recipe in a
@@ -114,6 +117,20 @@ SPECS: List[BundleSpec] = [
         batch_size=16384,
         experiment_name="soma23_fsq_tracker",
         provenance_name="SOMA FSQ motion tracker",
+    ),
+    BundleSpec(
+        directory="data/pretrained_models/motion_tracker/anatomic_soma_bones_fsq",
+        recipe="examples/experiments/mimic/anatomical_soma_fsq_mimic.py",
+        robot="anatomic_soma",
+        simulator="isaaclab",
+        motion_file="data/motion_for_trackers/anatomic_soma_bones_seed_mini.pt",
+        num_envs=4096,
+        batch_size=4096,
+        experiment_name="anatomic_soma_fsq_tracker",
+        provenance_name="Anatomical SOMA FSQ motion tracker",
+        # The run learned a per-clip std (one row per training clip); the recipe
+        # ships a fixed std, so the table collapses to its mean row.
+        collapse_per_motion_std=True,
     ),
     BundleSpec(
         directory="data/pretrained_models/motion_tracker/soma-bones",
@@ -368,7 +385,11 @@ def rebuild_bundle_into(directory: Path, scratch: Path) -> None:
     _save_bundle(_config_to_argv(config), config["experiment_path"], scratch)
 
 
-def to_inference_checkpoint(full_checkpoint: dict, drop_discriminator: bool) -> dict:
+def to_inference_checkpoint(
+    full_checkpoint: dict,
+    drop_discriminator: bool,
+    collapse_per_motion_std: bool = False,
+) -> dict:
     """The model-only inference checkpoint from a full training checkpoint.
 
     Keeps the model (optionally without the AMP discriminator) and the light
@@ -385,6 +406,16 @@ def to_inference_checkpoint(full_checkpoint: dict, drop_discriminator: bool) -> 
             for key, value in model.items()
             if not any(p in key for p in _DISCRIMINATOR_PREFIXES)
         }
+    if collapse_per_motion_std:
+        # [num_training_clips, num_actions] -> [num_actions]: the fixed-std actor's shape.
+        model = {
+            key: value.mean(dim=0)
+            if key.endswith("logstd")
+            and isinstance(value, torch.Tensor)
+            and value.dim() == 2
+            else value
+            for key, value in model.items()
+        }
     inference = {
         "model": {
             key: value.detach().cpu().clone()
@@ -400,13 +431,19 @@ def to_inference_checkpoint(full_checkpoint: dict, drop_discriminator: bool) -> 
 
 
 def _slim_checkpoint(
-    directory: Path, source: str, out_name: str, drop_discriminator: bool
+    directory: Path,
+    source: str,
+    out_name: str,
+    drop_discriminator: bool,
+    collapse_per_motion_std: bool = False,
 ) -> Path:
     """Slim one full checkpoint in ``directory`` to its model-only inference form."""
     import torch
 
     full = torch.load(directory / source, map_location="cpu", weights_only=False)
-    inference = to_inference_checkpoint(full, drop_discriminator)
+    inference = to_inference_checkpoint(
+        full, drop_discriminator, collapse_per_motion_std
+    )
     out = directory / out_name
     torch.save(inference, out)
     return out
@@ -421,7 +458,11 @@ def write_inference_checkpoint(spec: BundleSpec, repo_root: Path) -> Path:
     """
     directory = repo_root / spec.directory
     primary = _slim_checkpoint(
-        directory, "last.ckpt", "inference_last.ckpt", spec.drop_discriminator
+        directory,
+        "last.ckpt",
+        "inference_last.ckpt",
+        spec.drop_discriminator,
+        spec.collapse_per_motion_std,
     )
     for secondary in spec.secondary_checkpoints:
         _slim_checkpoint(

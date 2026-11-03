@@ -105,6 +105,9 @@ for examples, saved-config migration and checkpoint-score behavior.
 Robot Configurations
 --------------------
 
+See :doc:`../robots/index` for the registered robots, their default contracts
+and model-specific preparation guides.
+
 Robot configs in ``protomotions/robot_configs/`` define the robot. Abridged
 from the G1 config:
 

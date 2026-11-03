@@ -21,6 +21,7 @@ We provide small example motion files for testing with robot models:
 * ``data/motion_for_trackers/g1_random_subset_tiny.pt`` - Small subset of retargeted AMASS for G1
 * ``data/motion_for_trackers/g1_bones_seed_mini.pt`` - Small subset of BONES-SEED retargeted motions for G1
 * ``data/motion_for_trackers/soma23_bones_seed_mini.pt`` - Small subset of BONES-SEED motions for SOMA 23-body humanoid
+* ``data/motion_for_trackers/anatomic_soma_bones_seed_mini.pt`` - Ten BONES-SEED clips retargeted to the anatomical SOMA humanoid
 * ``data/motion_for_trackers/crouch_soma23.pt`` - Small SOMA crouch dataset for GPC and PEFT examples
 * ``data/motion_for_trackers/h1_2_random_subset_tiny.pt`` - Small subset of retargeted AMASS for H1-2
 
@@ -58,6 +59,12 @@ if your local GPU memory is not enough to load the entire motion lib of AMASS.
        --checkpoint data/pretrained_models/motion_tracker/soma_bones_fsq/inference_last.ckpt \
        --motion-file data/motion_for_trackers/soma23_bones_seed_mini.pt \
        --simulator isaaclab
+
+   # Run the anatomical SOMA BONES-SEED FSQ tracker (IsaacLab or MuJoCo)
+   python protomotions/inference_agent.py \
+       --checkpoint data/pretrained_models/motion_tracker/anatomic_soma_bones_fsq/inference_last.ckpt \
+       --motion-file data/motion_for_trackers/anatomic_soma_bones_seed_mini.pt \
+       --simulator mujoco --num-envs 1
 
    # Run the SOMA GPC prior with its SOMA BONES-SEED FSQ decoder
    python protomotions/inference_agent.py \

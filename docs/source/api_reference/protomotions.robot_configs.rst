@@ -3,6 +3,9 @@ protomotions.robot_configs module
 
 Robot configuration classes defining morphology and control parameters.
 
+For model selection, asset requirements and motion preparation, see
+:doc:`../robots/index`.
+
 Base Configuration
 ------------------
 
@@ -56,3 +59,20 @@ AMP Humanoid
    :show-inheritance:
    :exclude-members: asset, control, kinematic_info, common_naming_to_robot_body_names
 
+SOMA23
+------
+
+.. autoclass:: protomotions.robot_configs.soma23.Soma23RobotConfig
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :exclude-members: asset, control, kinematic_info, common_naming_to_robot_body_names
+
+Anatomical SOMA
+---------------
+
+.. autoclass:: protomotions.robot_configs.anatomic_soma.AnatomicSomaRobotConfig
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :exclude-members: asset, control, kinematic_info, common_naming_to_robot_body_names

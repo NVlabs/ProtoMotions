@@ -1,0 +1,31 @@
+Unitree H1-2
+============
+
+Select ``--robot-name h1_2`` for the H1 version-2 articulation. The default
+asset is ``mjcf/h1_2_box_feet.xml``, which uses the box-foot variant.
+
+Default Contract
+----------------
+
+* Config: ``protomotions/robot_configs/h1_2.py`` (``H1_2RobotConfig``).
+* Structure: 29 bodies, 27 joint DOFs; +X forward, Z up.
+* Observation anchor: root body ``pelvis`` (no explicit anchor override).
+* Target bodies: ``torso_link``, ``head_aux``, ``right_ankle_roll_link``,
+  ``left_ankle_roll_link``, ``left_wrist_yaw_link``, ``right_wrist_yaw_link``.
+
+PD gains are computed from joint-family armatures, a 10 Hz natural frequency
+and damping ratio of 2. Effort and velocity limits are configured per joint
+family. These defaults differ from G1; do not reuse G1 action scaling or
+checkpoints for H1-2. Tracking ``torso_link`` does not make it the observation
+anchor: the two selections are independent.
+
+Motion Preparation
+------------------
+
+Retarget to the H1-2 articulation and package the resulting motions before
+training. If changing foot geometry, check support contacts and motion height
+against the selected asset.
+
+* :doc:`../tutorials/workflows/retargeting_pyroki`: H1-2 retargeting workflow.
+* :doc:`../user_guide/configuration`: select the robot and customize an experiment.
+* :doc:`../tutorials/workflows/custom_robot`: asset and body-mapping contracts.

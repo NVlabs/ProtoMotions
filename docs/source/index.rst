@@ -120,6 +120,13 @@ Quick Links
    user_guide/developer_tips
 
 .. toctree::
+   :maxdepth: 2
+   :caption: Robots
+   :hidden:
+
+   robots/index
+
+.. toctree::
    :maxdepth: 1
    :caption: Demos
    :hidden:

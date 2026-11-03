@@ -40,7 +40,11 @@ from protomotions.simulator.mujoco.config import MujocoSimParams
 _FIXTURE = json.loads(
     (Path(__file__).parent / "fixtures" / "robot_facts_d1_baseline.json").read_text()
 )
-_ROBOTS = ("amp", "g1", "h1_2", "smpl", "smplx", "soma23")
+_ROBOTS = ("amp", "anatomic_soma", "g1", "h1_2", "smpl", "smplx", "soma23")
+# The parity checks compare against the main-next capture, so they cover the
+# robots that existed there; a robot added since (anatomic_soma) has no
+# main-next block to agree with and is pinned by its own tests instead.
+_PARITY_ROBOTS = tuple(name for name in _ROBOTS if name in _FIXTURE)
 _BACKENDS = ("isaacgym", "isaaclab", "newton", "mujoco")
 _CHAIN = str(Path(__file__).parent / "fixtures" / "sensor_chain.xml")
 
@@ -52,7 +56,7 @@ def _same(got, want) -> bool:
     return repr(float(got)) == repr(float(want))
 
 
-@pytest.mark.parametrize("name", _ROBOTS)
+@pytest.mark.parametrize("name", _PARITY_ROBOTS)
 def test_physics_parameters_unchanged_every_backend(name):
     """Every resolved per-backend block matches main-next field for field (merge condition)."""
     cfg = robot_config(name)
@@ -85,7 +89,7 @@ def test_physics_parameters_unchanged_every_backend(name):
                 assert got == exp_val, f"{name}.{backend}.{key} {got} != {exp_val}"
 
 
-@pytest.mark.parametrize("name", _ROBOTS)
+@pytest.mark.parametrize("name", _PARITY_ROBOTS)
 def test_control_table_gains_unchanged(name):
     """Resolved gains match main-next bit-for-bit; amp's limits are the one declared change."""
     cfg = robot_config(name)
