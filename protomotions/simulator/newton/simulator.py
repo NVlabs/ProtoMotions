@@ -263,7 +263,7 @@ class NewtonSimulator(Simulator):
             builder.add_ground_plane()
 
         self.model = builder.finalize()
-        self.model.set_gravity((0.0, 0.0, -9.81))
+        self.model.set_gravity((0.0, 0.0, self.config.sim.gravity))
 
         # Compute projectile joint_q/joint_qd offsets per world.
         # Per-world joint_q layout:

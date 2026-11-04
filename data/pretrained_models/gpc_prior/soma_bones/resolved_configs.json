@@ -238,7 +238,8 @@
           "njmax": 450,
           "nconmax": 300,
           "cone": "pyramidal",
-          "ccd_iterations": 200
+          "ccd_iterations": 200,
+          "gravity": -9.81
         },
         "mujoco": {
           "$type": "protomotions.simulator.mujoco.config.MujocoSimParams",

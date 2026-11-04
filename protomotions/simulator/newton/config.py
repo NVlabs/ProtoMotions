@@ -49,6 +49,10 @@ class NewtonSimParams(SimParams):
         default=200,
         metadata={"help": "CCD (continuous collision detection) iterations."}
     )
+    gravity: float = field(
+        default=-9.81,
+        metadata={"help": "Gravity along the world z axis in m/s^2."}
+    )
 
 
 @dataclass
