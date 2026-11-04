@@ -5,6 +5,8 @@ import importlib
 from pathlib import Path
 from typing import TYPE_CHECKING, Tuple
 
+from protomotions import robot_configs
+
 if TYPE_CHECKING:
     from protomotions.robot_configs.base import RobotConfig
 
@@ -19,8 +21,11 @@ def registered_robot_names() -> Tuple[str, ...]:
     module stem except the infrastructure modules is a robot. Returned sorted,
     without importing any robot module.
     """
-    directory = Path(__file__).parent
-    stems = {path.stem for path in directory.glob("*.py")} - _NON_ROBOT_MODULES
+    stems = {
+        path.stem
+        for directory in robot_configs.__path__
+        for path in Path(directory).glob("*.py")
+    } - _NON_ROBOT_MODULES
     return tuple(sorted(stems))
 
 
