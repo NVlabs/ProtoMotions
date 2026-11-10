@@ -27,10 +27,10 @@
           "right_ankle_roll_link"
         ],
         "all_left_hand_bodies": [
-          "left_rubber_hand"
+          "left_wrist_yaw_link"
         ],
         "all_right_hand_bodies": [
-          "right_rubber_hand"
+          "right_wrist_yaw_link"
         ],
         "head_body_name": [
           "head"
@@ -100,12 +100,14 @@
         "left_elbow_link",
         "left_wrist_roll_link",
         "left_wrist_pitch_link",
+        "left_rubber_hand",
         "right_shoulder_pitch_link",
         "right_shoulder_roll_link",
         "right_shoulder_yaw_link",
         "right_elbow_link",
         "right_wrist_roll_link",
-        "right_wrist_pitch_link"
+        "right_wrist_pitch_link",
+        "right_rubber_hand"
       ],
       "contact_partners": [
         "robot/pelvis",
@@ -147,8 +149,8 @@
         "head",
         "right_ankle_roll_link",
         "left_ankle_roll_link",
-        "left_rubber_hand",
-        "right_rubber_hand"
+        "left_wrist_yaw_link",
+        "right_wrist_yaw_link"
       ],
       "non_termination_contact_bodies": "all",
       "init_state": null,
@@ -737,12 +739,14 @@
               "left_elbow_link",
               "left_wrist_roll_link",
               "left_wrist_pitch_link",
+              "left_rubber_hand",
               "right_shoulder_pitch_link",
               "right_shoulder_roll_link",
               "right_shoulder_yaw_link",
               "right_elbow_link",
               "right_wrist_roll_link",
-              "right_wrist_pitch_link"
+              "right_wrist_pitch_link",
+              "right_rubber_hand"
             ],
             "partner_names": [
               "robot/pelvis",
@@ -812,12 +816,14 @@
               "left_elbow_link",
               "left_wrist_roll_link",
               "left_wrist_pitch_link",
+              "left_rubber_hand",
               "right_shoulder_pitch_link",
               "right_shoulder_roll_link",
               "right_shoulder_yaw_link",
               "right_elbow_link",
               "right_wrist_roll_link",
-              "right_wrist_pitch_link"
+              "right_wrist_pitch_link",
+              "right_rubber_hand"
             ],
             "contact_partner_index": [
               "robot/pelvis",

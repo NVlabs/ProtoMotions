@@ -76,7 +76,8 @@ exporter and helpers at this directory's top level remain in place.
 - Build and test the core using the commands below; no robot or GPU is needed.
 - For the current 39-input Metatron v1 policy, read
   [policy preparation](native/docs/metatron_v1_policy.md) and
-  [native simulation/deployment](native/docs/metatron_v1_native.md).
+  [native simulation/deployment](native/docs/metatron_v1_native.md), including
+  Xbox motion tracking and the kick-only robot TTS cue.
 - For GPC fixed-shape sampling engines, read [GPC TensorRT](native/docs/gpc_tensorrt.md).
 
 GPC is **code-only**: no checkpoint, ONNX weights, TensorRT plan, download URL,

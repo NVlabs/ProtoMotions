@@ -1,0 +1,9 @@
+{
+  "name": "Anatomical SOMA GPC prior",
+  "robot": "anatomic_soma",
+  "inference_checkpoint": "inference_last.ckpt",
+  "inference_checkpoint_sha256": "c99ea64c95d517a8e55e14526163f5523c2ef1d3412e45bbf0129778167759ba",
+  "inference_checkpoint_bytes": 856000867,
+  "model_tensor_count": 114,
+  "resumable": false
+}

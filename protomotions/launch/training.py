@@ -20,6 +20,7 @@ import faulthandler
 import json
 import logging
 import shutil
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Optional, Sequence
 
@@ -184,6 +185,26 @@ def try_log_hyperparams_to_wandb(fabric, configs: ExperimentConfigs, fabric_conf
                 log.warning(f"Could not log hyperparams to wandb (non-critical): {e}")
 
 
+def finish_wandb_run(exc_type=None, exc=None, traceback=None) -> bool:
+    """Finish this process's run before the entry shim or simulator shuts down.
+
+    Report the training body's exit status without suppressing its exception.
+    A process that never initialized W&B has no run to finish.
+    """
+    if wandb.run is None:
+        return False
+    if exc_type is None or (exc_type is SystemExit and exc.code in (None, 0)):
+        exit_code = 0
+    else:
+        exit_code = 1
+    try:
+        wandb.finish(exit_code=exit_code)
+    except Exception as error:
+        # Telemetry must not turn a saved training run into a failed process.
+        log.warning(f"Could not finish the wandb run (non-critical): {error}")
+    return False
+
+
 def build_wandb_logger_config(args, save_dir, wandb_id):
     """Build the WandB logger configuration from CLI arguments."""
     return {
@@ -282,7 +303,14 @@ def _handle_create_config_only(
 
 
 def run(argv: Sequence[str], app_launcher: Optional[type]) -> None:
-    """Build or load configs, construct the env and agent, and train."""
+    """Train and finish logging before simulator shutdown or forced process exit."""
+    with ExitStack() as lifecycle:
+        _run(argv, app_launcher, lifecycle)
+
+
+def _run(
+    argv: Sequence[str], app_launcher: Optional[type], lifecycle: ExitStack
+) -> None:
     from protomotions.envs.context_check import run_config_binding_check
     from protomotions.launch.training_cli import (
         create_training_parser,
@@ -459,6 +487,10 @@ def run(argv: Sequence[str], app_launcher: Optional[type]) -> None:
             _omni_log.set_channel_enabled(
                 _channel, False, omni.log.SettingBehavior.OVERRIDE
             )
+
+    # Unwind before returning to the shim, whose failure handler can exit without
+    # atexit hooks, or allowing the simulator's normal shutdown hooks to run.
+    lifecycle.push(finish_wandb_run)
 
     if args.seed is not None:
         from protomotions.utils.torch_utils import seeding

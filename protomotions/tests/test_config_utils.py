@@ -8,7 +8,7 @@ import types
 from dataclasses import dataclass, field
 from enum import Enum
 from types import SimpleNamespace
-from typing import Any, List, Optional, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import pytest
 
@@ -22,6 +22,7 @@ from protomotions.envs.sensors.config import (
 )
 from protomotions.utils.config_utils import (
     apply_overrides,
+    coerce,
     declaring_module,
     is_union,
     parse_cli_overrides,
@@ -440,3 +441,19 @@ def test_parse_cli_overrides_rejects_missing_separator_and_empty_key():
             assert "Invalid override" in str(error)
         else:
             raise AssertionError(f"Expected invalid override to fail: {value}")
+
+
+@pytest.mark.parametrize("value", [[1], [1, 2, 3]])
+def test_coerce_refuses_fixed_length_tuples_with_wrong_length(value):
+    """A fixed-length tuple override must contain exactly its declared items."""
+    assert coerce([1, 2], Tuple[int, float], "x", SimpleNamespace, "x") == (1, 2.0)
+    with pytest.raises(ValueError, match="expected 2 items"):
+        coerce(value, Tuple[int, float], "x", SimpleNamespace, "x")
+
+
+@pytest.mark.parametrize("annotation", [List, Tuple])
+def test_coerce_passes_bare_sequence_items_through(annotation):
+    """Bare typing sequences preserve heterogeneous items without coercion."""
+    expected = [1, "a"] if annotation is List else (1, "a")
+    assert coerce([1, "a"], annotation, "x", SimpleNamespace, "x") == expected
+    assert coerce([1, 2, 3], Tuple[int, ...], "x", SimpleNamespace, "x") == (1, 2, 3)

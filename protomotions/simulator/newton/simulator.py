@@ -5,7 +5,11 @@ import torch
 import numpy as np
 from typing import Dict, Optional, Tuple
 
-from protomotions.simulator.base_simulator.simulator import Simulator
+from protomotions.simulator.base_simulator.simulator import (
+    Simulator,
+    convert_linear_velocity_reference,
+)
+from protomotions.utils.rotations import quat_rotate
 from protomotions.simulator.base_simulator.config import (
     MarkerState,
     VisualizationMarkerConfig,
@@ -21,6 +25,7 @@ from protomotions.simulator.base_simulator.simulator_state import (
     ResetState,
 )
 from protomotions.simulator.newton.config import NewtonSimulatorConfig
+from protomotions.simulator.newton.joint_mapping import builder_joint_mapping
 from protomotions.simulator.newton.contact_utils import (
     contact_force_matrix,
     resolve_world_body_indices,
@@ -40,7 +45,6 @@ import newton
 from newton import JointTargetMode
 from newton.selection import ArticulationView
 from newton.solvers import SolverNotifyFlags
-import copy
 import logging
 
 log = logging.getLogger(__name__)
@@ -294,48 +298,15 @@ class NewtonSimulator(Simulator):
         """Set joint stiffness, damping, armature, and actuator mode on the builder.
 
         This must be called BEFORE finalize() so MuJoCo creates actuators
-        correctly. Builder DOFs 0-5 are the floating base (skip); DOFs 6+
-        are the actuated joint DOFs.
+        correctly. Address named DOFs through the builder's joint_qd_start
+        table, independently of common order and floating/fixed root layout.
         """
-        # Build mapping from our DOF names to builder DOF indices.
-        # The builder's joint_label list contains compound names like
-        # "L_Hip_x_L_Hip_y_L_Hip_z" for multi-DOF joints.
-        common_dof_names = list(self._dof_names)  # copy
-        is_floating = not self.robot_config.asset.fix_base_link
-        dof_offset = 6 if is_floating else 0  # skip free-joint DOFs
-
-        # Walk through our DOF names, matching them to builder joint keys
-        builder_dof_idx = dof_offset
-        while len(common_dof_names) > 0:
-            common_dof_name = common_dof_names[0]
-
-            # Check if it's a direct match
-            if common_dof_name in self.robot.joint_label:
-                # Single-DOF joint
-                info = self.robot_config.control.control_info[common_dof_name]
-                self._set_builder_dof_properties(builder_dof_idx, info)
-                builder_dof_idx += 1
-                common_dof_names.pop(0)
-            else:
-                # Multi-DOF joint: find the compound key containing this name
-                multi_dof_key = None
-                for key in self.robot.joint_label:
-                    if common_dof_name in key:
-                        multi_dof_key = key
-                        break
-                assert multi_dof_key is not None, (
-                    f"No joint label match found for {common_dof_name} "
-                    f"in {self.robot.joint_label}"
-                )
-
-                # Consume all DOF names that belong to this compound joint
-                while (
-                    len(common_dof_names) > 0 and common_dof_names[0] in multi_dof_key
-                ):
-                    info = self.robot_config.control.control_info[common_dof_names[0]]
-                    self._set_builder_dof_properties(builder_dof_idx, info)
-                    builder_dof_idx += 1
-                    common_dof_names.pop(0)
+        self._newton_dof_names, indices = builder_joint_mapping(
+            self.robot, self._dof_names
+        )
+        for name in self._dof_names:
+            info = self.robot_config.control.control_info[name]
+            self._set_builder_dof_properties(indices[name], info)
 
     def _set_builder_dof_properties(self, dof_idx: int, info) -> None:
         """Set a single builder DOF's properties from a ControlInfo entry."""
@@ -364,37 +335,6 @@ class NewtonSimulator(Simulator):
         Joint properties (ke/kd/armature/act_mode) are already set on the
         builder before finalize — see _configure_builder_joint_properties().
         """
-        common_dof_names = copy.deepcopy(self._dof_names)
-        newton_dof_names = {}
-
-        # Newton 1.0 joint_label stores full paths (e.g. "robot/body/joint_name")
-        # but ArticulationView uses short names for matching. Extract short names.
-        short_labels = [label.split("/")[-1] for label in self.robot.joint_label]
-
-        while len(common_dof_names) > 0:
-            common_dof_name = common_dof_names[0]
-            if common_dof_name in short_labels:
-                newton_dof_names[common_dof_name] = common_dof_name
-                common_dof_names.pop(0)
-            else:
-                multi_dof_name = None
-                for short_label in short_labels:
-                    if common_dof_name in short_label:
-                        multi_dof_name = short_label
-                        break
-                assert (
-                    multi_dof_name is not None
-                ), f"No joint label match found for {common_dof_name} in {short_labels}"
-
-                newton_dof_names[multi_dof_name] = []
-                while (
-                    len(common_dof_names) > 0 and common_dof_names[0] in multi_dof_name
-                ):
-                    newton_dof_names[multi_dof_name].append(common_dof_names[0])
-                    common_dof_names.pop(0)
-
-        self._newton_dof_names = newton_dof_names
-
         self.robot_view = ArticulationView(
             self.model,
             pattern="robot",
@@ -763,7 +703,9 @@ class NewtonSimulator(Simulator):
             self.state_0, self.state_1 = self.state_1, self.state_0
 
         if self.decimation % 2 != 0:
-            self.state_0.assign(self.state_1)
+            # Keep the latest state in the buffer that captured graphs replay.
+            self.state_1.assign(self.state_0)
+            self.state_0, self.state_1 = self.state_1, self.state_0
 
     def _setup_contact_matrix_maps(self) -> None:
         """Per-shape row/column maps for the partner-resolved matrix.
@@ -936,8 +878,15 @@ class NewtonSimulator(Simulator):
         robot_state.dof_vel[env_ids] = new_states.dof_vel
 
         root_state = torch.cat([robot_state.root_pos, robot_state.root_rot], dim=1)
+        root_reference = self._root_velocity_reference_offset_w(robot_state.root_rot)
+        root_native_vel = convert_linear_velocity_reference(
+            robot_state.root_vel,
+            robot_state.root_ang_vel,
+            torch.zeros_like(root_reference),
+            root_reference,
+        )
         root_vel_state = torch.cat(
-            [robot_state.root_vel, robot_state.root_ang_vel], dim=1
+            [root_native_vel, robot_state.root_ang_vel], dim=1
         )
 
         root_state_3d = root_state.unsqueeze(1)
@@ -994,6 +943,23 @@ class NewtonSimulator(Simulator):
         # Do not replace the Warp array: a captured graph still references it.
         warmstart.copy_(saved)
 
+    def _root_velocity_reference_offset_w(self, root_rot: torch.Tensor) -> torch.Tensor:
+        """Declare Newton 1.0.0's free-root COM reference; children use link origins.
+
+        With warp-lang 1.12.0, mujoco 3.5.0 and mujoco-warp 3.5.0.2, the
+        two-body pose-derivative probe reduced root error from 0.234447 to
+        0.000464 m/s; converting the child would introduce 0.270461 m/s error.
+        Thus only the free root is shifted. Native child FK has a separate
+        parent-reference inconsistency in deeper trees; this adapter does not
+        repair that engine issue. Read live offsets after COM randomization.
+        """
+        if self.robot_config.asset.fix_base_link:
+            return torch.zeros_like(root_rot[:, :3])
+        root_com = wp.to_torch(
+            self.robot_view.get_attribute("body_com", self.model)
+        ).squeeze(1)[:, 0]
+        return quat_rotate(root_rot, root_com, w_last=True)
+
     # ===== Group 4: State Getters =====
     def _get_simulator_bodies_state(
         self, env_ids: Optional[torch.Tensor] = None
@@ -1012,8 +978,17 @@ class NewtonSimulator(Simulator):
             .squeeze(1)
             .view(self.num_envs, self.robot_config.kinematic_info.num_bodies, -1)
         )
-        body_vel = body_vel_transforms[:, :, :3]
+        # Newton 1.0 reports a COM velocity only for the free root. Children
+        # already report link-origin velocities and must remain unchanged.
+        body_vel = body_vel_transforms[:, :, :3].clone()
         body_ang_vel = body_vel_transforms[:, :, 3:]
+        root_reference = self._root_velocity_reference_offset_w(body_rot[:, 0])
+        body_vel[:, 0] = convert_linear_velocity_reference(
+            body_vel[:, 0],
+            body_ang_vel[:, 0],
+            root_reference,
+            torch.zeros_like(root_reference),
+        )
 
         if env_ids is not None:
             body_pos = body_pos[env_ids]
@@ -1040,14 +1015,22 @@ class NewtonSimulator(Simulator):
             self.robot_view.get_root_velocities(self.state_0)
         ).squeeze(1)
 
+        root_reference = self._root_velocity_reference_offset_w(root_transforms[:, 3:])
+        root_linear_velocity = convert_linear_velocity_reference(
+            root_velocities[:, :3],
+            root_velocities[:, 3:],
+            root_reference,
+            torch.zeros_like(root_reference),
+        )
         if env_ids is not None:
             root_transforms = root_transforms[env_ids]
             root_velocities = root_velocities[env_ids]
+            root_linear_velocity = root_linear_velocity[env_ids]
 
         return RootOnlyState(
             root_pos=root_transforms[:, :3],
             root_rot=root_transforms[:, 3:],
-            root_vel=root_velocities[:, :3],
+            root_vel=root_linear_velocity,
             root_ang_vel=root_velocities[:, 3:],
             state_conversion=StateConversion.SIMULATOR,
         )
@@ -1181,7 +1164,16 @@ class NewtonSimulator(Simulator):
         current_vel_3d = wp.to_torch(self.robot_view.get_root_velocities(self.state_0))
         current_vel = current_vel_3d.squeeze(1)
         new_vel = current_vel.clone()
-        new_vel[env_ids, :3] += linear_velocity
+        root_rot = wp.to_torch(
+            self.robot_view.get_root_transforms(self.state_0)
+        ).squeeze(1)[:, 3:]
+        root_reference = self._root_velocity_reference_offset_w(root_rot)[env_ids]
+        new_vel[env_ids, :3] += convert_linear_velocity_reference(
+            linear_velocity,
+            angular_velocity,
+            torch.zeros_like(root_reference),
+            root_reference,
+        )
         new_vel[env_ids, 3:6] += angular_velocity
 
         env_mask = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)

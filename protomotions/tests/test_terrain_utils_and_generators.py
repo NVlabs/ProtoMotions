@@ -545,8 +545,8 @@ def test_stepping_stones_and_obstacles_cover_orientation_and_bounds():
 
 
 def test_obstacle_json_updates_static_top_dynamic_terrain_and_segmentation(tmp_path):
+    """A fresh terrain accepts a JSON map with segmentation and obstacles."""
     terrain = _subterrain(width=10, length=10, horizontal_scale=0.1, vertical_scale=0.1)
-    terrain.segmentation_field = {}
 
     map_description = {
         "segmentation": [
@@ -666,8 +666,8 @@ def test_update_terrain_gravel_respects_configured_subregion(monkeypatch):
 
 
 def test_update_segmentation_assigns_nearest_region_and_goal_flags():
+    """Segmentation initializes every grid cell with its region and goal status."""
     terrain = _subterrain(width=5, length=5, horizontal_scale=1.0, vertical_scale=0.1)
-    terrain.segmentation_field = {}
     map_description = {
         "segmentation": [
             {"name": "Default", "cx": 0.0, "cy": 0.0, "color": "gray"},

@@ -11,7 +11,7 @@
         "asset_file_name": "mjcf/anatomic_soma.xml",
         "replace_cylinder_with_capsule": null,
         "thickness": null,
-        "max_angular_velocity": 100.0,
+        "max_angular_velocity": 1000.0,
         "max_linear_velocity": 100.0,
         "density": null,
         "angular_damping": 0.0,
@@ -547,7 +547,8 @@
               51,
               52,
               43,
-              44
+              44,
+              16
             ],
             "sigma": 0.3
           },
@@ -574,7 +575,8 @@
               51,
               52,
               43,
-              44
+              44,
+              16
             ],
             "sigma": 0.4
           },
@@ -627,6 +629,27 @@
           "meta": {
             "$type": "protomotions.envs.rewards.meta.RewardMeta",
             "weight": 0.4,
+            "multiplicative": false,
+            "min_value": null,
+            "max_value": null,
+            "zero_during_grace_period": false
+          }
+        },
+        "head_rot": {
+          "$kernel": "protomotions.envs.rewards.tracking.compute_global_orientation_error_exp",
+          "bindings": {
+            "q": "current.rigid_body_rot",
+            "ref_q": "mimic.ref_state.rigid_body_rot"
+          },
+          "params": {
+            "indices": [
+              16
+            ],
+            "sigma": 0.1
+          },
+          "meta": {
+            "$type": "protomotions.envs.rewards.meta.RewardMeta",
+            "weight": 0.5,
             "multiplicative": false,
             "min_value": null,
             "max_value": null,

@@ -13,6 +13,7 @@ from pathlib import Path
 
 # registered_robot_names() only globs the robot_configs directory; it does not
 # import RobotConfig or torch, so it is safe to use here before the simulator.
+from protomotions.launch.startup import run_reporting_failures  # noqa: E402
 from protomotions.robot_configs.factory import registered_robot_names
 
 FPS = 30
@@ -1008,9 +1009,15 @@ def main():
         visualizer.run()
     except KeyboardInterrupt:
         print("\nShutting down...")
-    finally:
-        visualizer.simulator.close()
+    except SystemExit as exit_request:
+        # A viewer may request a successful exit instead of ending its loop.
+        code = exit_request.code
+        if code is not None and (not isinstance(code, int) or code != 0):
+            raise
+
+    # Failure must reach the reporter before a backend close can terminate.
+    visualizer.simulator.close()
 
 
 if __name__ == "__main__":
-    main()
+    run_reporting_failures(main)

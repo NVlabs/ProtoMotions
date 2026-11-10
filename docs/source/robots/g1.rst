@@ -12,7 +12,10 @@ Default Contract
 * Structure: 33 bodies, 29 joint DOFs; +X forward, Z up.
 * Observation anchor: ``torso_link``; physical root: ``pelvis``.
 * Target bodies: ``torso_link``, ``head``, ``right_ankle_roll_link``,
-  ``left_ankle_roll_link``, ``left_rubber_hand``, ``right_rubber_hand``.
+  ``left_ankle_roll_link``, ``left_wrist_yaw_link``, ``right_wrist_yaw_link``.
+  The hands are tracked at the wrist link, a frame every G1 hand variant has;
+  ``left_rubber_hand`` and ``right_rubber_hand`` remain in the asset as rigid
+  children of the wrists.
 
 The config declares a bent standing pose and per-actuator-family PD gains,
 armatures, velocity limits and effort limits. Gain formulas use a 10 Hz natural

@@ -402,9 +402,9 @@ def build_body_ids_tensor(
 
     body_ids: List[int] = []
     for body_name in subset_body_names:
-        body_id = all_body_names.index(body_name)
-        assert body_id != -1, f"Body part {body_name} not found in {all_body_names}"
-        body_ids.append(body_id)
+        if body_name not in all_body_names:
+            raise ValueError(f"Body part {body_name} not found in {all_body_names}")
+        body_ids.append(all_body_names.index(body_name))
     body_ids = torch.tensor(body_ids, dtype=torch.long, device=device)
     return body_ids
 

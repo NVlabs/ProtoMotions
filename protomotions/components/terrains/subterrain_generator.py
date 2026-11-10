@@ -362,6 +362,7 @@ def update_segmentation(map_description, subterrain):
             seg["name"]: seg.get("color", "none") for seg in segmentation
         }
         subterrain.landmarks = list(np.unique([seg["name"] for seg in segmentation]))
+        subterrain.segmentation_field = {}
         for x in range(subterrain.length):
             for y in range(subterrain.width):
                 min_dist = math.inf

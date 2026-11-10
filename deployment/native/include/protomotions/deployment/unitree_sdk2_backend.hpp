@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "protomotions/deployment/backend.hpp"
@@ -128,6 +129,8 @@ class UnitreeSdk2Backend final : public RobotBackend {
   bool dex3_hands_enabled() const noexcept;
   bool dex3_hands_ready() const noexcept;
   std::string dex3_hand_status() const;
+  // Fresh readback only; empty if either hand state is missing or stale.
+  std::optional<std::array<float, kDex3DofCount>> dex3_right_hand_position() const;
   bool send_dex3_position_command(
       const std::array<float, kDex3DofCount>& left,
       const std::array<float, kDex3DofCount>& right) noexcept;

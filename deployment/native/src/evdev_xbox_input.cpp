@@ -182,6 +182,12 @@ class EvdevXboxInputSource::Impl {
     state.timestamp = last_timestamp_;
     state.sequence = sequence_;
     state.buttons = last_buttons_;
+    // Edges from the published snapshots (this covers the D-pad and trigger
+    // bits derived from axes) plus any key press that came and went between
+    // two polls.
+    state.pressed = (last_buttons_ & ~reported_buttons_) | latched_presses_;
+    reported_buttons_ = last_buttons_;
+    latched_presses_ = 0;
     state.axes = last_axes_;
     state.connected = true;
     return true;
@@ -250,12 +256,17 @@ class EvdevXboxInputSource::Impl {
       if (mask) {
         if (event.value == 0) key_buttons_ &= ~*mask;
         else if (event.value == 1 || event.value == 2) key_buttons_ |= *mask;
+        if (event.value == 1) latched_presses_ |= *mask;  // kept until the next poll reports it
       }
     } else if (event.type == EV_ABS) {
       for (const auto& [code, slot] : kAxisCodes) {
         if (event.code == code) axes_[slot].value = event.value;
       }
     } else if (event.type == EV_SYN && event.code == SYN_DROPPED) {
+      // The kernel's per-client queue overflowed: events between the last
+      // read and here are gone, a tap among them with them. Always say so,
+      // since the symptom (a press that did nothing) looks like operator error.
+      std::cerr << "xbox evdev: event queue overrun (SYN_DROPPED); presses in the gap are lost\n";
       dropped = true;
     }
   }
@@ -266,6 +277,8 @@ class EvdevXboxInputSource::Impl {
   bool swap_xy_ = false;
   std::array<Axis, 8> axes_{};
   std::uint32_t key_buttons_ = 0;
+  std::uint32_t latched_presses_ = 0;   // key-down events since the last poll
+  std::uint32_t reported_buttons_ = 0;  // buttons the last poll published
   std::uint32_t buttons_ = 0;
   std::uint64_t sequence_ = 0;
   std::uint32_t last_buttons_ = 0;

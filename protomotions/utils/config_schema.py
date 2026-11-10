@@ -130,7 +130,7 @@ def _component_tree(component, where: str) -> dict:
         )
 
     bindings = dict(component.get_bindings_dict())
-    params = dict(component.get_params())
+    params = component.get_params()
     overridden = set(bindings) | set(params)
     for name, param in inspect.signature(kernel).parameters.items():
         if name in overridden or param.kind in (

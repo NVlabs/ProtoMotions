@@ -49,6 +49,23 @@ class MetatronGoals:
         inputs[p + "target_poses_masks"] &= heading
         if standing:
             self._idle(inputs)
+        if mode == "steering":
+            self._steering_hands(inputs)
+
+    @staticmethod
+    def _steering_hands(inputs: dict[str, np.ndarray]) -> None:
+        """Place rest hands just forward/outward of the pelvis in the torso heading frame."""
+        p = "masked_mimic."
+        positions = inputs[p + "local_ref_pos"].reshape(5, 33, 3)
+        torso = inputs[p + "local_ref_rot"].reshape(5, 33, 4)[:, 16]
+        yaw = np.arctan2(
+            2 * (torso[:, 3] * torso[:, 2] + torso[:, 0] * torso[:, 1]),
+            1 - 2 * (torso[:, 1] ** 2 + torso[:, 2] ** 2),
+        )
+        c, s = np.cos(yaw), np.sin(yaw)
+        for body, lateral in ((24, 0.05), (32, -0.05)):
+            positions[:, body, 0] += c * 0.06 - s * lateral
+            positions[:, body, 1] += s * 0.06 + c * lateral
 
     def _idle(self, inputs: dict[str, np.ndarray]) -> None:
         """Repeated local pose and zero-velocity style; no global position hold."""

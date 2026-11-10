@@ -19,7 +19,7 @@ from typing import List
 
 from protomotions.envs.presets import tracking_playback
 from protomotions.utils.experiment_configs import ExperimentConfigs
-from protomotions.robot_configs.base import RobotConfig
+from protomotions.robot_configs.base import RobotConfig, body_subtree_names
 from protomotions.simulator.base_simulator.config import (
     SimulatorConfig,
     ActionNoiseDomainRandomizationConfig,
@@ -47,19 +47,19 @@ import argparse
 
 
 def _self_contact_bodies(robot_cfg: RobotConfig) -> List[str]:
-    """BeyondMimic/Holosoma scored links; hands and feet remain contact partners."""
-    allowed = {
-        name
-        for group in (
-            "all_left_foot_bodies",
-            "all_right_foot_bodies",
-            "all_left_hand_bodies",
-            "all_right_hand_bodies",
+    """BeyondMimic/Holosoma scored links; the hands and feet, with the marker
+    or finger bodies below them, remain contact partners."""
+    allowed = set(
+        body_subtree_names(
+            robot_cfg,
+            [
+                "all_left_foot_bodies",
+                "all_right_foot_bodies",
+                "all_left_hand_bodies",
+                "all_right_hand_bodies",
+            ],
         )
-        for name in robot_cfg.common_naming_to_robot_body_names[group]
-    }
-    # G1's hand markers are distinct from the wrist links carrying hand collisions.
-    allowed.update(("left_wrist_yaw_link", "right_wrist_yaw_link"))
+    )
     return [name for name in robot_cfg.kinematic_info.body_names if name not in allowed]
 
 

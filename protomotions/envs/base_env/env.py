@@ -740,12 +740,12 @@ class BaseEnv:
         if motion_manager is not None:
             motion_manager.load_state_dict(state_dict["motion_manager"])
 
-    def get_task_id(self):
-        """Task identifier for logging and checkpointing: the motion file name,
-        or ``"null"`` without motions."""
-        if self._motion.motion_manager is not None:
-            return self._motion.motion_lib.motion_file.split("/")[-1]
-        return "null"
+    def get_task_id(self) -> Optional[str]:
+        """Return the motion file basename, or None without a motion file."""
+        if self._motion.motion_manager is None:
+            return None
+        motion_file = self._motion.motion_lib.motion_file
+        return None if motion_file is None else motion_file.split("/")[-1]
 
     def save_state(self) -> dict:
         """Snapshot physical, sensor, task and observation state for evaluation.

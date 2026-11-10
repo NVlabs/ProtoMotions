@@ -210,6 +210,27 @@ SPECS: List[BundleSpec] = [
             )
         ],
     ),
+    BundleSpec(
+        directory="data/pretrained_models/gpc_prior/anatomic_soma_bones",
+        recipe="examples/experiments/gpc/prior_anatomic_soma.py",
+        robot="anatomic_soma",
+        simulator="isaaclab",
+        motion_file="data/motion_for_trackers/anatomic_soma_bones_seed_mini.pt",
+        num_envs=1024,
+        batch_size=1024,
+        experiment_name="anatomic_soma_gpc_prior",
+        provenance_name="Anatomical SOMA GPC prior",
+        # The recipe takes its world (actions, friction, randomization) from the
+        # anatomical tracker's recipe, so no override; the frozen tracker whose
+        # decoder it embeds is the shipped anatomical FSQ tracker.
+        extra_args=[
+            (
+                "--tracker-checkpoint",
+                "data/pretrained_models/motion_tracker/anatomic_soma_bones_fsq/"
+                "inference_last.ckpt",
+            )
+        ],
+    ),
 ]
 
 # Stale v1 artifacts removed from each regenerated directory once the new bundle is

@@ -64,6 +64,25 @@ from protomotions.simulator.base_simulator.robot_mass_properties import (
 )
 
 
+def convert_linear_velocity_reference(
+    linear_velocity: torch.Tensor,
+    angular_velocity: torch.Tensor,
+    source_offset_w: torch.Tensor,
+    target_offset_w: torch.Tensor,
+) -> torch.Tensor:
+    """Shift world linear velocity between explicitly declared points on a body.
+
+    Offsets are world-frame vectors measured from that body's link origin.
+    Declare each body's actual reference: zero for the link origin, or its
+    rotated live COM offset for the centre of mass. Mixed backend conventions
+    must not be treated as a uniform COM reference. Angular velocity is world
+    referenced and is unchanged by the shift.
+    """
+    return linear_velocity + torch.cross(
+        angular_velocity, target_offset_w - source_offset_w, dim=-1
+    )
+
+
 class Simulator(RecordingMixin, ABC):
     """Base class for physics simulators.
 
@@ -462,7 +481,8 @@ class Simulator(RecordingMixin, ABC):
     ) -> None:
         """Apply velocity impulse to robot root.
 
-        Adds the given velocities to the robot's current root velocities.
+        Adds the given world-axis velocities to the robot's current root_vel,
+        the link-origin linear velocity, and root_ang_vel.
 
         Args:
             linear_velocity: Linear velocity impulse [num_envs, 3] in m/s.
@@ -1204,6 +1224,12 @@ class Simulator(RecordingMixin, ABC):
     def get_dof_forces(self, env_ids: Optional[torch.Tensor] = None) -> RobotState:
         """
         Retrieve the DOF forces from the simulator.
+
+        MuJoCo returns the robot joint slice of ``qfrc_actuator + qfrc_applied``
+        captured immediately after the final physics substep, before refreshing
+        the integrated state. It includes actuator limits and implicit PD, excludes
+        passive, contact and constraint forces, and reads zero after a reset until
+        the next step. Other backends use their own engine force readback.
 
         Args:
             env_ids (Optional[torch.Tensor]): Optional tensor of environment ids.

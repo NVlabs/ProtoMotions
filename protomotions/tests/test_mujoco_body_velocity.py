@@ -47,6 +47,8 @@ def test_physics_step_returns_body_state_at_integrated_joint_state():
     sim._poll_keyboard_events = lambda: None
     sim._apply_control = lambda: None
     sim._max_action_latency_ms = 0.0
+    sim._has_free_joint = True
+    sim._num_actuated_dofs = 2
     sim.config = SimpleNamespace(use_implicit_pd=True)
     sim.control_type = ControlType.TORQUE
     sim.decimation = 4

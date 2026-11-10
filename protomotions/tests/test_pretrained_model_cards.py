@@ -49,6 +49,7 @@ TRANSFER_EXPECTED_DIRS = {G1_DEPLOY_DIR, METATRON_DIR, ANATOMIC_SOMA_FSQ_DIR}
 SOMA_CONTINUOUS_DIR = PRETRAINED_ROOT / "motion_tracker/soma-bones"
 SOMA_FSQ_DIR = PRETRAINED_ROOT / "motion_tracker/soma_bones_fsq"
 SOMA_GPC_PRIOR_DIR = PRETRAINED_ROOT / "gpc_prior/soma_bones"
+ANATOMIC_SOMA_GPC_PRIOR_DIR = PRETRAINED_ROOT / "gpc_prior/anatomic_soma_bones"
 
 
 def _model_dirs() -> List[Path]:
@@ -246,6 +247,35 @@ def test_soma_gpc_artifacts_use_current_config_contracts():
     assert prior_config.agent.model.latent_decoder.checkpoint_path == (
         "data/pretrained_models/motion_tracker/soma_bones_fsq/" "inference_last.ckpt"
     )
+
+
+def test_anatomic_soma_gpc_prior_decodes_through_the_shipped_anatomical_tracker():
+    # JSON and non-LFS robot assets only (no checkpoint payload), as the SOMA test.
+    tracker_config = load_experiment_configs(
+        ANATOMIC_SOMA_FSQ_DIR / "resolved_configs.json"
+    )
+    prior_config = load_experiment_configs(
+        ANATOMIC_SOMA_GPC_PRIOR_DIR / "resolved_configs.json"
+    )
+
+    assert type(prior_config.robot) is type(tracker_config.robot)
+    assert (
+        prior_config.robot.asset.asset_file_name
+        == tracker_config.robot.asset.asset_file_name
+    )
+    assert prior_config.agent.model.prior.context_encoder.in_keys == ["max_coords_obs"]
+    assert prior_config.agent.model.latent_decoder.checkpoint_path == (
+        "data/pretrained_models/motion_tracker/anatomic_soma_bones_fsq/"
+        "inference_last.ckpt"
+    )
+    # The prior rolls the tracker out in the tracker's own world: the same friction
+    # and the same action law, otherwise the collected codes would not be the
+    # tracker's.
+    assert (
+        prior_config.simulator.default_robot_friction
+        == tracker_config.simulator.default_robot_friction
+    )
+    assert prior_config.env.action_config.fn is tracker_config.env.action_config.fn
 
 
 def test_gpc_and_discrete_latent_modules_are_in_the_api_reference():

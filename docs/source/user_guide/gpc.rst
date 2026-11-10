@@ -205,7 +205,13 @@ The examples use the packaged SOMA crouch motion and FSQ tracker:
 ``data/pretrained_models/motion_tracker/soma_bones_fsq/inference_last.ckpt``.
 A packaged GPC prior is available at
 ``data/pretrained_models/gpc_prior/soma_bones/inference_last.ckpt``. Use it for
-SFT and RLFT, or train a prior with the first command below.
+SFT and RLFT, or train a prior with the first command below. The anatomical SOMA
+humanoid has its own pair: the tracker
+``data/pretrained_models/motion_tracker/anatomic_soma_bones_fsq/inference_last.ckpt``
+and the prior ``data/pretrained_models/gpc_prior/anatomic_soma_bones/inference_last.ckpt``,
+trained with ``examples/experiments/gpc/prior_anatomic_soma.py`` (the same prior
+in the anatomical tracker's world) on motions retargeted to ``anatomic_soma``.
+The two robots' priors and trackers are not interchangeable.
 
 Train the discrete GPC prior:
 

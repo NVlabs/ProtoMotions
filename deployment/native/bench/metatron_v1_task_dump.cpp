@@ -48,15 +48,27 @@ int main(int argc, char** argv) {
     state.has_root_kinematics = true;
     // The measured pose the parity tool reads back, from the anchored FK.
     const RecoveryPose pose = fk.run(reading_from_robot_state(state));
-    if (std::string(argv[4]) == "steering") {
+    if (std::string(argv[4]) == "steering" || std::string(argv[4]) == "teleop") {
       std::string velocity(argv[6]);
       const auto comma = velocity.find(',');
       if (comma == std::string::npos) throw std::invalid_argument("VX,VY required");
-      task.set_steering(std::stof(argv[5]),
-                        {std::stof(velocity.substr(0, comma)),
-                         std::stof(velocity.substr(comma + 1))});
+      const std::array<float, 2> velocity_xy = {std::stof(velocity.substr(0, comma)),
+                                                 std::stof(velocity.substr(comma + 1))};
+      if (std::string(argv[4]) == "teleop") {
+        MetatronTask::HandTarget left, right;
+        left.enabled = right.enabled = true;
+        for (int axis = 0; axis < 3; ++axis) {
+          left.position[axis] = pose.positions[24 * 3 + axis];
+          right.position[axis] = pose.positions[32 * 3 + axis];
+        }
+        left.position[0] += 0.1F;
+        right.position[0] += 0.1F;
+        task.set_teleop(std::stof(argv[5]), velocity_xy, left, right);
+      } else {
+        task.set_steering(std::stof(argv[5]), velocity_xy);
+      }
     } else if (std::string(argv[4]) != "idle") {
-      throw std::invalid_argument("mode must be idle or steering");
+      throw std::invalid_argument("mode must be idle, steering or teleop");
     }
     Inputs inputs;
     inputs.prepare(reading_from_robot_state(state));

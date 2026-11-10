@@ -25,6 +25,7 @@ class UnitreeModeVoice::Impl {
 UnitreeModeVoice::UnitreeModeVoice() : impl_(std::make_unique<Impl>()) {}
 UnitreeModeVoice::~UnitreeModeVoice() = default;
 void UnitreeModeVoice::update(VoiceMode mode) noexcept { impl_->worker.update(mode); }
+void UnitreeModeVoice::kick() noexcept { impl_->worker.kick(); }
 void UnitreeModeVoice::temperature(bool hot) noexcept { impl_->worker.temperature(hot); }
 void UnitreeModeVoice::close() { impl_->worker.close(); }
 }  // namespace protomotions::deployment

@@ -62,6 +62,7 @@ struct PicoInputState {
   std::array<float, 4> left_hand_rotation_local{0.0F, 0.0F, 0.0F, 1.0F};
   std::array<float, 4> right_hand_rotation_local{0.0F, 0.0F, 0.0F, 1.0F};
   float headset_heading = 0.0F;
+  float headset_height = 0.0F;  // headset above the operator's floor (m); the operator's crouch signal
   float left_trigger = 0.0F;
   float right_trigger = 0.0F;
   float left_grip = 0.0F;
@@ -75,6 +76,11 @@ struct InputState {
   std::chrono::steady_clock::time_point timestamp{};
   std::uint64_t sequence = 0;
   std::uint32_t buttons = 0;
+  // Buttons that went down since the previous poll, including one that was
+  // released again before this poll. A 50 Hz consumer comparing successive
+  // `buttons` snapshots misses a tap shorter than its cycle; a source that
+  // sees every event latches the press here so a tap is never swallowed.
+  std::uint32_t pressed = 0;
   std::array<float, 8> axes{};
   PicoInputState pico{};
   bool has_pico = false;

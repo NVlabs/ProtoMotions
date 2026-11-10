@@ -167,15 +167,17 @@ Used in robot configs to specify per-joint control properties.
 Testing
 -------
 
-Verify FK/IK against MuJoCo:
+Verify FK and the qpos round trip against MuJoCo:
 
 .. code-block:: python
 
-   from protomotions.components.pose_lib import test_fk_against_mujoco
+   from protomotions.components.pose_lib import test_fk_batch, test_qpos_transform_inverse
    
-   test_fk_against_mujoco("path/to/robot.xml")
+   test_fk_batch("path/to/robot.xml")
+   test_qpos_transform_inverse("path/to/robot.xml")
 
-This compares PoseLib's FK output to MuJoCo's internal FK.
+These compare PoseLib's FK output to MuJoCo's internal FK and check that the
+qpos conversions invert each other.
 
 Next Steps
 ----------

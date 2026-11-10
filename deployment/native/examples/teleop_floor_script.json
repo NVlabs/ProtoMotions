@@ -1,0 +1,15 @@
+{
+  "comment": "Scripted operator: stand, step forward, then lower both hands to the floor in front of the feet, hold, pick up to waist height, and lower again one-handed. Hands are forward/lateral/height-above-floor in the planted support frame.",
+  "segments": [
+    {"start": 0.0, "end": 1.5, "mode": "idle"},
+    {"start": 1.5, "end": 3.0, "mode": "steer", "heading_rel": 0.0, "velocity": [0.5, 0.0]},
+    {"start": 3.0, "end": 4.5, "mode": "steer", "heading_rel": 0.0, "velocity": [0.0, 0.0]},
+    {"start": 4.5, "end": 7.0, "mode": "teleop", "heading_rel": 0.0, "velocity": [0.0, 0.0], "left": [0.35, 0.18, 0.9], "right": [0.35, -0.18, 0.9]},
+    {"start": 7.0, "end": 9.5, "mode": "teleop", "heading_rel": 0.0, "velocity": [0.0, 0.0], "left": [0.35, 0.18, 0.45], "right": [0.35, -0.18, 0.45]},
+    {"start": 9.5, "end": 13.5, "mode": "teleop", "heading_rel": 0.0, "velocity": [0.0, 0.0], "left": [0.32, 0.18, 0.08], "right": [0.32, -0.18, 0.08]},
+    {"start": 13.5, "end": 16.5, "mode": "teleop", "heading_rel": 0.0, "velocity": [0.0, 0.0], "left": [0.35, 0.18, 0.9], "right": [0.35, -0.18, 0.9]},
+    {"start": 16.5, "end": 20.5, "mode": "teleop", "heading_rel": 0.0, "velocity": [0.0, 0.0], "left": [0.3, 0.3, 0.7], "right": [0.3, -0.12, 0.08]},
+    {"start": 20.5, "end": 23.0, "mode": "teleop", "heading_rel": 0.0, "velocity": [0.0, 0.0], "left": [0.35, 0.18, 0.9], "right": [0.35, -0.18, 0.9]},
+    {"start": 23.0, "end": 24.5, "mode": "steer", "heading_rel": 0.0, "velocity": [0.0, 0.0]}
+  ]
+}

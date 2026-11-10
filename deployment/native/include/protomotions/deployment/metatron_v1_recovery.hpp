@@ -33,6 +33,7 @@ class StagedRecovery final {
  private:
   void transition(Phase phase) noexcept;
   bool intentional_low(const Inputs& inputs, float height, float up) const;
+  bool hands_commanded_low(const Inputs& inputs, float floor) const;
   void apply(Inputs& inputs, float height);
   void sample_plan(Inputs& inputs, float source_start_seconds);
 
@@ -42,6 +43,7 @@ class StagedRecovery final {
   std::vector<std::array<float, 33 * 4>> mirrored_rotations_;
   float frame_dt_seconds_ = 0.0F;
   Phase phase_ = Phase::kInactive;
+  float bow_grace_s_ = 0.0F;  // time left in which a deep bow still counts as intentional
   float elapsed_ = 0.0F;
   float phase_start_ = 0.0F;
   float ready_since_ = 0.0F;

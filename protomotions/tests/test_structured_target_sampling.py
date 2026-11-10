@@ -280,6 +280,20 @@ def test_fixed_body_resolution_and_invalid_entries():
             make_control(cfg)
 
 
+@pytest.mark.parametrize("body_name", ["missing", "helper"])
+def test_fixed_condition_refuses_untrackable_body_by_name(body_name: str) -> None:
+    """An unavailable fixed target names the body and its trackability requirement."""
+    config = MaskedMimicControlConfig(
+        fixed_conditioning=[FixedBodyCondition(body_name, 0)],
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=f"Fixed condition body '{body_name}' is not a trackable body",
+    ):
+        make_control(config)
+
+
 def test_plan_reaches_existing_context_and_observation_kernels(monkeypatch):
     control = make_control()
     control.reset_rows(torch.arange(3), None)

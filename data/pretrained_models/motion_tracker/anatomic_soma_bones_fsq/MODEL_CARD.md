@@ -34,7 +34,9 @@ the motion vocabulary for a GPC prior on this robot.
 
 - Track BONES-SEED motion retargeted to `anatomic_soma` with a discrete FSQ
   action bottleneck.
-- Serve as the frozen tracker for a GPC prior on the anatomical SOMA robot.
+- Serve as the frozen tracker for a GPC prior on the anatomical SOMA robot:
+  these are the weights the anatomical GPC prior is trained against, so a prior
+  trained on them decodes through this bundle unchanged.
 - Act as a sim-to-sim reference policy for the anatomical robot (see Runtime
   Support).
 
@@ -49,10 +51,15 @@ the motion vocabulary for a GPC prior on this robot.
   no tanh projection onto the joint range).
 - Rewards: the G1 BeyondMimic tracker's Gaussian body-tracking terms summed raw, plus the
   SOMA foot-contact match, a soft joint-limit penalty and an action-rate penalty.
+  The head is tracked explicitly (global position with the hands and feet, and
+  its own orientation term): left to the all-body relative terms alone, an
+  earlier release of this tracker held the head about 16 degrees nose-down
+  against the reference in every simulator. This checkpoint continued that
+  run's training with the head terms added.
 - Randomization: friction, torso centre of mass, hand mass (+/-20% of the hand's
   own mass), pushes, action noise and reset noise; no observation noise.
 - Exploration: the run learned a per-clip action std (one row per training
-  clip, initialized at log-std -1.51 and ending near -0.94). The shipped recipe
+  clip, initialized at log-std -1.51 and ending near -0.76). The shipped recipe
   trains with a fixed log-std of -1.51 instead.
 - Training data: the full BONES-SEED corpus retargeted to the anatomical skeleton
   with `data/scripts/from_soma_to_anatomical_soma/retarget_motions.py`.
@@ -78,7 +85,7 @@ horizons and dimensions are stored in `resolved_configs.json`.
 - `inference_last.ckpt`: the model weights plus light run metadata (epoch,
   step count, best evaluated score); no optimizer or replay state, not
   resumable. The run's per-clip exploration log-std table is averaged over
-  clips to a single row (about -0.94 per joint) so the tensor matches the fixed
+  clips to a single row (about -0.76 per joint) so the tensor matches the fixed
   std actor the recipe builds; the value is kept for shape compatibility only.
   Inference uses the mean action and never reads it, and it is not the -1.51
   the recipe starts fresh training from.
@@ -96,10 +103,15 @@ horizons and dimensions are stored in `resolved_configs.json`.
 
 Trained with physical randomization and evaluated with randomization off and
 fixed friction (the recipe's inference override). On a 256-clip BONES-SEED
-subset the tracker completes every clip in IsaacLab and in MuJoCo with a mean
-body-position error of about 0.05 m in both; on the shipped ten-clip mini pack
-it completes every clip in both simulators with about 0.045 m. Newton and
-IsaacGym were not evaluated.
+subset the tracker completes every clip in MuJoCo with a mean body-position
+error of 0.049 m (largest 0.25 m); on the shipped ten-clip mini pack it
+completes every clip with 0.045 m (largest 0.14 m). The training run's own
+IsaacLab evaluation over its corpus, randomization on, reported a 0.999
+success rate at the saved epoch.
+With the head tracked, the head's pitch against the reference on the mini pack
+is 2 degrees nose-down on average (one clip of ten beyond 5 degrees), where
+the earlier release held it about 19 degrees down. Newton and IsaacGym were
+not evaluated.
 
 ## Limitations
 
@@ -113,8 +125,8 @@ IsaacGym were not evaluated.
   robot: the joint coordinates, body count and action space differ.
 - The FSQ latent layout is part of the checkpoint contract and cannot be mixed
   with a differently configured prior or tracker.
-- The model is a tracker, not an unconditional motion prior; no GPC prior for
-  this robot is shipped yet.
+- The model is a tracker, not an unconditional motion prior; the GPC prior
+  trained on it ships at `data/pretrained_models/gpc_prior/anatomic_soma_bones/`.
 - Evaluation covers BONES-SEED clips retargeted to this skeleton; behaviour on
   other motion sources or on hardware is not characterized.
 

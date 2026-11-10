@@ -7,6 +7,109 @@ Unreleased
 Record changes for the next release in this section. Move completed entries
 into a dated release section when the release is published.
 
+November 9, 2026
+----------------
+
+The following changes are included in this release:
+
+Pretrained Models
+~~~~~~~~~~~~~~~~~
+
+* ``data/pretrained_models/gpc_prior/anatomic_soma_bones`` ships a GPC prior
+  for the anatomical SOMA: an autoregressive transformer over the anatomical
+  tracker's FSQ codes, conditioned on ``max_coords_obs``, with the tracker's
+  decoder embedded (NVIDIA Open Model License, with card, saved configuration
+  and provenance). ``examples/experiments/gpc/prior_anatomic_soma.py`` is its
+  recipe: the SOMA GPC prior rolled out in the anatomical tracker's world. See
+  :doc:`user_guide/gpc`.
+* ``data/pretrained_models/motion_tracker/anatomic_soma_bones_fsq`` ships the
+  anatomical SOMA tracker retrained with the head tracked explicitly (the
+  ``head_rot`` term the recipe gained after the released tracker was found to
+  hold the head about 16 degrees nose-down). The weights are the frozen tracker
+  the anatomical GPC prior is trained against, so the prior and this bundle
+  share one motion vocabulary. ``resolved_configs.json`` carries the head term
+  and the new angular-speed cap; the checksum in ``provenance.json`` changes.
+* ``data/pretrained_models/motion_tracker/g1-bones-deploy`` keeps its weights;
+  its saved configuration is regenerated for the G1 wrist hand frame.
+
+Robots
+~~~~~~
+
+* **G1 hand frame at the wrist.** ``common_naming_to_robot_body_names`` and
+  ``trackable_bodies_subset`` for ``g1`` name ``left/right_wrist_yaw_link``
+  instead of the massless rubber-hand markers, which stay in the asset. A
+  recipe that resolves the hand groups fresh tracks a point about 12 cm closer
+  to the elbow; saved configurations resume unchanged. The new
+  ``body_subtree_names`` helper returns a body and everything below it in the
+  kinematic tree; the BeyondMimic recipe and the Metatron teacher use it for
+  self-contact exclusion and payload placement instead of naming G1 links.
+* **G1 with Dex3 hands** (``--robot-name g1_dex3``): 47 bodies, 43 DOF, the
+  ``g1`` body contract with Unitree's Dex3-1 hands under the wrist links and
+  finger gains from the GEAR SONIC humanoid-object-interaction experts. See
+  :doc:`robots/g1_dex3`.
+* Anatomical SOMA's body angular-speed cap (``max_angular_velocity``) moves
+  from 100 to 1000, matching the other humanoids; Isaac Lab reads the field in
+  degrees per second and Isaac Gym in radians per second, MuJoCo and Newton do
+  not read it. The shipped tracker's configuration carries the new value.
+
+Simulators
+~~~~~~~~~~
+
+* MuJoCo joint effort is read from the actuator and applied forces after the
+  final physics substep, so effort-based rewards and metrics use the forces the
+  engine applied rather than the last explicit command. A configured fixed root
+  is welded at its authored pose; armature overrides refresh the derived model
+  constants; the explicit PD law covers the robot joints only when projectiles
+  are present; friction and payload variations reach the physics.
+* Newton assigns joint gains by complete joint name through a shared mapping
+  that refuses missing or ambiguous names, preserves its state buffers after an
+  odd number of substeps, and reports root velocities at the link origin (with
+  the inverse conversion on resets and pushes).
+* Isaac Gym writes joint properties in the loaded asset's joint order.
+* Isaac Lab angular pushes include the centre-of-mass correction that keeps the
+  requested link-origin velocity change.
+
+Training and Evaluation
+~~~~~~~~~~~~~~~~~~~~~~~
+
+* Training without a motion file now saves its environment state as ``env.ckpt``
+  instead of ``env_null.ckpt``. To resume a previously saved motion-free run
+  with its environment state, rename ``env_null.ckpt`` to ``env.ckpt`` before
+  resuming. Runs with a motion file keep their existing checkpoint names.
+* Overrides of bare and fixed-length sequences apply correctly; the agent output
+  directory is created before the first save; evaluation without a reweighting
+  interval skips motion reweighting; gradient norms report zero without
+  gradients; PoseLib names missing bodies in its errors; terrain segmentation is
+  initialized before filling and terrain plotting works with current
+  Matplotlib.
+* The process-owned Weights & Biases run is finished before simulator shutdown,
+  on normal exit, error and interrupt alike.
+* ``MdpComponent.get_params()`` returns a copy of the static parameters.
+* Tutorials and executable examples report a failure before simulator cleanup
+  can replace its exit status.
+
+Inference and Deployment
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+* The native Metatron deployment gains a live metrics stream with a read-only
+  dashboard and replay renderer, PICO headset hand teleoperation with an arm-IK
+  residual and operator torso height, a motion-tracking mode re-anchored to the
+  robot each cycle, task-declared operator settings through a file (the UDP
+  command port is gone), latched input presses, and qualification tools;
+  TensorRT engines always run as captured CUDA graphs. See
+  ``deployment/native/docs/metatron_v1_teleop_metrics.md``. Not yet run on the
+  physical robot.
+* Deployment input classification reads the shared sensor namespace set.
+
+Documentation
+~~~~~~~~~~~~~
+
+* The pretrained-model catalog, quickstart and GPC guide list the anatomical GPC
+  prior; the Robots section gains the ``g1_dex3`` page.
+* The Isaac Lab installation path uses ``uv venv`` and ``uv pip install``
+  instead of ``uv sync``, whose cross-platform lock fails at the pinned Isaac
+  Lab commit.
+
 November 2, 2026
 ----------------
 

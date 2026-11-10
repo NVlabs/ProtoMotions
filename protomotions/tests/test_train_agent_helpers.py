@@ -25,6 +25,7 @@ from protomotions.components.motion_lib import MotionFileSwitchMode
 from protomotions.launch.training import (
     build_wandb_logger_config,
     detect_checkpoint_mode,
+    finish_wandb_run,
     load_motion_shard_cycle,
     resolve_resume_motion_shard_cycle,
     run,
@@ -843,3 +844,87 @@ def test_importing_the_shims_pulls_no_heavy_dependency():
     )
     assert result.returncode == 0, result.stderr
     assert "OK" in result.stdout
+
+
+class _FakeWandb:
+    """W&B stand-in for the rank that initialized a run."""
+
+    def __init__(self, run=None, error=None):
+        self.run = run
+        self.error = error
+        self.finished = []
+
+    def finish(self, exit_code=None):
+        if self.error is not None:
+            raise self.error
+        self.finished.append(exit_code)
+        self.run = None
+
+
+def test_finish_wandb_run_does_nothing_without_a_run(monkeypatch):
+    """Ranks that did not initialize a run have nothing to finish."""
+    wandb = _FakeWandb()
+    monkeypatch.setattr(launch_training, "wandb", wandb)
+    assert finish_wandb_run() is False
+    assert wandb.finished == []
+
+
+@pytest.mark.parametrize(
+    "triple,exit_code",
+    [
+        ((None, None, None), 0),
+        ((SystemExit, SystemExit(0), None), 0),
+        ((SystemExit, SystemExit(None), None), 0),
+        ((SystemExit, SystemExit(3), None), 1),
+        ((RuntimeError, RuntimeError("boom"), None), 1),
+        ((KeyboardInterrupt, KeyboardInterrupt(), None), 1),
+    ],
+)
+def test_finish_wandb_run_reports_the_body_outcome(monkeypatch, triple, exit_code):
+    """Normal exits finish cleanly and failed or interrupted exits mark failure."""
+    wandb = _FakeWandb(run=object())
+    monkeypatch.setattr(launch_training, "wandb", wandb)
+    assert finish_wandb_run(*triple) is False
+    assert wandb.finished == [exit_code]
+    assert wandb.run is None
+
+
+def test_finish_wandb_run_tolerates_a_failing_finish(monkeypatch, caplog):
+    """A telemetry shutdown failure does not replace the training outcome."""
+    wandb = _FakeWandb(run=object(), error=RuntimeError("backend gone"))
+    monkeypatch.setattr(launch_training, "wandb", wandb)
+    with caplog.at_level("WARNING"):
+        assert finish_wandb_run() is False
+    assert "backend gone" in caplog.text
+
+
+@pytest.mark.parametrize("fail_training", [False, True])
+def test_run_finishes_wandb_before_leaving_the_launcher(
+    monkeypatch, tmp_path, fail_training
+):
+    """The launcher finishes W&B before the shim regains control on every exit."""
+    monkeypatch.chdir(tmp_path)
+    calls = []
+    _install_run_fakes(monkeypatch, calls, _flow_bundle())
+    monkeypatch.setattr(
+        launch_training,
+        "wandb",
+        SimpleNamespace(
+            run=object(),
+            finish=lambda exit_code: calls.append(("wandb_finish", exit_code)),
+        ),
+    )
+    experiment = tmp_path / "experiment.py"
+    experiment.write_text("VALUE = 1\n")
+    if fail_training:
+
+        def fail_save(*args, **kwargs):
+            raise RuntimeError("disk full")
+
+        monkeypatch.setattr(launch_training, "save_training_configs", fail_save)
+        with pytest.raises(RuntimeError, match="disk full"):
+            run(_fresh_argv(experiment), app_launcher=None)
+        assert calls[-1] == ("wandb_finish", 1)
+    else:
+        run(_fresh_argv(experiment), app_launcher=None)
+        assert calls[-2:] == [("agent_fit",), ("wandb_finish", 0)]

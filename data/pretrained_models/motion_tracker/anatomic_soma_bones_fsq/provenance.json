@@ -2,7 +2,7 @@
   "name": "Anatomical SOMA FSQ motion tracker",
   "robot": "anatomic_soma",
   "inference_checkpoint": "inference_last.ckpt",
-  "inference_checkpoint_sha256": "a065f0eb094bfab9017035dad84f44cf8bfccc36abff26c667def06e07754397",
+  "inference_checkpoint_sha256": "c13e56e85494f8c93fe9eed5b07cadef7281c2eb1188231755f858e1d0f340f0",
   "inference_checkpoint_bytes": 114675901,
   "model_tensor_count": 44,
   "resumable": false

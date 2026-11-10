@@ -21,6 +21,7 @@ from deployment.contract import (
     TimingBlock,
     provider_of,
 )
+from protomotions.envs.context_sources import SENSOR_NAMESPACES
 from protomotions.envs.sensors.metadata import IMUMetadata, SensorDeploymentMetadata
 from protomotions.envs.control.masked_mimic_prompt import GoalCanvas
 
@@ -456,6 +457,28 @@ def test_provider_of_refuses_a_sensor_path_with_no_channel():
         provider_of("noisy.root_pos", None)
     # A privileged path ignores the channel: simulator truth needs none.
     assert provider_of("current.dof_pos", None) == "simulator_truth"
+
+
+def test_provider_of_classifies_every_sensor_namespace_as_sensor():
+    """Every declared sensor namespace uses its channel and refuses a missing one."""
+    for namespace in SENSOR_NAMESPACES:
+        path = f"{namespace}.dof_pos"
+        assert provider_of(path, "joint_encoders") == "joint_encoders", path
+        with pytest.raises(ValueError, match="no sensor channel"):
+            provider_of(path, None)
+
+
+def test_provider_of_uses_the_declared_sensor_namespaces(monkeypatch):
+    """Adding a sensor namespace needs no separate provider dispatch rule."""
+    monkeypatch.setattr(
+        "deployment.contract.SENSOR_NAMESPACES",
+        SENSOR_NAMESPACES + ("test_sensor", "test_sensor_historical"),
+    )
+    for namespace in ("test_sensor", "test_sensor_historical"):
+        path = f"{namespace}.dof_pos"
+        assert provider_of(path, "joint_encoders") == "joint_encoders", path
+        with pytest.raises(ValueError, match="no sensor channel"):
+            provider_of(path, None)
 
 
 def test_robot_block_conditionable_body_names_round_trips_and_is_masked_only(tmp_path):

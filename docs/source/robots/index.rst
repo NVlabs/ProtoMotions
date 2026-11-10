@@ -22,6 +22,12 @@ robot that can be integrated into ProtoMotions.
      - +X
      - ``torso_link``
      - G1-retargeted motion
+   * - :doc:`g1_dex3` / ``g1_dex3``
+     - 47
+     - 43
+     - +X
+     - ``torso_link``
+     - G1-retargeted motion
    * - :doc:`h1_2` / ``h1_2``
      - 29
      - 27
@@ -69,6 +75,7 @@ are in meters and scalar joint angles are in radians. A root anchor means
    :maxdepth: 1
 
    g1
+   g1_dex3
    h1_2
    soma23
    anatomic_soma

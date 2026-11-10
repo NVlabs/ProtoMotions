@@ -95,7 +95,8 @@ def test_build_body_ids_tensor_returns_empty_tensor_when_subset_is_none():
 
 
 def test_build_body_ids_tensor_raises_when_name_missing():
-    with pytest.raises(ValueError):
+    """A missing body reports its name and the available body names."""
+    with pytest.raises(ValueError, match=r"Body part c not found in \['a', 'b'\]"):
         build_body_ids_tensor(["a", "b"], ["c"], device=torch.device("cpu"))
 
 

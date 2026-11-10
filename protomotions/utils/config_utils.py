@@ -173,11 +173,17 @@ def coerce(value, ann, path, cls, name):
     if origin in (list, tuple):
         if not isinstance(value, (list, tuple)):
             raise _mismatch(path, value, ann, cls, name)
-        if origin is tuple and len(args) == 2 and args[1] is Ellipsis:
-            args = (args[0],) * len(value)
-        if args and origin is list:
-            args = (args[0],) * len(value)
-        items = [coerce(v, a, path, cls, name) for v, a in zip(value, args or value)]
+        if not args:
+            items = list(value)
+        else:
+            if origin is list or (len(args) == 2 and args[1] is Ellipsis):
+                args = (args[0],) * len(value)
+            elif len(args) != len(value):
+                raise ValueError(
+                    f"override {path}={value!r}: expected {len(args)} items for {ann} "
+                    f"({cls.__name__}.{name}), got {len(value)}"
+                )
+            items = [coerce(v, a, path, cls, name) for v, a in zip(value, args)]
         return items if origin is list else tuple(items)
     if origin is dict:
         return value

@@ -73,6 +73,13 @@ if your local GPU memory is not enough to load the entire motion lib of AMASS.
        --simulator isaaclab \
        --num-envs 1
 
+   # Run the anatomical SOMA GPC prior with its anatomical FSQ decoder
+   python protomotions/inference_agent.py \
+       --checkpoint data/pretrained_models/gpc_prior/anatomic_soma_bones/inference_last.ckpt \
+       --motion-file data/motion_for_trackers/anatomic_soma_bones_seed_mini.pt \
+       --simulator isaaclab \
+       --num-envs 1
+
    # Test the domain-randomized G1 tracker in MuJoCo
    python protomotions/inference_agent.py \
        --checkpoint data/pretrained_models/motion_tracker/g1-bones-deploy/inference_last.ckpt \

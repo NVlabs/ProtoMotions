@@ -304,3 +304,25 @@ def test_terrain_load_save_and_plot_paths(tmp_path, monkeypatch):
         lambda: None,
     )
     loaded.generate_terrain_plot()
+
+
+def test_terrain_plot_keeps_five_region_colors_without_legacy_colormap(monkeypatch):
+    """Terrain plots retain five viridis colors without matplotlib.cm.get_cmap."""
+    monkeypatch.delattr(terrain_module.plt.cm, "get_cmap", raising=False)
+    monkeypatch.setattr(terrain_module.plt, "show", lambda: None)
+    terrain = Terrain(_flat_config(), num_envs=1, device=torch.device("cpu"))
+    existing_figures = set(terrain_module.plt.get_fignums())
+
+    try:
+        terrain.generate_terrain_plot()
+        figure = terrain_module.plt.gcf()
+        region_colors = figure.axes[2].images[0].get_cmap()
+        assert region_colors.name == "viridis"
+        assert region_colors.N == 5
+        np.testing.assert_array_equal(
+            region_colors(np.arange(5)),
+            terrain_module.plt.get_cmap("viridis")(np.linspace(0.0, 1.0, 5)),
+        )
+    finally:
+        for number in set(terrain_module.plt.get_fignums()) - existing_figures:
+            terrain_module.plt.close(number)

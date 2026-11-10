@@ -669,6 +669,16 @@ class UnitreeSdk2Backend::Impl {
                                        : ",transport=stale");
   }
 
+  std::optional<std::array<float, UnitreeSdk2Backend::kDex3DofCount>>
+  dex3_right_hand_position() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!hand_state_ready_locked()) return std::nullopt;
+    std::array<float, UnitreeSdk2Backend::kDex3DofCount> measured{};
+    for (std::size_t i = 0; i < measured.size(); ++i)
+      measured[i] = latest_right_hand_->motor_state()[i].q();
+    return measured;
+  }
+
   bool send_dex3_position_command(
       const std::array<float, UnitreeSdk2Backend::kDex3DofCount>& left,
       const std::array<float, UnitreeSdk2Backend::kDex3DofCount>& right) noexcept {
@@ -983,6 +993,11 @@ bool UnitreeSdk2Backend::dex3_hands_ready() const noexcept {
 
 std::string UnitreeSdk2Backend::dex3_hand_status() const {
   return impl_->dex3_hand_status();
+}
+
+std::optional<std::array<float, UnitreeSdk2Backend::kDex3DofCount>>
+UnitreeSdk2Backend::dex3_right_hand_position() const {
+  return impl_->dex3_right_hand_position();
 }
 
 bool UnitreeSdk2Backend::send_dex3_position_command(

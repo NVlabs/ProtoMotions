@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <memory>
+#include <utility>
 #include <vector>
 #include <string>
 
@@ -28,6 +30,15 @@ struct MuJoCoBackendConfig {
   // source XML qpos0; scene-policy simulation supplies its calibrated stand.
   // This is simulation initialization, never a policy observation input.
   std::vector<double> initial_dof_position;
+  // Qualification-only variations of the simulated world, applied once at
+  // construction. A non-positive friction keeps the XML value; masses are
+  // added to the named bodies (kilograms) with their inertia scaled to match.
+  double floor_friction = 0.0;
+  std::vector<std::pair<std::string, double>> body_mass_additions;
+  // Reported-position drift (m/s, world xy) added to the base, root and anchor
+  // positions the policy sees, never to the physics: the robot's odometry
+  // drifts in the field, and a controller must not depend on where it says it is.
+  std::array<double, 2> odometry_drift_mps{};
 };
 
 // Optional headless MuJoCo backend used to validate the complete deployment
@@ -46,6 +57,12 @@ class MuJoCoBackend final : public RobotBackend {
   bool send_command(const ActuatorCommand& command) override;
   bool reset_anchor_frame() override;
   bool emergency_stop() noexcept override;
+
+  // Qualification-only disturbance: a world-frame force on the named body for
+  // `duration_seconds` of simulated time, applied on the following commands.
+  // Returns false when the body is unknown. Never available on hardware.
+  bool apply_push(const std::string& body_name, const std::array<double, 3>& force,
+                  double duration_seconds);
 
  private:
   class Impl;

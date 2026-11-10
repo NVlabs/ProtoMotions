@@ -10,6 +10,7 @@
 #include <cmath>
 #include <fstream>
 #include <limits>
+#include <utility>
 #include <stdexcept>
 
 namespace protomotions::deployment::metatron_v1 {
@@ -130,6 +131,7 @@ StagedRecovery::StagedRecovery(
 
 void StagedRecovery::reset() noexcept {
   phase_ = Phase::kInactive;
+  bow_grace_s_ = 0.0F;
   elapsed_ = 0.0F;
   phase_start_ = 0.0F;
   ready_since_ = 0.0F;
@@ -167,6 +169,29 @@ bool StagedRecovery::intentional_low(const Inputs& inputs, float height,
   return requested < 0.5F && std::abs(requested - height) < 0.15F;
 }
 
+// A floor reach is a deliberate bow: a hand is commanded to the floor while
+// the torso is still carried on the legs. The fall test reads torso tilt
+// alone, which cannot tell a deep bow from falling forward, so the requested
+// hand heights break the tie. Hand targets sit in the global tensors before
+// MetatronGoals::apply moves them to the local ones, so both are read.
+bool StagedRecovery::hands_commanded_low(const Inputs& inputs, float floor) const {
+  float lowest_hand = std::numeric_limits<float>::infinity();
+  for (std::size_t slot = 0; slot < 5; ++slot) {
+    for (const bool local : {false, true}) {
+      const std::size_t mask_index = local ? 7 : 16;
+      const std::size_t pose_index = local ? 8 : 17;
+      const std::size_t position_index = local ? 5 : 10;
+      if (!inputs.booleans(pose_index)[slot]) continue;
+      for (const auto [body, mask] : {std::pair{24, 6}, std::pair{32, 8}}) {
+        if (!inputs.booleans(mask_index)[slot * 10 + mask]) continue;
+        lowest_hand = std::min(lowest_hand,
+                               inputs.floats(position_index)[(slot * 33 + body) * 3 + 2] - floor);
+      }
+    }
+  }
+  return lowest_hand < 0.35F;
+}
+
 bool StagedRecovery::step(Inputs& inputs, const RecoveryPose& pose,
                           float dt_seconds) {
   if (!std::isfinite(dt_seconds) || dt_seconds <= 0.0F)
@@ -183,9 +208,15 @@ bool StagedRecovery::step(Inputs& inputs, const RecoveryPose& pose,
   const float forward = 2.0F * (x * z - w * y);
   const float knees = (pose.joints[3] + pose.joints[9]) * 0.5F;
   const bool fallen = height < 0.5F || up < 0.25F;
+  // The bow stays intentional for a second after the hands are called back
+  // up, which is how long the policy needs to unfold; a torso that drops or
+  // goes past horizontal is a fall regardless.
+  if (hands_commanded_low(inputs, lowest)) bow_grace_s_ = 1.0F;
+  else bow_grace_s_ = std::max(0.0F, bow_grace_s_ - dt_seconds);
+  const bool intentional_bow = bow_grace_s_ > 0.0F && up > -0.1F && height >= 0.45F;
   just_finished_ = false;
   if (phase_ == Phase::kInactive &&
-      (!fallen || intentional_low(inputs, height, up))) return false;
+      (!fallen || intentional_low(inputs, height, up) || intentional_bow)) return false;
   if (phase_ == Phase::kInactive || (phase_ == Phase::kSettle && fallen)) {
     elapsed_ = 0.0F;
     has_ready_since_ = false;

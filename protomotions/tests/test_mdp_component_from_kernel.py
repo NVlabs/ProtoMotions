@@ -67,6 +67,16 @@ def test_from_kernel_override_sets_a_constant():
     assert component.get_params()["coefficient"] == 5.0
 
 
+def test_get_params_returns_a_copy():
+    """Mutating the dict ``get_params`` returns leaves the component unchanged."""
+    component = MdpComponent.from_kernel(_kernel)
+    params = component.get_params()
+    params["coefficient"] = 99.0
+    params["folded"] = 1
+    assert component.get_params() == {"coefficient": -2.0, "threshold": 0.5}
+    assert component.static_params == {"coefficient": -2.0, "threshold": 0.5}
+
+
 def test_from_kernel_missing_default_without_override_fails():
     """A parameter with neither default nor override names the kernel and parameter."""
 

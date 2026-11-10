@@ -376,6 +376,11 @@ class MaskedMimicControl(MimicControl):
                     raise ValueError(
                         "Fixed conditions require unique bodies and states 0, 1, or 2"
                     )
+                if condition.body_name not in trackable_names:
+                    raise ValueError(
+                        f"Fixed condition body {condition.body_name!r} "
+                        "is not a trackable body"
+                    )
                 seen_bodies.add(condition.body_name)
                 body_index = trackable_names.index(condition.body_name)
                 self._fixed_body_mask[body_index, 0] = condition.constraint_state <= 1

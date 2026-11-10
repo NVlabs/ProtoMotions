@@ -236,7 +236,13 @@ def hinge_seed(asset, global_rotations):
             .reshape(len(local), -1)
         )
         selected = []
-        previous = bounded[0, residual[0].argmin()]
+        # On a joint whose range spans +-180 degrees both Euler branches can
+        # reproduce frame 0 exactly, so the residual alone picks on round-off
+        # noise and can start the chain on the far branch. Break such ties
+        # toward the limits' midpoint; the continuity term carries on from there.
+        midpoint = limits.mean(axis=1)
+        start = residual[0] ** 2 + 1e-6 * ((bounded[0] - midpoint) ** 2).sum(axis=-1)
+        previous = bounded[0, start.argmin()]
         for frame in range(len(local)):
             score = residual[frame] ** 2 + 0.05 * (
                 (bounded[frame] - previous) ** 2

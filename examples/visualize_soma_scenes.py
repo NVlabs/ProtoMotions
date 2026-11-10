@@ -27,6 +27,8 @@ import trimesh
 import trimesh.creation
 import trimesh.transformations as tf
 
+from protomotions.launch.startup import run_reporting_failures
+
 try:
     import viser
 except ImportError as exc:
@@ -521,4 +523,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    run_reporting_failures(main)
