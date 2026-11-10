@@ -162,8 +162,8 @@
           1,
           13,
           7,
-          24,
-          32
+          23,
+          31
         ],
         "compute_func": "compute_nearest_surface_vectors",
         "dynamic_vars": {
@@ -245,8 +245,8 @@
           1,
           13,
           7,
-          24,
-          32
+          23,
+          31
         ],
         "compute_func": "compute_nearest_surface_vectors",
         "dynamic_vars": {
@@ -324,8 +324,8 @@
           1,
           13,
           7,
-          24,
-          32
+          23,
+          31
         ],
         "compute_func": "compute_nearest_surface_vectors",
         "dynamic_vars": {
@@ -430,8 +430,8 @@
           1,
           13,
           7,
-          24,
-          32
+          23,
+          31
         ],
         "compute_func": "compute_nearest_surface_vectors",
         "dynamic_vars": {
@@ -504,8 +504,8 @@
           1,
           13,
           7,
-          24,
-          32
+          23,
+          31
         ],
         "compute_func": "compute_nearest_surface_vectors",
         "dynamic_vars": {
@@ -606,8 +606,8 @@
           1,
           13,
           7,
-          24,
-          32
+          23,
+          31
         ],
         "compute_func": "compute_nearest_surface_vectors",
         "dynamic_vars": {
@@ -716,8 +716,8 @@
             "head",
             "right_ankle_roll_link",
             "left_ankle_roll_link",
-            "left_rubber_hand",
-            "right_rubber_hand"
+            "left_wrist_yaw_link",
+            "right_wrist_yaw_link"
           ],
           "pattern": null
         },
@@ -737,8 +737,8 @@
             "head",
             "right_ankle_roll_link",
             "left_ankle_roll_link",
-            "left_rubber_hand",
-            "right_rubber_hand"
+            "left_wrist_yaw_link",
+            "right_wrist_yaw_link"
           ],
           "pattern": null
         },
@@ -958,8 +958,8 @@
       "mimic_target_poses": {
         "body_indices": [
           16,
-          24,
-          32,
+          23,
+          31,
           7,
           13
         ],
@@ -1068,8 +1068,8 @@
         },
         "indices": [
           16,
-          24,
-          32,
+          23,
+          31,
           7,
           13
         ],
@@ -1090,8 +1090,8 @@
         },
         "indices": [
           16,
-          24,
-          32,
+          23,
+          31,
           7,
           13
         ],
@@ -1128,8 +1128,8 @@
         },
         "indices": [
           16,
-          24,
-          32
+          23,
+          31
         ],
         "meta": {
           "max_value": null,
@@ -1148,8 +1148,8 @@
         },
         "indices": [
           16,
-          24,
-          32
+          23,
+          31
         ],
         "meta": {
           "max_value": null,
@@ -1474,8 +1474,8 @@
           ],
           "upper_body_indices": [
             16,
-            24,
-            32
+            23,
+            31
           ],
           "upright_limit": 0.5
         },
@@ -1800,7 +1800,8 @@
           51,
           52,
           43,
-          44
+          44,
+          16
         ],
         "meta": {
           "max_value": null,
@@ -1824,7 +1825,8 @@
           51,
           52,
           43,
-          44
+          44,
+          16
         ],
         "meta": {
           "max_value": null,
@@ -1887,6 +1889,24 @@
           "min_value": null,
           "multiplicative": false,
           "weight": 0.4,
+          "zero_during_grace_period": false
+        },
+        "sigma": 0.1
+      },
+      "head_rot": {
+        "compute_func": "compute_global_orientation_error_exp",
+        "dynamic_vars": {
+          "q": "current.rigid_body_rot",
+          "ref_q": "mimic.ref_state.rigid_body_rot"
+        },
+        "indices": [
+          16
+        ],
+        "meta": {
+          "max_value": null,
+          "min_value": null,
+          "multiplicative": false,
+          "weight": 0.5,
           "zero_during_grace_period": false
         },
         "sigma": 0.1

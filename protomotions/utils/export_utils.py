@@ -216,11 +216,11 @@ class ObservationExportModule(torch.nn.Module):
             router = cfg
             compute_func = router.get_compute_func()
             bindings_dict = router.get_bindings_dict()  # {param_name: path_string}
-            # A copy: the folding below adds constants to it, and the component's
-            # own static_params must not grow a key its dynamic_vars also bind
-            # (an environment built from the same components afterwards would
-            # pass the argument twice).
-            params = dict(router.get_params())
+            # get_params() returns a copy: the folding below adds constants to it,
+            # and the component's own static_params must not grow a key its
+            # dynamic_vars also bind (an environment built from the same
+            # components afterwards would pass the argument twice).
+            params = router.get_params()
 
             self._obs_functions[obs_name] = compute_func
             self._output_keys.append(obs_name)

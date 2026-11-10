@@ -531,12 +531,12 @@ def main(
                     print(f"Found timing config for {motion_key}")
                     # Get the timing configuration
                     timing_config = motion_timings[motion_key]
-                    start_time = timing_config["start"]
-                    end_time = timing_config["end"]
+                    slice_start = timing_config["start"]
+                    slice_end = timing_config["end"]
 
                     # Slice the motion data
                     pose_aa, amass_trans = slice_motion_data(
-                        pose_aa, amass_trans, start_time, end_time, mocap_fr
+                        pose_aa, amass_trans, slice_start, slice_end, mocap_fr
                     )
                 else:
                     print(f"No timing config found for {motion_key}")

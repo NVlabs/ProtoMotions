@@ -30,6 +30,10 @@ backend or version.
      - Discrete GPC prior for SOMA motion
      - IsaacLab only
      - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/gpc_prior/soma_bones/MODEL_CARD.md>`__
+   * - Anatomical SOMA BONES-SEED GPC prior
+     - Discrete GPC prior for the anatomical SOMA humanoid
+     - IsaacLab only
+     - `Read card <https://github.com/NVlabs/ProtoMotions/blob/main/data/pretrained_models/gpc_prior/anatomic_soma_bones/MODEL_CARD.md>`__
    * - G1 BONES-SEED deployment tracker
      - Domain-randomized motion tracking and deployment
      - Trained in IsaacLab; expected to transfer

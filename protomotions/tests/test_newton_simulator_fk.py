@@ -15,6 +15,11 @@ Usage:
 NOTE: there seems to be some small difference in the results between the Newton simulator and the MotionLib.
 This is the main reason why this test is here. But you can also use this to validate your Newton installation along with ProtoMotions.
 
+The default pytest integration checks Newton against PoseLib FK for the current
+MJCF, using motion root/DOF inputs. The standalone CLI retains the diagnostic
+comparison against stored MotionLib body poses, whose bind offsets may differ
+from the current asset. These are distinct validation contracts.
+
 """
 
 import argparse
@@ -24,15 +29,19 @@ import torch
 import numpy as np
 from pathlib import Path
 from typing import Optional
+from types import SimpleNamespace
 import pytest
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from protomotions.simulator.base_simulator.simulator_state import (
+    ResetState,
     RobotState,
     StateConversion,
 )
+
+from protomotions.simulator.newton.joint_mapping import builder_joint_mapping
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_G1_MOTION_FILE = REPO_ROOT / "examples/data/g1_crouch_to_run.motion"
@@ -212,7 +221,7 @@ class NewtonSimulatorFKHarness:
 
         # Set simulator state (reset_envs handles conversion internally)
         print("\nSetting simulator state...")
-        self.simulator.reset_envs(gt_state)
+        self.simulator.reset_envs(ResetState.from_robot_state(gt_state))
 
         # Get state back from simulator (this includes FK computation)
         # get_robot_state() returns both body and DOF state in common coordinates
@@ -446,9 +455,7 @@ def _make_robot_state() -> RobotState:
         ],
         dtype=torch.float32,
     )
-    dof_pos = torch.tensor(
-        [[0.1, -0.2, 0.3], [0.4, 0.5, -0.6]], dtype=torch.float32
-    )
+    dof_pos = torch.tensor([[0.1, -0.2, 0.3], [0.4, 0.5, -0.6]], dtype=torch.float32)
 
     return RobotState(
         state_conversion=StateConversion.COMMON,
@@ -498,7 +505,84 @@ def test_compute_errors_treats_negated_quaternions_as_same_rotation():
     assert results["body_rot_error_max"] == pytest.approx(0.0, abs=1e-6)
 
 
-def test_newton_simulator_fk_matches_motionlib_default_frame():
+def _current_asset_fk_reference(kinematic_info, motion_state):
+    """Floating-root FK oracle: motion supplies a pose sample, not geometry."""
+    from protomotions.components.pose_lib import fk_batch_mjcf_with_velocities
+
+    if motion_state.state_conversion is not StateConversion.COMMON:
+        raise ValueError("FK fixture coordinates must use common ordering")
+    if motion_state.dof_pos.shape[-1] != kinematic_info.num_dofs:
+        raise ValueError("FK fixture DOF count does not match the current MJCF")
+    qpos = torch.cat(
+        (
+            motion_state.root_pos,
+            motion_state.root_rot[:, [3, 0, 1, 2]],  # PoseLib qpos uses wxyz.
+            motion_state.dof_pos,
+        ),
+        dim=-1,
+    )
+    reference = fk_batch_mjcf_with_velocities(
+        kinematic_info, qpos, compute_velocities=False
+    )
+    # The free-root orientation is an input, not an FK prediction. Preserve it
+    # exactly rather than injecting a quaternion/matrix round-trip into the
+    # tight root-reset check (acos magnifies float32 round-off near zero).
+    reference.rigid_body_rot[:, 0] = motion_state.root_rot
+    reference.dof_pos = motion_state.dof_pos.clone()
+    return reference
+
+
+def test_current_asset_fk_reference_ignores_stored_child_poses():
+    """Current-asset FK ignores archived child transforms and rejects wrong DOF counts."""
+    from protomotions.components.motion_lib import MotionLib, MotionLibConfig
+    from protomotions.robot_configs.factory import robot_config
+    from protomotions.utils.rotations import quat_rotate_inverse
+
+    ki = robot_config("g1").kinematic_info
+    motion_lib = MotionLib(
+        MotionLibConfig(motion_file=str(DEFAULT_G1_MOTION_FILE)), device="cpu"
+    )
+    ids = torch.tensor([0])
+    motion = motion_lib.get_motion_state_exact_frame(ids, ids)
+    before = motion.clone()
+    reference = _current_asset_fk_reference(ki, motion)
+    torch.testing.assert_close(reference.root_pos, motion.root_pos)
+    torch.testing.assert_close(reference.root_rot, motion.root_rot)
+    torch.testing.assert_close(reference.dof_pos, motion.dof_pos)
+    torch.testing.assert_close(motion.rigid_body_pos, before.rigid_body_pos)
+    torch.testing.assert_close(motion.rigid_body_rot, before.rigid_body_rot)
+
+    # Archived child transforms are not the oracle. Corrupting them must not
+    # change FK from the same root/DOFs and the explicitly selected hierarchy.
+    motion.rigid_body_pos[:, 1:] += 10.0
+    motion.rigid_body_rot[:, 1:] = torch.tensor([0.0, 0.0, 0.0, 1.0])
+    recomputed = _current_asset_fk_reference(ki, motion)
+    torch.testing.assert_close(recomputed.rigid_body_pos, reference.rigid_body_pos)
+    torch.testing.assert_close(recomputed.rigid_body_rot, reference.rigid_body_rot)
+    incorrect_fk = reference.clone()
+    incorrect_fk.rigid_body_pos[:, 15, 2] += 0.1
+    incorrect_results = NewtonSimulatorFKHarness._compute_errors(
+        reference, incorrect_fk
+    )
+    assert incorrect_results["body_pos_error_mean"] > 1e-3
+    for body, parent in enumerate(ki.parent_indices):
+        if parent < 0:
+            continue
+        local = quat_rotate_inverse(
+            reference.rigid_body_rot[:, parent],
+            reference.rigid_body_pos[:, body] - reference.rigid_body_pos[:, parent],
+            True,
+        )
+        torch.testing.assert_close(local[0], ki.local_pos[body], atol=1e-6, rtol=1e-5)
+
+    motion.dof_pos = motion.dof_pos[:, :-1]
+    with pytest.raises(ValueError, match="DOF count"):
+        _current_asset_fk_reference(ki, motion)
+
+
+@pytest.mark.needs_lfs
+def test_newton_simulator_fk_matches_current_asset_for_motionlib_default_frame():
+    """Newton reset FK matches the current asset at the archived root and joint pose."""
     pytest.importorskip("warp")
     pytest.importorskip("newton")
     if not torch.cuda.is_available():
@@ -513,13 +597,156 @@ def test_newton_simulator_fk_matches_motionlib_default_frame():
         device="cuda",
     )
 
-    results = harness.run_single_frame_fk(motion_id=0, frame_idx=0)
+    ki = harness.robot_cfg.kinematic_info
+    assert not harness.robot_cfg.asset.fix_base_link
+    ordering = harness.simulator._get_sim_body_ordering()
+    conversion = harness.simulator.data_conversion
+    assert [
+        ordering.body_names[i] for i in conversion.body_convert_to_common.tolist()
+    ] == ki.body_names
+    assert [
+        ordering.dof_names[i] for i in conversion.dof_convert_to_common.tolist()
+    ] == ki.dof_names
+
+    ids = torch.tensor([0], device=harness.device)
+    motion = harness.motion_lib.get_motion_state_exact_frame(ids, ids)
+    # The archived clip's waist/torso/shoulder bind offsets differ from today's
+    # G1 MJCF. Its root and DOFs still supply a nontrivial pose. Compare Newton
+    # against independent PoseLib FK of that pose on the CURRENT asset, not
+    # against stale child positions. This tests engine FK, not clip/asset bind
+    # compatibility; neither the public clip nor physical geometry is changed.
+    reference = _current_asset_fk_reference(ki, motion)
+    harness.simulator.reset_envs(ResetState.from_robot_state(motion))
+    results = harness._compute_errors(reference, harness.simulator.get_robot_state())
 
     assert results["root_pos_error_mean"] < 1e-4
     assert results["root_rot_error_mean"] < 1e-2
     assert results["dof_pos_error_mean"] < 1e-4
     assert results["body_pos_error_mean"] < 1e-3
     assert results["body_rot_error_mean"] < 0.1
+
+
+def test_joint_mapping_uses_named_builder_addresses_and_compound_order():
+    """Builder DOF addresses, not common order or root offsets, set joint order."""
+    builder = SimpleNamespace(
+        joint_label=["robot/root", "robot/hip_x_hip_y", "robot/knee", "object/free"],
+        joint_dof_dim=[(3, 3), (0, 2), (0, 1), (3, 3)],
+        joint_qd_start=[0, 6, 8, 9],
+    )
+    names = ["knee", "hip_y", "hip_x"]
+    groups, indices = builder_joint_mapping(builder, names)
+    assert groups == {"hip_x_hip_y": ["hip_x", "hip_y"], "knee": "knee"}
+    assert indices == {"hip_x": 6, "hip_y": 7, "knee": 8}
+    assert names == ["knee", "hip_y", "hip_x"]
+
+
+def test_joint_mapping_keeps_scalar_prefixes_distinct():
+    """A scalar hip_x joint never consumes the separate hip action DOF."""
+    builder = SimpleNamespace(
+        joint_label=["robot/hip_x", "robot/hip"],
+        joint_dof_dim=[(0, 1), (0, 1)],
+        joint_qd_start=[0, 1],
+    )
+    groups, indices = builder_joint_mapping(builder, ["hip", "hip_x"])
+    assert groups == {"hip_x": "hip_x", "hip": "hip"}
+    assert indices == {"hip_x": 0, "hip": 1}
+
+
+@pytest.mark.parametrize(
+    "labels, dimensions, names, error",
+    [
+        (["robot/hip"], [(0, 1)], ["hip", "hip"], "Duplicate common"),
+        (["robot/hip", "other/hip"], [(0, 1)] * 2, ["hip"], "Duplicate Newton"),
+        (["robot/hip"], [(0, 1)], ["knee"], "Missing Newton DOFs"),
+        (["robot/hip_x"], [(0, 1)], ["hip"], "does not match"),
+        (["robot/hip_x_knee"], [(0, 2)], ["hip_x"], "does not match"),
+        (["robot/hip_x"], [(0, 2)], ["hip_x"], "does not match"),
+        (
+            ["robot/hip_x_knee"],
+            [(0, 2)],
+            ["hip", "hip_x", "knee"],
+            "Ambiguous Newton joint",
+        ),
+    ],
+)
+def test_joint_mapping_rejects_invalid_or_ambiguous_names(
+    labels, dimensions, names, error
+):
+    """Incomplete, duplicated and ambiguous action names fail before construction."""
+    builder = SimpleNamespace(
+        joint_label=labels,
+        joint_dof_dim=dimensions,
+        joint_qd_start=list(range(len(labels))),
+    )
+    with pytest.raises(ValueError, match=error):
+        builder_joint_mapping(builder, names)
+
+
+@pytest.mark.parametrize("decimation", [1, 2, 3, 4])
+def test_newton_substeps_preserve_latest_state_in_original_buffer(decimation):
+    """Every substep reaches readback while state buffers keep stable identities."""
+    newton = pytest.importorskip("newton")
+    wp = pytest.importorskip("warp")
+    from protomotions.robot_configs.base import ControlInfo, ControlType
+    from protomotions.simulator.newton.simulator import NewtonSimulator
+
+    with wp.ScopedDevice("cpu"):
+        sim = object.__new__(NewtonSimulator)
+        sim._dof_names = ["hip", "hip_x"]
+        sim.control_type = ControlType.BUILT_IN_PD
+        sim.robot_config = SimpleNamespace(
+            asset=SimpleNamespace(fix_base_link=True),
+            control=SimpleNamespace(
+                control_info={
+                    "hip": ControlInfo(stiffness=50, damping=3),
+                    "hip_x": ControlInfo(stiffness=30, damping=2),
+                }
+            ),
+        )
+        sim.robot = newton.ModelBuilder()
+        joints = []
+        for name in ("hip_x", "hip"):
+            body = sim.robot.add_link(label=name)
+            shape = newton.ModelBuilder.ShapeConfig()
+            shape.flags = 0
+            sim.robot.add_shape_box(body, hx=0.1, hy=0.1, hz=0.1, cfg=shape)
+            joints.append(
+                sim.robot.add_joint_revolute(
+                    -1,
+                    body,
+                    axis=newton.Axis.Z,
+                    label="robot/" + name,
+                    limit_lower=-10,
+                    limit_upper=10,
+                )
+            )
+        sim.robot.add_articulation(joints, label="robot")
+        sim._configure_builder_joint_properties()
+        assert sim.robot.joint_target_ke == [30, 50]
+        assert sim.robot.joint_target_kd == [2, 3]
+        sim.model = sim.robot.finalize(device="cpu")
+        sim.model.set_gravity((0, 0, 0))
+        sim.solver = newton.solvers.SolverMuJoCo(sim.model, use_mujoco_cpu=True)
+        sim.control = sim.model.control()
+        sim.control.joint_target_pos.fill_(0.2)
+        sim.state_0, sim.state_1 = sim.model.state(), sim.model.state()
+        newton.eval_fk(sim.model, sim.model.joint_q, sim.model.joint_qd, sim.state_0)
+        buffers = sim.state_0, sim.state_1
+        sim.contacts = sim.model.contacts()
+        sim.sim_dt, sim.decimation, sim.viewer = 0.001, decimation, None
+        sim._max_action_latency_ms = 0
+        previous = sim.state_0.joint_q.numpy().copy()
+        for _ in range(3):
+            sim._simulate()
+            assert sim.state_0 is buffers[0]
+            assert sim.state_1 is buffers[1]
+            actual = sim.state_0.joint_q.numpy()
+            assert np.all(actual > previous)
+            np.testing.assert_allclose(actual, sim.solver.mj_data.qpos, atol=1e-7)
+            np.testing.assert_allclose(
+                sim.state_0.joint_qd.numpy(), sim.solver.mj_data.qvel, atol=1e-6
+            )
+            previous = actual.copy()
 
 
 def main():

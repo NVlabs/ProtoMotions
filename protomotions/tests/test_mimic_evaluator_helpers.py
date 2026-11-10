@@ -794,3 +794,17 @@ def test_predicted_motion_export_uses_shortest_written_channel(tmp_path):
     assert saved["motion_num_frames"].tolist() == [1, 0, 2]
     assert saved["length_starts"].tolist() == [0, 1, 1]
     assert saved["dps"].shape[0] == saved["contacts"].shape[0] == 3
+
+
+def test_mimic_weights_stay_unchanged_without_an_evaluation_interval(tmp_path):
+    """Checkpoint evaluation cannot reweight motions without a discount interval."""
+    evaluator = _evaluator(tmp_path, eval_metrics_every=None)
+    evaluator._evaluation.failed = torch.tensor([False, True, True])
+    evaluator._evaluation.count = torch.ones(3, dtype=torch.long)
+    before = evaluator.motion_manager.motion_weights.clone()
+
+    evaluator._update_motion_sampling_weights(_sampling_result(evaluator))
+
+    assert torch.equal(evaluator.motion_manager.motion_weights, before)
+    assert evaluator.motion_manager.updated_weights is None
+    assert not (tmp_path / "failed_motions").exists()

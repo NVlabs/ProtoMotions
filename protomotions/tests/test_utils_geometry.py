@@ -139,3 +139,12 @@ def test_torch_utils_grad_norm_to_torch_and_seeding(monkeypatch, capsys):
     assert deterministic_calls == [True]
     assert torch_utils.os.environ["PYTHONHASHSEED"] == "456"
     assert torch_utils.os.environ["CUBLAS_WORKSPACE_CONFIG"] == ":4096:8"
+
+
+@pytest.mark.parametrize("parameters", [[], [torch.nn.Parameter(torch.ones(2))]])
+def test_grad_norm_without_gradients_returns_a_zero_tensor(parameters):
+    """An empty gradient collection has a tensor norm of zero."""
+    norm = torch_utils.grad_norm(parameters)
+    assert isinstance(norm, torch.Tensor)
+    assert norm.shape == ()
+    assert norm.item() == 0.0

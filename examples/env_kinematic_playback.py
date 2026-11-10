@@ -134,6 +134,7 @@ args, unknown_args = parser.parse_known_args()
 
 # Import simulator before torch - isaacgym/isaaclab must be imported before torch
 # This also returns AppLauncher if using isaaclab, None otherwise
+from protomotions.launch.startup import run_reporting_failures  # noqa: E402
 from protomotions.utils.simulator_imports import import_simulator_before_torch  # noqa: E402
 
 AppLauncher = import_simulator_before_torch(args.simulator)
@@ -414,8 +415,14 @@ def main():
 
     except KeyboardInterrupt:
         print("\n\nSimulation stopped by user")
-    finally:
-        env.close()
+    except SystemExit as exit_request:
+        # A viewer may request a successful exit instead of ending its loop.
+        code = exit_request.code
+        if code is not None and (not isinstance(code, int) or code != 0):
+            raise
+
+    # Failure must reach the reporter before a backend close can terminate.
+    env.close()
 
     print("\n=== Playback Complete ===")
     print(f"Total steps: {step_count}")
@@ -423,4 +430,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    run_reporting_failures(main)

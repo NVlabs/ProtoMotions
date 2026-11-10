@@ -169,8 +169,15 @@ ProtoMotions so its workspace packages and simulator dependencies are present.
 
    .. code-block:: bash
 
-      uv sync --extra isaacsim
+      uv venv --python 3.12
       source .venv/bin/activate
+      uv pip install -e ".[isaacsim]"
+
+   Use ``uv pip install`` rather than ``uv sync`` here: ``uv sync`` resolves a
+   lock for every platform and extra at once, and at this IsaacLab commit the
+   ``pytetwild`` pins of the x86-64 and arm64 markers cannot co-resolve, so the
+   lock fails even on a Linux x86-64 machine. ``uv pip install`` resolves for
+   the current interpreter only.
 
 3. Install ProtoMotions and dependencies:
 

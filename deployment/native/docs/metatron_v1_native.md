@@ -49,11 +49,28 @@ The preparation installs position actuators and a floor, as the simulator requir
   --fk-engine artifacts/metatron-ep6410/fk.fp32.plan \
   --manifest artifacts/metatron-ep6410/manifest.json \
   --recovery-plan artifacts/metatron-ep6410/recovery_plan.json \
+  --motions examples/tracking_motions.json \
   --xbox-device /dev/input/by-id/YOUR_XBOX-event-joystick \
-  --cuda-graphs --viewer --glfw-lib /path/to/libglfw.so
+  --viewer --glfw-lib /path/to/libglfw.so
 ```
 
-The same binary takes `--backend unitree --net-if YOUR_VERIFIED_INTERFACE --arm`, omitting `--xml`, `--viewer`, and `--glfw-lib`. The FK plan already contains the robot kinematics, so an MJCF path is not used on hardware. It requires an explicit `--arm` but still starts in damping hold. Physical G1 operation is **not yet qualified** by the local tests; perform operator-supervised checks of sensor freshness, odometry, safety stop, and stance before reviving it. Do not run it merely because the simulator passes.
+Run these commands from `deployment/native` with a locally built `build-clang/metatron_v1_deploy_cpp` and GPU-local TensorRT plans. The motion bundle above is tracked in this repository. The optional `--viewer` requires a GLFW shared library; omit both viewer flags for headless simulation. CUDA graph capture is built into this launcher; it has no `--cuda-graphs` flag. For an optimized local plan, replace `model.graphsafe.fp32.plan` with `model.graphsafe.opt1.fp32.plan` after qualifying it on that GPU.
+
+For a real G1, first complete the sensor-only probe below. Then, with an operator and a verified robot interface, use the same task, motion bundle, policy, and FK artifacts:
+
+```bash
+./build-clang/metatron_v1_deploy_cpp \
+  --backend unitree --arm --net-if YOUR_VERIFIED_INTERFACE \
+  --xml artifacts/metatron-ep6410/g1_holo_compat_sim.xml \
+  --engine artifacts/metatron-ep6410/model.graphsafe.fp32.plan \
+  --fk-engine artifacts/metatron-ep6410/fk.fp32.plan \
+  --manifest artifacts/metatron-ep6410/manifest.json \
+  --recovery-plan artifacts/metatron-ep6410/recovery_plan.json \
+  --motions examples/tracking_motions.json \
+  --xbox-device /dev/input/by-id/YOUR_XBOX-event-joystick
+```
+
+`--xml` is required on both backends: hardware uses it for the native arm kinematics and joint limits, while MuJoCo also steps it. Hardware requires `--arm` but still starts in damping hold; remove `--arm` only for non-hardware commands. Physical G1 operation is **not yet qualified** by the local tests; perform operator-supervised checks of sensor freshness, odometry, safety stop, and stance before reviving it. Do not run it merely because the simulator passes.
 
 Before hardware launch, run the subscriber-only preflight. It does not release MotionSwitcher or create motor publishers, and does not require `--arm`:
 
@@ -65,7 +82,7 @@ Require progressing LowState ticks, fresh LowState and odometry ages (both below
 
 The runtime holds only the last validated position target through a short repeated-sensor gap (up to 60 ms), without advancing the policy or action history. LowState and odometry older than 100 ms are rejected, and longer gaps latch a fault requiring an explicit Y after sensor recovery. These limits must be requalified if the robot's measured topic rates differ substantially.
 
-Controls: Both backends start in continuously refreshed damping hold. X always enters damping hold and takes priority while held; after releasing X, Y revives into idle. Pressing Y again while active leaves the current mode and policy history unchanged. A enters steering; RB returns to idle. Left stick sets a heading relative to the current robot heading while held; releasing it keeps the last global heading. Right stick commands planar motion relative to that heading, capped at 1 m/s. Idle and stopped steering condition on an upright, locally calibrated body pose, not an unobservable global lock. Recovery overrides the task when measured torso height or tilt indicates a fall and returns to the task after the rise/settle criteria. This first native launcher does not yet expose object interaction, tracking clips, style selection, or Pico controls.
+Controls: Both backends start in continuously refreshed damping hold. X always enters damping hold and takes priority while held; after releasing X, Y revives into idle. Pressing Y again while active leaves the current mode and policy history unchanged. A enters steering; RB returns to idle. Left stick sets a heading relative to the current robot heading while held; releasing it keeps the last global heading. Right stick commands planar motion relative to that heading, scaled by the dashboard's speed cap (default 1 m/s, see the teleop doc's settings section). Idle and stopped steering condition on an upright, locally calibrated body pose, not an unobservable global lock. Recovery overrides the task when measured torso height or tilt indicates a fall and returns to the task after the rise/settle criteria. Optional `--motions` enables tracking: select a clip with D-pad left/right or the dashboard, then press LB to start it; LB during tracking stops it. Select the motion named `kick` before pressing LB to kick. On the real G1, **only an Xbox LB start of `kick`** queues a one-shot asynchronous “HAYAH!” TTS cue after a successfully sent control cycle. Other clips, Pico input, and MuJoCo do not produce that cue. Audio runs off the control thread; a missing audio service does not block policy inference. The launcher also supports optional Pico hand teleoperation; see [teleop and tracking](metatron_v1_teleop_metrics.md).
 
 Local qualification: all 19 CTests pass. The rest pose matched the Python reference within 1.2e-7 m; five idle/steering target fixtures passed at 2e-5 tolerance. A 130-cycle native MuJoCo run executed idle, moving steering, and idle with no safety fault and torso root height around 0.76 m. A separate prone-start fixture entered recovery, handed back to idle by cycle 200, and held approximately 0.764 m through cycle 475. These are fixtures, not a recovery success rate across randomized poses. The native policy-only benchmark measured about 2.06 ms median inference on the qualification GPU; this is not a measured end-to-end physical robot latency. Direct C++ policy and FK parity reports are in the repository's native qualification tools.
 

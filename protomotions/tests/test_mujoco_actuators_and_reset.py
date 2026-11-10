@@ -116,7 +116,8 @@ def test_torque_mode_applies_the_commanded_joint_torque(robot):
 
 
 @pytest.mark.parametrize("robot", GEARED_ROBOTS)
-def test_explicit_pd_applies_the_torque_it_reports(robot):
+def test_explicit_pd_applies_the_computed_joint_torque(robot):
+    """Explicit PD maps its computed torque to the matching engine actuator."""
     sim = _make_sim(robot, use_implicit_pd=False)
     n = sim._num_actuated_dofs
 
@@ -127,7 +128,9 @@ def test_explicit_pd_applies_the_torque_it_reports(robot):
     mujoco.mj_forward(sim.model, sim.data)
 
     applied = sim.data.qfrc_actuator[6 : 6 + n]
-    np.testing.assert_allclose(applied, sim._last_applied_torques, rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(
+        applied, sim.data.ctrl[sim._dof_to_actuator], rtol=1e-5, atol=1e-5
+    )
     np.testing.assert_allclose(applied, -_actuated_kp(sim) * delta, rtol=1e-4)
 
 

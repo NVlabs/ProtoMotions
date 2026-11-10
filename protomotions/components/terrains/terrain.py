@@ -622,7 +622,7 @@ class Terrain:
         irregular_region = np.where((region_map == 0) & (self.height_field_raw != 0))
         region_map[irregular_region] = 4
 
-        cmap = plt.cm.get_cmap("viridis", 5)
+        cmap = plt.get_cmap("viridis", 5)
         region_plot = ax3.imshow(
             region_map,
             cmap=cmap,

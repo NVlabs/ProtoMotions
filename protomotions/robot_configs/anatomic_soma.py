@@ -105,7 +105,8 @@ class AnatomicSomaRobotConfig(RobotConfig):
             asset_file_name="mjcf/anatomic_soma.xml",
             self_collisions=True,
             max_linear_velocity=100.0,
-            max_angular_velocity=100.0,
+            # Degrees per second on Isaac Lab (PhysX), matching other humanoids.
+            max_angular_velocity=1000.0,
             angular_damping=0.0,
             linear_damping=0.0,
         )

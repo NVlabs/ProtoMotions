@@ -175,6 +175,8 @@ class RobotAssetConfig:
     asset_file_name: str = None
     replace_cylinder_with_capsule: Optional[bool] = None
     thickness: Optional[float] = None
+    #: Degrees per second on Isaac Lab (PhysX), radians per second on Isaac Gym.
+    #: MuJoCo and Newton do not read this field.
     max_angular_velocity: Optional[float] = None
     max_linear_velocity: Optional[float] = None
     density: Optional[float] = None
@@ -617,6 +619,20 @@ def abstract_names_to_body_names(
         return robot_config.common_naming_to_robot_body_names[names]
     else:
         return [names]
+
+
+def body_subtree_names(robot_config: RobotConfig, names: Union[List[str], str]):
+    """The bodies ``names`` resolve to (abstract names allowed) plus every body
+    below them in the kinematic tree, in body order. A hand named at the wrist
+    brings its marker or finger bodies along; a foot named at the ankle brings
+    its toe."""
+    info = robot_config.kinematic_info
+    roots = set(abstract_names_to_body_names(names, robot_config))
+    selected = [False] * len(info.body_names)
+    for index, name in enumerate(info.body_names):
+        parent = info.parent_indices[index]
+        selected[index] = name in roots or (parent >= 0 and selected[parent])
+    return [name for name, chosen in zip(info.body_names, selected) if chosen]
 
 
 def _is_derived_field(cls, key: str) -> bool:

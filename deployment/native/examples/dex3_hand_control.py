@@ -19,8 +19,9 @@ DEX3_MOTOR_COUNT = 7
 PICO_TRIGGER_THRESHOLD = 0.5
 
 DEX3_OPEN = (0.0,) * DEX3_MOTOR_COUNT
+DEX3_OPEN_RIGHT = (0.0, 0.60, -0.10, 0.0, 0.0, 0.0, 0.0)
 DEX3_CLOSE_LEFT = (0.0, 0.163, 0.875, -0.785, -0.875, -0.785, -0.875)
-DEX3_CLOSE_RIGHT = (0.0, -0.154, -0.875, 0.785, 0.875, 0.785, 0.875)
+DEX3_CLOSE_RIGHT = (0.0, -0.65, -1.55, 0.785, 0.875, 0.785, 0.875)
 
 
 def _trigger_is_pressed(value: Any, threshold: float) -> bool:
@@ -60,7 +61,7 @@ def dex3_targets(
     right_closed = bool(enabled and _trigger_is_pressed(right_trigger, threshold))
     return (
         DEX3_CLOSE_LEFT if left_closed else DEX3_OPEN,
-        DEX3_CLOSE_RIGHT if right_closed else DEX3_OPEN,
+        DEX3_CLOSE_RIGHT if right_closed else DEX3_OPEN_RIGHT,
         left_closed,
         right_closed,
     )
@@ -159,7 +160,7 @@ class PicoDex3HandController:
                 left_closed=False,
                 right_closed=False,
                 left_target=DEX3_OPEN,
-                right_target=DEX3_OPEN,
+                right_target=DEX3_OPEN_RIGHT,
                 sent=False,
                 error=error,
             )
@@ -169,7 +170,7 @@ class PicoDex3HandController:
             self._closed = [False, False]
             left, right, left_closed, right_closed = (
                 DEX3_OPEN,
-                DEX3_OPEN,
+                DEX3_OPEN_RIGHT,
                 False,
                 False,
             )
@@ -203,7 +204,7 @@ class PicoDex3HandController:
         )
         left_closed, right_closed = self._closed
         left = DEX3_CLOSE_LEFT if left_closed else DEX3_OPEN
-        right = DEX3_CLOSE_RIGHT if right_closed else DEX3_OPEN
+        right = DEX3_CLOSE_RIGHT if right_closed else DEX3_OPEN_RIGHT
         targets = (left, right)
         sent = False
         if targets != self._last_targets:

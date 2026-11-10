@@ -25,6 +25,10 @@ class MetatronController final : public Controller {
  public:
   using TaskGoalBuilder = std::function<void(Inputs&, const RobotState&)>;
   using Runner = std::function<Outputs(const Inputs&)>;
+  // Optional edit of the policy's outputs from the measured state before the
+  // command is formed (arm IK). It must keep action == offset + scale * raw
+  // for every joint, which is re-checked; history commits the accepted command.
+  using ActionRefiner = std::function<void(Outputs&, const RobotState&)>;
 
   MetatronController(ActionMap action_map, TaskGoalBuilder goals, Runner runner)
       : action_map_(std::move(action_map)),
@@ -34,6 +38,8 @@ class MetatronController final : public Controller {
       throw std::invalid_argument("scene controller requires goals and TensorRT runner");
     }
   }
+
+  void set_refiner(ActionRefiner refiner) { refiner_ = std::move(refiner); }
 
   std::string_view name() const noexcept override { return "metatron_v1"; }
 
@@ -53,9 +59,15 @@ class MetatronController final : public Controller {
     inputs_.prepare(reading);
     clear_task_inputs();
     goals_(inputs_, state);
-    const Outputs output = runner_(inputs_);
+    Outputs output = runner_(inputs_);
     if (!action_map_.matches_output(output.action, output.raw_action)) {
       throw std::runtime_error("scene plan action offset/scale disagrees with manifest");
+    }
+    if (refiner_) {
+      refiner_(output, state);
+      if (!action_map_.matches_output(output.action, output.raw_action)) {
+        throw std::runtime_error("action refiner broke the manifest's action map");
+      }
     }
     ActuatorCommand command = command_from_outputs(output);
     pending_reading_ = reading;
@@ -111,6 +123,7 @@ class MetatronController final : public Controller {
   ActionMap action_map_;
   TaskGoalBuilder goals_;
   Runner runner_;
+  ActionRefiner refiner_;
   Inputs inputs_;
   SensorReading pending_reading_{};
   bool active_ = false;

@@ -491,8 +491,12 @@ class MdpComponent:
         return self.compute_func
 
     def get_params(self) -> Dict[str, Any]:
-        """Static parameters (baked into the ONNX graph)."""
-        return self.static_params
+        """A shallow copy of the static parameters (baked into the ONNX graph).
+
+        Adding, removing or replacing keys in the returned dict leaves the component
+        unchanged; the values themselves are shared with the component.
+        """
+        return dict(self.static_params)
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to a human-readable dict for YAML/JSON config storage."""

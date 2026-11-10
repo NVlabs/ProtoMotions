@@ -245,7 +245,7 @@ class AMPTrainingComponent:
                 if obs_name not in disc_in_keys:
                     continue
                 fn = router.get_compute_func()
-                params = router.get_params().copy()
+                params = router.get_params()
                 obs = self._call_ref_obs_fn(fn, runtime_context, params)
                 chunk_obs[obs_name] = obs.view(chunk_n, -1)
 

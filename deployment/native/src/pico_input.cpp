@@ -254,6 +254,8 @@ class PicoInputSource::Impl {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!received_) return false;
     state = latest_;
+    state.pressed = latched_presses_;
+    latched_presses_ = 0;
     if (std::chrono::steady_clock::now() - latest_.timestamp > stale_timeout_) {
       state.connected = false;
       return false;
@@ -454,6 +456,7 @@ class PicoInputSource::Impl {
       const Quat headset_rotation = unity_rotation_to_robot(
           {headset_pose[3], headset_pose[4], headset_pose[5], headset_pose[6]});
       next.pico.headset_heading = yaw(headset_rotation);
+      next.pico.headset_height = headset_world[2];
       next.pico.heading_valid = finite(headset_world) && finite(headset_rotation) &&
                                 norm(headset_rotation) > 1.0e-8F;
       if (next.pico.heading_valid) {
@@ -486,6 +489,9 @@ class PicoInputSource::Impl {
     }
 
     std::lock_guard<std::mutex> lock(mutex_);
+    // Packets arrive on the service thread faster than the control loop polls;
+    // a press that came and went between two polls is kept until reported.
+    latched_presses_ |= next.buttons & ~latest_.buttons;
     latest_ = next;
     latest_.sequence = ++sequence_;
     received_ = true;
@@ -497,6 +503,7 @@ class PicoInputSource::Impl {
   mutable std::mutex mutex_;
   InputState latest_{};
   std::uint64_t sequence_ = 0;
+  std::uint32_t latched_presses_ = 0;
   std::string device_id_;
   std::string last_error_;
   int lock_fd_ = -1;

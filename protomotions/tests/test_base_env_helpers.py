@@ -1435,6 +1435,22 @@ def test_forwarders_alias_the_owner_tensors_and_cannot_be_rebound():
     assert env._episode.max_episode_length == 9
 
 
+@pytest.mark.parametrize(
+    "has_manager,motion_file,expected",
+    [
+        (False, None, None),
+        (True, None, None),
+        (True, "/motions/shard.npy", "shard.npy"),
+    ],
+)
+def test_base_env_task_id_requires_a_motion_file(has_manager, motion_file, expected):
+    """Motion-free environments have no task ID; file-backed ones use the basename."""
+    env = _make_env(motions=int(has_manager))
+    env.reference_motion.motion_lib.motion_file = motion_file
+
+    assert env.get_task_id() == expected
+
+
 def test_base_env_motion_manager_markers_state_save_restore_and_close(monkeypatch):
     env = _make_env(scenes=2, motions=2, headless=False, history=True)
     env.config.show_terrain_markers = True
@@ -1479,7 +1495,7 @@ def test_base_env_motion_manager_markers_state_save_restore_and_close(monkeypatc
     env.reference_motion.motion_manager = None
     assert BaseEnv.get_state_dict(env) == {}
     BaseEnv.load_state_dict(env, {})
-    assert BaseEnv.get_task_id(env) == "null"
+    assert BaseEnv.get_task_id(env) is None
 
     env.reference_motion.motion_manager = _MotionManager()
     env.progress_buf[:] = torch.tensor([1, 2, 3])

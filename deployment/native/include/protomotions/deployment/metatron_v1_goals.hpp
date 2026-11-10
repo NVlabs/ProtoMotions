@@ -4,6 +4,7 @@
 
 #include <array>
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <string_view>
 
@@ -52,9 +53,30 @@ class MetatronGoals final {
     inputs.floats(6) = inputs.floats(11);
     inputs.floats(9) = inputs.floats(18);
     if (standing) idle(inputs);
+    if (mode == "steering") steering_hands(inputs);
   }
 
  private:
+  static void steering_hands(Inputs& inputs) {
+    // Slightly forward and outward from the MJCF rest hands, keeping the
+    // open thumbs clear of the pelvis motors. Teleop never uses this offset.
+    constexpr float forward = 0.06F, outward = 0.05F;
+    auto& positions = inputs.floats(5);
+    const auto& rotations = inputs.floats(6);
+    for (std::size_t slot = 0; slot < 5; ++slot) {
+      const float* q = rotations.data() + (slot * 33 + 16) * 4;
+      const float yaw = std::atan2(2.0F * (q[3] * q[2] + q[0] * q[1]),
+                                   1.0F - 2.0F * (q[1] * q[1] + q[2] * q[2]));
+      const float c = std::cos(yaw), s = std::sin(yaw);
+      for (int side = 0; side < 2; ++side) {
+        float* hand = positions.data() + (slot * 33 + (side == 0 ? 24 : 32)) * 3;
+        const float lateral = side == 0 ? outward : -outward;
+        hand[0] += c * forward - s * lateral;
+        hand[1] += s * forward + c * lateral;
+      }
+    }
+  }
+
   void idle(Inputs& inputs) const {
     auto& local_positions = inputs.floats(5);
     auto& local_rotations = inputs.floats(6);

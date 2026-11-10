@@ -42,15 +42,16 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 from regenerate_pretrained_bundles import rebuild_bundle_into  # noqa: E402
 
-# The shipped public model directories, relative to data/pretrained_models: the three
-# trackers plus the SOMA GPC prior (a prior, not a tracker, but it ships the same
-# three-file bundle and runs the same checks).
+# The shipped public model directories, relative to data/pretrained_models: the four
+# trackers plus the two GPC priors (priors, not trackers, but they ship the same
+# three-file bundle and run the same checks).
 DIRECTORIES = [
     "motion_tracker/soma_bones_fsq",
     "motion_tracker/anatomic_soma_bones_fsq",
     "motion_tracker/soma-bones",
     "motion_tracker/g1-bones-deploy",
     "gpc_prior/soma_bones",
+    "gpc_prior/anatomic_soma_bones",
 ]
 
 # The per-joint action scale the shipped g1-bones-deploy weights (2026-08-10) trained
@@ -256,6 +257,20 @@ def test_action_config_matches_the_trained_reference():
         assert torch.equal(scale, torch.full_like(scale, torch.pi))
         assert ac.params["action_transform"] == "tanh"
         assert ac.params["clamp_value"] == 1.0
+
+    # The anatomical GPC prior decodes through the anatomical tracker, so it must
+    # command joints with the tracker's own BeyondMimic scale (quarter effort).
+    anatomic = load_experiment_configs(
+        _directory("motion_tracker/anatomic_soma_bones_fsq") / "resolved_configs.json"
+    ).env.action_config
+    anatomic_prior = load_experiment_configs(
+        _directory("gpc_prior/anatomic_soma_bones") / "resolved_configs.json"
+    ).env.action_config
+    assert anatomic.fn.__name__ == "bm_pd_action"
+    assert anatomic_prior.fn.__name__ == "bm_pd_action"
+    assert torch.equal(
+        anatomic_prior.params["action_scale"], anatomic.params["action_scale"]
+    )
 
 
 @pytest.mark.needs_lfs

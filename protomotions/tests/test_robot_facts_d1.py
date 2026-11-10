@@ -40,7 +40,7 @@ from protomotions.simulator.mujoco.config import MujocoSimParams
 _FIXTURE = json.loads(
     (Path(__file__).parent / "fixtures" / "robot_facts_d1_baseline.json").read_text()
 )
-_ROBOTS = ("amp", "anatomic_soma", "g1", "h1_2", "smpl", "smplx", "soma23")
+_ROBOTS = ("amp", "anatomic_soma", "g1", "g1_dex3", "h1_2", "smpl", "smplx", "soma23")
 # The parity checks compare against the main-next capture, so they cover the
 # robots that existed there; a robot added since (anatomic_soma) has no
 # main-next block to agree with and is pinned by its own tests instead.

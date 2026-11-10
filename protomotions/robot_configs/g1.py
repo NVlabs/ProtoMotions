@@ -31,6 +31,27 @@ DEFAULT_JOINT_POS = {
 }
 
 
+def body_control_overrides():
+    """The 29 body joints' gains, shared by every G1 hand variant.
+
+    A joint's gains follow from its motor; scale=2 is two motors in parallel
+    (ankle, waist roll/pitch). effort_limit overrides the motor default where
+    the joint carries a different actuator.
+    """
+    return {
+        ".*_hip_(pitch|yaw)_joint": G1_7520_14.control_info(),
+        ".*_hip_roll_joint": G1_7520_22.control_info(),
+        ".*_knee_joint": G1_7520_22.control_info(),
+        ".*_ankle_.*": G1_5020.control_info(scale=2, effort_limit=50),
+        "waist_yaw_joint": G1_7520_14.control_info(),
+        "waist_(roll|pitch)_joint": G1_5020.control_info(scale=2, effort_limit=50),
+        ".*_(shoulder|elbow)_.*": G1_5020.control_info(),
+        ".*_wrist_roll_joint": G1_5020.control_info(),
+        ".*_wrist_pitch_joint": G1_4010.control_info(),
+        ".*_wrist_yaw_joint": G1_4010.control_info(),
+    }
+
+
 @dataclass
 class G1RobotConfig(RobotConfig):
     semantic_forward_axis_xy: Tuple[float, float] = (1.0, 0.0)
@@ -39,8 +60,10 @@ class G1RobotConfig(RobotConfig):
         default_factory=lambda: {
             "all_left_foot_bodies": ["left_ankle_roll_link"],
             "all_right_foot_bodies": ["right_ankle_roll_link"],
-            "all_left_hand_bodies": ["left_rubber_hand"],
-            "all_right_hand_bodies": ["right_rubber_hand"],
+            # The hand frame is the wrist link, which every G1 hand variant has;
+            # the rubber-hand marker body stays in the asset as a rigid child.
+            "all_left_hand_bodies": ["left_wrist_yaw_link"],
+            "all_right_hand_bodies": ["right_wrist_yaw_link"],
             "head_body_name": ["head"],
             "torso_body_name": ["torso_link"],
         }
@@ -52,8 +75,8 @@ class G1RobotConfig(RobotConfig):
             "head",
             "right_ankle_roll_link",
             "left_ankle_roll_link",
-            "left_rubber_hand",
-            "right_rubber_hand",
+            "left_wrist_yaw_link",
+            "right_wrist_yaw_link",
         ]
     )
 
@@ -79,23 +102,7 @@ class G1RobotConfig(RobotConfig):
     control: ControlConfig = field(
         default_factory=lambda: ControlConfig(
             control_type=ControlType.BUILT_IN_PD,
-            override_control_info={
-                # A joint's gains follow from its motor; scale=2 is two motors
-                # in parallel (ankle, waist roll/pitch). effort_limit overrides
-                # the motor default where the joint carries a different actuator.
-                ".*_hip_(pitch|yaw)_joint": G1_7520_14.control_info(),
-                ".*_hip_roll_joint": G1_7520_22.control_info(),
-                ".*_knee_joint": G1_7520_22.control_info(),
-                ".*_ankle_.*": G1_5020.control_info(scale=2, effort_limit=50),
-                "waist_yaw_joint": G1_7520_14.control_info(),
-                "waist_(roll|pitch)_joint": G1_5020.control_info(
-                    scale=2, effort_limit=50
-                ),
-                ".*_(shoulder|elbow)_.*": G1_5020.control_info(),
-                ".*_wrist_roll_joint": G1_5020.control_info(),
-                ".*_wrist_pitch_joint": G1_4010.control_info(),
-                ".*_wrist_yaw_joint": G1_4010.control_info(),
-            },
+            override_control_info=body_control_overrides(),
         )
     )
 

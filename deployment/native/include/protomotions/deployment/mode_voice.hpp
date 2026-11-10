@@ -13,11 +13,12 @@
 
 namespace protomotions::deployment {
 
-enum class VoiceMode { kSilent, kIdle, kSteering, kTracking, kTeleop,
+enum class VoiceMode { kSilent, kDamping, kIdle, kSteering, kTracking, kTeleop,
                        kNavigation, kHandshake, kFootRaise, kUnconditional };
 
 inline const char* voice_mode_text(VoiceMode mode) {
   switch (mode) {
+    case VoiceMode::kDamping: return "Damping mode";
     case VoiceMode::kIdle: return "Idle";
     case VoiceMode::kSteering: return "Steering";
     case VoiceMode::kTracking: return "Tracking";
@@ -31,6 +32,7 @@ inline const char* voice_mode_text(VoiceMode mode) {
 }
 
 inline VoiceMode voice_mode_from_name(std::string_view mode) {
+  if (mode == "damping") return VoiceMode::kDamping;
   if (mode == "idle") return VoiceMode::kIdle;
   if (mode == "steering") return VoiceMode::kSteering;
   if (mode == "tracking") return VoiceMode::kTracking;
@@ -48,6 +50,16 @@ class ModeVoiceGate {
  public:
   const char* poll(VoiceMode mode, bool hot, double now) {
     if (mode != pending_) { pending_ = mode; changed_at_ = now; }
+    // Safety-stop announcements bypass the ordinary mode rate limit, but are
+    // still spoken only once per transition into damping.
+    if (mode == VoiceMode::kDamping) {
+      was_hot_ = false;
+      if (spoken_ != mode) {
+        spoken_ = mode;
+        return voice_mode_text(mode);
+      }
+      return "";
+    }
     if (hot) {
       spoken_ = mode;
       if (!was_hot_ || now >= next_temperature_) {
@@ -79,10 +91,17 @@ class ModeVoiceWorker {
           try {
             while (!stopping_.load()) {
               const auto now = std::chrono::steady_clock::now().time_since_epoch();
-              const char* text = gate.poll(mode_.load(), hot_.load(), std::chrono::duration<double>(now).count());
+              const VoiceMode mode = mode_.load();
+              // Event cues are one-shot and never delay the policy thread.
+              // Discard a pending cue if tracking was stopped before playback.
+              if (kick_pending_.exchange(false) && mode == VoiceMode::kTracking &&
+                  !stopping_.load()) speak("HAYAH!");
+              const char* text = gate.poll(mode, hot_.load(), std::chrono::duration<double>(now).count());
               if (*text && !stopping_.load()) speak(text);
               std::unique_lock<std::mutex> lock(mutex_);
-              cv_.wait_for(lock, std::chrono::milliseconds(50), [this] { return stopping_.load(); });
+              cv_.wait_for(lock, std::chrono::milliseconds(50), [this] {
+                return stopping_.load() || kick_pending_.load();
+              });
             }
           } catch (const std::exception& error) {
             std::cerr << "mode voice disabled: " << error.what() << '\n';
@@ -90,6 +109,7 @@ class ModeVoiceWorker {
         }) {}
   ~ModeVoiceWorker() { close(); }
   void update(VoiceMode mode) noexcept { mode_.store(mode); }
+  void kick() noexcept { kick_pending_.store(true); cv_.notify_one(); }
   void temperature(bool hot) noexcept { hot_.store(hot); }
   void close() {
     stopping_.store(true);
@@ -98,6 +118,7 @@ class ModeVoiceWorker {
   }
  private:
   std::atomic<VoiceMode> mode_{VoiceMode::kSilent};
+  std::atomic<bool> kick_pending_{false};
   std::atomic<bool> stopping_{false};
   std::atomic<bool> hot_{false};
   std::mutex mutex_;

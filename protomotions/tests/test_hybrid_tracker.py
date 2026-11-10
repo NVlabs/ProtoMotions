@@ -42,6 +42,9 @@ def robot_config():
                 "left_foot",
                 "right_foot",
             ],
+            # Torso under the root, hands under the torso, feet under the root:
+            # the recipe walks the tree to select the self-contact bodies.
+            parent_indices=[-1, 0, 1, 1, 0, 0],
             dof_names=["a", "b"],
             num_dofs=2,
             hinge_axes_map={

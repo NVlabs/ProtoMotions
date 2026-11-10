@@ -79,12 +79,20 @@ CHECKPOINT_RECIPES = {
     "soma_teacher": (PACKAGE, "metatron.soma_teacher", {}, "soma23"),
     # The prior the PEFT recipes adapt.
     "prior": (PACKAGE, "gpc.prior", {"tracker_checkpoint": "tracker"}, "g1"),
+    # The anatomical SOMA tracker whose decoder its GPC prior freezes.
+    "anatomic_tracker": (
+        PACKAGE,
+        "mimic.anatomical_soma_fsq_mimic",
+        {},
+        "anatomic_soma",
+    ),
 }
 # Recipes that read another run's checkpoint: the argument that takes it and
 # the checkpoint above.
 _PRIOR = {"prior_checkpoint": "prior"}
 READS_CHECKPOINT = {
     "gpc.prior": {"tracker_checkpoint": "tracker"},
+    "gpc.prior_anatomic_soma": {"tracker_checkpoint": "anatomic_tracker"},
     "gpc.sft_target_prior_peft": {"tracker_checkpoint": "tracker", **_PRIOR},
     "gpc.steering_prior_peft": _PRIOR,
     "gpc.target_prior_peft": _PRIOR,
@@ -106,6 +114,7 @@ READS_CHECKPOINT = {
 # table test. The others read it at build only.
 CONFIGS_NEED_CHECKPOINT = {
     "gpc.prior": (TypeError, "NoneType"),  # Path(None)
+    "gpc.prior_anatomic_soma": (TypeError, "NoneType"),
     "gpc.sft_target_prior_peft": (TypeError, "NoneType"),
     "metatron.g1_student": (ValueError, "expert-model-path"),
     "metatron.soma_student": (ValueError, "expert-model-path"),
@@ -116,6 +125,7 @@ ROBOT = {
     "metatron.soma_teacher": "soma23",
     "metatron.soma_student": "soma23",
     "mimic.anatomical_soma_fsq_mimic": "anatomic_soma",
+    "gpc.prior_anatomic_soma": "anatomic_soma",
 }
 # Recipes whose configs the bundle saver refuses today (the exception and a
 # fragment of its message; the entry goes when the saver takes the value).

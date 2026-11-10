@@ -12,6 +12,7 @@ from examples.dex3_hand_control import (
     DEX3_CLOSE_LEFT,
     DEX3_CLOSE_RIGHT,
     DEX3_OPEN,
+    DEX3_OPEN_RIGHT,
     PicoDex3HandController,
     dex3_targets,
 )
@@ -34,7 +35,7 @@ class Dex3HandControlTest(unittest.TestCase):
     def test_targets_match_calibrated_open_and_midpoint_close(self) -> None:
         left, right, left_closed, right_closed = dex3_targets(1.0, 0.0, enabled=True)
         self.assertEqual(left, DEX3_CLOSE_LEFT)
-        self.assertEqual(right, DEX3_OPEN)
+        self.assertEqual(right, DEX3_OPEN_RIGHT)
         self.assertTrue(left_closed)
         self.assertFalse(right_closed)
 
@@ -61,6 +62,8 @@ class Dex3HandControlTest(unittest.TestCase):
         )
         self.assertTrue(status.connected)
         self.assertFalse(status.sent)
+        self.assertEqual(status.left_target, DEX3_OPEN)
+        self.assertEqual(status.right_target, DEX3_OPEN_RIGHT)
         self.assertEqual(controller.commands, [])
 
         status = adapter.update(
@@ -74,7 +77,7 @@ class Dex3HandControlTest(unittest.TestCase):
         )
         self.assertTrue(status.connected)
         self.assertTrue(status.sent)
-        self.assertEqual(controller.commands[-1], (DEX3_CLOSE_LEFT, DEX3_OPEN))
+        self.assertEqual(controller.commands[-1], (DEX3_CLOSE_LEFT, DEX3_OPEN_RIGHT))
 
         # The same command is not reallocated/re-sent every 50 Hz policy step.
         status = adapter.update(
@@ -102,7 +105,7 @@ class Dex3HandControlTest(unittest.TestCase):
         )
         self.assertTrue(status.left_closed)
         self.assertFalse(status.sent)
-        self.assertEqual(controller.commands[-1], (DEX3_CLOSE_LEFT, DEX3_OPEN))
+        self.assertEqual(controller.commands[-1], (DEX3_CLOSE_LEFT, DEX3_OPEN_RIGHT))
 
         # Re-clutching with the trigger released explicitly opens the hand.
         status = adapter.update(
@@ -116,7 +119,7 @@ class Dex3HandControlTest(unittest.TestCase):
         )
         self.assertFalse(status.left_closed)
         self.assertTrue(status.sent)
-        self.assertEqual(controller.commands[-1], (DEX3_OPEN, DEX3_OPEN))
+        self.assertEqual(controller.commands[-1], (DEX3_OPEN, DEX3_OPEN_RIGHT))
 
         # Put the hand back in a closed state so disabling control must issue
         # an explicit open target.
@@ -143,7 +146,7 @@ class Dex3HandControlTest(unittest.TestCase):
             enabled=False,
         )
         self.assertTrue(status.sent)
-        self.assertEqual(controller.commands[-1], (DEX3_OPEN, DEX3_OPEN))
+        self.assertEqual(controller.commands[-1], (DEX3_OPEN, DEX3_OPEN_RIGHT))
 
     def test_xrt_finger_controls_are_read_in_left_right_order(self) -> None:
         xrt = SimpleNamespace(

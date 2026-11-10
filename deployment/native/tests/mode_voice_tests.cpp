@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "protomotions/deployment/mode_voice.hpp"
 #include "protomotions/deployment/motor_temperature.hpp"
+#include <atomic>
 #include <future>
 #include <stdexcept>
 #include <string>
@@ -12,6 +13,8 @@ int main() {
   ModeVoiceGate gate;
   auto poll = [&](VoiceMode m, bool hot, double t) { return std::string(gate.poll(m, hot, t)); };
   require(poll(VoiceMode::kSilent, false, 0).empty());
+  require(poll(VoiceMode::kDamping, false, 0.1) == "Damping mode");
+  require(poll(VoiceMode::kDamping, false, 0.2).empty());
   require(poll(VoiceMode::kIdle, false, 1).empty());
   require(poll(VoiceMode::kIdle, false, 1.3) == "Idle");
   require(poll(VoiceMode::kIdle, false, 5).empty());
@@ -25,6 +28,7 @@ int main() {
   require(poll(VoiceMode::kSilent, true, 22.1) == "Motor temperature high");
   require(voice_mode_from_name("pico_teleop") == VoiceMode::kTeleop);
   require(voice_mode_from_name("recovery") == VoiceMode::kSilent);
+  require(voice_mode_from_name("damping") == VoiceMode::kDamping);
 
   MotorTemperatureMonitor thermal;
   std::vector<std::array<double, 2>> t(29, {30., 30.});
@@ -47,4 +51,19 @@ int main() {
   release.set_value();
   worker.close();
   worker.close();
+
+  // The kick cue is event-triggered, delivered off-thread only in tracking.
+  std::promise<void> kick_spoken;
+  auto kick_ready = kick_spoken.get_future();
+  std::atomic<int> kick_count{0};
+  ModeVoiceWorker kick_worker([&](const char* text) {
+    if (std::string(text) == "HAYAH!" && ++kick_count == 1) kick_spoken.set_value();
+  });
+  kick_worker.update(VoiceMode::kTracking);
+  kick_worker.kick();
+  const bool heard_kick = kick_ready.wait_for(std::chrono::seconds(2)) == std::future_status::ready;
+  kick_worker.update(VoiceMode::kDamping);
+  kick_worker.kick();
+  kick_worker.close();
+  require(heard_kick && kick_count == 1);
 }

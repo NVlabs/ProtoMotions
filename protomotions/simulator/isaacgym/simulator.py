@@ -846,11 +846,11 @@ class IsaacGymSimulator(Simulator):
         for dof_name, dof_info in self.robot_config.control.control_info.items():
             if dof_info.effort_limit is not None:
                 dof_props["effort"][
-                    self.robot_config.kinematic_info.dof_names.index(dof_name)
+                    self._dof_names.index(dof_name)
                 ] = dof_info.effort_limit
             if dof_info.velocity_limit is not None:
                 dof_props["velocity"][
-                    self.robot_config.kinematic_info.dof_names.index(dof_name)
+                    self._dof_names.index(dof_name)
                 ] = dof_info.velocity_limit
 
         if self.control_type == ControlType.BUILT_IN_PD:
@@ -858,9 +858,8 @@ class IsaacGymSimulator(Simulator):
         else:
             dof_props["driveMode"] = gymapi.DOF_MODE_EFFORT
 
-        # Set PD gains for built-in PD controller
-        for i in range(self._num_dof):
-            dof_name = self.robot_config.kinematic_info.dof_names[i]
+        # Gym property arrays follow the loaded asset's DOF order.
+        for i, dof_name in enumerate(self._dof_names):
             info = self.robot_config.control.control_info[dof_name]
             if self.control_type == ControlType.BUILT_IN_PD:
                 dof_props["stiffness"][i] = info.require("stiffness")

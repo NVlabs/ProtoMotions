@@ -129,7 +129,7 @@ class MujocoSimulator(Simulator):
         self._kp = None  # [num_dofs] stiffness in common DOF order
         self._kd = None  # [num_dofs] damping in common DOF order
         self._effort_limits = None  # [num_dofs] torque limits in common DOF order
-        self._last_applied_torques = None  # Track for _get_simulator_dof_forces
+        self._applied_dof_forces = None
         self._dof_to_actuator = None  # Mapping: sim DOF index -> actuator index
 
         # Explicit PD mode state (used when use_implicit_pd=False)
@@ -150,6 +150,8 @@ class MujocoSimulator(Simulator):
     def _load_mjcf_stripped(
         asset_path: str,
         projectile_config: Optional[ProjectileConfig] = None,
+        *,
+        fixed_root_body: Optional[str] = None,
     ) -> mujoco.MjModel:
         """Load MJCF from file, patching it for standalone MuJoCo use.
 
@@ -157,9 +159,43 @@ class MujocoSimulator(Simulator):
         1. Remove <sensor> elements (IMU, etc.) that may reference missing sites
         2. Add scene setup: visual settings, skybox, checkerboard ground, lighting
         3. Add projectile free-joint box bodies (if projectile_config provided)
+        4. Weld only fixed_root_body, when specified, at its authored pose
         """
         tree = ET.parse(asset_path)
         root = tree.getroot()
+
+        if fixed_root_body is not None:
+            # Weld only the named robot root; projectiles stay free.
+            root_body = next(
+                (
+                    body
+                    for body in root.findall("worldbody/body")
+                    if body.get("name") == fixed_root_body
+                ),
+                None,
+            )
+            if root_body is None:
+                raise ValueError(f"Fixed robot root body {fixed_root_body!r} not found")
+            free_joints = [
+                joint
+                for joint in root_body
+                if joint.tag == "freejoint"
+                or (joint.tag == "joint" and joint.get("type") == "free")
+            ]
+            if len(free_joints) != 1:
+                raise ValueError(
+                    f"Fixed robot root body {fixed_root_body!r} must have exactly "
+                    "one authored free joint"
+                )
+            root_body.remove(free_joints[0])
+            # Keep the named root available to friction setup and state readback.
+            # Its new static status must not let the compiler fuse it into world.
+            for compiler in root.findall("compiler"):
+                compiler.set("fusestatic", "false")
+            # Welding changes qpos/qvel dimensions. The adapter resets through
+            # ResetState and never consumes authored keyframes, so discard them.
+            for keyframe in root.findall("keyframe"):
+                root.remove(keyframe)
 
         # 1. Remove <sensor> elements
         for sensor_elem in root.findall("sensor"):
@@ -328,7 +364,11 @@ class MujocoSimulator(Simulator):
         self._resolve_proj_config()
 
         log.info("Loading MuJoCo model from: %s", asset_path)
-        self.model = self._load_mjcf_stripped(asset_path, self._proj_config)
+        self.model = self._load_mjcf_stripped(
+            asset_path,
+            self._proj_config,
+            fixed_root_body=self._body_names[0] if not self._has_free_joint else None,
+        )
         self.data = mujoco.MjData(self.model)
         self._set_robot_geom_friction()
 
@@ -378,8 +418,11 @@ class MujocoSimulator(Simulator):
             print("  PD mode: EXPLICIT (manual PD at each substep, motor actuators)")
             self._configure_explicit_pd()
 
-        # Initialize torque tracking
-        self._last_applied_torques = np.zeros(self._num_actuated_dofs, dtype=np.float32)
+        # Initialize last-step effort readback.
+        self._applied_dof_forces = np.zeros(self._num_actuated_dofs)
+
+        # Armature edits leave derived constants stale; scratch data keeps qpos intact.
+        mujoco.mj_setConst(self.model, mujoco.MjData(self.model))
 
         # Run initial forward kinematics
         mujoco.mj_forward(self.model, self.data)
@@ -687,12 +730,11 @@ class MujocoSimulator(Simulator):
         if self._pd_targets_sim is None:
             return
 
-        if self._has_free_joint:
-            q = self.data.qpos[7:]
-            qd = self.data.qvel[6:]
-        else:
-            q = self.data.qpos[:]
-            qd = self.data.qvel[:]
+        # Projectile coordinates follow the robot's; keep them out of PD.
+        q_start = 7 if self._has_free_joint else 0
+        v_start = 6 if self._has_free_joint else 0
+        q = self.data.qpos[q_start : q_start + self._num_actuated_dofs]
+        qd = self.data.qvel[v_start : v_start + self._num_actuated_dofs]
 
         torques = self._kp_sim * (self._pd_targets_sim - q) - self._kd_sim * qd
         torques = np.clip(torques, -self._effort_limits_sim, self._effort_limits_sim)
@@ -874,11 +916,28 @@ class MujocoSimulator(Simulator):
 
         # Recompute forward kinematics
         mujoco.mj_forward(self.model, self.data)
+        self._applied_dof_forces.fill(0.0)
 
     def _apply_torques_to_ctrl(self, torques_sim_order: np.ndarray) -> None:
         """Write torques (in sim DOF order) to data.ctrl (in actuator order)."""
         self.data.ctrl[self._dof_to_actuator] = torques_sim_order
-        self._last_applied_torques = torques_sim_order.copy()
+
+    def save_backend_state(self) -> Dict[str, torch.Tensor]:
+        """Save the last step's effort independently of later steps and resets."""
+        return {
+            "applied_dof_forces": torch.from_numpy(self._applied_dof_forces.copy())
+        }
+
+    def restore_backend_state(self, state: Dict[str, torch.Tensor]) -> None:
+        """Restore the saved effort after reset has written the physical state."""
+        saved = state["applied_dof_forces"]
+        if (
+            saved.shape != self._applied_dof_forces.shape
+            or saved.dtype != torch.float64
+            or saved.device.type != "cpu"
+        ):
+            raise ValueError("MuJoCo effort snapshot does not match the simulator")
+        self._applied_dof_forces[:] = saved.numpy()
 
     def _physics_step(self) -> None:
         """Execute physics step with decimation.
@@ -922,6 +981,9 @@ class MujocoSimulator(Simulator):
                     self._apply_control()
                 mujoco.mj_step(self.model, self.data)
 
+        # Keep the effort the final substep applied before mj_forward evaluates
+        # the actuators again at the newly integrated state.
+        self._capture_applied_dof_forces()
         # mj_step integrates qpos/qvel after its forward pass. Recompute both
         # poses and velocities at the new state before observations read them;
         # mj_kinematics alone would still leave velocity-dependent fields stale.
@@ -947,8 +1009,9 @@ class MujocoSimulator(Simulator):
             dof_pos = self.data.qpos[7 : 7 + self._num_actuated_dofs]
             dof_vel = self.data.qvel[6 : 6 + self._num_actuated_dofs]
         else:
-            root_pos = np.zeros(3)
-            root_quat = np.array([1, 0, 0, 0])
+            root_body = self.model.body(self._body_names[0]).id
+            root_pos = self.data.xpos[root_body]
+            root_quat = self.data.xquat[root_body]
             root_vel = np.zeros(3)
             dof_pos = self.data.qpos[: self._num_actuated_dofs]
             dof_vel = self.data.qvel[: self._num_actuated_dofs]
@@ -994,8 +1057,10 @@ class MujocoSimulator(Simulator):
             root_vel = self.data.qvel[0:3].copy()
             root_ang_vel = _body_to_world(root_rot, self.data.qvel[3:6])
         else:
-            root_pos = np.zeros(3, dtype=np.float32)
-            root_rot = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
+            # A welded root keeps its authored pose, not the world origin.
+            root_body = self.model.body(self._body_names[0]).id
+            root_pos = self.data.xpos[root_body].copy()
+            root_rot = self.data.xquat[root_body].copy()
             root_vel = np.zeros(3, dtype=np.float32)
             root_ang_vel = np.zeros(3, dtype=np.float32)
 
@@ -1055,14 +1120,25 @@ class MujocoSimulator(Simulator):
             state_conversion=StateConversion.SIMULATOR,
         )
 
+    def _capture_applied_dof_forces(self) -> None:
+        """Keep the robot joint effort from MuJoCo's last dynamics pass."""
+        start = 6 if self._has_free_joint else 0
+        joints = slice(start, start + self._num_actuated_dofs)
+        self._applied_dof_forces = (
+            self.data.qfrc_actuator[joints] + self.data.qfrc_applied[joints]
+        )
+
     def _get_simulator_dof_forces(
         self, env_ids: Optional[torch.Tensor] = None
     ) -> RobotState:
-        """Get applied DOF forces (track from last control application)."""
-        dof_forces = self._last_applied_torques.copy()
+        """Return actuator and applied joint effort from the last physics step.
+
+        This includes implicit PD and engine force limits, excludes passive,
+        contact and constraint forces, and reads zero after reset until a step.
+        """
 
         return RobotState(
-            dof_forces=_to_torch_f32(dof_forces).unsqueeze(0),
+            dof_forces=_to_torch_f32(self._applied_dof_forces).unsqueeze(0),
             state_conversion=StateConversion.SIMULATOR,
         )
 

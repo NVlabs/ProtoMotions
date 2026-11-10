@@ -51,5 +51,31 @@ int main(int argc, char** argv) {
   assert(inputs.booleans(7)[0] == 1);
   assert(inputs.booleans(7)[1] == 0);
   assert(inputs.floats(5)[16 * 3 + 2] > 0.4F);
+  // Bow with a commanded floor reach: torso at 80 degrees pitch, 0.55 m up,
+  // left hand goal 0.1 m above the lowest body. Not a fall. Without the hand
+  // goal the same posture starts a recovery.
+  recovery.reset();
+  inputs.reset();
+  pose = RecoveryPose{};
+  for (int body = 0; body < 33; ++body) pose.rotations[body * 4 + 3] = 1.0F;
+  pose.positions[16 * 3 + 2] = 0.55F;
+  pose.rotations[16 * 4 + 1] = std::sin(0.5F * 80.0F * 3.14159265F / 180.0F);
+  pose.rotations[16 * 4 + 3] = std::cos(0.5F * 80.0F * 3.14159265F / 180.0F);
+  inputs.booleans(17)[0] = 1;
+  inputs.booleans(16)[0 * 10 + 6] = 1;
+  inputs.floats(10)[(0 * 33 + 24) * 3 + 2] = 0.1F;
+  assert(!recovery.step(inputs, pose, 0.02F));
+  assert(recovery.phase() == StagedRecovery::Phase::kInactive);
+  inputs.booleans(16)[0 * 10 + 6] = 0;
+  assert(!recovery.step(inputs, pose, 0.5F));  // still unfolding from the bow
+  assert(recovery.step(inputs, pose, 0.6F));   // grace spent: a fall
+  assert(recovery.phase() != StagedRecovery::Phase::kInactive);
+  // Local-tensor hand goals (after MetatronGoals::apply) count the same way.
+  recovery.reset();
+  inputs.reset();
+  inputs.booleans(8)[0] = 1;
+  inputs.booleans(7)[0 * 10 + 8] = 1;
+  inputs.floats(5)[(0 * 33 + 32) * 3 + 2] = 0.1F;
+  assert(!recovery.step(inputs, pose, 0.02F));
   return 0;
 }

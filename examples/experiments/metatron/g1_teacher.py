@@ -47,6 +47,7 @@ from protomotions.envs.rewards.tracking import (
 )
 from protomotions.envs.terminations.rule import TerminationRule
 from protomotions.envs.context_views import EnvContext
+from protomotions.robot_configs.base import body_subtree_names
 from protomotions.envs.control.mimic_control import MimicControlConfig
 from protomotions.envs.mdp_component import MdpComponent
 from protomotions.envs.rewards.meta import RewardMeta
@@ -64,7 +65,6 @@ from protomotions.envs.terminations.low_pose import (
     upright_foot_height_failed,
     upright_foot_position_failed,
 )
-from protomotions.robot_configs.base import abstract_names_to_body_names
 from protomotions.simulator.base_simulator.config import (
     ActionNoiseDomainRandomizationConfig,
     BodyMassDomainRandomizationConfig,
@@ -85,6 +85,18 @@ scene_lib_config = mlp.scene_lib_config
 
 def _body_indices(robot, groups):
     return list(robot.body_indices(*groups))
+
+
+def _distal_bodies(robot, groups):
+    """The leaf bodies of each named body's subtree (the body itself when it
+    is a leaf). The hand frame tracked by rewards and terminations is the
+    wrist link; the payload randomization belongs at the end of the chain (the
+    G1 rubber-hand marker), where a carried mass sits.
+    """
+    info = robot.kinematic_info
+    subtree = set(body_subtree_names(robot, groups))
+    parents = {info.body_names[p] for p in info.parent_indices if p >= 0}
+    return [name for name in info.body_names if name in subtree and name not in parents]
 
 
 def _future_steps(robot, args):
@@ -407,8 +419,8 @@ def configure_robot_and_simulator(robot_cfg, simulator_cfg, args):
             num_buckets=64,
             mass_range=(0.001, 1.0),
             log_uniform=True,
-            body_names=abstract_names_to_body_names(
-                ["all_left_hand_bodies", "all_right_hand_bodies"], robot_cfg
+            body_names=_distal_bodies(
+                robot_cfg, ["all_left_hand_bodies", "all_right_hand_bodies"]
             ),
         ),
         push=PushDomainRandomizationConfig(

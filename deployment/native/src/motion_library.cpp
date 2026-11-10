@@ -3,6 +3,8 @@
 
 #include "protomotions/deployment/motion_library.hpp"
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -13,27 +15,9 @@
 namespace protomotions::deployment {
 namespace {
 
-constexpr std::array<char, 8> kMagic = {'P', 'M', 'M', 'O', 'T', '4', '\0', '\0'};
-constexpr std::uint32_t kVersion = 1;
-constexpr std::size_t kMaxMotions = 100000;
+constexpr int kBundleVersion = 1;
 constexpr std::size_t kMaxBodies = 4096;
 constexpr std::size_t kMaxFrames = 100000000;
-
-template <typename T>
-T read_value(std::ifstream& stream, const char* field) {
-  T value{};
-  stream.read(reinterpret_cast<char*>(&value), sizeof(value));
-  if (!stream) throw std::runtime_error(std::string("motion binary truncated at ") + field);
-  return value;
-}
-
-void read_floats(std::ifstream& stream, std::vector<float>& values,
-                 const char* field) {
-  if (values.empty()) return;
-  stream.read(reinterpret_cast<char*>(values.data()),
-              static_cast<std::streamsize>(values.size() * sizeof(float)));
-  if (!stream) throw std::runtime_error(std::string("motion binary truncated at ") + field);
-}
 
 struct Quat {
   float x;
@@ -75,45 +59,79 @@ Quat slerp(Quat a, Quat b, float alpha) {
                     aw * a.z + bw * b.z, aw * a.w + bw * b.w});
 }
 
+void append_finite(const nlohmann::json& values, std::size_t expected, std::vector<float>& out,
+                   const std::string& what) {
+  if (!values.is_array() || values.size() != expected)
+    throw std::runtime_error("tracking bundle: " + what + " must hold " + std::to_string(expected) + " values");
+  for (const auto& value : values) {
+    if (!value.is_number()) throw std::runtime_error("tracking bundle: " + what + " has a non-numeric value");
+    const float v = value.get<float>();
+    if (!std::isfinite(v)) throw std::runtime_error("tracking bundle: " + what + " has a non-finite value");
+    out.push_back(v);
+  }
+}
+
 }  // namespace
 
 void MotionLibrary::load(const std::string& path) {
-  std::ifstream stream(path, std::ios::binary);
-  if (!stream) throw std::runtime_error("cannot open motion binary: " + path);
-  std::array<char, 8> magic{};
-  stream.read(magic.data(), static_cast<std::streamsize>(magic.size()));
-  if (!stream || magic != kMagic) throw std::runtime_error("invalid motion binary magic");
-  if (read_value<std::uint32_t>(stream, "version") != kVersion) {
-    throw std::runtime_error("unsupported motion binary version");
+  std::ifstream stream(path);
+  if (!stream) throw std::runtime_error("cannot open tracking motion bundle: " + path);
+  nlohmann::json bundle;
+  try {
+    stream >> bundle;
+  } catch (const nlohmann::json::exception& error) {
+    throw std::runtime_error(std::string("tracking bundle is not valid JSON: ") + error.what());
   }
-  const auto bodies = read_value<std::uint32_t>(stream, "body_count");
-  const auto dofs = read_value<std::uint32_t>(stream, "dof_count");
-  const auto motion_count = read_value<std::uint32_t>(stream, "motion_count");
-  const auto total_frames = read_value<std::uint64_t>(stream, "total_frames");
-  if (bodies == 0 || bodies > kMaxBodies || dofs > 4096 || motion_count == 0 ||
-      motion_count > kMaxMotions || total_frames == 0 || total_frames > kMaxFrames) {
-    throw std::runtime_error("invalid motion binary dimensions");
+  if (!bundle.is_object() || bundle.value("version", 0) != kBundleVersion)
+    throw std::runtime_error("tracking bundle: unsupported version");
+  const std::size_t bodies = bundle.value("bodyCount", std::size_t{0});
+  if (bodies == 0 || bodies > kMaxBodies) throw std::runtime_error("tracking bundle: invalid bodyCount");
+  const auto motions = bundle.find("motions");
+  if (motions == bundle.end() || !motions->is_object() || motions->empty())
+    throw std::runtime_error("tracking bundle: no motions");
+
+  std::vector<int> conditionable;
+  if (const auto ids = bundle.find("conditionableBodyIds"); ids != bundle.end()) {
+    for (const auto& id : *ids) {
+      if (!id.is_number_integer() || id.get<int>() < 0 || static_cast<std::size_t>(id.get<int>()) >= bodies)
+        throw std::runtime_error("tracking bundle: conditionableBodyIds out of range");
+      conditionable.push_back(id.get<int>());
+    }
+  }
+  const int anchor = bundle.value("anchorBodyIndex", 0);
+  if (anchor < 0 || static_cast<std::size_t>(anchor) >= bodies)
+    throw std::runtime_error("tracking bundle: anchorBodyIndex out of range");
+
+  std::vector<std::string> names;
+  std::vector<MotionIndex> index;
+  std::vector<float> positions, rotations;
+  std::size_t total_frames = 0;
+  for (const auto& [name, motion] : motions->items()) {
+    if (name.empty() || !motion.is_object()) throw std::runtime_error("tracking bundle: malformed motion entry");
+    const std::size_t frames = motion.value("frameCount", std::size_t{0});
+    const float dt = motion.value("frameDtSeconds", 0.0F);
+    if (frames < 2 || frames > kMaxFrames || total_frames > kMaxFrames - frames)
+      throw std::runtime_error("tracking bundle: " + name + " needs at least two frames");
+    if (!std::isfinite(dt) || dt <= 0.0F) throw std::runtime_error("tracking bundle: " + name + " has an invalid frame period");
+    append_finite(motion.at("positions"), frames * bodies * 3, positions, name + ".positions");
+    append_finite(motion.at("rotations"), frames * bodies * 4, rotations, name + ".rotations");
+    index.push_back({total_frames, frames, dt});
+    names.push_back(name);
+    total_frames += frames;
   }
   body_count_ = bodies;
-  dof_count_ = dofs;
-  motions_.assign(motion_count, {});
-  std::uint64_t previous_end = 0;
-  for (auto& motion : motions_) {
-    motion.start = read_value<std::uint64_t>(stream, "motion start");
-    motion.frames = read_value<std::uint32_t>(stream, "motion frames");
-    motion.dt = read_value<float>(stream, "motion dt");
-    if (motion.frames == 0 || !std::isfinite(motion.dt) || motion.dt <= 0.0F ||
-        motion.start < previous_end || motion.start > total_frames ||
-        motion.frames > total_frames - motion.start) {
-      throw std::runtime_error("invalid motion index entry");
-    }
-    previous_end = motion.start + motion.frames;
-  }
-  if (previous_end != total_frames) throw std::runtime_error("motion index coverage mismatch");
-  positions_.assign(static_cast<std::size_t>(total_frames) * body_count_ * 3, 0.0F);
-  rotations_.assign(static_cast<std::size_t>(total_frames) * body_count_ * 4, 0.0F);
-  read_floats(stream, positions_, "positions");
-  read_floats(stream, rotations_, "rotations");
+  anchor_body_index_ = anchor;
+  conditionable_ = std::move(conditionable);
+  names_ = std::move(names);
+  motions_ = std::move(index);
+  positions_ = std::move(positions);
+  rotations_ = std::move(rotations);
+}
+
+std::optional<std::size_t> MotionLibrary::index_of(std::string_view name) const noexcept {
+  for (std::size_t i = 0; i < names_.size(); ++i)
+    if (names_[i] == name) return i;
+  return std::nullopt;
 }
 
 std::size_t MotionLibrary::frame_count(std::size_t motion_index) const {
@@ -137,34 +155,24 @@ void MotionLibrary::sample(std::size_t motion_index, float time_seconds,
     throw std::invalid_argument("motion sample output span has the wrong size");
   }
   const auto& motion = motions_[motion_index];
-  const float clamped = std::clamp(time_seconds, 0.0F,
-                                   motion.dt * (motion.frames - 1));
+  const float clamped = std::clamp(std::isfinite(time_seconds) ? time_seconds : 0.0F, 0.0F,
+                                   motion.dt * static_cast<float>(motion.frames - 1));
   const float frame = clamped / motion.dt;
-  const auto frame0 = static_cast<std::size_t>(std::floor(frame));
-  const auto frame1 = std::min<std::size_t>(frame0 + 1, motion.frames - 1);
-  const float alpha = frame - static_cast<float>(frame0);
-  const auto global0 = static_cast<std::size_t>(motion.start) + frame0;
-  const auto global1 = static_cast<std::size_t>(motion.start) + frame1;
-  const auto pos0 = global0 * body_count_ * 3;
-  const auto pos1 = global1 * body_count_ * 3;
-  for (std::size_t i = 0; i < body_count_ * 3; ++i) {
-    body_pos[i] = positions_[pos0 + i] +
-                  alpha * (positions_[pos1 + i] - positions_[pos0 + i]);
-  }
-  const auto rot0 = global0 * body_count_ * 4;
-  const auto rot1 = global1 * body_count_ * 4;
-  for (std::size_t body = 0; body < body_count_; ++body) {
-    const auto a = rot0 + body * 4;
-    const auto b = rot1 + body * 4;
-    const Quat q = slerp({rotations_[a], rotations_[a + 1],
-                          rotations_[a + 2], rotations_[a + 3]},
-                         {rotations_[b], rotations_[b + 1],
-                          rotations_[b + 2], rotations_[b + 3]},
-                         alpha);
-    body_rot[body * 4] = q.x;
-    body_rot[body * 4 + 1] = q.y;
-    body_rot[body * 4 + 2] = q.z;
-    body_rot[body * 4 + 3] = q.w;
+  const std::size_t lower = std::min(motion.frames - 1, static_cast<std::size_t>(std::floor(frame)));
+  const std::size_t upper = std::min(motion.frames - 1, lower + 1);
+  const float alpha = std::clamp(frame - static_cast<float>(lower), 0.0F, 1.0F);
+  const float* p0 = positions_.data() + (motion.start + lower) * body_count_ * 3;
+  const float* p1 = positions_.data() + (motion.start + upper) * body_count_ * 3;
+  const float* q0 = rotations_.data() + (motion.start + lower) * body_count_ * 4;
+  const float* q1 = rotations_.data() + (motion.start + upper) * body_count_ * 4;
+  for (std::size_t i = 0; i < body_count_ * 3; ++i) body_pos[i] = p0[i] + (p1[i] - p0[i]) * alpha;
+  for (std::size_t b = 0; b < body_count_; ++b) {
+    const Quat q = slerp({q0[b * 4], q0[b * 4 + 1], q0[b * 4 + 2], q0[b * 4 + 3]},
+                         {q1[b * 4], q1[b * 4 + 1], q1[b * 4 + 2], q1[b * 4 + 3]}, alpha);
+    body_rot[b * 4] = q.x;
+    body_rot[b * 4 + 1] = q.y;
+    body_rot[b * 4 + 2] = q.z;
+    body_rot[b * 4 + 3] = q.w;
   }
 }
 

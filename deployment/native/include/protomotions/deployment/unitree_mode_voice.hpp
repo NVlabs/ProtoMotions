@@ -14,6 +14,7 @@ class UnitreeModeVoice {
   UnitreeModeVoice();
   ~UnitreeModeVoice();
   void update(VoiceMode mode) noexcept;
+  void kick() noexcept;
   void temperature(bool hot) noexcept;
   void close();
  private:

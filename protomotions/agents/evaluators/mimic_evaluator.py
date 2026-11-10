@@ -102,7 +102,11 @@ class MimicEvaluator(BaseEvaluator):
 
     def _update_motion_sampling_weights(self, result) -> None:
         """Update motion sampling weights based on evaluation component failures."""
-        if result.evaluated is None or not self.config.failure_components:
+        if (
+            result.evaluated is None
+            or not self.config.failure_components
+            or self.config.eval_metrics_every is None
+        ):
             return
 
         failed_motions = torch.nonzero(result.failed & result.evaluated).flatten().tolist()

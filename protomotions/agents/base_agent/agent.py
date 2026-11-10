@@ -334,10 +334,15 @@ class BaseAgent:
     def _validate_checkpoint(self, state_dict, *, load_training_state, for_inference):
         """Validate operation-specific requirements before copying any weights."""
 
+    def _env_checkpoint_path(self, task_id: Optional[str]) -> Path:
+        """Use env.ckpt without motions and env_<task_id>.ckpt for a motion file."""
+        return self.root_dir / (
+            "env.ckpt" if task_id is None else f"env_{task_id}.ckpt"
+        )
+
     def _load_environment_checkpoint(self) -> bool:
         """Load the saved environment state for the selected motion shard."""
-        task_id = self.env.get_task_id()
-        env_checkpoint = self.root_dir / f"env_{task_id}.ckpt"
+        env_checkpoint = self._env_checkpoint_path(self.env.get_task_id())
         if not env_checkpoint.exists():
             return False
 
@@ -496,6 +501,7 @@ class BaseAgent:
         self.fabric.call("on_save_checkpoint_start", self)
 
         save_dir = self.root_dir
+        save_dir.mkdir(parents=True, exist_ok=True)
         state_dict = self.get_state_dict({})
 
         # Save environment checkpoint for unique task IDs
@@ -513,7 +519,7 @@ class BaseAgent:
         env_error = None
         try:
             if self.fabric.global_rank in rank_to_task_id:
-                env_checkpoint = save_dir / f"env_{task_id}.ckpt"
+                env_checkpoint = self._env_checkpoint_path(task_id)
                 env_state_dict = self.env.get_state_dict()
                 torch.save(env_state_dict, env_checkpoint)
                 log.info(

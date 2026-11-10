@@ -155,8 +155,12 @@ class EnvConfig:
     def apply_inference_defaults(self) -> None:
         """The environment settings every inference view starts from.
 
-        Run a clip to its end rather than to the training step budget. The
-        sensor switch to inference noise is applied by ``inference_defaults`` on
-        ``self.sensors`` (when present), not here.
+        Run a clip to its end rather than to the training step budget, and
+        drop the reward components: nothing at inference optimizes them, and a
+        reward that binds training-only context (contact labels, for one)
+        would otherwise refuse motion files that lack it. The sensor switch to
+        inference noise is applied by ``inference_defaults`` on ``self.sensors``
+        (when present), not here.
         """
         self.max_episode_length = INFERENCE_EPISODE_LENGTH
+        self.reward_components = {}

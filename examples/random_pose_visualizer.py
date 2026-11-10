@@ -30,6 +30,7 @@ from dataclasses import dataclass
 import math
 import time
 
+from protomotions.launch.startup import run_reporting_failures  # noqa: E402
 from protomotions.robot_configs.factory import registered_robot_names
 
 # Seconds between two random poses.
@@ -398,9 +399,15 @@ def main():
         visualizer.run()
     except KeyboardInterrupt:
         print("\nShutting down...")
-    finally:
-        visualizer.simulator.close()
+    except SystemExit as exit_request:
+        # A viewer may request a successful exit instead of ending its loop.
+        code = exit_request.code
+        if code is not None and (not isinstance(code, int) or code != 0):
+            raise
+
+    # Failure must reach the reporter before a backend close can terminate.
+    visualizer.simulator.close()
 
 
 if __name__ == "__main__":
-    main()
+    run_reporting_failures(main)

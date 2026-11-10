@@ -613,11 +613,14 @@ def test_supervised_agent_uses_fabric_for_setup(monkeypatch):
     assert agent.fabric.calls == [("setup", (model, agent.supervised_optimizer))]
 
 
+@pytest.mark.parametrize("task_id,env_name", [("task-a", "env_task-a.ckpt"),
+                                              (None, "env.ckpt")])
 def test_base_agent_load_uses_explicit_training_state_and_loads_matching_env_state(
-    tmp_path,
+    tmp_path, task_id, env_name,
 ):
+    """Loading restores the matching named or motion-free environment checkpoint."""
     checkpoint = tmp_path / "inference.ckpt"
-    env_checkpoint = tmp_path / "env_task-a.ckpt"
+    env_checkpoint = tmp_path / env_name
     torch.save(
         {"model": {"w": torch.tensor([1.0])}},
         checkpoint,
@@ -627,7 +630,7 @@ def test_base_agent_load_uses_explicit_training_state_and_loads_matching_env_sta
     fabric = _FabricRecorder()
     loaded = {}
     env = SimpleNamespace(
-        get_task_id=lambda: "task-a",
+        get_task_id=lambda: task_id,
         load_state_dict=lambda state: loaded.setdefault("env", state),
     )
     agent = object.__new__(BaseAgent)
@@ -682,14 +685,20 @@ def test_ppo_unwrapped_module_properties_handle_wrapped_and_plain_modules():
     assert agent.critic_module is critic
 
 
+@pytest.mark.parametrize("task_id,env_name", [("task-a", "env_task-a.ckpt"),
+                                              (None, "env.ckpt")])
 def test_base_agent_save_writes_rank_and_score_checkpoints_without_real_dist(
     tmp_path,
     monkeypatch,
+    task_id,
+    env_name,
 ):
+    """Saving uses the same named or motion-free environment path as loading."""
     saved = []
     barriers = []
 
     def fake_save(state, path):
+        assert path.parent.is_dir()
         saved.append((state, path.name))
 
     def fake_all_gather_object(target, value):
@@ -712,10 +721,10 @@ def test_base_agent_save_writes_rank_and_score_checkpoints_without_real_dist(
     agent = object.__new__(BaseAgent)
     agent.fabric = _FabricRecorder()
     agent.device = torch.device("cpu")
-    agent.root_dir = tmp_path
+    agent.root_dir = tmp_path / "new" / "run"
     agent.config = SimpleNamespace(save_inference_checkpoint=True)
     agent.env = SimpleNamespace(
-        get_task_id=lambda: "task-a",
+        get_task_id=lambda: task_id,
         get_state_dict=lambda: {"env": torch.tensor([3.0])},
     )
     agent.best_evaluated_score = 10.0
@@ -737,7 +746,7 @@ def test_base_agent_save_writes_rank_and_score_checkpoints_without_real_dist(
 
     assert barriers == [True]
     assert [name for _, name in saved] == [
-        "env_task-a.ckpt",
+        env_name,
         "last.ckpt",
         "custom_last.ckpt",
         "score_based.ckpt",
@@ -1911,3 +1920,28 @@ def test_base_agent_noop_hooks_dataset_helpers_and_mode_switching():
     assert sample["obs"].shape == (2, 1)
     BaseAgent.terminate_early(agent)
     assert agent._should_stop is True
+
+
+@pytest.mark.parametrize("has_manager", [False, True])
+def test_motion_free_environment_checkpoint_load_uses_the_real_task_id(
+    tmp_path, has_manager
+):
+    """The real environment task ID loads env.ckpt with or without a motion manager."""
+    from protomotions.envs.base_env.env import BaseEnv
+
+    env = object.__new__(BaseEnv)
+    env._motion = SimpleNamespace(
+        motion_manager=object() if has_manager else None,
+        motion_lib=SimpleNamespace(motion_file=None),
+    )
+    loaded = {}
+    env.load_state_dict = lambda state: loaded.update(state)
+    agent = object.__new__(BaseAgent)
+    agent.env = env
+    agent.root_dir = tmp_path
+    agent.device = torch.device("cpu")
+    torch.save({"episode": 7}, tmp_path / "env.ckpt")
+
+    assert agent._env_checkpoint_path(env.get_task_id()) == tmp_path / "env.ckpt"
+    assert agent._load_environment_checkpoint()
+    assert loaded == {"episode": 7}

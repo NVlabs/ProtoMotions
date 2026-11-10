@@ -134,8 +134,13 @@ CycleResult DeploymentRuntime::run_cycle(
     // transports generally require repeated packets, and MuJoCo must keep
     // stepping the damping controller instead of appearing frozen.
     try {
-      return backend_.emergency_stop() ? CycleResult::kSafeStop
-                                       : CycleResult::kBackendFault;
+      const bool held = backend_.emergency_stop();
+      // Keep observing while held. The viewer, the metrics stream and the
+      // operator must see the robot settle or fall under damping; a frame
+      // frozen at the moment of the fault looks like a hung simulator.
+      RobotState state;
+      if (backend_.read_state(state)) last_state_ = std::move(state);
+      return held ? CycleResult::kSafeStop : CycleResult::kBackendFault;
     } catch (...) {
       return CycleResult::kBackendFault;
     }

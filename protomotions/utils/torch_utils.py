@@ -25,7 +25,7 @@ def grad_norm(params):
     for p in params:
         if p.grad is not None:
             grad_norm += torch.sum(p.grad**2)
-    return torch.sqrt(grad_norm)
+    return torch.sqrt(torch.as_tensor(grad_norm))
 
 
 def to_torch(

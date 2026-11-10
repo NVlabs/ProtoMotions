@@ -231,7 +231,10 @@ def test_bm_contact_selection_uses_robot_foot_and_hand_groups():
     from examples.experiments.mimic import mlp_bm_l2c2 as recipe
 
     robot = SimpleNamespace(
-        kinematic_info=SimpleNamespace(body_names=["chest", "elbow", "palm", "toe"]),
+        kinematic_info=SimpleNamespace(
+            body_names=["chest", "elbow", "palm", "toe", "finger"],
+            parent_indices=[-1, 0, 1, 0, 2],
+        ),
         common_naming_to_robot_body_names={
             "all_left_foot_bodies": ["toe"],
             "all_right_foot_bodies": [],
@@ -239,6 +242,7 @@ def test_bm_contact_selection_uses_robot_foot_and_hand_groups():
             "all_right_hand_bodies": [],
         },
     )
+    # The finger below the palm goes with the hand.
     assert recipe._self_contact_bodies(robot) == ["chest", "elbow"]
 
 

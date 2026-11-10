@@ -102,6 +102,7 @@ add_library(protomotions_deployment
   src/safety.cpp
   src/types.cpp
   src/motion_library.cpp
+  src/metatron_v1_tracking.cpp
   src/native_time_series_recorder.cpp
   src/steering_style.cpp
 )
@@ -327,6 +328,21 @@ if(PROTOMOTIONS_BUILD_MUJOCO)
   add_test(NAME mujoco_model_loader
            COMMAND mujoco_model_loader_test
                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/assets/two_joint_external_floor.xml)
+  # Arm IK needs MuJoCo for kinematics and Jacobians only; it is independent
+  # of the TensorRT engine so the pure-C++ test can run without a GPU.
+  add_library(protomotions_metatron_v1_arm_ik src/metatron_v1_arm_ik.cpp)
+  target_include_directories(protomotions_metatron_v1_arm_ik PRIVATE "${MUJOCO_INCLUDE_DIR}")
+  target_link_libraries(protomotions_metatron_v1_arm_ik PUBLIC
+    protomotions_deployment "${MUJOCO_LIBRARY}")
+  protomotions_configure_target(protomotions_metatron_v1_arm_ik)
+  if(PROTOMOTIONS_G1_MJCF AND EXISTS "${PROTOMOTIONS_G1_MJCF}")
+    add_executable(metatron_v1_arm_ik_test tests/metatron_v1_arm_ik_test.cpp)
+    target_include_directories(metatron_v1_arm_ik_test PRIVATE "${MUJOCO_INCLUDE_DIR}")
+    target_link_libraries(metatron_v1_arm_ik_test PRIVATE protomotions_metatron_v1_arm_ik)
+    target_compile_options(metatron_v1_arm_ik_test PRIVATE -UNDEBUG)
+    protomotions_configure_target(metatron_v1_arm_ik_test)
+    add_test(NAME metatron_v1_arm_ik COMMAND metatron_v1_arm_ik_test "${PROTOMOTIONS_G1_MJCF}")
+  endif()
   if(PROTOMOTIONS_G1_MJCF AND EXISTS "${PROTOMOTIONS_G1_MJCF}")
     add_executable(metatron_mujoco_sensor_test tests/metatron_mujoco_sensor_test.cpp)
     target_link_libraries(metatron_mujoco_sensor_test PRIVATE protomotions_mujoco)
@@ -480,27 +496,61 @@ if(PROTOMOTIONS_BUILD_METATRON_NATIVE)
   protomotions_configure_target(metatron_v1_task_dump)
   if(PROTOMOTIONS_BUILD_UNITREE_SDK2 AND PROTOMOTIONS_BUILD_MUJOCO
      AND PROTOMOTIONS_BUILD_EVDEV_INPUT)
+    # The launcher starts the dashboard itself when an operator drives, so it
+    # needs a Python with matplotlib and the script's location baked in.
+    find_package(Python3 COMPONENTS Interpreter)
+    set(PROTOMOTIONS_DASHBOARD_PYTHON "${Python3_EXECUTABLE}" CACHE FILEPATH
+        "Python interpreter (with numpy and matplotlib) that runs the live dashboard")
     add_executable(metatron_v1_deploy_cpp
       examples/metatron_v1_deploy.cpp)
+    target_compile_definitions(metatron_v1_deploy_cpp PRIVATE
+      PROTOMOTIONS_DASHBOARD_SCRIPT="${CMAKE_CURRENT_SOURCE_DIR}/tools/live_metrics_viewer.py"
+      PROTOMOTIONS_DASHBOARD_PYTHON="${PROTOMOTIONS_DASHBOARD_PYTHON}")
     target_include_directories(metatron_v1_deploy_cpp PRIVATE
       "${MUJOCO_INCLUDE_DIR}")
     target_link_libraries(metatron_v1_deploy_cpp PRIVATE
       protomotions_metatron_v1_engine
+      protomotions_metatron_v1_arm_ik
       protomotions_unitree_sdk2
       protomotions_mujoco
       protomotions_evdev_input)
+    if(PROTOMOTIONS_BUILD_PICO_INPUT)
+      target_link_libraries(metatron_v1_deploy_cpp PRIVATE protomotions_pico_input)
+      target_compile_definitions(metatron_v1_deploy_cpp PRIVATE PROTOMOTIONS_HAVE_PICO_INPUT=1)
+    endif()
     protomotions_configure_target(metatron_v1_deploy_cpp)
   endif()
 endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(metrics_stream_test tests/metrics_stream_test.cpp)
+  target_link_libraries(metrics_stream_test PRIVATE protomotions_deployment)
+  protomotions_configure_target(metrics_stream_test)
+  target_compile_options(metrics_stream_test PRIVATE -UNDEBUG)
+  add_test(NAME metrics_stream COMMAND metrics_stream_test)
   add_executable(motion_library_test tests/motion_library_test.cpp)
   target_link_libraries(motion_library_test PRIVATE protomotions_deployment)
   protomotions_configure_target(motion_library_test)
   target_compile_options(motion_library_test PRIVATE -UNDEBUG)
   add_test(NAME motion_library COMMAND motion_library_test
-    "${CMAKE_CURRENT_BINARY_DIR}/motion_library_test.pmmot")
+    "${CMAKE_CURRENT_BINARY_DIR}/motion_library_test.json")
+  add_executable(metatron_v1_tracking_test tests/metatron_v1_tracking_test.cpp)
+  target_link_libraries(metatron_v1_tracking_test PRIVATE protomotions_deployment)
+  protomotions_configure_target(metatron_v1_tracking_test)
+  target_compile_options(metatron_v1_tracking_test PRIVATE -UNDEBUG)
+  add_test(NAME metatron_v1_tracking COMMAND metatron_v1_tracking_test
+    "${CMAKE_CURRENT_BINARY_DIR}/metatron_v1_tracking_test.json")
+  add_executable(metatron_v1_teleop_test tests/metatron_v1_teleop_test.cpp)
+  target_link_libraries(metatron_v1_teleop_test PRIVATE protomotions_deployment)
+  protomotions_configure_target(metatron_v1_teleop_test)
+  target_compile_options(metatron_v1_teleop_test PRIVATE -UNDEBUG)
+  add_test(NAME metatron_v1_teleop COMMAND metatron_v1_teleop_test)
+  add_executable(teleop_settings_test tests/teleop_settings_test.cpp)
+  target_link_libraries(teleop_settings_test PRIVATE protomotions_deployment)
+  protomotions_configure_target(teleop_settings_test)
+  target_compile_options(teleop_settings_test PRIVATE -UNDEBUG)
+  add_test(NAME teleop_settings COMMAND teleop_settings_test)
   add_executable(metatron_v1_contract_test
     tests/metatron_v1_contract_test.cpp)
   target_link_libraries(metatron_v1_contract_test PRIVATE protomotions_deployment)
@@ -533,6 +583,11 @@ if(BUILD_TESTING)
   target_link_libraries(metatron_v1_controller_test PRIVATE protomotions_deployment)
   protomotions_configure_target(metatron_v1_controller_test)
   add_test(NAME metatron_v1_controller COMMAND metatron_v1_controller_test)
+  add_executable(dex3_trigger_control_test tests/dex3_trigger_control_test.cpp)
+  target_link_libraries(dex3_trigger_control_test PRIVATE protomotions_deployment)
+  protomotions_configure_target(dex3_trigger_control_test)
+  target_compile_options(dex3_trigger_control_test PRIVATE -UNDEBUG)
+  add_test(NAME dex3_trigger_control COMMAND dex3_trigger_control_test)
   if(EXISTS "${CMAKE_SOURCE_DIR}/artifacts/metatron-ep6410/manifest.json")
     add_executable(metatron_v1_manifest_test tests/metatron_v1_manifest_test.cpp)
     target_link_libraries(metatron_v1_manifest_test PRIVATE protomotions_deployment)

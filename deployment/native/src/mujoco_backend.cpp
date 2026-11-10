@@ -94,6 +94,41 @@ class MuJoCoBackend::Impl {
       if (anchor_body_id_ < 0)
         throw std::invalid_argument("scene-policy MuJoCo anchor body not found");
     }
+    if (config_.floor_friction > 0.0) {
+      const int floor = mj_name2id(model_, mjOBJ_GEOM, "floor");
+      if (floor < 0) throw std::invalid_argument("floor_friction needs a geom named floor");
+      model_->geom_friction[3 * floor] = config_.floor_friction;
+      // Explicit contact pairs carry their own friction and take precedence
+      // over the geoms'; the G1 model declares the foot-floor pairs that way,
+      // so the floor geom alone would change nothing under the feet.
+      for (int pair = 0; pair < model_->npair; ++pair) {
+        if (model_->pair_geom1[pair] == floor || model_->pair_geom2[pair] == floor) {
+          model_->pair_friction[5 * pair] = config_.floor_friction;
+          model_->pair_friction[5 * pair + 1] = config_.floor_friction;
+        }
+      }
+    }
+    for (const auto& [name, extra] : config_.body_mass_additions) {
+      const int body = mj_name2id(model_, mjOBJ_BODY, name.c_str());
+      if (body < 0) throw std::invalid_argument("body_mass_additions: unknown body " + name);
+      if (!std::isfinite(extra) || extra < 0.0)
+        throw std::invalid_argument("body_mass_additions must be finite and non-negative");
+      const double mass = model_->body_mass[body];
+      if (mass > 0.0) {
+        // Keep the mass distribution: scale the diagonal inertia with the mass.
+        const double ratio = (mass + extra) / mass;
+        for (int axis = 0; axis < 3; ++axis) model_->body_inertia[3 * body + axis] *= ratio;
+      } else if (extra > 0.0) {
+        // A massless marker body (the G1 rubber hands) has no inertia to
+        // scale; give the payload the inertia of a 4 cm sphere at the body's
+        // centre of mass so the added mass is dynamically valid.
+        const double radius = 0.04;
+        const double inertia = 0.4 * extra * radius * radius;
+        for (int axis = 0; axis < 3; ++axis) model_->body_inertia[3 * body + axis] = inertia;
+      }
+      model_->body_mass[body] = mass + extra;
+    }
+    if (config_.floor_friction > 0.0 || !config_.body_mass_additions.empty()) mj_setConst(model_, data_);
     capabilities_.dof_count = static_cast<std::size_t>(model_->nu);
     capabilities_.has_odometry = anchor_body_id_ >= 0;
     capabilities_.has_projected_gravity = anchor_body_id_ >= 0;
@@ -137,6 +172,12 @@ class MuJoCoBackend::Impl {
                                      data_->qpos[qpos + 6], data_->qpos[qpos + 3]};
       state.base_angular_velocity = {data_->qvel[qvel + 3], data_->qvel[qvel + 4],
                                      data_->qvel[qvel + 5]};
+      // Odometry drift is a lie about where the robot is, told consistently to
+      // every position the policy may read; the simulation itself is untouched.
+      const double drift_x = config_.odometry_drift_mps[0] * data_->time;
+      const double drift_y = config_.odometry_drift_mps[1] * data_->time;
+      state.base_position[0] += drift_x;
+      state.base_position[1] += drift_y;
       if (anchor_body_id_ >= 0) {
         state.root_position = state.base_position;
         state.root_orientation_xyzw = state.base_orientation_xyzw;
@@ -144,7 +185,7 @@ class MuJoCoBackend::Impl {
         state.has_root_kinematics = true;
         const mjtNum* anchor_pos = data_->xpos + 3 * anchor_body_id_;
         const mjtNum* anchor_wxyz = data_->xquat + 4 * anchor_body_id_;
-        state.anchor_position = {anchor_pos[0], anchor_pos[1], anchor_pos[2]};
+        state.anchor_position = {anchor_pos[0] + drift_x, anchor_pos[1] + drift_y, anchor_pos[2]};
         state.base_orientation_xyzw = {anchor_wxyz[1], anchor_wxyz[2],
                                        anchor_wxyz[3], anchor_wxyz[0]};
         mjtNum local_velocity[6]{};
@@ -223,9 +264,33 @@ class MuJoCoBackend::Impl {
       }
     }
     std::copy(command.values.begin(), command.values.end(), data_->ctrl);
-    if (config_.step_simulation_on_send)
-      for (int substep = 0; substep < config_.substeps_per_command; ++substep)
+    if (config_.step_simulation_on_send) {
+      for (int substep = 0; substep < config_.substeps_per_command; ++substep) {
+        if (push_substeps_ > 0) {
+          mjtNum* force = data_->xfrc_applied + 6 * push_body_;
+          force[0] = push_force_[0];
+          force[1] = push_force_[1];
+          force[2] = push_force_[2];
+          --push_substeps_;
+        } else if (push_body_ >= 0) {
+          mju_zero(data_->xfrc_applied + 6 * push_body_, 6);
+          push_body_ = -1;
+        }
         mj_step(model_, data_);
+      }
+    }
+    return true;
+  }
+  bool apply_push(const std::string& body_name, const std::array<double, 3>& force,
+                  double duration_seconds) {
+    const int body = mj_name2id(model_, mjOBJ_BODY, body_name.c_str());
+    if (body < 0 || !std::isfinite(duration_seconds) || duration_seconds <= 0.0) return false;
+    for (double f : force)
+      if (!std::isfinite(f)) return false;
+    if (push_body_ >= 0 && push_body_ != body) mju_zero(data_->xfrc_applied + 6 * push_body_, 6);
+    push_body_ = body;
+    push_force_ = force;
+    push_substeps_ = std::max(1, static_cast<int>(std::lround(duration_seconds / model_->opt.timestep)));
     return true;
   }
 
@@ -286,6 +351,9 @@ class MuJoCoBackend::Impl {
   int free_joint_qvel_adr_ = -1;
   int anchor_body_id_ = -1;
   std::uint64_t sequence_ = 0;
+  int push_body_ = -1;
+  std::array<double, 3> push_force_{};
+  int push_substeps_ = 0;
 };
 
 MuJoCoBackend::MuJoCoBackend(MuJoCoBackendConfig config)
@@ -299,6 +367,10 @@ const RobotCapabilities& MuJoCoBackend::capabilities() const noexcept {
 bool MuJoCoBackend::read_state(RobotState& state) { return impl_->read_state(state); }
 bool MuJoCoBackend::send_command(const ActuatorCommand& command) {
   return impl_->send_command(command);
+}
+bool MuJoCoBackend::apply_push(const std::string& body_name, const std::array<double, 3>& force,
+                               double duration_seconds) {
+  return impl_->apply_push(body_name, force, duration_seconds);
 }
 bool MuJoCoBackend::reset_anchor_frame() { return impl_->reset_anchor_frame(); }
 bool MuJoCoBackend::emergency_stop() noexcept { return impl_->emergency_stop(); }

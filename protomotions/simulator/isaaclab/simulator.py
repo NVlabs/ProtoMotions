@@ -39,7 +39,10 @@ from protomotions.simulator.isaaclab.utils.collision_baking import (
     ensure_baked_collision_usd,
 )
 from protomotions.simulator.isaaclab.utils.materials import set_material_friction
-from protomotions.simulator.base_simulator.simulator import Simulator
+from protomotions.simulator.base_simulator.simulator import (
+    Simulator,
+    convert_linear_velocity_reference,
+)
 from protomotions.simulator.base_simulator.utils import get_friction_bucket_count
 from protomotions.simulator.base_simulator.config import (
     MarkerState,
@@ -782,8 +785,11 @@ class IsaacLabSimulator(Simulator):
         if env_ids is not None:
             com_b = com_b[env_ids]
         com_w = quat_rotate(new_states.root_rot, com_b, w_last=True)
-        com_velocity = new_states.root_vel + torch.cross(
-            new_states.root_ang_vel, com_w, dim=-1
+        com_velocity = convert_linear_velocity_reference(
+            new_states.root_vel,
+            new_states.root_ang_vel,
+            torch.zeros_like(com_w),
+            com_w,
         )
         self._robot.write_root_link_pose_to_sim_index(
             root_pose=torch.cat((new_states.root_pos, new_states.root_rot), dim=-1),
@@ -844,7 +850,13 @@ class IsaacLabSimulator(Simulator):
         self, env_ids: Optional[torch.Tensor] = None
     ) -> RobotState:
         """
-        Retrieve the state (positions, rotations, velocities) of all simulation bodies.
+        Retrieve link-origin body velocities in world axes without another shift.
+
+        IsaacLab 12.0.0 / IsaacSim 6.0.0.1 / PhysX was measured with a rotating
+        two-link fixture at dt=0.001: raw body_lin_vel_w is COM-referenced for
+        root and child (pose-derivative errors 0.232 and 0.271 m/s), while
+        body_link_lin_vel_w is already origin-referenced (below 0.0024 and
+        0.0012 m/s). Applying a second COM shift would corrupt these reads.
 
         Parameters:
             env_ids (Optional[torch.Tensor]): Restrict state retrieval to specific environments if provided.
@@ -854,9 +866,7 @@ class IsaacLabSimulator(Simulator):
         """
         isaacsim_bodies_positions = wp.to_torch(self._robot.data.body_pos_w).clone()
         isaacsim_bodies_rotations = wp.to_torch(self._robot.data.body_quat_w).clone()
-        # Positions refer to link origins. IsaacLab's body_lin_vel_w is COM
-        # velocity: using it here adds omega x COM-offset to sensor-derived
-        # velocities even with Exact readings. Keep this state origin-based.
+        # Declared reference: link origin for every body; no conversion.
         isaacsim_bodies_velocities = wp.to_torch(
             self._robot.data.body_link_lin_vel_w
         ).clone()
@@ -1056,12 +1066,23 @@ class IsaacLabSimulator(Simulator):
         angular_velocity: torch.Tensor,
         env_ids: torch.Tensor,
     ) -> None:
-        """Apply velocity impulse to robot root by adding to current velocities."""
-        current_vel = wp.to_torch(self._robot.data.root_vel_w)[env_ids]
-        new_vel = current_vel.clone()
-        new_vel[:, :3] += linear_velocity
+        """Add world-axis deltas to the root's origin and angular velocities."""
+        from protomotions.utils.rotations import quat_rotate
+
+        root_rot = wp.to_torch(self._robot.data.root_quat_w)[env_ids]
+        com_b = wp.to_torch(self._robot.data.body_com_pos_b)[env_ids, 0]
+        com_w = quat_rotate(root_rot, com_b, w_last=True)
+        new_vel = wp.to_torch(self._robot.data.root_com_vel_w)[env_ids].clone()
+        new_vel[:, :3] += convert_linear_velocity_reference(
+            linear_velocity,
+            angular_velocity,
+            torch.zeros_like(com_w),
+            com_w,
+        )
         new_vel[:, 3:6] += angular_velocity
-        self._robot.write_root_velocity_to_sim(new_vel, env_ids=env_ids)
+        self._robot.write_root_com_velocity_to_sim_index(
+            root_velocity=new_vel, env_ids=env_ids
+        )
 
     # =====================================================
     # Projectile Implementation

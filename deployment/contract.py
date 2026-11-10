@@ -29,6 +29,7 @@ from typing import Dict, List, Optional, Tuple
 
 import yaml
 
+from protomotions.envs.context_sources import SENSOR_NAMESPACES
 from protomotions.envs.sensors.metadata import SensorDeploymentMetadata
 from protomotions.envs.control.masked_mimic_prompt import GoalCanvas
 
@@ -259,7 +260,7 @@ def provider_of(path: str, channel: Optional[str]) -> str:
     ):
         return POLICY_HISTORY
     head = path.split(".", 1)[0]
-    if head in ("clean", "noisy", "clean_historical", "noisy_historical"):
+    if head in SENSOR_NAMESPACES:
         if channel is None:
             raise ValueError(
                 f"sensor path {path!r} has no sensor channel; the name derives "
@@ -286,7 +287,6 @@ def provider_for_path(path: str) -> str:
     ``mimic`` or policy-history path has no channel. The exporter and the
     declarations test both call this, so the two cannot drift.
     """
-    from protomotions.envs.context_sources import SENSOR_NAMESPACES
     from protomotions.envs.sensors.measurement import derived_sensor_channel
 
     leaf = path.rsplit(".", 1)[-1]

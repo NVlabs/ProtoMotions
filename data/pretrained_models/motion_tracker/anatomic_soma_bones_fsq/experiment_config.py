@@ -88,7 +88,12 @@ def _tracking_rewards(robot_cfg, cfg):
         robot_cfg.body_indices("all_left_hand_bodies", "all_right_hand_bodies")
     )
     feet = list(robot_cfg.body_indices("all_left_foot_bodies", "all_right_foot_bodies"))
-    tracking_bodies = upper + feet
+    # The head is tracked explicitly: left to the all-body relative terms alone,
+    # the policy settles about 16 degrees nose-down against the reference in
+    # every simulator (external report on the released tracker), because a
+    # perfect head moves that 53-body average by only a few percent.
+    head = list(robot_cfg.body_indices("head_body_name"))
+    tracking_bodies = upper + feet + head
 
     def position(indices, weight, sigma):
         return MdpComponent(
@@ -118,6 +123,7 @@ def _tracking_rewards(robot_cfg, cfg):
         "gr_rew": orientation(tracking_bodies, 1.0, 0.4),
         "hand_torso_pos": position(upper, 2.0, 0.1),
         "hand_torso_rot": orientation(upper, 0.4, 0.1),
+        "head_rot": orientation(head, 0.5, 0.1),
         "relative_body_pos": MdpComponent.from_kernel(
             compute_relative_body_pos_rew, meta=RewardMeta(weight=1.0), sigma=0.3
         ),

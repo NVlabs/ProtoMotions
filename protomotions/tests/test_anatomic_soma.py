@@ -153,6 +153,16 @@ def test_motor_classes_are_pinned(joint, armature, effort, velocity):
     assert control.damping == pytest.approx(4 * armature * 20 * math.pi)
 
 
+def test_physx_body_speed_cap_matches_g1():
+    """Anatomical SOMA uses the same PhysX body angular-speed cap as G1."""
+    from protomotions.robot_configs.factory import robot_config
+
+    assert (
+        robot_config("anatomic_soma").asset.max_angular_velocity
+        == robot_config("g1").asset.max_angular_velocity
+    )
+
+
 def test_implicit_pd_dissipates_perturbation_without_gravity_or_contacts():
     from protomotions.robot_configs.anatomic_soma import AnatomicSomaRobotConfig
     from protomotions.robot_configs.base import ControlType
